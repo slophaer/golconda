@@ -12,3 +12,21 @@ version sorts with `strverscmp`.
 | manifest         | `SHA256SUMS`, `SHA256SUMS.gpg`                               | verification                               |
 
 All transfers use `InstancesMax=2`.
+
+## Build requirements
+
+- **Verity signature**: The `.usr-verity-sig.raw` file must be padded to a 512-byte boundary for
+  `systemd-repart` to accept it as `CopyBlocks` source.
+
+- **Root hash in cmdline**: The UKI cmdline must include `usrhash=<roothash>` where `<roothash>` is
+  the hex-encoded dm-verity root hash. `systemd-gpt-auto-generator` uses this to find the correct
+  `/usr` partition.
+
+- **Running repart without sandbox**: Outside the Nix build sandbox, use:
+
+  ```bash
+  unshare --map-root-user fakeroot systemd-repart --architecture=x86-64 ...
+  ```
+
+- **UKI boot counting**: The installed UKI has `+3-0` suffix (3 tries left, 0 done).
+  `systemd-bless-boot` removes the suffix after `boot-complete.target` is reached.
