@@ -1,0 +1,7 @@
+# Lint levels for iets (docs/reference/lints.md in iets). Strict: everything an
+# evaluator can see is an error, except the two that fire on normal flake-style
+# references and stay warnings. scripts/lint runs it.
+[lint]
+all = "error"
+dir-copy-flake = "warn"
+ifd-local-output = "warn"

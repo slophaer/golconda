@@ -1,0 +1,7 @@
+#!/bin/sh
+# Strict evaluation lint with iets (levels in iets.toml) over every output,
+# then the sandboxed checks. Run from the repo root, inside the dev shell.
+set -eu
+cd "$(dirname "$0")/.."
+iets eval-jobs --force-recurse --no-instantiate --expr 'import ./default.nix' > /dev/null
+iets build -A checks ./default.nix
