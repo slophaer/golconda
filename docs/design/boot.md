@@ -1,5 +1,8 @@
 # Boot
 
+*(Planned.)* This page describes the target boot sequence. The image builder and UKI generation are
+not implemented.
+
 Boot is a chain of signed and measured steps from firmware to `boot-complete.target`, all of them
 systemd's. Each UKI carries the `usrhash=` of its `/usr` slot, which is how A and B differ.
 
@@ -16,8 +19,7 @@ sequenceDiagram
   UKI->>UKI: measure kernel, initrd, cmdline into PCR 11
   UKI->>IRD: start PID 1
   IRD->>IRD: gpt-auto: find usr by usrhash, verity-setup, signature check
-  IRD->>IRD: first boot: repart creates root (LUKS2, TPM2 policy on PCR 11 signature)
-  IRD->>IRD: cryptsetup unlocks root with TPM2
+  IRD->>IRD: first boot: repart creates root, ext4, unencrypted in v1
   IRD->>SYS: switch-root
   SYS->>SYS: tmpfiles seeds /etc from factory, sysusers, units
   SYS->>SB: boot-complete.target → bless-boot marks the entry good

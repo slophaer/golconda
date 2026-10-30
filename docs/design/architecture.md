@@ -21,7 +21,7 @@ flowchart LR
   artifacts -->|systemd-sysupdate| machine
   subgraph machine["server"]
     esp[ESP: systemd-boot, UKIs] --> usrab["usr-a / usr-b"]
-    usrab --> root["encrypted root: /etc /var"]
+    usrab --> root["root: /etc /var (unencrypted in v1)"]
   end
 ```
 

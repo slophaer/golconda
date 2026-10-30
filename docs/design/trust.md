@@ -1,5 +1,8 @@
 # Trust
 
+*(Planned.)* This page describes the target trust model. Secure Boot, measured boot and TPM2
+credential decryption are not implemented.
+
 There are three trust roots on a Golconda machine and each is one key hierarchy: Secure Boot keys
 for what runs, the verity signing key for what is read, and the CA store for whom the machine talks
 to. Nothing ships its own copy of any of them.

@@ -1,11 +1,14 @@
 # Updates
 
+*(Planned.)* The sysupdate definitions exist in `image/sysupdate.nix`; the image builder is not
+implemented.
+
 An update is a new version of three artifacts, written to the inactive slot by systemd-sysupdate,
 and a reboot. Rollback is the previous slot, chosen by boot counting or by hand.
 
 ```mermaid
 flowchart TD
-  rel[release: usr image, verity, signature, UKI, SHA256SUMS signed] --> src[http source or local directory]
+  rel[release: usr image, verity, sig, UKI] --> src[http source or local directory]
   src -->|systemd-sysupdate update| chk{version newer than installed?}
   chk -->|no| done[nothing to do]
   chk -->|yes| w1[write usr, verity, sig to inactive slot]
