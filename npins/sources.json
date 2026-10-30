@@ -45,6 +45,12 @@
       "url": "https://releases.nixos.org/nixpkgs/nixpkgs-26.11pre1104102.e62746b0b472/nixexprs.tar.xz",
       "hash": "sha256-GYpArmwi/iMuX2ov31oCBhAXRMJdNX9kOl2LZHCuR6M="
     },
+    "pele": {
+      "type": "Tarball",
+      "url": "https://registry.npmjs.org/pele/-/pele-1.12.0.tgz",
+      "locked_url": null,
+      "hash": "sha256-FQw0Qzo1LR7xv/743uXpXH0xTmwrxrflRNRkPFfnSRQ="
+    },
     "repkgs": {
       "type": "Git",
       "repository": {

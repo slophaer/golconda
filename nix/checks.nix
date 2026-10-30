@@ -22,18 +22,17 @@ in
     touch $out
   '';
 
-  # the docs build; a broken include or mermaid block fails here
+  # the docs build; a broken include or diagram fails here
   docs =
     pkgs.runCommand "check-docs"
       {
         nativeBuildInputs = [
           dev.mdbook
-          dev.mdbook-mermaid
+          dev.mdbook-pele
         ];
       }
       ''
         cp -r ${src}/docs docs && chmod -R u+w docs && cd docs
-        mdbook-mermaid install . # the two js files are generated, not committed
         mdbook build -d $out
       '';
 
