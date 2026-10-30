@@ -56,3 +56,7 @@ mdbook serve docs              # the book
 ```
 
 Documentation: [docs/](docs/SUMMARY.md). Design pages say why; reference pages say what.
+
+## License
+
+GPL-3.0-or-later. See [LICENSE](LICENSE).
