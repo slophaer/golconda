@@ -1,5 +1,5 @@
 # The flake-incompat expression. Each per-system field is a function of
-# { pkgs, platform } (nix/system.nix, nix/packages.nix); the rest is plain.
+# { pkgs, platform } (nix/packages.nix); the rest is plain.
 { sources, self }:
 let
   dev = import ./dev { inherit sources; };
@@ -16,21 +16,17 @@ in
     { platform }:
     import ./checks.nix {
       inherit sources self;
-      inherit (platform) double;
+      double = platform.name;
     };
 
   # `iets fmt` / `nix fmt`: treefmt with every tool pinned (nix/dev/).
-  formatter = { platform }: (dev platform.double).treefmt;
+  formatter = { platform }: (dev platform.name).treefmt;
 
   devShells =
     { platform }:
     {
-      default = (dev platform.double).shell;
+      default = (dev platform.name).shell;
     };
-
-  lib = {
-    system = import ./system.nix;
-  };
 
   # The adios module tree (modules/). `modules { options = {...}; }` evaluates it.
   modules = import ../modules { inherit (import sources.adios) adios; };

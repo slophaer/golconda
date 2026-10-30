@@ -6,7 +6,6 @@
 let
   sources = import ./nix/sources.nix;
   flake-incompat = import sources.flake-incompat;
-  system = import ./nix/system.nix;
 in
 flake-incompat.mkFlake {
   # nix/default.nix takes inputs by name: the pins as one set, and self
@@ -15,14 +14,21 @@ flake-incompat.mkFlake {
     self = ./.;
   };
   expr = ./nix;
-  systems = system.supported;
-  # Per-system arguments. `platform` is the elaborated system (nix/system.nix),
-  # `pkgs` the repkgs set for it (nix/packages.nix). No nixpkgs here.
-  argsFun = double: {
-    platform = system.elaborate double;
-    pkgs = import ./nix/packages.nix {
-      inherit sources;
-      platform = double;
+  systems = [
+    "x86_64-linux"
+    "aarch64-linux"
+  ];
+  # Per-system arguments, from the repkgs set for the platform (nix/packages.nix): `pkgs` and
+  # `platform`, repkgs' record (nix/platforms.nix). No nixpkgs here.
+  argsFun =
+    name:
+    let
+      set = import ./nix/packages.nix {
+        inherit sources;
+        platform = name;
+      };
+    in
+    {
+      inherit (set) pkgs platform;
     };
-  };
 }

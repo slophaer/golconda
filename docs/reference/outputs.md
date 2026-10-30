@@ -11,7 +11,6 @@ schema is the flake one, produced by flake-incompat.
 | `checks.<system>`            | yes        | `treefmt`, `docs`, `boundary`    |
 | `formatter.<system>`         | yes        | treefmt with pinned tools        |
 | `devShells.<system>.default` | yes        | treefmt, mdbook, iets, npins     |
-| `lib.system`                 | no         | `supported`, `elaborate`         |
 | `modules`                    | no         | the adios tree                   |
 
 ## Inputs
