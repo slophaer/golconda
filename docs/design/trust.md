@@ -38,6 +38,25 @@ The `usr-verity-sig` partition holds a PKCS#7 signature of the root hash. system
 the kernel to check it against the keys in the `.platform` or `.machine` keyring, so the verity
 signing certificate is part of the UKI's signed payload.
 
+## TPM2 credential decryption
+
+UKIs are signed with `ukify --phases=enter-initrd:leave-initrd:sysinit:ready`. This lets TPM2-sealed
+credentials unseal both in the initrd (for LUKS unlock) and at service time.
+
+### Rollback weakness
+
+Any image signed by the same PCR 11 key unseals credentials sealed for that key. An attacker who
+obtains an older, vulnerable image can boot it and decrypt secrets.
+
+Mitigations:
+
+- **pcrlock** (systemd 256+): binds to the exact PCR values of one image. A rollback fails because
+  the old image's PCRs do not match.
+- **Key rotation:** re-seal credentials with a new key pair after a security-critical update.
+- **policyref** (systemd 262+): embeds a reference so the TPM refuses policies signed for a
+  different reference.
+- **TPM NV monotonic counter:** a future mechanism; no comparable project implements it yet.
+
 ## Secrets and vars
 
 Secrets never enter the image or the store. Services receive them with `LoadCredential=` and
