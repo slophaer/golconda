@@ -1,6 +1,6 @@
 # Summary
 
-[Golconda](../README.md)
+[Golconda](index.md)
 
 # Design
 
