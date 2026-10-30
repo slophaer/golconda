@@ -1,7 +1,43 @@
 # Contributing
 
+## Commits and branches
+
 1. Use kernel commit style: `area: summary` (lower case, imperative, 50 characters or fewer, no
    period), a blank line, then a body that explains what and why, wrapped at 72 columns. Sign off
    with `git commit -s`.
-1. One commit per feature. Each commit must leave the tree evaluating.
-1. Work on a feature branch in a git worktree. Do not commit to main.
+1. One commit per feature. Each commit must leave the tree evaluating and the lint passing.
+1. Work on a feature branch in a git worktree
+   (`git worktree add ../golconda-<branch> -b <branch> origin/main`). Do not commit to `main`; merge
+   fast-forward after review.
+
+## Conventions
+
+- **One of each.** No second implementation of anything the image already has (see
+  [design/principles](docs/design/principles.md)). A new package or option that duplicates an
+  existing one needs a reason in the commit body.
+- **No nixpkgs** outside `nix/dev/` (developer tooling) and `nix/checks.nix`; `checks.boundary`
+  fails otherwise. Packages come from the repkgs fork; Golconda-specific ones live in `packages/`.
+- **Typed, explicit modules.** A module returns a fragment; shared types live in `modules/lib/`.
+  Duplicates are errors, never overrides. Credentials are references, never file contents.
+- **Docs split.** `docs/design/` says why, `docs/reference/` says what exists in code today. Mark
+  what is designed but not built as *(planned)*. No planning or history pages.
+- **Pins.** `npins/sources.json` is the lock; `nix/sources.nix` reads it. The forge needs a sign-in,
+  so update the repkgs pin by hand (see [patches/repkgs](patches/repkgs/README.md)).
+- **Fork patches.** Changes to repkgs go to the fork branch `golconda` first; regenerate
+  `patches/repkgs/*.patch` when it moves.
+
+## Getting started
+
+```sh
+nix-shell                                   # or: direnv allow
+treefmt                                     # format (nixfmt, statix, deadnix, mdformat, taplo)
+./scripts/lint                              # strict iets lint, module tests, sandboxed checks
+nix-build -A checks.x86_64-linux.docs       # the book; or: mdbook serve docs
+iets eval --expr 'import ./nix/tests.nix { }'   # the module tests alone
+```
+
+The dev shell carries treefmt, mdbook with the Pele diagram renderer, iets and npins. Building
+repkgs packages needs a Nix daemon with `ca-derivations` and `dynamic-derivations`; see
+[design/packaging](docs/design/packaging.md). Start reading at [README](README.md), then
+[docs/SUMMARY](docs/SUMMARY.md); the module code is small enough to read whole, starting with
+`modules/system/default.nix` and `modules/lib/`.
