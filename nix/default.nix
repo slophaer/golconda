@@ -1,15 +1,21 @@
 # The flake-incompat expression. Each per-system field is a function of
-# { pkgs, platform } (nix/packages.nix); the rest is plain.
+# { pkgs, platform, set } (default.nix argsFun); the rest is plain.
 { sources, self }:
 let
   dev = import ./dev { inherit sources; };
 in
 {
   packages =
-    { pkgs }:
+    { pkgs, set }:
     {
       # the patched Nix daemon repkgs needs (CA + dynamic derivations); builders run it
       inherit (pkgs) nix;
+
+      # Smoke test for /wrap: jq with --version prepended to its arguments
+      wrap-smoke = set.wrap {
+        package = pkgs.jq;
+        argv = [ "--version" ];
+      };
     };
 
   checks =
