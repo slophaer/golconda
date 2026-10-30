@@ -4,17 +4,18 @@
 
 Golconda is a server operating system built with Nix but without nixpkgs or NixOS. Images are built
 on a builder and shipped whole: a signed, verity-protected `/usr` with the Nix store inside it,
-booted by a signed unified kernel image, updated A/B by systemd-sysupdate. The machine runs systemd
-and nothing that duplicates it.
+booted by a signed unified kernel image, updated A/B by systemd-sysupdate *(planned)*. The machine
+runs systemd and nothing that duplicates it.
 
 ## Features
 
 - **Immutable by default.** `/usr` is a read-only erofs image under dm-verity. State lives on one
-  encrypted partition; everything else is regenerated from the image at boot.
-- **A/B updates with automatic rollback.** *(design, not yet built)* Two `/usr` slots, two UKIs,
-  boot counting by systemd-boot, blessing by `systemd-bless-boot`.
-- **Secure Boot and measured boot.** UKIs are signed; PCR 11 policies are precomputed and signed, so
-  the TPM-bound disk unlocks after an update without re-enrolment.
+  partition (unencrypted in v1; LUKS2+TPM2 later); everything else is regenerated from the image at
+  boot.
+- **A/B updates with automatic rollback.** *(planned)* Two `/usr` slots, two UKIs, boot counting by
+  systemd-boot, blessing by `systemd-bless-boot`.
+- **Secure Boot and measured boot.** *(planned)* UKIs are signed; PCR 11 policies are precomputed
+  and signed, so the TPM-bound disk unlocks after an update without re-enrolment.
 - **No Nix on the machine.** The store at `/usr/nix/store` is a build-time concept; repkgs makes
   every output relocatable, so nothing is patched or rewritten.
 - **One of each.** One libc, one toolchain (LLVM), one TLS stack, one CA store, one init, one
@@ -37,6 +38,9 @@ and nothing that duplicates it.
 - The forge (`code.in.a.flawed.cloud`) requires sign-in for fetches. Nix reads
   `~/.config/nix/netrc`; iets' fetcher has no netrc support, so pins must already be in the local
   store.
+- No image builder yet. The `image/` directory holds definitions; the builder is not implemented.
+- Cross-compilation is not wired. `nix/packages.nix` uses the build platform as the target.
+- iets cannot fetch the private fork. The forge requires sign-in; iets has no netrc support.
 - Rollback protection is not implemented. An attacker who obtains an older image signed by the same
   key can boot it and unseal TPM2-bound credentials. See [trust](docs/design/trust.md) for
   mitigations. No comparable project (Nixlet, Bocaditos, NixOS appliances) implements this either.
