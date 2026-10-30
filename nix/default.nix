@@ -1,5 +1,5 @@
 # The flake-incompat expression. Each per-system field is a function of
-# { pkgs, platform } (nix/packages.nix); the rest is plain.
+# { pkgs, platform, set } (default.nix argsFun); the rest is plain.
 { sources, self }:
 let
   dev = import ./dev { inherit sources; };
@@ -11,21 +11,12 @@ in
       # the patched Nix daemon repkgs needs (CA + dynamic derivations); builders run it
       inherit (pkgs) nix;
 
-      # Smoke test for wrap: wraps jq with --version prepended.
-      # Requires repkgs pin to include wrap support (branch wrap merged into golconda).
-      # When the pin is updated: nix-build -A packages.x86_64-linux.wrap-smoke
-    }
-    // (
-      if set ? wrap then
-        {
-          wrap-smoke = set.wrap {
-            package = pkgs.jq;
-            argv = [ "--version" ];
-          };
-        }
-      else
-        { }
-    );
+      # Smoke test for /wrap: jq with --version prepended to its arguments
+      wrap-smoke = set.wrap {
+        package = pkgs.jq;
+        argv = [ "--version" ];
+      };
+    };
 
   checks =
     { platform }:
