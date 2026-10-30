@@ -11,8 +11,8 @@ and nothing that duplicates it.
 
 - **Immutable by default.** `/usr` is a read-only erofs image under dm-verity. State lives on one
   encrypted partition; everything else is regenerated from the image at boot.
-- **A/B updates with automatic rollback.** Two `/usr` slots, two UKIs, boot counting by
-  systemd-boot, blessing by `systemd-bless-boot`.
+- **A/B updates with automatic rollback.** *(design, not yet built)* Two `/usr` slots, two UKIs,
+  boot counting by systemd-boot, blessing by `systemd-bless-boot`.
 - **Secure Boot and measured boot.** UKIs are signed; PCR 11 policies are precomputed and signed, so
   the TPM-bound disk unlocks after an update without re-enrolment.
 - **No Nix on the machine.** The store at `/usr/nix/store` is a build-time concept; repkgs makes
@@ -33,6 +33,10 @@ and nothing that duplicates it.
 - No runtime generations list; rollback is to the other slot.
 - Developer tooling (formatter, docs) still comes from a dev-only nixpkgs pin.
 - Young dependencies: repkgs needs a patched Nix daemon to build; adios and iets change often.
+- The numtide nix-farm cannot build repkgs: its evaluator rejects `ca-derivations`.
+- The forge (`code.in.a.flawed.cloud`) requires sign-in for fetches. Nix reads
+  `~/.config/nix/netrc`; iets' fetcher has no netrc support, so pins must already be in the local
+  store.
 
 ## Golconda and NixOS
 
