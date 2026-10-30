@@ -37,6 +37,9 @@ and nothing that duplicates it.
 - The forge (`code.in.a.flawed.cloud`) requires sign-in for fetches. Nix reads
   `~/.config/nix/netrc`; iets' fetcher has no netrc support, so pins must already be in the local
   store.
+- Rollback protection is not implemented. An attacker who obtains an older image signed by the same
+  key can boot it and unseal TPM2-bound credentials. See [trust](docs/design/trust.md) for
+  mitigations. No comparable project (Nixlet, Bocaditos, NixOS appliances) implements this either.
 
 ## Golconda and NixOS
 

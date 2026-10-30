@@ -34,8 +34,11 @@ Two systemd features do not work as expected for `/etc` updates:
 
 - **`tmpfiles C+`** fills an existing directory but does not replace existing files. A changed
   vendor file in `/usr/share/factory/etc` stays hidden by the old copy in `/etc`.
-- **`ConditionNeedsUpdate=/etc`** compares the `/usr` mtime with `/etc/.updated`. A reproducible
-  image that sets a fixed mtime stops the condition from firing.
+- **`ConditionNeedsUpdate=/etc`** compares the `/usr` mtime with `/etc/.updated`. A naïve
+  reproducible build that uses a fixed timestamp stops the condition from firing.
 
-The planned `etc-sync` tool sidesteps both by using the `etc.manifest` hash, not the mtime, and by
-syncing changed vendor files into `/etc` when they were not modified by the admin.
+The image builder sets the erofs timestamp from the image version (`mkfs.erofs -T`), so
+`ConditionNeedsUpdate=` fires exactly once per new image while the image stays reproducible.
+
+The planned `etc-sync` tool sidesteps the `C+` trap by using the `etc.manifest` hash and syncing
+changed vendor files into `/etc` when they were not modified by the admin.
