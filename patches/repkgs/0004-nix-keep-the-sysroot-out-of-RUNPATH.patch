@@ -1,0 +1,67 @@
+From d756d00688625134bbba785c702605dd82703f01 Mon Sep 17 00:00:00 2001
+From: yolobox <yolobox@phaer.org>
+Date: Fri, 30 Oct 2026 19:55:47 +0000
+Subject: [PATCH 4/8] nix: keep the sysroot out of RUNPATH
+
+jig puts the runtimes directory into the RUNPATH of every program that
+links libc++ or libunwind. The cc recipe wrote it as <sysroot>/lib, so a
+C++ program still referenced the sysroot, with linux-headers and
+compiler-rt behind it, after PT_INTERP and the libc entry had moved to
+the libc output.
+
+Pass the runtimes output to the cc recipe as runtimesOut and write it in
+jig.json. Toolchains without a separate runtimes output keep the
+sysroot, as before.
+
+Checked with re2 and a small program that throws and matches a regex:
+its closure is glibc, runtimes, abseil-cpp, googletest and re2, and it
+runs from a moved tree with /nix/store and /proc both masked.
+
+Signed-off-by: yolobox <yolobox@phaer.org>
+---
+ bootstrap/default.nix | 12 ++++++++----
+ pkgs/ll/llvm/cc.nu    |  5 +++--
+ 2 files changed, 11 insertions(+), 6 deletions(-)
+
+diff --git a/bootstrap/default.nix b/bootstrap/default.nix
+index b6be8c4..e098fb0 100644
+--- a/bootstrap/default.nix
++++ b/bootstrap/default.nix
+@@ -251,10 +251,14 @@ let
+       ++ extraParts;
+       runtimes = if given then null else run [ ] "runtimes" { sysroot = sysroot base; };
+       full = sysroot (base ++ [ runtimes ]);
+-      cc = run [ ] "cc" ({
+-        sysroot = full;
+-        libcOut = libc;
+-      } // ccArgs);
++      cc = run [ ] "cc" (
++        {
++          sysroot = full;
++          libcOut = libc;
++        }
++        // (if runtimes == null then { } else { runtimesOut = runtimes; })
++        // ccArgs
++      );
+     in
+     {
+       inherit
+diff --git a/pkgs/ll/llvm/cc.nu b/pkgs/ll/llvm/cc.nu
+index 7450e9c..c153eb2 100644
+--- a/pkgs/ll/llvm/cc.nu
++++ b/pkgs/ll/llvm/cc.nu
+@@ -44,8 +44,9 @@ def elf-policy [out: string, sysroot: string]: nothing -> record {
+   ] | str join "\n" | save stub.ld
+   x (lld) -pie --no-dynamic-linker -e __reloc_start -T stub.ld reloc_stub.o -o reloc_stub.elf
+   x llvm-objcopy -O binary -j .text reloc_stub.elf $"($out)/lib/reloc_stub.bin"
+-  # the libc output holds ld.so and libc.so.6; stage0/1 toolchains have no separate one
+-  {libc: ($env.libcOut? | default $sysroot), interp: $env.interp, crt: $"($out)/lib/crt_interp.o", runtimes: $"($sysroot)/lib"}
++  # the libc and runtimes outputs hold ld.so, libc.so.6, libc++ and libunwind: RUNPATH names them,
++  # not the sysroot, which only links to them. stage0/1 toolchains have no separate ones
++  {libc: ($env.libcOut? | default $sysroot), interp: $env.interp, crt: $"($out)/lib/crt_interp.o", runtimes: $"($env.runtimesOut? | default $sysroot)/lib"}
+ }
+ 
+ # hello.c and hello.cc through the finished wrapper. Run only when the target is the build machine
+-- 
+2.55.0
+
