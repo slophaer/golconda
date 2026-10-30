@@ -28,16 +28,27 @@
   secureBootKeyPath = "db.key";
   secureBootCertPath = "db.crt";
 
-  # PCR policy signing (for measured boot)
-  # PCR 11 is measured by systemd-stub
+  # PCR policy signing (for measured boot and credential decryption)
+  # PCR 11 is measured by systemd-stub at each phase transition
   signWithPcr = true;
   pcrKeyPath = "pcr.key";
   pcrCertPath = "pcr.crt";
-  # Phases to sign: enter-initrd, leave-initrd, sysinit, ready, shutdown, final
-  pcrPhases = [
-    "enter-initrd"
-    "leave-initrd"
-    "sysinit"
-    "ready"
-  ];
+
+  # Phases to sign, as colon-separated string for ukify --phases
+  # This covers the full boot path for LoadCredentialEncrypted= in services:
+  #   enter-initrd  - measured when systemd-stub starts
+  #   leave-initrd  - measured before pivot_root to real root
+  #   sysinit       - measured when PID 1 reaches basic.target
+  #   ready         - measured when PID 1 reaches multi-user.target
+  #
+  # A credential sealed with:
+  #   systemd-creds encrypt --with-key=tpm2 --tpm2-public-key=<pub> --tpm2-public-key-pcrs=11
+  # can be unsealed at any phase if that phase prefix is in the signature.
+  pcrPhases = "enter-initrd:leave-initrd:sysinit:ready";
+
+  # Rollback weakness: any UKI signed by the same key can unseal credentials.
+  # Mitigations (see docs/design/trust.md):
+  #   - systemd-pcrlock: binds to exact PCR values of one image
+  #   - Key rotation: change signing key after security updates
+  #   - policyref (systemd 262+): refuse policies signed for a different reference
 }

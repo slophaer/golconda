@@ -11,6 +11,13 @@
 #
 # Empty slot definitions (reserved space for A/B updates):
 #   usr-b, usr-b-verity, usr-b-verity-sig
+#
+# IMPORTANT: The usr-a and usr-a-verity partition UUIDs must be derived from
+# the dm-verity root hash for GPT auto-discovery:
+#   - usr-a UUID: first 16 bytes of root hash, formatted as UUID
+#   - usr-a-verity UUID: second 16 bytes of root hash, formatted as UUID
+#
+# The builder computes these and sets them in the partition definitions.
 {
   # ======== Build-time partitions (created by image builder) ========
 
