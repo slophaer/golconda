@@ -30,8 +30,40 @@ what Golconda builds.
 `nix/packages.nix` fixes `tls = "openssl"` for every package that declares the feature. A new
 one-of-each decision is a feature value there, and a package that cannot honour it is not packaged.
 
-## System packages
+## Farm packages and the prefix rule
 
-systemd, kmod, dbus-broker and the kernel address `/usr/lib/...` by absolute path. They are built
-with `prefix=/usr` as the compiled-in location and reached through the symlink farm; everything else
-is relocatable and lives only in the store.
+Some packages compile absolute paths into their binaries: systemd looks for generators in
+`/usr/lib/systemd/system-generators`, dbus-broker reads policy from `/usr/share/dbus-1`. These are
+**farm packages**: they are built with `prefix = "/usr"` in the repkgs spec and reached through the
+symlink farm at `/usr/bin`, `/usr/lib`.
+
+Farm packages in the image: systemd, dbus-broker, openssh.
+
+Everything else is relocatable and lives only in the store. A package that cannot be relocated and
+cannot be a farm package is not packaged.
+
+## Interpreter policy
+
+| context | allowed interpreters                            |
+| ------- | ----------------------------------------------- |
+| image   | dash (`/bin/sh` only); no bash, no other shells |
+| build   | clang/lld, nushell, cpython, perl, rust         |
+
+Dash is the only shell in the image. systemd units run dash scripts. Bash is not packaged.
+
+At build time, clang and lld are the toolchain. Nushell drives repkgs builders. Python is needed for
+meson, systemd's jinja2 templates, and ukify (build-only; not in the image). Perl is needed for
+OpenSSL's Configure and some autotools. Rust builds iets and dbus-broker's main branch.
+
+## Round-1 packages
+
+Packages in progress on the fork, by work package:
+
+| WP  | packages                                                                                 |
+| --- | ---------------------------------------------------------------------------------------- |
+| WP1 | kbuild build system, linux-kernel (monolithic, LTS 6.18.y, `LLVM=1`)                     |
+| WP2 | automake, libtool, json-c, popt, dosfstools, e2fsprogs, erofs-utils, lvm2 (dm-only)      |
+| WP3 | libtasn1, libmnl, p11-kit, tpm2-tss (fapi off), iproute2, linux-pam, openssh, iets       |
+| WP4 | python helpers (jinja2, pyelftools), systemd 262 with the prefix field, dbus-broker main |
+
+kmod is deferred: round 1 builds a monolithic kernel with no modules.
