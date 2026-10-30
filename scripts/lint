@@ -1,7 +1,16 @@
 #!/bin/sh
-# Strict evaluation lint with iets (levels in iets.toml) over every output,
-# then the sandboxed checks. Run from the repo root, inside the dev shell.
+# Strict evaluation lint with iets (levels in iets.toml), then the sandboxed
+# checks. Run from the repo root, inside the dev shell.
+#
+# eval-jobs walks the derivation outputs; the adios tree under `modules` is not
+# a set of derivations (and recursing into it does not terminate), so it is
+# exercised by one composition instead.
 set -eu
 cd "$(dirname "$0")/.."
-iets eval-jobs --force-recurse --no-instantiate --expr 'import ./default.nix' > /dev/null
+iets eval-jobs --force-recurse --no-instantiate \
+  --expr 'let f = import ./default.nix; in { inherit (f) packages checks devShells formatter; }' > /dev/null
+iets eval --expr '
+  let f = import ./default.nix; in
+  (f.modules { options."/system" = { name = "lint"; version = "0"; fragments = [ { units."a.service" = ""; } ]; }; }).modules.system { }
+' > /dev/null
 iets build -A checks ./default.nix
