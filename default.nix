@@ -18,8 +18,9 @@ flake-incompat.mkFlake {
     "x86_64-linux"
     "aarch64-linux"
   ];
-  # Per-system arguments, from the repkgs set for the platform (nix/packages.nix): `pkgs` and
-  # `platform`, repkgs' record (nix/platforms.nix). No nixpkgs here.
+  # Per-system arguments, from the repkgs set for the platform (nix/packages.nix): `pkgs`,
+  # `platform` (repkgs' record, nix/platforms.nix), and `set` (the full repkgs set with wrap,
+  # closure, etc.). No nixpkgs here.
   argsFun =
     name:
     let
@@ -29,6 +30,7 @@ flake-incompat.mkFlake {
       };
     in
     {
+      inherit set;
       inherit (set) pkgs platform;
     };
 }
