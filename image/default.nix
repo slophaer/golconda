@@ -19,6 +19,9 @@
   # UKI configuration (for ukify)
   uki = import ./uki.nix;
 
+  # erofs configuration
+  erofs = import ./erofs.nix;
+
   # os-release template
   osRelease = import ./os-release.nix;
 
