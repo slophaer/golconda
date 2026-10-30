@@ -34,28 +34,24 @@ runs systemd and nothing that duplicates it.
 - No runtime generations list; rollback is to the other slot.
 - Developer tooling (formatter, docs) still comes from a dev-only nixpkgs pin.
 - Young dependencies: repkgs needs a patched Nix daemon to build; adios and iets change often.
-- The numtide nix-farm cannot build repkgs: its evaluator rejects `ca-derivations`.
-- The forge (`code.in.a.flawed.cloud`) requires sign-in for fetches. Nix reads
-  `~/.config/nix/netrc`; iets' fetcher has no netrc support, so pins must already be in the local
-  store.
 - No image builder yet. The `image/` directory holds definitions; the builder is not implemented.
 - Cross-compilation is not wired. `nix/packages.nix` uses the build platform as the target.
-- iets cannot fetch the private fork. The forge requires sign-in; iets has no netrc support.
 - Rollback protection is not implemented. An attacker who obtains an older image signed by the same
   key can boot it and unseal TPM2-bound credentials. See [trust](docs/design/trust.md) for
   mitigations. No comparable project (Nixlet, Bocaditos, NixOS appliances) implements this either.
 
 ## Golconda and NixOS
 
-| | NixOS | Golconda | |---|---|---| | Packages | nixpkgs, bash builders, store paths baked in |
-repkgs, nushell builders, relocatable outputs | | Store | `/nix/store` on every machine, Nix daemon
-required | `/usr/nix/store` inside the image, no daemon | | Modules | global namespace,
-`mkForce`/priorities, fixpoint | typed fragments, explicit inputs, duplicates are errors | |
-Activation | `switch-to-configuration`, generations in the store | image swap, A/B slots, boot
-counting | | Boot | systemd-boot or GRUB, kernel + initrd per generation | signed UKI per slot,
-measured boot | | `/etc` | generated, mostly symlinks into the store | factory seed from `/usr`,
-admin state on the data partition | | Evaluator | Nix | iets (Nix only on the build daemon) | |
-Inputs | flakes or channels | npins; flake output schema via flake-incompat |
+|            | NixOS                                                | Golconda                                                    |
+| ---------- | ---------------------------------------------------- | ----------------------------------------------------------- |
+| Packages   | nixpkgs, bash builders, store paths baked in         | repkgs, nushell builders, relocatable outputs               |
+| Store      | `/nix/store` on every machine, Nix daemon required   | `/usr/nix/store` inside the image, no daemon                |
+| Modules    | global namespace, `mkForce`/priorities, fixpoint     | typed fragments, explicit inputs, duplicates are errors     |
+| Activation | `switch-to-configuration`, generations in the store  | image swap, A/B slots, boot counting                        |
+| Boot       | systemd-boot or GRUB, kernel + initrd per generation | signed UKI per slot, measured boot                          |
+| `/etc`     | generated, mostly symlinks into the store            | factory seed from `/usr`, admin state on the data partition |
+| Evaluator  | Nix                                                  | iets (Nix only on the build daemon)                         |
+| Inputs     | flakes or channels                                   | npins; flake output schema via flake-incompat               |
 
 ## Quick start
 

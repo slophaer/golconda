@@ -16,5 +16,11 @@ schema is the flake one, produced by flake-incompat.
 
 ## Inputs
 
-Pinned in `npins/sources.json`: `repkgs`, `adios`, `flake-incompat`, `iets`, and `nixpkgs-dev-only`
-(developer tooling, nowhere else).
+Pinned in `npins/sources.json`, read by `nix/sources.nix`:
+
+- `repkgs`: the package set (Golconda's fork, branch `golconda`)
+- `adios`: the module system (korora types vendored inside)
+- `flake-incompat`: the output schema
+- `iets`: the evaluator and linter
+- `pele`: the diagram renderer for the docs build
+- `nixpkgs-dev-only`: developer tooling, used nowhere else
