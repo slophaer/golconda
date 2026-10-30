@@ -17,7 +17,7 @@ behind.
 | taken                                                                  | left behind                                                       |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | DPS layout, `/usr`-only images, first-boot repart of an encrypted root | distribution packages, mkosi                                      |
-| UKIs, boot counting, PCR policies, sysupdate                           | sysext as the way to add software (modules do that at build time) |
+| UKIs, boot counting, PCR policies, sysupdate *(design)*                | sysext as the way to add software (modules do that at build time) |
 
 ## What neither does
 
