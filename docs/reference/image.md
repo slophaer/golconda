@@ -1,7 +1,10 @@
 # Image artifacts
 
-What a release contains and how sysupdate finds it. Names carry the image id and version; the
-version sorts with `strverscmp`.
+*(Planned.)* The image builder is not implemented. The `image/` directory holds tool-independent
+definitions that the builder will consume.
+
+This page documents what a release contains and how sysupdate finds it. Names carry the image id and
+version; the version sorts with `strverscmp`.
 
 | artifact         | file name                                                    | sysupdate transfer                         |
 | ---------------- | ------------------------------------------------------------ | ------------------------------------------ |
@@ -9,9 +12,23 @@ version sorts with `strverscmp`.
 | verity hash tree | `<id>_<version>.usr-verity.raw`                              | `MatchPartitionType=usr-verity`            |
 | verity signature | `<id>_<version>.usr-verity-sig.raw`                          | `MatchPartitionType=usr-verity-sig`        |
 | UKI              | `<id>_<version>.efi` → installed as `<id>_<version>+3-0.efi` | `Type=regular-file`, path `/EFI/Linux`     |
-| manifest         | `SHA256SUMS`, `SHA256SUMS.gpg`                               | verification                               |
+| manifest         | `SHA256SUMS`                                                 | *(planned)* sysupdate `Verify=no` in v1    |
 
 All transfers use `InstancesMax=2`.
+
+## Image definitions (`image/`)
+
+| file             | content                                                               |
+| ---------------- | --------------------------------------------------------------------- |
+| `default.nix`    | image identity, imports the other files                               |
+| `erofs.nix`      | erofs compression, timestamp-from-version rule                        |
+| `os-release.nix` | os-release template (`ID`, `VERSION_ID`, `IMAGE_ID`, `IMAGE_VERSION`) |
+| `repart.nix`     | systemd-repart partition definitions (ESP, usr-a/b, verity, root)     |
+| `sysupdate.nix`  | systemd-sysupdate transfer definitions (usr, verity, sig, UKI)        |
+| `uki.nix`        | UKI cmdline template, PCR phases, Secure Boot signing paths           |
+
+The definitions are data, not derivations. The builder (not yet implemented) renders them to INI
+files and calls the tools.
 
 ## Build requirements
 
