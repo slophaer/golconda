@@ -1,8 +1,11 @@
 # The composer: takes fragments, returns one system. Union with an error on a
-# duplicate key; there is no priority system (docs/design/modules.md).
+# duplicate key; there is no priority system (docs/design/modules.md). The
+# union itself is modules/lib/merge.nix, so a module that returns several
+# fragments applies the same rule.
 { types, ... }:
 let
   fragmentT = import ../lib/fragment.nix { inherit types; };
+  merge = import ../lib/merge.nix;
 in
 {
   name = "system";
@@ -28,29 +31,8 @@ in
 
   impl =
     { options }:
-    let
-      inherit (builtins) foldl' attrNames concatLists;
-      checked = options.fragments;
-
-      unionNoDup =
-        field:
-        foldl' (
-          acc: f:
-          let
-            new = f.${field} or { };
-            dup = builtins.filter (k: acc ? ${k}) (attrNames new);
-          in
-          if dup != [ ] then throw "golconda: ${field} defined twice: ${toString dup}" else acc // new
-        ) { } checked;
-
-      concat = field: concatLists (map (f: f.${field} or [ ]) checked);
-    in
-    {
+    merge options.fragments
+    // {
       inherit (options) name version;
-      units = unionNoDup "units";
-      files = unionNoDup "files";
-      sysusers = concat "sysusers";
-      tmpfiles = concat "tmpfiles";
-      packages = concat "packages";
     };
 }
