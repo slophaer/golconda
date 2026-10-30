@@ -1,0 +1,40 @@
+#!/bin/sh
+# golconda-var-run NAME SECRETS PUBLICS: generate one var on the machine, once.
+#
+# Run by golconda-var-NAME.service (modules/lib/var.nix) with RuntimeDirectory=
+# and StateDirectory= set. The generator script /usr/lib/golconda/vars.d/NAME.sh
+# runs in $RUNTIME_DIRECTORY (tmpfs) and writes its files there. Then every
+# SECRET is sealed to this machine's TPM as the credential NAME.SECRET, every
+# PUBLIC is kept in $STATE_DIRECTORY/pub, the plaintext is removed and `done`
+# is touched. SECRETS and PUBLICS are space-separated file names.
+#
+# Consumers load a secret with LoadCredentialEncrypted=<n>:NAME.SECRET and read
+# a public file at /var/lib/golconda/vars/NAME/pub/PUBLIC.
+set -eu
+
+name=$1
+secrets=$2
+publics=$3
+script=/usr/lib/golconda/vars.d/$name.sh
+credstore=/etc/credstore.encrypted
+
+cd "$RUNTIME_DIRECTORY"
+umask 077
+sh -eu "$script"
+
+mkdir -p "$credstore"
+for f in $secrets; do
+  systemd-creds encrypt --with-key=tpm2 --tpm2-public-key-pcrs=11 \
+    --name="$name.$f" "$f" "$credstore/.$name.$f.tmp"
+  mv "$credstore/.$name.$f.tmp" "$credstore/$name.$f"
+done
+
+mkdir -p "$STATE_DIRECTORY/pub"
+for f in $publics; do
+  cp "$f" "$STATE_DIRECTORY/pub/$f"
+done
+
+# RemainAfterExit= keeps the unit active, so systemd removes the runtime
+# directory only at stop: remove the plaintext now.
+rm -rf -- "${RUNTIME_DIRECTORY:?}"/* "${RUNTIME_DIRECTORY:?}"/.[!.]*
+touch "$STATE_DIRECTORY/done"
