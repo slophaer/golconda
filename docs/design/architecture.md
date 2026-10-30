@@ -6,9 +6,9 @@ systemd components that boot, verify and update it. The machine itself contains 
 ```mermaid
 flowchart LR
   subgraph build["build machine"]
-    npins[npins pins] --> iets[iets evaluates]
+    config["configuration (modules, options)"] --> iets[iets evaluates]
     repkgs[repkgs packages] --> iets
-    adios[adios modules] --> iets
+    adios[adios composer] --> iets
     iets --> daemon[Nix daemon, CA + dynamic derivations]
     daemon --> closure[closure in /usr/nix/store]
     closure --> usr["/usr tree: store + symlink farm + /usr/lib config"]
@@ -24,6 +24,23 @@ flowchart LR
     usrab --> root["root: /etc /var (unencrypted in v1)"]
   end
 ```
+
+## How the parts fit
+
+- **repkgs** builds every package so that the output never names its own store path: libraries are
+  found by `$ORIGIN`, the dynamic loader by a stub relative to the binary, scripts by `launch`
+  records. That is what lets the store live at `/usr/nix/store` inside a read-only image with no Nix
+  on the machine, and what makes the initrd simply the closure of systemd.
+- **adios** types every module with korora and composes them by explicit function application: a
+  module returns a fragment, the `/system` composer unions fragments and refuses duplicates. The
+  result is one attribute set of units, files, users and packages, which the image builder renders.
+  There is no global namespace and no evaluation-time magic, so iets can evaluate and lint it fast
+  and a tool can read it as data.
+- **iets** evaluates the configuration and the package set, runs the strict lints, and talks to the
+  Nix daemon that builds. **npins** pins the inputs; `nix/sources.nix` reads them purely.
+- **systemd** does the rest: repart makes the partitions, ukify the unified kernel image, sysupdate
+  the A/B updates, systemd-boot the counting, veritysetup and cryptsetup the integrity and the
+  unlock. Golconda adds configuration, never a second mechanism.
 
 ## Components
 

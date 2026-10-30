@@ -28,13 +28,13 @@ block-beta
 
 ## State
 
-| path                       | partition               | how it comes to be                                                                        |
-| -------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- |
-| `/etc`                     | root                    | seeded from `/usr/share/factory/etc` on first boot (tmpfiles `C`); admin edits afterwards |
-| `/var`                     | root                    | `StateDirectory=`, tmpfiles                                                               |
-| `/home`, `/root`           | root                    | tmpfiles                                                                                  |
-| `/tmp`, `/run`             | tmpfs                   | systemd                                                                                   |
-| `/srv` or `/var/lib/<app>` | optional data partition | repart definition in the image                                                            |
+| path             | partition               | how it comes to be                                                                        |
+| ---------------- | ----------------------- | ----------------------------------------------------------------------------------------- |
+| `/etc`           | root                    | seeded from `/usr/share/factory/etc` on first boot (tmpfiles `C`); admin edits afterwards |
+| `/var`           | root                    | `StateDirectory=`, tmpfiles                                                               |
+| `/home`, `/root` | root                    | tmpfiles                                                                                  |
+| `/tmp`, `/run`   | tmpfs                   | systemd                                                                                   |
+| `/var/lib/<app>` | optional data partition | repart definition in the image; service state always lives under `/var/lib`, never `/srv` |
 
 The reference list of partitions, type GUIDs and flags is in
 [reference/layout](../reference/layout.md).

@@ -17,10 +17,7 @@
   IMAGE_ID = imageId;
   IMAGE_VERSION = "{version}";
   PRETTY_NAME = "Golconda {version}";
-  HOME_URL = "https://code.in.a.flawed.cloud/yolobox/golconda";
-  DOCUMENTATION_URL = "https://code.in.a.flawed.cloud/yolobox/golconda/src/branch/main/docs";
-  SUPPORT_URL = "https://code.in.a.flawed.cloud/yolobox/golconda/issues";
-  # No BUG_REPORT_URL - use SUPPORT_URL
+  # HOME_URL, DOCUMENTATION_URL and SUPPORT_URL come from the release configuration at build time
   VARIANT = "server";
   VARIANT_ID = "server";
 }
