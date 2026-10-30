@@ -31,7 +31,7 @@ flowchart LR
 | ------------------------------ | ------------------------------------------- | -------------------------------- |
 | npins                          | pins repkgs, adios, flake-incompat, iets    | `npins/`                         |
 | flake-incompat                 | output schema, per-system arguments         | `default.nix`, `nix/default.nix` |
-| system.nix                     | the platform record every tool reads        | `nix/system.nix`                 |
+| platform record                | repkgs' record, every tool reads it         | `nix/packages.nix`               |
 | repkgs                         | packages, toolchain, relocatable outputs    | `nix/packages.nix`, `packages/`  |
 | adios                          | typed module tree, fragments, the composer  | `modules/`                       |
 | iets                           | evaluation and lints                        | `iets.toml`, `scripts/lint`      |

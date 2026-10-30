@@ -13,8 +13,12 @@ builder of its own.
 
 ## The platform
 
-`nix/system.nix` turns a Nix double into one record with every spelling in use: repkgs' cpu/os,
-systemd's architecture name, the UEFI suffix, the kernel `ARCH`. Nothing else spells a platform.
+The platform is repkgs' record (`nix/platforms.nix` in repkgs), which `nix/packages.nix` returns
+next to `pkgs`. It holds `cpu`, `os`, `name` (`x86_64-linux`), `march` and `names`, one spelling per
+consumer: `names.kernel` (the kernel `ARCH`), `names.systemd` (`systemd-repart --architecture`, the
+partition type names) and `names.uefi` (`BOOTX64.EFI`; null where there is no UEFI port). Golconda
+keeps no table of its own; a new spelling goes into repkgs. Only `systems` in `default.nix` lists
+what Golconda builds.
 
 ## Set-wide features
 
