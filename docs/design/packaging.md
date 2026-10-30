@@ -6,6 +6,11 @@ builder of its own.
 
 ## Why repkgs
 
+Golconda pins a fork of repkgs (branch `golconda` at `code.in.a.flawed.cloud/yolobox/repkgs`) with
+relocation fixes: PT_INTERP via libc with relative sysroot links, and glibc `$ORIGIN` expansion from
+`AT_EXECFN` instead of `/proc`. See [`patches/repkgs/README.md`](../../patches/repkgs/README.md) for
+the patches and their issue drafts.
+
 - Outputs are relocatable, so the store can live in `/usr` and no machine needs Nix.
 - One LLVM toolchain; cross-compilation is an argument, which the platform record supplies.
 - Evaluation is cheap and typed, so iets lints the whole set on every change.
