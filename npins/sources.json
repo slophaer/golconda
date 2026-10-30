@@ -54,15 +54,16 @@
     "repkgs": {
       "type": "Git",
       "repository": {
-        "type": "GitHub",
-        "owner": "Mic92",
+        "type": "Forgejo",
+        "server": "https://code.in.a.flawed.cloud/",
+        "owner": "yolobox",
         "repo": "repkgs"
       },
-      "branch": "main",
+      "branch": "golconda",
       "submodules": false,
-      "revision": "fab71211fd219dd3fc70f4d1831d27f9b730ad25",
-      "url": "https://github.com/Mic92/repkgs/archive/fab71211fd219dd3fc70f4d1831d27f9b730ad25.tar.gz",
-      "hash": "sha256-uQONcsztt42fRgmgN+IjqpOro4gB2Bi0+Ke40Mz2kqk="
+      "revision": "e3f2fa43b8a9ef2a8ab752fb5cac909f5ec52633",
+      "url": "https://code.in.a.flawed.cloud/yolobox/repkgs/archive/e3f2fa43b8a9ef2a8ab752fb5cac909f5ec52633.tar.gz",
+      "hash": "sha256-cAZW11tBPJnMDPNVWuYNXlxiOxzBKU/lHlX+hGNVsf0="
     }
   },
   "version": 7
