@@ -11,7 +11,12 @@ let
 
   statix-each = pkgs.writeShellScript "statix-each" ''
     status=0
-    for f in "$@"; do ${pkgs.statix}/bin/statix check -c ${../../statix.toml} "$f" || status=1; done
+    for f in "$@"; do ${pkgs.statix}/bin/statix check -c ${
+      builtins.path {
+        path = ../../statix.toml;
+        name = "statix.toml";
+      }
+    } "$f" || status=1; done
     exit $status
   '';
 
