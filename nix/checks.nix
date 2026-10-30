@@ -32,7 +32,8 @@ in
         ];
       }
       ''
-        cp -r ${src}/docs docs && chmod -R u+w docs && cd docs
+        # the book's first page includes ../README.md
+        cp -r ${src}/docs docs && cp ${src}/README.md README.md && chmod -R u+w docs && cd docs
         mdbook build -d $out
       '';
 
