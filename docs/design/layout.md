@@ -25,10 +25,13 @@ block-beta
 
 ## State
 
-| path | partition | how it comes to be | |---|---|---| | `/etc` | root | copied from the factory on
-first boot; admin drop-ins afterwards | | `/var` | root | `StateDirectory=`, tmpfiles | | `/home`,
-`/root` | root | tmpfiles | | `/tmp`, `/run` | tmpfs | systemd | | `/srv` or `/var/lib/<app>` |
-optional data partition | repart definition in the image |
+| path                       | partition               | how it comes to be                                               |
+| -------------------------- | ----------------------- | ---------------------------------------------------------------- |
+| `/etc`                     | root                    | copied from the factory on first boot; admin drop-ins afterwards |
+| `/var`                     | root                    | `StateDirectory=`, tmpfiles                                      |
+| `/home`, `/root`           | root                    | tmpfiles                                                         |
+| `/tmp`, `/run`             | tmpfs                   | systemd                                                          |
+| `/srv` or `/var/lib/<app>` | optional data partition | repart definition in the image                                   |
 
 The reference list of partitions, type GUIDs and flags is in
 [reference/layout](../reference/layout.md).

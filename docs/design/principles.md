@@ -19,14 +19,18 @@ in `/etc`, state in `/var`, exactly as systemd documents it.
 
 ## One of each
 
-| layer | the one | not | |---|---|---| | libc, toolchain | glibc, LLVM | musl (seed only), GCC | |
-TLS | OpenSSL 3; rustls tolerated in Rust-only tools | GnuTLS, LibreSSL, NSS | | CA trust | one
-store, `/etc/ssl`, see [Trust](trust.md) | per-package bundles | | init, log, net, time, DNS |
-systemd components | rsyslog, chrony, NetworkManager | | D-Bus | dbus-broker | dbus-daemon | | users
-| sysusers + factory `/etc` | shadow suite | | boot | systemd-boot + UKI | GRUB, loose kernel and
-initrd | | disk | repart, sysupdate, erofs, dm-verity, LUKS2 | runtime partitioners, squashfs | |
-filesystem layout | merged `/usr`, `/usr/sbin → bin` | `/lib64`, `/usr/local`, `/opt` | | store |
-`/usr/nix/store`, image only | a Nix daemon on the machine |
+| layer                     | the one                                        | not                             |
+| ------------------------- | ---------------------------------------------- | ------------------------------- |
+| libc, toolchain           | glibc, LLVM                                    | musl (seed only), GCC           |
+| TLS                       | OpenSSL 3; rustls tolerated in Rust-only tools | GnuTLS, LibreSSL, NSS           |
+| CA trust                  | one store, `/etc/ssl`, see [Trust](trust.md)   | per-package bundles             |
+| init, log, net, time, DNS | systemd components                             | rsyslog, chrony, NetworkManager |
+| D-Bus                     | dbus-broker                                    | dbus-daemon                     |
+| users                     | sysusers + factory `/etc`                      | shadow suite                    |
+| boot                      | systemd-boot + UKI                             | GRUB, loose kernel and initrd   |
+| disk                      | repart, sysupdate, erofs, dm-verity, LUKS2     | runtime partitioners, squashfs  |
+| filesystem layout         | merged `/usr`, `/usr/sbin → bin`               | `/lib64`, `/usr/local`, `/opt`  |
+| store                     | `/usr/nix/store`, image only                   | a Nix daemon on the machine     |
 
 The choice is enforced where it can be: repkgs `features` (`tls = "openssl"` set-wide), lints, and
 the boundary check that keeps nixpkgs out of everything but developer tooling.
