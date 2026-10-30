@@ -22,16 +22,19 @@ block-beta
 - `/usr/lib/systemd/system`, `sysusers.d`, `tmpfiles.d`, `repart.d`, `sysupdate.d`,
   `/usr/lib/os-release`: the system's configuration, written by the composer.
 - `/usr/share/factory/etc`: the seed for `/etc`.
+- `/usr/lib/golconda/etc.manifest`: type, mode, owner and sha256 for each factory path. The seed
+  records the applied manifest in `/etc/.golconda-factory-id`, so drift is auditable; a later
+  `etc-sync` may use it.
 
 ## State
 
-| path                       | partition               | how it comes to be                                               |
-| -------------------------- | ----------------------- | ---------------------------------------------------------------- |
-| `/etc`                     | root                    | copied from the factory on first boot; admin drop-ins afterwards |
-| `/var`                     | root                    | `StateDirectory=`, tmpfiles                                      |
-| `/home`, `/root`           | root                    | tmpfiles                                                         |
-| `/tmp`, `/run`             | tmpfs                   | systemd                                                          |
-| `/srv` or `/var/lib/<app>` | optional data partition | repart definition in the image                                   |
+| path                       | partition               | how it comes to be                                                                        |
+| -------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- |
+| `/etc`                     | root                    | seeded from `/usr/share/factory/etc` on first boot (tmpfiles `C`); admin edits afterwards |
+| `/var`                     | root                    | `StateDirectory=`, tmpfiles                                                               |
+| `/home`, `/root`           | root                    | tmpfiles                                                                                  |
+| `/tmp`, `/run`             | tmpfs                   | systemd                                                                                   |
+| `/srv` or `/var/lib/<app>` | optional data partition | repart definition in the image                                                            |
 
 The reference list of partitions, type GUIDs and flags is in
 [reference/layout](../reference/layout.md).
