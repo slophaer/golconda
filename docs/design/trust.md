@@ -38,7 +38,23 @@ The `usr-verity-sig` partition holds a PKCS#7 signature of the root hash. system
 the kernel to check it against the keys in the `.platform` or `.machine` keyring, so the verity
 signing certificate is part of the UKI's signed payload.
 
-## Secrets
+## Secrets and vars
 
 Secrets never enter the image or the store. Services receive them with `LoadCredential=` and
-`LoadCredentialEncrypted=` (`systemd-creds`, TPM2-bound).
+`LoadCredentialEncrypted=` (`systemd-creds`, TPM2-bound, sealed with the PCR 11 signing key).
+
+A **var** is a generator that produces credentials. The image declares vars; the machine or the
+deploy host generates them. Values are never read at evaluation time.
+
+Three classes:
+
+- **Machine-local.** Generated on the machine at first boot (ssh host keys, wireguard keys). The
+  generator runs in a oneshot unit, seals the result with `systemd-creds encrypt`, and exports only
+  the public half.
+- **Admin-supplied.** Kept age-encrypted on the deploy host, pushed over ssh, sealed on the machine.
+  Covers root password hashes and admin credentials.
+- **Bootstrap.** A few ESP or SMBIOS credentials plus `systemd-firstboot` (`firstboot.hostname`,
+  `passwd.hashed-password.root`). Never put real secrets in a null-key credential: the ESP is not
+  encrypted.
+
+See [reference/vars](../reference/modules/vars.md) for the `var` helper. *(planned)*

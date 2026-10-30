@@ -35,6 +35,23 @@ flowchart TD
 
 Every field is optional and typed by `/types.fragment` (korora). A module's `impl` returns one.
 
+## `app` and `service`
+
+Above the fragment sits a typed `app`: package, argv, env and files. A `service` embeds an `app` and
+adds `extraArgv` (which may hold credential refs), state directories, credentials, sandbox profile
+and user. Credential refs are refused inside `app` because it has no credentials directory.
+
+Renderers turn these values into fragments:
+
+- **Wrapped relocatable binary.** The repkgs `launch` record bakes argv and env into the output; a
+  future `wrap` package shape will add config files. *(planned)*
+- **systemd unit.** `ExecStart=` points at the wrapped binary; `LoadCredentialEncrypted=` names
+  credentials; `StateDirectory=` names state.
+- **User unit.** The same, for `systemd --user`. *(planned)*
+
+Config goes to `/usr/lib/<name>/` or into the wrapper, never to `/etc`. The image holds no
+per-machine values. A program that insists on `/etc` gets a tmpfiles `L` symlink.
+
 ## The composer
 
 `/system` takes `name`, `version` and `fragments`. Attribute-set fields are unioned and a key that
