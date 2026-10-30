@@ -1,0 +1,10 @@
+[book]
+title = "Golconda"
+description = "An immutable, systemd-centred server OS built on repkgs and adios."
+src = "."
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"
+
+[output.html]
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
