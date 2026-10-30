@@ -1,0 +1,6 @@
+result*
+docs/book/
+.direnv/
+docs/mermaid.min.js
+docs/mermaid-init.js
+npins/default.nix
