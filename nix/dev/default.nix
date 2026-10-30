@@ -58,7 +58,17 @@ let
     };
   };
 
-  inherit (pkgs) mdbook mdbook-mermaid;
+  inherit (pkgs) mdbook;
+
+  # mermaid blocks become inline SVG at build time with Pele (pin `pele`)
+  mdbook-pele = pkgs.writeShellScriptBin "mdbook-pele" ''
+    exec ${pkgs.nodejs-slim}/bin/node ${
+      builtins.path {
+        path = ./mdbook-pele.mjs;
+        name = "mdbook-pele.mjs";
+      }
+    } ${sources.pele}/dist/pele.js "$@"
+  '';
 
   # iets from its own flake (crane build); the system Nix is its fallback only
   # in classic mode, which the dev shell does not use.
@@ -72,7 +82,7 @@ in
   inherit
     treefmt
     mdbook
-    mdbook-mermaid
+    mdbook-pele
     iets
     ;
 
@@ -80,7 +90,7 @@ in
     packages = [
       treefmt
       mdbook
-      mdbook-mermaid
+      mdbook-pele
       iets
       pkgs.npins
     ];

@@ -1,0 +1,10 @@
+/* Pele diagrams follow the mdBook theme (light and dark). */
+.pele-diagram {
+  --pele-bg: var(--bg);
+  --pele-fg: var(--fg);
+  --pele-line: var(--fg);
+  --pele-muted: var(--icons);
+  --pele-surface: var(--quote-bg);
+  margin: 1em 0;
+  text-align: center;
+}
