@@ -12,6 +12,7 @@
 - [Modules](design/modules.md)
 - [Trust](design/trust.md)
 - [Packaging](design/packaging.md)
+- [Configuration](design/config.md)
 - [Comparison](design/comparison.md)
 
 # Reference
