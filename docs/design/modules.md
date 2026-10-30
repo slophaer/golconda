@@ -63,7 +63,8 @@ between modules. Types and renderers: [reference/modules](../reference/modules/R
 
 `/system` takes `name`, `version` and `fragments`. Attribute-set fields are unioned and a key that
 appears twice throws with the key's name; list fields are concatenated. The result is the only thing
-the image builder reads.
+the image builder reads. The `packages` list is checked too: two packages that install the same
+`/usr/bin` name throw, because the image builder links them into one directory.
 
 ## Why not the NixOS module system
 

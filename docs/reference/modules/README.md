@@ -3,25 +3,26 @@
 One page per adios module, generated from its `options` and types. Until the generator exists, the
 tree is `modules/`:
 
-| path             | role                                                                                            |
-| ---------------- | ----------------------------------------------------------------------------------------------- |
-| `/system`        | the composer: `name`, `version`, `fragments` → `{ units; files; sysusers; tmpfiles; packages }` |
-| `/vars`          | installs the var runner `/usr/lib/golconda/golconda-var-run` once; add it when any var is used  |
-| `/services/sshd` | OpenSSH as a service with an ed25519 host key var; options `package`, `port`, `authorizedKeys`  |
+| path             | role                                                                                                     |
+| ---------------- | -------------------------------------------------------------------------------------------------------- |
+| `/system`        | the composer: `name`, `version`, `fragments` → `{ units; files; sysusers; tmpfiles; packages }`          |
+| `/vars`          | installs the var runner `/usr/lib/golconda/golconda-var-run` once; add it when any var is used           |
+| `/wrap`          | typed options of repkgs' `wrap`: `package`, `argv`, `env`, `files`; the caller passes them to `set.wrap` |
+| `/services/sshd` | OpenSSH as a service with an ed25519 host key var; options `package`, `port`, `authorizedKeys`           |
 
 ## Shared types and renderers (`modules/lib/`)
 
 Plain files that modules import with `import ../../lib/<file>.nix { inherit types; }`; the directory
 has no `default.nix`, so adios does not load it as a module.
 
-| file               | exports                                                                                                               |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| `fragment.nix`     | `fragment`: `{ units; files; sysusers; tmpfiles; packages }`, every field optional                                    |
-| `merge.nix`        | `merge [ fragment… ] → fragment`: the composer's union; a repeated `units` or `files` key throws                      |
-| `app.nix`          | `app`: `{ package; argv; env; files }`; `credentialRef`; `file "name"` → `{files}/name`; `exe app` → `/usr/bin/<bin>` |
-| `service.nix`      | `service`: `{ name; app; extraArgv; credentials; state; user; sandbox; after; wants }`; `render service → fragment`   |
-| `var.nix`          | `var`: `{ name; secrets; publics; after; script; packages }`; `render var → fragment`; `unitName`; `credentialId`     |
-| `golconda-var-run` | the POSIX sh runner of a var unit (installed by `/vars`)                                                              |
+| file               | exports                                                                                                                 |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `fragment.nix`     | `fragment`: `{ units; files; sysusers; tmpfiles; packages }`, every field optional                                      |
+| `merge.nix`        | `merge [ fragment… ] → fragment`: the composer's union; a repeated `units` or `files` key, or a `/usr/bin` name, throws |
+| `app.nix`          | `app`: `{ package; argv; env; files }`; `credentialRef`; `file "name"` → `{files}/name`; `exe app` → `/usr/bin/<bin>`   |
+| `service.nix`      | `service`: `{ name; app; extraArgv; credentials; state; user; sandbox; after; wants }`; `render service → fragment`     |
+| `var.nix`          | `var`: `{ name; secrets; publics; after; script; packages }`; `render var → fragment`; `unitName`; `credentialId`       |
+| `golconda-var-run` | the POSIX sh runner of a var unit (installed by `/vars`)                                                                |
 
 ### `app`
 
@@ -62,3 +63,26 @@ the runner executes the script in `$RUNTIME_DIRECTORY`, seals each secret with
 `/var/lib/golconda/vars/<name>/pub/`, deletes the plaintext and touches `done`. A consumer names the
 credential id `<name>.<file>` in `service.credentials` and orders itself after
 `golconda-var-<name>.service`.
+
+### `wrap`
+
+`/wrap` declares the arguments of repkgs' `wrap` (`set.wrap`, nix/packages.nix) and returns them
+unchanged; a package expression calls `set.wrap` with them. `wrap` returns a package with a launch
+record `bin/.<x>.launch` for each `bin/<x>` of `package`:
+`{"program":"{store}/<hash>-<pkg>/bin/.<x>","args":[...]}`. Other trees of `package` are linked.
+
+| option    | type                          | meaning                                                                         |
+| --------- | ----------------------------- | ------------------------------------------------------------------------------- |
+| `package` | derivation                    | the package to wrap                                                             |
+| `argv`    | list of string, default `[ ]` | prepended to the caller's arguments; `{root}` and `{store}` expand at run time  |
+| `env`     | attrs, default `{ }`          | `{ VAR = { op = value; }; }`                                                    |
+| `files`   | attrs name → text             | written to `{root}/share/wrap/<pkgname>/<name>`, `<pkgname>` is `package.pname` |
+
+`packages.<system>.wrap-smoke` wraps `jq` with `--version`; it is the build check of `wrap`.
+
+### The `/usr/bin` check
+
+`merge` reads `bin` (a list of executable names, present on repkgs packages) of every entry in
+`packages`. Two different packages with one name throw
+`golconda: /usr/bin name defined twice: <name> (<pkg a>, <pkg b>)`. The same package listed twice is
+not an error. A package without `bin` is not checked.

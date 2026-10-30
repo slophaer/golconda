@@ -28,6 +28,21 @@ let
   # (the unit then says /usr/bin/jq, which the tests do not look at).
   standIn = pkgs.jq;
 
+  # stand-ins for repkgs packages: `bin` exists only on those
+  withBin = name: bin: pkgs.jq // { inherit name bin; };
+  farmOf =
+    packages:
+    (
+      (f.modules {
+        options."/system" = {
+          name = "farm";
+          version = "0";
+          fragments = [ { inherit packages; } ];
+        };
+      }).modules.system
+        { }
+    ).packages;
+
   check = name: cond: if cond then true else throw "golconda tests: ${name} failed";
   # forcing the units is enough: a type error fires before any field; the
   # package derivations stay unevaluated (repkgs needs ca-derivations to instantiate)
@@ -157,6 +172,29 @@ let
         "a"
         "b"
       ]
+    ))
+
+    # 3b. two packages with one /usr/bin name are a composer error
+    (check "farm refuses one name in two packages" (
+      !(tryEval (
+        deepSeq (farmOf [
+          (withBin "a-1" [ "x" ])
+          (withBin "b-1" [
+            "y"
+            "x"
+          ])
+        ]) true
+      )).success
+    ))
+    (check "farm accepts distinct names and the same package twice" (
+      let
+        a = withBin "a-1" [ "x" ];
+      in
+      builtins.length (farmOf [
+        a
+        (withBin "b-1" [ "y" ])
+        a
+      ]) == 3
     ))
 
     # 4. systemd escaping and the other type rules
