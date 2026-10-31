@@ -18,6 +18,7 @@
   "10-usr" = {
     Transfer = {
       ProtectVersion = "%A";
+      Verify = false; # v1: trust is verity-sig + Secure Boot, no SHA256SUMS.gpg (docs/design/updates.md)
     };
     Source = {
       Type = "url-file";
@@ -35,6 +36,7 @@
   "20-usr-verity" = {
     Transfer = {
       ProtectVersion = "%A";
+      Verify = false; # v1: trust is verity-sig + Secure Boot, no SHA256SUMS.gpg (docs/design/updates.md)
     };
     Source = {
       Type = "url-file";
@@ -52,6 +54,7 @@
   "30-usr-verity-sig" = {
     Transfer = {
       ProtectVersion = "%A";
+      Verify = false; # v1: trust is verity-sig + Secure Boot, no SHA256SUMS.gpg (docs/design/updates.md)
     };
     Source = {
       Type = "url-file";
@@ -69,6 +72,7 @@
   "40-uki" = {
     Transfer = {
       ProtectVersion = "%A";
+      Verify = false; # v1: trust is verity-sig + Secure Boot, no SHA256SUMS.gpg (docs/design/updates.md)
     };
     Source = {
       Type = "url-file";

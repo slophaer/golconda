@@ -16,10 +16,12 @@
 {
   # Kernel command line template
   # {usrhash} is substituted with the verity root hash at build time
-  # console=tty0,ttyS0: both local console and serial
-  # ro: root and usr are read-only (dm-verity enforces this anyway)
-  # systemd.volatile=no: /var is on the root partition, not tmpfs
-  cmdlineTemplate = "usrhash={usrhash} ro systemd.volatile=no console=tty0 console=ttyS0,115200";
+  # console=tty0,ttyS0: the local console and the serial line, output only (no getty)
+  # neither ro nor rw: gpt-auto mounts the root partition read-write only with no `ro`, and
+  # /usr is read-only by dm-verity whatever is said; nothing about volatility either (/var is
+  # on the root partition, systemd's default)
+  # The builder appends rdinit= (lib/image/initrd.nix says why)
+  cmdlineTemplate = "usrhash={usrhash} console=tty0 console=ttyS0,115200";
 
   # EFI output naming
   # {version} is the IMAGE_VERSION

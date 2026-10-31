@@ -26,8 +26,8 @@
       Type = "esp";
       Format = "vfat";
       SizeMinBytes = "512M";
-      SizeMaxBytes = "1G";
-      # CopyFiles set by builder: systemd-boot, UKI, loader.conf
+      SizeMaxBytes = "512M";
+      # CopyFiles set by builder: systemd-boot, UKI
     };
   };
 
@@ -36,6 +36,7 @@
       Type = "usr";
       Label = "usr-a";
       SizeMinBytes = "10G";
+      SizeMaxBytes = "10G";
       ReadOnly = true;
       # CopyBlocks set by builder: the erofs image
     };
@@ -45,6 +46,8 @@
     Partition = {
       Type = "usr-verity";
       Label = "usr-a-verity";
+      SizeMinBytes = "128M";
+      SizeMaxBytes = "128M";
       ReadOnly = true;
       # CopyBlocks set by builder: the verity hash tree
     };
@@ -55,19 +58,22 @@
       Type = "usr-verity-sig";
       Label = "usr-a-verity-sig";
       ReadOnly = true;
-      SizeMinBytes = "4K";
+      SizeMinBytes = "16K";
       SizeMaxBytes = "16K";
-      # CopyBlocks set by builder: PKCS#7 signature of root hash
+      # CopyBlocks set by builder: systemd's JSON with the PKCS#7 signature of the root hash
     };
   };
 
   # ======== Empty B slot (for A/B updates) ========
+  # The same fixed sizes as A: sysupdate writes the next version into whichever slot is free,
+  # so both must hold any release (usr 10 GiB; a hash tree is ~1 % of its data).
 
   "20-usr-b" = {
     Partition = {
       Type = "usr";
       Label = "usr-b";
       SizeMinBytes = "10G";
+      SizeMaxBytes = "10G";
       Weight = 0;
       # Empty until first update
     };
@@ -77,7 +83,8 @@
     Partition = {
       Type = "usr-verity";
       Label = "usr-b-verity";
-      SizeMinBytes = "1M";
+      SizeMinBytes = "128M";
+      SizeMaxBytes = "128M";
       Weight = 0;
     };
   };
@@ -86,7 +93,7 @@
     Partition = {
       Type = "usr-verity-sig";
       Label = "usr-b-verity-sig";
-      SizeMinBytes = "4K";
+      SizeMinBytes = "16K";
       SizeMaxBytes = "16K";
       Weight = 0;
     };
@@ -106,7 +113,10 @@
       GrowFileSystem = true;
       FactoryReset = true;
       # Future: Encrypt = "tpm2"; for TPM2-bound LUKS
-      MakeDirectories = "/etc /var /home /root /tmp /run";
+      # The mount points: /usr for the verity slot, the API file systems for switch-root. The
+      # initrd mounts root read-only (gpt-auto's default without rw=), so nothing could create
+      # them later; /bin /sbin /lib are tmpfiles links (/base).
+      MakeDirectories = "/usr /etc /var /home /root /tmp /run /dev /proc /sys";
     };
   };
 }
