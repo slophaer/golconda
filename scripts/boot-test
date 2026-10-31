@@ -16,13 +16,21 @@
 # --keys DIR: the throwaway keys directory (from image-smoke-test's keys symlink
 #   or the path to golconda-throwaway-keys directly).
 #
+# QEMU runs in the background; the checks run while the guest is up, then the
+# harness stops it. Without --ssh-test the harness waits for multi-user.target.
+#
 # Markers checked (each prints PASS/FAIL, only on positive evidence):
 #   - multi-user-reached: multi-user.target reached
 #   - sshd-active: sshd.service started (Listening on port)
-#   - hostname-set: hostname is "boot-test"
 #   - boot-complete: boot-complete.target reached
 #
-# With --ssh-test: generates a user cert, attempts ssh login, runs commands.
+# With --ssh-test: logs in with tests/fixtures/snakeoil-ssh and checks
+#   ssh-login, hostname (must be "boot-test", the SMBIOS credential),
+#   systemctl --failed (no failed units), varlinkctl list-interfaces.
+# With --ssh-test --tpm: also checks that the host key is sealed with the TPM
+#   (credential header), reboots the guest in the same QEMU (swtpm keeps its
+#   state) and checks the second boot: a new boot id, sshd active, the same
+#   host key (unsealed, not regenerated).
 #
 # Exit: 0 if all markers pass, 1 otherwise.
 
@@ -38,6 +46,9 @@ if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
     echo "Error: cannot find nixpkgs-dev-only pin" >&2
     exit 1
   fi
+  # nix-shell sets its own TMPDIR and removes it on exit: keep the work directory outside
+  BOOT_TEST_TMPDIR="${TMPDIR:-/tmp}"
+  export BOOT_TEST_TMPDIR
   exec nix-shell -I "nixpkgs=$DEV_PIN" -p qemu OVMF swtpm openssh python3Packages.virt-firmware --run "$0 $*"
 fi
 
@@ -99,11 +110,14 @@ if [ ! -d "$KEYS_DIR" ]; then
 fi
 
 # --- working directory ---
-WORKDIR="${TMPDIR:-/tmp}/boot-test-$$"
+WORKDIR="${BOOT_TEST_TMPDIR:-${TMPDIR:-/tmp}}/boot-test-$$"
 mkdir -p "$WORKDIR"
 KEEP_WORKDIR=1  # Keep on failure
 
 cleanup() {
+  if [ -n "${QEMU_PID:-}" ]; then
+    kill "$QEMU_PID" 2>/dev/null || true
+  fi
   if [ -n "${SWTPM_PID:-}" ]; then
     kill "$SWTPM_PID" 2>/dev/null || true
   fi
@@ -125,7 +139,15 @@ VARS="$WORKDIR/vars.fd"
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 DEV_PIN=$(nix-instantiate --eval -E "(import $REPO_DIR/nix/sources.nix).nixpkgs-dev-only" 2>/dev/null | tr -d '"')
-OVMF_DIR=$(nix-build -I "nixpkgs=$DEV_PIN" '<nixpkgs>' -A OVMF.fd --no-out-link 2>/dev/null)/FV
+# --tpm needs a firmware that measures the boot into the TPM (nixpkgs OVMF has no
+# tpmSupport; OVMFFull has, and it is built with SMM, so QEMU gets smm=on below):
+# without the measurement systemd-stub does not pass the UKI's PCR public key on, and
+# credentials are sealed without the signed PCR 11 policy
+OVMF_ATTR=OVMF.fd
+if [ "$TPM" = 1 ]; then
+  OVMF_ATTR=OVMFFull.fd
+fi
+OVMF_DIR=$(nix-build -I "nixpkgs=$DEV_PIN" '<nixpkgs>' -A "$OVMF_ATTR" --no-out-link 2>/dev/null)/FV
 
 if [ ! -d "$OVMF_DIR" ]; then
   echo "Error: cannot find OVMF.fd" >&2
@@ -202,9 +224,15 @@ setup_ssh_test() {
 }
 
 # --- run QEMU ---
-run_qemu() {
+start_qemu() {
   qemu-img create -q -f qcow2 -b "$DISK" -F raw "$OVERLAY" 40G
-  
+
+  # the --tpm run reboots the guest in the same QEMU, so swtpm keeps its state
+  NO_REBOOT=-no-reboot
+  if [ "$TPM" = 1 ]; then
+    NO_REBOOT=""
+  fi
+
   QEMU_ARGS="-machine q35,accel=kvm:tcg \
     -cpu max \
     -m 2G \
@@ -214,23 +242,47 @@ run_qemu() {
     -drive file=$OVERLAY,format=qcow2,if=virtio \
     -serial file:$SERIAL_LOG \
     -display none \
-    -no-reboot \
+    $NO_REBOOT \
     -smbios type=11,value=io.systemd.credential:system.hostname=boot-test \
     -netdev user,id=net0,hostfwd=tcp::10022-:22 \
     -device virtio-net-pci,netdev=net0"
   
   if [ "$TPM" = 1 ]; then
     QEMU_ARGS="$QEMU_ARGS \
+      -machine smm=on -global driver=cfi.pflash01,property=secure,value=on \
       -chardev socket,id=chrtpm,path=$WORKDIR/tpm/swtpm-sock \
       -tpmdev emulator,id=tpm0,chardev=chrtpm \
       -device tpm-tis,tpmdev=tpm0"
   fi
   
   echo "Starting QEMU (timeout ${TIMEOUT}s)..."
+  : > "$SERIAL_LOG"
   # shellcheck disable=SC2086
-  timeout "$TIMEOUT" qemu-system-x86_64 $QEMU_ARGS > "$QEMU_OUT" 2>&1 || true
-  
-  echo "QEMU exited"
+  timeout "$TIMEOUT" qemu-system-x86_64 $QEMU_ARGS > "$QEMU_OUT" 2>&1 &
+  QEMU_PID=$!
+}
+
+qemu_running() {
+  kill -0 "$QEMU_PID" 2>/dev/null
+}
+
+# wait until multi-user.target is reached or QEMU exits (the timeout ends it)
+wait_for_boot() {
+  while qemu_running; do
+    if grep -qi "Reached target.*Multi.User" "$SERIAL_LOG" 2>/dev/null; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+stop_qemu() {
+  if qemu_running; then
+    kill "$QEMU_PID" 2>/dev/null || true
+  fi
+  wait "$QEMU_PID" 2>/dev/null || true
+  echo "QEMU stopped"
 }
 
 # --- check markers (positive evidence only) ---
@@ -257,16 +309,6 @@ check_markers() {
   else
     echo "FAIL: sshd-active (not found in log)"
     FAIL=$((FAIL + 1))
-  fi
-  
-  # hostname-set: the credential was applied (informational, not blocking)
-  # Note: systemd-firstboot credential support needs further investigation
-  if grep -q "hostname=boot-test\|boot-test" "$SERIAL_LOG" 2>/dev/null; then
-    echo "PASS: hostname-set (credential applied)"
-    PASS=$((PASS + 1))
-  else
-    echo "INFO: hostname-set (credential not applied; default hostname used)"
-    # Not counted as failure - credential support is a known issue
   fi
   
   # boot-complete: boot-complete.target reached
@@ -304,97 +346,137 @@ check_markers() {
 }
 
 # --- SSH tests ---
-test_ssh() {
-  SSH_DIR="$WORKDIR/ssh"
-  
-  echo ""
-  echo "=== SSH tests ==="
-  
-  # Wait for SSH to be ready
-  echo "Waiting for SSH..."
-  SSH_OK=0
-  for _ in $(seq 1 30); do
-    if ssh -F /dev/null -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-         -o ConnectTimeout=2 -o BatchMode=yes \
-         -i "$SSH_DIR/user" -p 10022 root@localhost true 2>/dev/null; then
-      SSH_OK=1
-      break
+# ssh takes the first value of an option: the host key options are separate
+NO_HOSTKEY_CHECK="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+SSH_OPTS="-F /dev/null \
+  -o ConnectTimeout=2 -o ServerAliveInterval=2 -o ServerAliveCountMax=2 \
+  -o BatchMode=yes -o LogLevel=ERROR -p 10022"
+
+guest() {
+  # shellcheck disable=SC2086
+  ssh $SSH_OPTS $NO_HOSTKEY_CHECK -i "$WORKDIR/ssh/user" root@localhost "$@"
+}
+
+# wait for an ssh login while QEMU runs; $1: the boot id it must differ from
+wait_for_ssh() {
+  while qemu_running; do
+    if BOOT_ID=$(guest cat /proc/sys/kernel/random/boot_id 2>/dev/null) \
+      && [ -n "$BOOT_ID" ] && [ "$BOOT_ID" != "${1:-}" ]; then
+      return 0
     fi
+    # shellcheck disable=SC2086
+    SSH_LAST=$(ssh $SSH_OPTS $NO_HOSTKEY_CHECK -v -i "$WORKDIR/ssh/user" root@localhost true 2>&1) || true
     sleep 2
   done
-  
-  if [ "$SSH_OK" = 0 ]; then
-    echo "FAIL: ssh-login (timeout)"
+  return 1
+}
+
+# one check: $1 name, $2 0 for PASS; counts into PASS/FAIL
+verdict() {
+  if [ "$2" = 0 ]; then
+    echo "PASS: $1"
+    PASS=$((PASS + 1))
+  else
+    echo "FAIL: $1"
+    FAIL=$((FAIL + 1))
+  fi
+}
+
+test_ssh() {
+  echo ""
+  echo "=== SSH tests ==="
+  echo "Waiting for SSH..."
+  if ! wait_for_ssh ""; then
+    echo "last attempt (ssh -v), while QEMU still ran:"
+    echo "$SSH_LAST" | tail -15
+    verdict "ssh-login (no login before the timeout)" 1
     return 1
   fi
-  echo "PASS: ssh-login"
-  
-  # Run commands over SSH
-  SSH_CMD="ssh -F /dev/null -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-           -i $SSH_DIR/user -p 10022 root@localhost"
-  
-  # varlinkctl list-interfaces
+  verdict "ssh-login" 0
+  FIRST_BOOT_ID=$BOOT_ID
+  # remember the host key the server presents, for the second boot
+  # shellcheck disable=SC2086
+  ssh $SSH_OPTS -o UserKnownHostsFile="$WORKDIR/known_hosts" -o StrictHostKeyChecking=accept-new \
+    -i "$WORKDIR/ssh/user" root@localhost true 2>/dev/null || true
+
   echo ""
-  echo "=== varlinkctl list-interfaces ==="
-  $SSH_CMD "varlinkctl list-interfaces" 2>&1 || true
-  
-  # systemctl --failed
+  echo "=== hostname ==="
+  HN=$(guest hostname 2>&1) || true
+  echo "$HN"
+  RC=0; [ "$HN" = "boot-test" ] || RC=1
+  verdict "hostname (system.hostname credential applied)" $RC
+
   echo ""
   echo "=== systemctl --failed ==="
-  FAILED=$($SSH_CMD "systemctl --failed --no-pager" 2>&1)
+  FAILED=$(guest systemctl --failed --no-pager 2>&1) || true
   echo "$FAILED"
-  if echo "$FAILED" | grep -q "0 loaded units listed"; then
-    echo "PASS: no-failed-units"
-  else
-    echo "INFO: some units failed (see above)"
-  fi
-  
-  # bootctl list
+  RC=0; echo "$FAILED" | grep -q "^0 loaded units listed" || RC=1
+  verdict "no-failed-units" $RC
+
+  echo ""
+  echo "=== varlinkctl list-interfaces ==="
+  RC=0
+  IFACES=$(guest varlinkctl list-interfaces /run/systemd/io.systemd.Manager 2>&1) || RC=1
+  echo "$IFACES"
+  echo "$IFACES" | grep -q "^io.systemd.Manager$" || RC=1
+  verdict "varlinkctl-list-interfaces" $RC
+
   echo ""
   echo "=== bootctl list ==="
-  $SSH_CMD "bootctl list --no-pager" 2>&1 || true
-  
-  # Check credstore for TPM
+  guest bootctl list --no-pager 2>&1 || true
+
   if [ "$TPM" = 1 ]; then
     echo ""
     echo "=== /etc/credstore.encrypted (TPM sealed credentials) ==="
-    $SSH_CMD "ls -la /etc/credstore.encrypted/" 2>&1 || true
+    guest ls -la /etc/credstore.encrypted/ 2>&1 || true
+    # the sealing key type is the first 16 bytes of the credential (systemd creds-util.h,
+    # CRED_AES256_GCM_BY_*); the file is base64, so decode its first 24 characters
+    HDR=$(guest "head -c 24 /etc/credstore.encrypted/sshd-hostkey.key | base64 -d | od -An -tx1 -N4" \
+      2>/dev/null | tr -d ' \n') || true
+    case "$HDR" in
+      5a1c6a86 | 55b9ed1d) KIND="host key only"; RC=1 ;;
+      058469da) KIND="null key"; RC=1 ;;
+      0c7cc07b | d4062dfb) KIND="TPM2" ; RC=0 ;;
+      93a89409 | ef4ac136 | 14142588 | 2a1f877a) KIND="host key + TPM2"; RC=0 ;;
+      faf7eb93 | 5e2d5c76) KIND="TPM2 + signed PCR policy"; RC=0 ;;
+      af4950a8 | adbc4ca3 | afbfeaac | 16e49294) KIND="host key + TPM2 + signed PCR policy"; RC=0 ;;
+      *) KIND="unknown"; RC=1 ;;
+    esac
+    echo "sshd-hostkey.key sealed with: $KIND (header id ${HDR:-none}...)"
+    verdict "hostkey-sealed-with-tpm2" $RC
   fi
-  
   return 0
 }
 
-# --- reboot test for TPM ---
+# --- second boot, TPM: the host key is unsealed, not regenerated ---
 test_reboot() {
   echo ""
   echo "=== Reboot test (TPM credential unsealing) ==="
-  
-  SSH_DIR="$WORKDIR/ssh"
-  SSH_CMD="ssh -F /dev/null -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-           -i $SSH_DIR/user -p 10022 root@localhost"
-  
+  echo "host key of the first boot: $(ssh-keygen -lf "$WORKDIR/known_hosts" 2>/dev/null)"
   echo "Rebooting..."
-  $SSH_CMD "systemctl reboot" 2>&1 || true
-  
-  sleep 5
-  
-  # Wait for SSH after reboot
-  echo "Waiting for SSH after reboot..."
-  SSH_OK=0
-  for _ in $(seq 1 30); do
-    if $SSH_CMD true 2>/dev/null; then
-      SSH_OK=1
-      break
-    fi
-    sleep 2
-  done
-  
-  if [ "$SSH_OK" = 0 ]; then
-    echo "FAIL: ssh-after-reboot (timeout)"
+  guest systemctl reboot 2>&1 || true
+
+  if ! wait_for_ssh "$FIRST_BOOT_ID"; then
+    verdict "ssh-after-reboot (no login before the timeout)" 1
     return 1
   fi
-  echo "PASS: ssh-after-reboot (sshd started, host key unsealed)"
-  
+  verdict "ssh-after-reboot (boot id $FIRST_BOOT_ID -> $BOOT_ID)" 0
+
+  # StrictHostKeyChecking=yes refuses a host key that is not the first boot's
+  RC=0
+  # shellcheck disable=SC2086
+  ssh $SSH_OPTS -o UserKnownHostsFile="$WORKDIR/known_hosts" -o StrictHostKeyChecking=yes \
+    -i "$WORKDIR/ssh/user" root@localhost true || RC=1
+  verdict "hostkey-unchanged (unsealed from the TPM, not regenerated)" $RC
+
+  ACTIVE=$(guest systemctl is-active sshd.service 2>&1) || true
+  echo "sshd.service: $ACTIVE"
+  RC=0; [ "$ACTIVE" = "active" ] || RC=1
+  verdict "sshd-active-after-reboot" $RC
+
+  echo ""
+  echo "=== systemctl --failed (second boot) ==="
+  guest systemctl --failed --no-pager 2>&1 || true
   return 0
 }
 
@@ -407,36 +489,48 @@ main() {
   echo "Timeout: ${TIMEOUT}s"
   echo "Work directory: $WORKDIR"
   echo ""
-  
+
   if [ "$SECURE_BOOT" = 1 ]; then
     enroll_keys
   fi
-  
+
   if [ "$TPM" = 1 ]; then
     start_tpm
   fi
-  
+
   if [ "$SSH_TEST" = 1 ]; then
     setup_ssh_test
   fi
-  
-  run_qemu
-  
+
+  start_qemu
+  wait_for_boot || true
+
+  RESULT=0
+  if [ "$SSH_TEST" = 1 ]; then
+    PASS=0
+    FAIL=0
+    test_ssh || RESULT=1
+    if [ "$TPM" = 1 ] && [ "$RESULT" = 0 ]; then
+      test_reboot || RESULT=1
+    fi
+    SSH_PASS=$PASS
+    SSH_FAIL=$FAIL
+  fi
+  stop_qemu
+
   echo ""
   echo "=== Serial log (last 100 lines) ==="
   tail -100 "$SERIAL_LOG"
-  
-  RESULT=0
+
   check_markers || RESULT=1
-  
+
   if [ "$SSH_TEST" = 1 ]; then
-    test_ssh || RESULT=1
-    
-    if [ "$TPM" = 1 ]; then
-      test_reboot || RESULT=1
+    echo "SSH checks: PASS: $SSH_PASS, FAIL: $SSH_FAIL"
+    if [ "$SSH_FAIL" -gt 0 ]; then
+      RESULT=1
     fi
   fi
-  
+
   if [ "$RESULT" = 0 ]; then
     KEEP_WORKDIR=0  # Clean up on success
     echo ""
@@ -446,7 +540,7 @@ main() {
     echo "=== SOME TESTS FAILED ==="
     echo "Serial log: $SERIAL_LOG"
   fi
-  
+
   exit "$RESULT"
 }
 
