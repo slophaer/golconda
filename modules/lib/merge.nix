@@ -312,13 +312,26 @@ let
       in
       foldl' (acc: pn: acc // { ${pn} = (acc.${pn} or [ ]) ++ new.${pn}; }) acc (attrNames new)
     ) { } fragments;
+  # Check that all file paths start with /usr/. Files under /etc must go through
+  # the factory module; the image holds no per-machine values (docs/design/config.md).
+  checkFilePaths =
+    files:
+    let
+      hasPrefix = p: s: builtins.substring 0 (builtins.stringLength p) s == p;
+      badPaths = filter (p: !(hasPrefix "/usr/" p)) (attrNames files);
+    in
+    if badPaths != [ ] then
+      throw "golconda: files must be under /usr/; paths outside it: ${toString badPaths}; /etc files go through the /factory module"
+    else
+      files;
 in
 fragments:
 let
   packages = concat "packages" fragments;
   farmDecls = mergeFarm fragments;
   dlopenDecls = mergeDlopen fragments;
-  files = mapAttrs normalizeFile (unionNoDup "files" fragments);
+  rawFiles = mapAttrs normalizeFile (unionNoDup "files" fragments);
+  files = checkFilePaths rawFiles;
 
   binResult = binLinks packages;
   farmResult = farmLinks packages farmDecls;
