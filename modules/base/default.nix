@@ -263,6 +263,15 @@ in
           [Unit]
           ConditionPathExists=/usr/bin/modprobe
         '';
+        # no local login: the image has no agetty, and the gettys would restart without end
+        "/usr/lib/systemd/system/getty@.service.d/golconda.conf" = dropIn ''
+          [Unit]
+          ConditionPathExists=/usr/bin/agetty
+        '';
+        "/usr/lib/systemd/system/serial-getty@.service.d/golconda.conf" = dropIn ''
+          [Unit]
+          ConditionPathExists=/usr/bin/agetty
+        '';
       }
       # The initrd is built from /base too (lib/image/initrd.nix), with the .wants links above,
       # and it reaches sockets.target and sysinit.target. sysusers does not run there, so these
