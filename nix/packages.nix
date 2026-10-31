@@ -46,6 +46,10 @@ let
       # but Linux-PAM >= 1.7 pam_unix reads /etc/shadow itself only with this option: without
       # it every account check runs the helper and fails, and sshd denies every login.
       linux-pam.meson.defs.merge."pam_unix-try-getspnam" = true;
+      # systemd dlopens libtss2-tcti-device.so.0 itself and calls its Tss2_Tcti_Info, which
+      # tpm2-tss compiles only without NO_DL: with --enable-nodl, systemd-creds fails with
+      # "Failed to create TPM2 context" and no credential can be sealed to the TPM.
+      tpm2-tss.autotools.flags.remove = [ "--enable-nodl" ];
     };
     # Set-wide choices: one TLS stack, one of each (docs/design/principles.md).
     features = {
