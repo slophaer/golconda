@@ -21,7 +21,9 @@ block-beta
   address by absolute path. `/usr/sbin` is a symlink to `bin`.
 - `/usr/lib/systemd/system`, `sysusers.d`, `tmpfiles.d`, `repart.d`, `sysupdate.d`,
   `/usr/lib/os-release`: the system's configuration, written by the composer.
-- `/usr/share/factory/etc`: the seed for `/etc`.
+- `/usr/share/factory/etc`: the seed for `/etc`, written by `/factory`: `hostname`, `shells`, a
+  minimal `pam.d` (account and session only) and the empty trust directories. It holds no `passwd`,
+  `group` or `shadow` (systemd-sysusers writes them on first boot) and no `machine-id` (PID 1 does).
 - `/usr/lib/golconda/etc.manifest`: type, mode, owner and sha256 for each factory path. The seed
   records the applied manifest in `/etc/.golconda-factory-id`, so drift is auditable; a later
   `etc-sync` may use it.
@@ -58,13 +60,13 @@ work without any first-boot action and also work in the initrd.
 
 ## State
 
-| path             | partition               | how it comes to be                                                                        |
-| ---------------- | ----------------------- | ----------------------------------------------------------------------------------------- |
-| `/etc`           | root                    | seeded from `/usr/share/factory/etc` on first boot (tmpfiles `C`); admin edits afterwards |
-| `/var`           | root                    | `StateDirectory=`, tmpfiles                                                               |
-| `/home`, `/root` | root                    | tmpfiles                                                                                  |
-| `/tmp`, `/run`   | tmpfs                   | systemd                                                                                   |
-| `/var/lib/<app>` | optional data partition | repart definition in the image; service state always lives under `/var/lib`, never `/srv` |
+| path             | partition               | how it comes to be                                                                                                                                                                                               |
+| ---------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/etc`           | root                    | seeded from `/usr/share/factory/etc` by tmpfiles `C+` (PID 1 has filled `/etc` with `machine-id` before tmpfiles runs, and a plain `C` skips a non-empty directory); nothing is replaced, so admin edits persist |
+| `/var`           | root                    | `StateDirectory=`, tmpfiles                                                                                                                                                                                      |
+| `/home`, `/root` | root                    | tmpfiles                                                                                                                                                                                                         |
+| `/tmp`, `/run`   | tmpfs                   | systemd                                                                                                                                                                                                          |
+| `/var/lib/<app>` | optional data partition | repart definition in the image; service state always lives under `/var/lib`, never `/srv`                                                                                                                        |
 
 The reference list of partitions, type GUIDs and flags is in
 [reference/layout](../reference/layout.md).

@@ -68,13 +68,15 @@ log (`LogLevel VERBOSE`) are the identity for audit. Bootstrap uses plain `autho
 
 Nothing in the image authenticates a password: sshd fixes `PasswordAuthentication no`,
 `KbdInteractiveAuthentication no` and `ChallengeResponseAuthentication no`, and no option can turn
-them on. PAM stays for account and session (`pam_systemd`), never for auth. The image carries no
-setuid binary: linux-pam ships without `unix_chkpwd`, so a non-root process cannot verify a password
-at all. A hardware second factor (FIDO2, `sk-ssh-ed25519`) is client-side policy: the certificate
-signs a FIDO2 key and the server needs nothing extra.
+them on. PAM stays for account and session (`pam_systemd`), never for auth: the factory's
+`/etc/pam.d/sshd` has account and session lines only, and `/etc/pam.d/other` denies every type, so
+an auth request from any service falls through to a denial. The image carries no setuid binary:
+linux-pam ships without `unix_chkpwd`, so a non-root process cannot verify a password at all. A
+hardware second factor (FIDO2, `sk-ssh-ed25519`) is client-side policy: the certificate signs a
+FIDO2 key and the server needs nothing extra.
 
 The machine's own identity is its host key, a machine-local var, plus a host certificate and a key
-revocation list, both admin-supplied credentials (`sshd-host-cert`, `RevokedKeys`); sshd reads them
+revocation list, both admin-supplied vars (`sshd-host-cert`, `sshd-revoked-keys`); sshd reads them
 from its credentials directory, never from the image. Options:
 [reference/modules](../reference/modules/README.md#servicessshd).
 
