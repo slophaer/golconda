@@ -11,11 +11,15 @@ let
     all
     any
     attrNames
+    concatMap
     deepSeq
     elem
     elemAt
     filter
     genList
+    hasAttr
+    isAttrs
+    isList
     isString
     length
     lessThan
@@ -1093,6 +1097,55 @@ let
       schema."$schema" == "https://json-schema.org/draft/2020-12/schema"
       && schema.type == "object"
       && schema ? properties
+    ))
+    (check "schema: every $ref resolves in $defs" (
+      let
+        schema = schemaLib.toJsonSchema (f.modules { });
+        collectRefs =
+          v:
+          if isAttrs v then
+            concatMap (n: if n == "$ref" then [ v.${n} ] else collectRefs v.${n}) (attrNames v)
+          else if isList v then
+            concatMap collectRefs v
+          else
+            [ ];
+        refs = collectRefs schema;
+        defs = schema."$defs";
+      in
+      refs != [ ]
+      && all (r: hasPrefix "#/$defs/" r) refs
+      && all (r: hasAttr (substring 8 (stringLength r) r) defs) refs
+    ))
+    (check "schema: the root needs /system and refuses unknown tables" (
+      let
+        schema = schemaLib.toJsonSchema (f.modules { });
+      in
+      schema.required == [ "/system" ] && schema.additionalProperties == false
+    ))
+    (check "schema: the system table needs name and version, with their grammars" (
+      let
+        schema = schemaLib.toJsonSchema (f.modules { });
+        sys = schema.properties."/system";
+      in
+      elem "name" sys.required
+      && elem "version" sys.required
+      && sys.additionalProperties == false
+      && sys.properties.name.pattern == "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+      && sys.properties.version.pattern == "^[0-9]{8}\\.[0-9]+$"
+    ))
+    (check "schema: a fragment file is text or { text; mode; }" (
+      let
+        schema = schemaLib.toJsonSchema (f.modules { });
+        files = schema."$defs".fragment.properties.files.additionalProperties;
+        file = schema."$defs".file;
+      in
+      files."$ref" == "#/$defs/file" && any (b: b.type or null == "string") file.anyOf
+    ))
+    (check "schema: a module table refuses an unknown option" (
+      let
+        schema = schemaLib.toJsonSchema (f.modules { });
+      in
+      schema.properties."/services/sshd".additionalProperties == false
     ))
     (check "schema: sshd module appears with its options" (
       let

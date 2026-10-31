@@ -97,7 +97,15 @@ in
 
   options = {
     name = {
-      type = types.string;
+      type = types.typedef' "imageName" (
+        v:
+        if !isString v then
+          "Expected a string"
+        else if match "[A-Za-z0-9][A-Za-z0-9._-]*" v == null then
+          "'${v}' is not an image id: use letters, digits and _ . - and start with a letter or digit"
+        else
+          null
+      );
       description = "Image id, the ID= of os-release and the UKI file name stem.";
     };
     version = {
