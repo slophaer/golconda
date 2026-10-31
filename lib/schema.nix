@@ -109,19 +109,9 @@ let
         files = {
           type = "object";
           additionalProperties = {
-            type = "object";
-            properties = {
-              text = {
-                type = "string";
-              };
-              mode = {
-                type = "string";
-                pattern = "^[0-7]{4}$";
-              };
-            };
-            required = [ "text" ];
+            "$ref" = "#/$defs/file";
           };
-          description = "Path -> file with text and mode.";
+          description = "Path -> file text or { text; mode; }, the same forms the composer accepts.";
         };
         sysusers = {
           type = "array";
@@ -149,6 +139,19 @@ let
           "$ref" = "#/$defs/links";
         };
       };
+    };
+
+    # modules/system/default.nix: the image id and version, one grammar each
+    imageName = {
+      description = "Image id: letters, digits and _ . -, starting with a letter or digit.";
+      type = "string";
+      pattern = "^[A-Za-z0-9][A-Za-z0-9._-]*$";
+    };
+
+    version = {
+      description = "Image version: YYYYMMDD.N, such as 20261031.1.";
+      type = "string";
+      pattern = "^[0-9]{8}\\.[0-9]+$";
     };
 
     file = {
@@ -742,11 +745,16 @@ let
       inputs = sort (a: b: a < b) (
         filter (p: p != null) (map (i: i.path or null) (attrValues (mod.inputs or { })))
       );
+      # An option without a default is required: the evaluator throws on it.
+      required = filter (n: !(opts.${n} ? default)) (attrNames opts);
     in
     filterNulls {
       type = "object";
       description = mod.name or null;
       properties = if props == { } then null else props;
+      required = if required == [ ] then null else required;
+      # the config table names options only: a misspelt option is not accepted
+      additionalProperties = false;
       "x-golconda-inputs" = if path == null then null else inputs;
     };
 
@@ -802,9 +810,13 @@ let
       "$schema" = "https://json-schema.org/draft/2020-12/schema";
       "$id" = "https://golconda.dev/schema.json";
       title = "Golconda configuration";
-      description = "Configuration options for Golconda modules.";
+      description = "Configuration options for Golconda modules: one table per module path.";
       type = "object";
       properties = allModules;
+      required = [ "/system" ];
+      additionalProperties = false;
+      # every #/$defs/... reference resolves here (units, links, file, app, ...)
+      "$defs" = typeRegistry;
     };
   toJsonSchema = toJsonSchemaWith { };
 in
