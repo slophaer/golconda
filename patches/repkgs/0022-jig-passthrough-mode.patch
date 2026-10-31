@@ -1,0 +1,110 @@
+From b7949b1eaf2c022f632c9604b25091e7049eb1c7 Mon Sep 17 00:00:00 2001
+From: yolobox <yolobox@phaer.org>
+Date: Sat, 31 Oct 2026 08:31:43 +0000
+Subject: [PATCH] jig: passthrough mode
+
+JIG_PASSTHROUGH=1 in the environment of one cc/c++ command makes jig
+run the raw compiler with the arguments untouched: no hardening, no
+sysroot, no RUNPATH or interpreter flags. The compile cache still
+applies (the key is the raw arguments). It is per command, not per
+package, because a package needs both: the kernel's HOSTCC and
+systemd's host tools still want the hardened jig cc. A per-package
+cc.* key would also need nix/package.nix's known-key list.
+
+cc.hardening already takes per-flag drops (cc.hardening.fortify =
+false), so no list form is added.
+
+tests/builder/passthrough compiles one file twice: the normal object
+has the FORTIFY define and __stack_chk_fail, the passthrough one has
+neither.
+
+What users change (not done here):
+  linux-kernel: "CC=clang" -> "CC=env JIG_PASSTHROUGH=1 cc" (and LD
+    stays ld.lld); drop `cc.hardening = false` only if HOSTCC should
+    be hardened again.
+  systemd: the EFI cross-file entry c = ['env', 'JIG_PASSTHROUGH=1',
+    'cc'] for the efi build; drop the package-wide `cc.hardening =
+    false`.
+
+Signed-off-by: yolobox <yolobox@phaer.org>
+---
+ pkgs/ji/jig/src/cc_mode.cc            |  6 +++++-
+ tests/builder/passthrough/package.nix | 17 +++++++++++++++++
+ tests/builder/passthrough/src/p.c     |  9 +++++++++
+ tests/builder/passthrough/test.nu     |  7 +++++++
+ 4 files changed, 38 insertions(+), 1 deletion(-)
+ create mode 100644 tests/builder/passthrough/package.nix
+ create mode 100644 tests/builder/passthrough/src/p.c
+ create mode 100644 tests/builder/passthrough/test.nu
+
+diff --git a/pkgs/ji/jig/src/cc_mode.cc b/pkgs/ji/jig/src/cc_mode.cc
+index 11e4654..692fad3 100644
+--- a/pkgs/ji/jig/src/cc_mode.cc
++++ b/pkgs/ji/jig/src/cc_mode.cc
+@@ -583,7 +583,11 @@ auto RunCcMode(std::string_view argv0, std::span<const std::string> raw_args, co
+   if (((inv.link || inv.link_one) && conf->binfmt != BinFmt::kElf) || lang == Language::kFortran) {
+     inv.cacheable = false;
+   }
+-  if (conf->present) {
++  // JIG_PASSTHROUGH=1 (set per command: `CC="env JIG_PASSTHROUGH=1 cc"`): the raw compiler with the
++  // arguments untouched, no hardening, sysroot, RUNPATH or interpreter flags. For code that brings
++  // its own (kernel, EFI stubs). The compile cache still applies.
++  const std::string passthrough = Env("JIG_PASSTHROUGH");
++  if (conf->present && (passthrough.empty() || passthrough == "0")) {
+     inv.args = BuildDriverArgs(*conf, lang, user_args);
+     for (const std::string& arg : inv.args) {
+       if (!std::ranges::contains(user_args, arg)) {
+diff --git a/tests/builder/passthrough/package.nix b/tests/builder/passthrough/package.nix
+new file mode 100644
+index 0000000..764c919
+--- /dev/null
++++ b/tests/builder/passthrough/package.nix
+@@ -0,0 +1,17 @@
++{ package }:
++package {
++  name = "test-passthrough";
++  version = "1";
++  source = ./src;
++  phases = [
++    {
++      name = "build";
++      run = ''
++        mkdir $"($c.out)/lib"
++        x cc -c p.c -o $"($c.out)/lib/normal.o"
++        with-env {JIG_PASSTHROUGH: "1"} { x cc -c p.c -o $"($c.out)/lib/raw.o" }
++      '';
++    }
++  ];
++  tests.run = false;
++}
+diff --git a/tests/builder/passthrough/src/p.c b/tests/builder/passthrough/src/p.c
+new file mode 100644
+index 0000000..2e76e60
+--- /dev/null
++++ b/tests/builder/passthrough/src/p.c
+@@ -0,0 +1,9 @@
++/* no includes: the raw compiler has no sysroot */
++extern void sink(char *);
++#ifdef _FORTIFY_SOURCE
++int fortified = _FORTIFY_SOURCE;
++#endif
++void f(void) {
++  char buf[64];
++  sink(buf);
++}
+diff --git a/tests/builder/passthrough/test.nu b/tests/builder/passthrough/test.nu
+new file mode 100644
+index 0000000..c92fb25
+--- /dev/null
++++ b/tests/builder/passthrough/test.nu
+@@ -0,0 +1,7 @@
++use checks.nu *
++let syms = {|f| ^llvm-nm $"($env.pkg)/lib/($f).o" | lines | each { split row " " | last } }
++assert "normal build is hardened (fortify)" ("fortified" in (do $syms normal))
++assert "normal build is hardened (stack protector)" ("__stack_chk_fail" in (do $syms normal))
++assert "passthrough: no fortify define" ("fortified" not-in (do $syms raw))
++assert "passthrough: no stack protector" ("__stack_chk_fail" not-in (do $syms raw))
++done
+-- 
+2.55.0
+
