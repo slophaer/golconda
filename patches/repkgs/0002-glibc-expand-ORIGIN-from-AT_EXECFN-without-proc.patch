@@ -1,7 +1,7 @@
 From 3f92d2f4cedaeb147d2e2977351413029cabfa17 Mon Sep 17 00:00:00 2001
 From: yolobox <yolobox@phaer.org>
 Date: Fri, 30 Oct 2026 15:52:48 +0000
-Subject: [PATCH 2/8] glibc: expand $ORIGIN from AT_EXECFN without /proc
+Subject: [PATCH] glibc: expand $ORIGIN from AT_EXECFN without /proc
 
 ld.so expands $ORIGIN in RUNPATH by reading /proc/self/exe, else
 LD_ORIGIN_PATH, else it fails. Without /proc, as in an initrd, a PID 1

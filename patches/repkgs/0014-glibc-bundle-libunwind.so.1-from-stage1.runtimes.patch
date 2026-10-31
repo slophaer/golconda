@@ -1,0 +1,122 @@
+From 43df9e8b9c997ff4a441ea13db6cbe63863411da Mon Sep 17 00:00:00 2001
+From: yolobox <yolobox@phaer.org>
+Date: Sat, 31 Oct 2026 01:16:53 +0000
+Subject: [PATCH] glibc: bundle libunwind.so.1 from stage1.runtimes
+
+glibc's dlopen("$ORIGIN/libunwind.so.1") fails at runtime when libc
+is loaded from the glibc output rather than sysroot, because the glibc
+output had no libunwind.
+
+Fix by copying libunwind.so.1 from bootstrapRuntimes (stage1.runtimes)
+into glibc's lib/ directory during the bootstrap build.
+
+Also fix sysroot.nu to handle the case where CA-store deduplication
+makes source and dest the same inode (cp -s fails on same-inode).
+
+Fixes dlopen failure in pthread_exit that broke erofs-utils and other
+C++ programs using threads.
+---
+ bootstrap/default.nix      | 14 +++++++++++---
+ bootstrap/sysroot.nu       | 18 +++++++++++++++++-
+ pkgs/gl/glibc/bootstrap.nu | 10 ++++++++++
+ 3 files changed, 38 insertions(+), 4 deletions(-)
+
+diff --git a/bootstrap/default.nix b/bootstrap/default.nix
+index e098fb0..43053c8 100644
+--- a/bootstrap/default.nix
++++ b/bootstrap/default.nix
+@@ -273,6 +273,11 @@ let
+ 
+   linuxChain =
+     platform: run: ccArgs:
++    # bootstrapRuntimes: a pre-built runtimes output whose libunwind.so.1 is copied
++    # into glibc's lib/. glibc's unwind-link patch dlopens $ORIGIN/libunwind.so.1,
++    # so the unwinder must sit next to libc.so.6. stage1.runtimes provides it for
++    # the build platform; cross platforms fall back to the executable's RUNPATH.
++    { bootstrapRuntimes ? null }:
+     let
+       linux-headers = run [ ] "linux-headers" { };
+       c = chain {
+@@ -282,7 +287,7 @@ let
+           linuxHeaders = linux-headers;
+           # C.UTF-8 is compiled by running the fresh localedef
+           locale = platform.clangTarget == buildPlatform.clangTarget;
+-        };
++        } // (if bootstrapRuntimes != null then { inherit bootstrapRuntimes; } else { });
+         linuxHeaders = linux-headers;
+       };
+     in
+@@ -337,7 +342,7 @@ let
+         ];
+         suffix = "-boot";
+       };
+-      c = linuxChain buildPlatform run { prebuilt = stage0.jig; };
++      c = linuxChain buildPlatform run { prebuilt = stage0.jig; } { };
+       cmake = run [ c.cc ] "cmake" { inherit (c) sysroot; };
+     in
+     c
+@@ -378,7 +383,10 @@ let
+       withLaunch = c: c // { launch = run [ c.cc ] "launch" { }; };
+     in
+     {
+-      glibc = linuxChain platform run ccArgs;
++      # native platform: copy libunwind from stage1.runtimes into glibc
++      glibc = linuxChain platform run ccArgs (
++        if platform == buildPlatform then { bootstrapRuntimes = stage1.runtimes; } else { }
++      );
+       msvc = withLaunch (chain {
+         inherit platform run ccArgs;
+         libcGiven = sdk;
+diff --git a/bootstrap/sysroot.nu b/bootstrap/sysroot.nu
+index bacb5cb..e871d85 100644
+--- a/bootstrap/sysroot.nu
++++ b/bootstrap/sysroot.nu
+@@ -20,7 +20,23 @@ def relativize-links [out: path]: nothing -> nothing {
+ def main []: nothing -> nothing {
+   let out = $env.out
+   mkdir $"($out)/include" $"($out)/lib"
+-  for p in ($env.parts | split row " ") { x cp -rsf $"($p)/." $"($out)/" }
++  for p in ($env.parts | split row " ") {
++    # The CA store deduplicates identical files via hardlinks, so a file in glibc
++    # (e.g., libunwind.so.1) may share an inode with one in runtimes. cp -s refuses
++    # to replace a symlink when source and destination resolve to the same inode,
++    # printing "'file' is 'path'". Ignore errors for files that already exist with
++    # identical content; fail on other errors.
++    let r = (^cp -rsf $"($p)/." $"($out)/" | complete)
++    if $r.exit_code != 0 {
++      # Each "'name' is 'path'" line is a hardlink conflict; other errors are fatal
++      let lines = ($r.stderr | lines)
++      let fatal = ($lines | where {|l| not ($l =~ "^cp: '.+' is '/") })
++      if ($fatal | is-not-empty) {
++        print -e ($lines | str join "\n")
++        error make {msg: $"cp failed with exit code ($r.exit_code)"}
++      }
++    }
++  }
+   x cp -rs $env.resource $"($out)/lib/clang"
+   relativize-links $out
+   # MacOSX.sdk brings a real usr/ (and the SDKSettings.json the darwin driver reads), ELF sysroots alias it
+diff --git a/pkgs/gl/glibc/bootstrap.nu b/pkgs/gl/glibc/bootstrap.nu
+index 9ec664c..f937e93 100644
+--- a/pkgs/gl/glibc/bootstrap.nu
++++ b/pkgs/gl/glibc/bootstrap.nu
+@@ -102,6 +102,16 @@ def main []: nothing -> nothing {
+     x make ...$make
+     x make ...$make install -j1 $"DESTDIR=($dest)" # parallel install races on the .dt -> .d depfile moves
+     install-tree $dest $out
++    # glibc-unwind-origin.patch makes pthread_exit/pthread_cancel/backtrace dlopen
++    # $ORIGIN/libunwind.so.1. Copy the unwinder from the bootstrap runtimes so glibc
++    # is self-contained. Without it, any program calling those functions aborts.
++    if "bootstrapRuntimes" in $env {
++      let src = $"($env.bootstrapRuntimes)/lib/libunwind.so.1.0"
++      if ($src | path exists) {
++        x cp $src $"($out)/lib/libunwind.so.1.0"
++        x ln -s libunwind.so.1.0 $"($out)/lib/libunwind.so.1"
++      }
++    }
+     if $env.locale == "true" { c-utf8-locale $src $out }
+   }
+   cc-facts $out {include-dirs: [include]}
+-- 
+2.55.0
+

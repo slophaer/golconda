@@ -1,7 +1,7 @@
 From 045abbd92f50065abdb334e04541c7d918d136fe Mon Sep 17 00:00:00 2001
 From: yolobox <yolobox@phaer.org>
 Date: Fri, 30 Oct 2026 19:22:42 +0000
-Subject: [PATCH 6/8] closure: tar of a closure with a bin/ profile
+Subject: [PATCH] closure: tar of a closure with a bin/ profile
 
 Add pkgs.closure { roots; name; } to produce a tarball containing:
 - nix/store/<hash>-* for every runtime path of the roots (via exportReferencesGraph)

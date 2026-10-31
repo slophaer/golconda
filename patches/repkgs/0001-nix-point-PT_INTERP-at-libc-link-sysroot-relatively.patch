@@ -1,7 +1,7 @@
 From b8af7a452f3ff9c78b04070069c4000a379de812 Mon Sep 17 00:00:00 2001
 From: yolobox <yolobox@phaer.org>
 Date: Fri, 30 Oct 2026 15:52:48 +0000
-Subject: [PATCH 1/8] nix: point PT_INTERP at libc, link sysroot relatively
+Subject: [PATCH] nix: point PT_INTERP at libc, link sysroot relatively
 
 Every binary's PT_INTERP named ld.so through the sysroot output. The
 sysroot is a symlink tree built with `cp -rsf`, and GNU cp -s writes

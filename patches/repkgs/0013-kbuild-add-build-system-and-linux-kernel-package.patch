@@ -1,0 +1,662 @@
+From baef11f99d8c6c7a02533fa55a1a72462ede185a Mon Sep 17 00:00:00 2001
+From: yolobox <yolobox@phaer.org>
+Date: Sat, 31 Oct 2026 03:30:08 +0000
+Subject: [PATCH] kbuild: add build system and linux-kernel package
+
+Add kbuild build system for Linux kernel builds with:
+- Configure phase: defconfig + fragment merge + olddefconfig + verification
+- Build phase: make with LLVM=1 LLVM_IAS=1
+- Install phase: vmlinuz, System.map, config to lib/modules/<version>/
+
+Add linux-kernel 6.18.60 LTS with server config:
+- Monolithic (CONFIG_MODULES=n)
+- virtio, nvme, ahci storage
+- ext4, btrfs, erofs filesystems
+- Device mapper (verity, crypt, integrity)
+- systemd requirements (cgroups, namespaces, etc.)
+- Embedded config (IKCONFIG=y)
+
+Add supporting packages:
+- bc: gavinhoward/bc 7.1.0 (replaces GNU bc, no ed dependency)
+- elfutils: 0.192 with relocatable patch for objtool
+
+Build workarounds:
+- Use UNWINDER_FRAME_POINTER instead of ORC to avoid pthread/libunwind
+  RPATH issues with jig's build-time tools
+- elfutils: disable make-debug-archive script (hardcoded paths)
+
+Tested: boots in QEMU with minimal initramfs, prints 'golconda kernel ok'
+Signed-off-by: yolobox <yolobox@phaer.org>
+---
+ builder/systems/kbuild.nu          | 229 +++++++++++++++++++++++++++++
+ nix/build-systems.nix              |  12 ++
+ pkgs/bc/bc/package.nix             |  20 +++
+ pkgs/bc/bc/sources.toml            |  11 ++
+ pkgs/el/elfutils/package.nix       |  32 ++++
+ pkgs/el/elfutils/relocatable.patch |  11 ++
+ pkgs/el/elfutils/sources.toml      |  10 ++
+ pkgs/li/linux-kernel/package.nix   | 213 +++++++++++++++++++++++++++
+ pkgs/li/linux-kernel/sources.toml  |  13 ++
+ 9 files changed, 551 insertions(+)
+ create mode 100644 builder/systems/kbuild.nu
+ create mode 100644 pkgs/bc/bc/package.nix
+ create mode 100644 pkgs/bc/bc/sources.toml
+ create mode 100644 pkgs/el/elfutils/package.nix
+ create mode 100644 pkgs/el/elfutils/relocatable.patch
+ create mode 100644 pkgs/el/elfutils/sources.toml
+ create mode 100644 pkgs/li/linux-kernel/package.nix
+ create mode 100644 pkgs/li/linux-kernel/sources.toml
+
+diff --git a/builder/systems/kbuild.nu b/builder/systems/kbuild.nu
+new file mode 100644
+index 0000000..51ecc75
+--- /dev/null
++++ b/builder/systems/kbuild.nu
+@@ -0,0 +1,229 @@
++# Linux kernel kbuild system: defconfig + merged fragment + olddefconfig + verification, then
++# make with LLVM=1 LLVM_IAS=1. The kernel sets its own hardening (stack protector, CFI), so
++# jig's injected flags must not reach it. Packages pass CC/LD/AR/... pointing at the unwrapped
++# toolchain to keep jig off the kernel's command line.
++#
++# Phases: configure (defconfig, merge fragment, olddefconfig, verify), build (make target),
++# install (vmlinuz, System.map, .config; headers to dev output when present).
++#
++# Options:
++#   kbuild.base     defconfig name or path to a .config file (default: defconfig)
++#   kbuild.config   typed attrset merged into base: {NAME: "y"|"n"|"m"|freeform}
++#   kbuild.target   make target (bzImage, Image, etc); null = auto from platform
++#   kbuild.extraMake  extra make flags passed to every make invocation
++#   kbuild.arch     override ARCH (null = from platform.names.kernel)
++
++use ../core.nu *
++
++export const OPTIONS = {
++  base: {default: "defconfig", doc: "defconfig name or path to a .config file"}
++  config: {default: {}, doc: "typed attrset: CONFIG_NAME -> y|n|m|freeform string"}
++  target: {default: null, doc: "make target (bzImage, Image); null = auto from platform", nullable: true}
++  extraMake: {default: [], doc: "extra make flags for every invocation"}
++  arch: {default: null, doc: "override ARCH; null = from platform.names.kernel", nullable: true}
++}
++
++export def setup []: nothing -> nothing { }
++
++# in-tree build
++export def workdir []: nothing -> string { project-dir kbuild }
++
++# ARCH from platform or override
++def karch []: nothing -> string {
++  let o = (options kbuild)
++  $o.arch | default (ctx).platform.names.kernel
++}
++
++# common make flags: ARCH, jobs, LLVM, extraMake
++def make-flags []: nothing -> list<string> {
++  let c = (ctx)
++  let o = (options kbuild)
++  [$"ARCH=(karch)" $"-j($c.njobs)" "LLVM=1" "LLVM_IAS=1"] ++ $o.extraMake
++}
++
++# convert typed config attrset to fragment lines
++# y -> CONFIG_NAME=y, n -> # CONFIG_NAME is not set, m -> CONFIG_NAME=m, else freeform
++def config-to-fragment [config: record]: nothing -> string {
++  $config | items {|name, value|
++    if $value == "n" {
++      $"# CONFIG_($name) is not set"
++    } else if $value == "y" or $value == "m" {
++      $"CONFIG_($name)=($value)"
++    } else {
++      # freeform: quoted string or number
++      if ($value | describe) == "int" {
++        $"CONFIG_($name)=($value)"
++      } else {
++        $"CONFIG_($name)=\"($value)\""
++      }
++    }
++  } | str join "\n"
++}
++
++# verify that every requested option has the requested value in the final .config
++def verify-config [config: record, dotconfig: string]: nothing -> nothing {
++  let final = (open --raw $dotconfig | lines)
++  let errors = ($config | items {|name, value|
++    let want = if $value == "n" {
++      $"# CONFIG_($name) is not set"
++    } else if $value == "y" or $value == "m" {
++      $"CONFIG_($name)=($value)"
++    } else if ($value | describe) == "int" {
++      $"CONFIG_($name)=($value)"
++    } else {
++      $"CONFIG_($name)=\"($value)\""
++    }
++    # also accept bare CONFIG_NAME=n (olddefconfig sometimes writes this)
++    let alt = if $value == "n" { $"CONFIG_($name)=n" } else { null }
++    if not (($final | any { $in == $want }) or ($alt != null and ($final | any { $in == $alt }))) {
++      $"CONFIG_($name): wanted ($value), not found in .config"
++    }
++  } | compact)
++  if ($errors | is-not-empty) {
++    error make {msg: $"kbuild config verification failed:\n($errors | str join '\n')"}
++  }
++  note kbuild-verify $"($config | columns | length) options verified"
++}
++
++# configure: defconfig or copy base, merge fragment, olddefconfig, verify
++export def configure []: nothing -> nothing {
++  let c = (ctx)
++  let o = (options kbuild)
++  let src = (project-dir kbuild)
++
++  # start from defconfig or a given .config
++  if ($o.base | str ends-with ".config") or ($o.base | path exists) {
++    # explicit .config file
++    cp $o.base $"($src)/.config"
++    x make ...(make-flags) olddefconfig
++  } else {
++    # defconfig name (e.g., "defconfig", "x86_64_defconfig")
++    x make ...(make-flags) $o.base
++  }
++
++  # merge fragment if any options specified
++  if ($o.config | is-not-empty) {
++    let fragment = $"($c.build)/golconda.config"
++    config-to-fragment $o.config | save -f $fragment
++    note kbuild-fragment $"($o.config | columns | length) options in fragment"
++
++    # merge using scripts/kconfig/merge_config.sh
++    x sh $"($src)/scripts/kconfig/merge_config.sh" -m $"($src)/.config" $fragment
++
++    # run olddefconfig to resolve dependencies
++    x make ...(make-flags) olddefconfig
++
++    # verify all requested options survived
++    verify-config $o.config $"($src)/.config"
++  }
++}
++
++# build: make the kernel target
++export def build []: nothing -> nothing {
++  let c = (ctx)
++  let o = (options kbuild)
++
++  # determine target: explicit, or auto from platform
++  let target = if $o.target != null { $o.target } else {
++    match (karch) {
++      "x86" => "bzImage"
++      "arm64" => "Image"
++      "riscv" => "Image"
++      "loongarch" => "vmlinuz.efi"
++      "powerpc" => "vmlinux"
++      _ => "vmlinux"
++    }
++  }
++
++  note kbuild-target $target
++  x make ...(make-flags) $target
++}
++
++# install: copy vmlinuz, System.map, .config to out; headers to dev if present
++export def install []: nothing -> nothing {
++  let c = (ctx)
++  let o = (options kbuild)
++  let src = (project-dir kbuild)
++
++  # get kernel version from Makefile
++  let version = (x make ...(make-flags) -s kernelversion | complete | get stdout | str trim)
++  note kbuild-version $version
++
++  # determine installed kernel name
++  let target = if $o.target != null { $o.target } else {
++    match (karch) {
++      "x86" => "bzImage"
++      "arm64" => "Image"
++      "riscv" => "Image"
++      "loongarch" => "vmlinuz.efi"
++      "powerpc" => "vmlinux"
++      _ => "vmlinux"
++    }
++  }
++
++  # find the built kernel image
++  let arch_boot = match (karch) {
++    "x86" => "x86/boot"
++    "arm64" => "arm64/boot"
++    "riscv" => "riscv/boot"
++    "loongarch" => "loongarch/boot"
++    "powerpc" => "powerpc/boot"
++    $other => $"($other)/boot"
++  }
++  let kernel_path = if $target == "vmlinux" {
++    $"($src)/vmlinux"
++  } else {
++    $"($src)/arch/($arch_boot)/($target)"
++  }
++
++  # create output directories following systemd conventions
++  let moddir = $"($c.out)/lib/modules/($version)"
++  mkdir $moddir
++
++  # copy kernel artifacts
++  cp $kernel_path $"($moddir)/vmlinuz"
++  cp $"($src)/System.map" $"($moddir)/System.map"
++  cp $"($src)/.config" $"($moddir)/config"
++
++  # symlink at top level for convenience
++  mkdir $"($c.out)/boot"
++  ^ln -s $"../lib/modules/($version)/vmlinuz" $"($c.out)/boot/vmlinuz-($version)"
++
++  note kbuild-install $"lib/modules/($version)/vmlinuz System.map config"
++
++  # install headers to dev output if it exists
++  if ($env.outputs?.dev? | default "" | is-not-empty) {
++    let dev = $env.outputs.dev
++    mkdir $"($dev)/lib/modules/($version)"
++
++    # headers_install to dev
++    x make ...(make-flags) INSTALL_HDR_PATH=$"($dev)" headers_install
++
++    # copy scripts and include for out-of-tree module builds
++    mkdir $"($dev)/lib/modules/($version)/build"
++    for d in [scripts include] {
++      if ($"($src)/($d)" | path exists) {
++        cp -r $"($src)/($d)" $"($dev)/lib/modules/($version)/build/"
++      }
++    }
++
++    # copy key files for module builds
++    for f in [Makefile Module.symvers] {
++      if ($"($src)/($f)" | path exists) {
++        cp $"($src)/($f)" $"($dev)/lib/modules/($version)/build/"
++      }
++    }
++
++    note kbuild-dev $"headers and build scripts to dev output"
++  }
++
++  # debug output: unstripped vmlinux with DWARF
++  if ($env.outputs?.debug? | default "" | is-not-empty) {
++    let debug = $env.outputs.debug
++    mkdir $"($debug)/lib/debug"
++    if ($"($src)/vmlinux" | path exists) {
++      cp $"($src)/vmlinux" $"($debug)/lib/debug/vmlinux"
++      note kbuild-debug "vmlinux with DWARF to debug output"
++    }
++  }
++}
+diff --git a/nix/build-systems.nix b/nix/build-systems.nix
+index 4b2aaff..643a810 100644
+--- a/nix/build-systems.nix
++++ b/nix/build-systems.nix
+@@ -84,6 +84,18 @@ builtins.mapAttrs
+       ];
+       tools = [ sh ];
+     };
++    kbuild = {
++      # Linux kernel kbuild: configure (defconfig + fragment + olddefconfig + verify),
++      # build (make bzImage/Image), install (vmlinuz, System.map, .config). No test phase:
++      # kernel tests are QEMU boots done separately.
++      unsupported = if platform.os != "linux" then "kernel builds only for Linux" else null;
++      phases = [
++        "configure"
++        "build"
++        "install"
++      ];
++      tools = [ sh ];
++    };
+     autotools = {
+       unsupported =
+         if platform.libc == "msvc" then
+diff --git a/pkgs/bc/bc/package.nix b/pkgs/bc/bc/package.nix
+new file mode 100644
+index 0000000..3980c10
+--- /dev/null
++++ b/pkgs/bc/bc/package.nix
+@@ -0,0 +1,20 @@
++# bc: arbitrary precision calculator language (modern implementation by Gavin Howard)
++# This is a simple, dependency-free implementation that works without readline/ed.
++{ package, buildPkgs }:
++package {
++  name = "bc";
++
++  # Uses custom configure.sh script, not autotools
++  uses = [ "make" ];
++
++  # Configure with POSIX-compliant bc (no GNU extensions needed for kernel)
++  make.configureScript = "./configure.sh";
++  make.configureFlags = [ "--disable-nls" "--disable-history" "--disable-man-pages" ];
++
++  bin = [ "bc" "dc" ];
++  tests.run = false;
++  tests.version = "bc --version";
++
++  # bc strips binaries itself, so disable debug info check
++  debug = false;
++}
+diff --git a/pkgs/bc/bc/sources.toml b/pkgs/bc/bc/sources.toml
+new file mode 100644
+index 0000000..2d60136
+--- /dev/null
++++ b/pkgs/bc/bc/sources.toml
+@@ -0,0 +1,11 @@
++# Modern bc by Gavin Howard - no dependencies on ed/readline
++[upstream]
++purl = "pkg:github/gavinhoward/bc"
++
++[[source]]
++key = "default"
++url = "https://github.com/gavinhoward/bc/releases/download/{version}/bc-{version}.tar.xz"
++hash = "sha256-CpyzVAbardLE6np9YgqCYdkvRpPiDvsP44BXYGdZhIk="
++
++[pin]
++version = "7.1.0"
+diff --git a/pkgs/el/elfutils/package.nix b/pkgs/el/elfutils/package.nix
+new file mode 100644
+index 0000000..bcc1c90
+--- /dev/null
++++ b/pkgs/el/elfutils/package.nix
+@@ -0,0 +1,32 @@
++# elfutils: libraries and utilities for handling ELF files
++# Provides libelf which is needed for kernel's objtool
++{ package, buildPkgs }:
++package {
++  name = "elfutils";
++
++  uses = [ "autotools" ];
++
++  # Disable debuginfod (network) and avoid problematic features
++  # Set localedir to . to avoid hardcoded paths
++  autotools.flags = [
++    "--disable-debuginfod"
++    "--disable-libdebuginfod"
++    "--disable-nls"
++    "--localedir=/"
++  ];
++
++  # Disable clang -Werror for const-discard pointer casts
++  cc.cflags = [ "-Wno-error=incompatible-pointer-types-discards-qualifiers" ];
++
++  dependencies = [
++    buildPkgs.zlib
++    buildPkgs.zstd
++  ];
++
++  bin = [ "eu-readelf" "eu-objdump" "eu-nm" "eu-strip" ];
++  tests.run = false;
++  tests.version = "eu-readelf --version";
++
++  # Remove eu-make-debug-archive which has hardcoded paths to other elfutils binaries
++  patches = [ ./relocatable.patch ];
++}
+diff --git a/pkgs/el/elfutils/relocatable.patch b/pkgs/el/elfutils/relocatable.patch
+new file mode 100644
+index 0000000..6261f3b
+--- /dev/null
++++ b/pkgs/el/elfutils/relocatable.patch
+@@ -0,0 +1,11 @@
++--- a/src/Makefile.in
+++++ b/src/Makefile.in
++@@ -577,7 +577,7 @@ AM_LDFLAGS = -Wl,-rpath-link,../libelf:../libdw $(STACK_USAGE_NO_ERROR)
++ noinst_LIBRARIES = libar.a
++ libar_a_SOURCES = arlib.c arlib2.c arlib-argp.c
++ EXTRA_DIST = arlib.h debugpred.h make-debug-archive.in
++-bin_SCRIPTS = make-debug-archive
+++bin_SCRIPTS = 
++ @BUILD_STATIC_FALSE@libasm = ../libasm/libasm.so
++ @BUILD_STATIC_TRUE@libasm = ../libasm/libasm.a
++ @BUILD_STATIC_FALSE@libdw = ../libdw/libdw.so
+diff --git a/pkgs/el/elfutils/sources.toml b/pkgs/el/elfutils/sources.toml
+new file mode 100644
+index 0000000..6a9786e
+--- /dev/null
++++ b/pkgs/el/elfutils/sources.toml
+@@ -0,0 +1,10 @@
++[upstream]
++purl = "pkg:gnu/elfutils"
++
++[[source]]
++key = "default"
++url = "https://sourceware.org/elfutils/ftp/{version}/elfutils-{version}.tar.bz2"
++hash = "sha256-oFThW/mwZfYxpjegIqQ6hMZzJ3jgdQ+LtpCQa8SRF2o="
++
++[pin]
++version = "0.192"
+diff --git a/pkgs/li/linux-kernel/package.nix b/pkgs/li/linux-kernel/package.nix
+new file mode 100644
+index 0000000..ddcc9b6
+--- /dev/null
++++ b/pkgs/li/linux-kernel/package.nix
+@@ -0,0 +1,213 @@
++# Linux kernel for Golconda: monolithic server config, LLVM-built, no modules in round 1.
++# Uses the kbuild build system with raw clang/lld from bootstrap.llvm on PATH (not jig).
++{
++  package,
++  buildPkgs,
++}:
++let
++  # Minimal server config that survives olddefconfig.
++  # Options are verified after olddefconfig resolves dependencies.
++  serverConfig = {
++    # ===== Storage: virtio, nvme, ahci =====
++    VIRTIO = "y";
++    VIRTIO_PCI = "y";
++    VIRTIO_BLK = "y";
++    VIRTIO_NET = "y";
++    VIRTIO_CONSOLE = "y";
++    VIRTIO_BALLOON = "y";
++
++    NVME_CORE = "y";
++    BLK_DEV_NVME = "y";
++
++    SATA_AHCI = "y";
++    ATA = "y";
++    BLK_DEV_SD = "y";
++    SCSI = "y";
++
++    BLK_DEV_LOOP = "y";
++
++    # ===== EFI boot =====
++    EFI = "y";
++    EFI_STUB = "y";
++    EFIVAR_FS = "y";
++
++    # ===== Device mapper: verity, crypt, integrity =====
++    BLK_DEV_DM = "y";
++    DM_CRYPT = "y";
++    DM_VERITY = "y";
++    DM_INTEGRITY = "y";
++
++    # ===== Filesystems =====
++    EROFS_FS = "y";
++    EROFS_FS_ZIP = "y";
++    EROFS_FS_ZIP_ZSTD = "y";
++
++    EXT4_FS = "y";
++    EXT4_FS_POSIX_ACL = "y";
++    EXT4_FS_SECURITY = "y";
++
++    BTRFS_FS = "y";
++
++    OVERLAY_FS = "y";
++
++    VFAT_FS = "y";
++    NLS_CODEPAGE_437 = "y";
++    NLS_ISO8859_1 = "y";
++
++    TMPFS = "y";
++    TMPFS_POSIX_ACL = "y";
++
++    FUSE_FS = "y";
++
++    # ===== TPM =====
++    TCG_TPM = "y";
++    HW_RANDOM_TPM = "y";
++    SECURITYFS = "y";
++
++    # ===== systemd requirements =====
++    CGROUPS = "y";
++    MEMCG = "y";
++    BLK_CGROUP = "y";
++    CGROUP_SCHED = "y";
++
++    BPF_SYSCALL = "y";
++
++    SECCOMP = "y";
++
++    FHANDLE = "y";
++    DEVTMPFS = "y";
++    DEVTMPFS_MOUNT = "y";
++
++    NAMESPACES = "y";
++    USER_NS = "y";
++    NET_NS = "y";
++    PID_NS = "y";
++    UTS_NS = "y";
++    IPC_NS = "y";
++
++    INOTIFY_USER = "y";
++
++    UNIX = "y";
++    INET = "y";
++    IPV6 = "y";
++
++    # ===== Networking: netfilter, nftables =====
++    NETFILTER = "y";
++    NF_CONNTRACK = "y";
++    NF_NAT = "y";
++    NF_TABLES = "y";
++
++    # ===== Virtual networking =====
++    BRIDGE = "y";
++    VLAN_8021Q = "y";
++    MACVLAN = "y";
++    VXLAN = "y";
++    TUN = "y";
++
++    # ===== Console and serial =====
++    SERIAL_8250 = "y";
++    SERIAL_8250_CONSOLE = "y";
++    VT = "y";
++    VT_CONSOLE = "y";
++    TTY = "y";
++
++    # ===== Framebuffer: minimal for EFI =====
++    FB = "y";
++    DRM = "y";
++    FRAMEBUFFER_CONSOLE = "y";
++
++    # ===== KVM guest support =====
++    HYPERVISOR_GUEST = "y";
++    PARAVIRT = "y";
++    KVM_GUEST = "y";
++
++    # ===== Crypto =====
++    CRYPTO = "y";
++    CRYPTO_AES = "y";
++    CRYPTO_SHA256 = "y";
++    CRYPTO_XTS = "y";
++
++    # ===== No modules in round 1 =====
++    MODULES = "n";
++
++
++
++
++    # ===== Reproducibility: embedded config =====
++    IKCONFIG = "y";
++    IKCONFIG_PROC = "y";
++
++    # ===== Debug: minimal =====
++    DEBUG_KERNEL = "y";
++    KALLSYMS = "y";
++    PRINTK = "y";
++    EARLY_PRINTK = "y";
++
++    # ===== Unwinder: use frame pointer instead of ORC =====
++    # ORC requires objtool's sorttable which uses pthread, and jig's
++    # $ORIGIN RPATH doesn't work for build-time tools
++    UNWINDER_ORC = "n";
++    UNWINDER_FRAME_POINTER = "y";
++  };
++in
++package {
++  name = "linux-kernel";
++
++  uses = [ "kbuild" ];
++
++  kbuild.base = "defconfig";
++  kbuild.config = serverConfig;
++  # target auto-detected from platform in kbuild.nu
++  kbuild.extraMake = [
++    "LLVM=1"
++    "LLVM_IAS=1"
++    # Use raw clang/lld for kernel code (no jig hardening flags)
++    "CC=clang"
++    "LD=ld.lld"
++    "AR=llvm-ar"
++    "NM=llvm-nm"
++    "STRIP=llvm-strip"
++    "OBJCOPY=llvm-objcopy"
++    "OBJDUMP=llvm-objdump"
++    "READELF=llvm-readelf"
++    # Use jig's cc for host tools: they need sysroot headers
++    "HOSTCC=cc"
++    "HOSTCXX=c++"
++    "HOSTLD=ld.lld"
++    "HOSTAR=llvm-ar"
++    # Reproducibility
++    "KBUILD_BUILD_TIMESTAMP=@315532800"
++    "KBUILD_BUILD_USER=golconda"
++    "KBUILD_BUILD_HOST=build"
++    "KBUILD_BUILD_VERSION=1"
++  ];
++
++  # Disable jig's hardening: the kernel sets its own
++  cc.hardening = false;
++
++  # kconfig needs flex and bison; timeconst.h needs bc;
++  # oid_registry needs perl
++  buildDependencies = [
++    buildPkgs.flex
++    buildPkgs.bison
++    buildPkgs.bc
++    buildPkgs.perl
++  ];
++
++  # objtool needs elfutils headers/libs via pkg-config.
++  # extract-cert needs openssl headers.
++  # sorttable needs libunwind for pthread_exit at runtime.
++  # These are safe: they only affect HOSTCC (jig) via -isystem,
++  # which the kernel's own code ignores (it uses raw clang via CC=clang)
++  dependencies = [
++    buildPkgs.elfutils
++    buildPkgs.openssl
++    buildPkgs.libunwind
++  ];
++
++  # No version test: kernel has no --version flag
++  bin = [ ];
++  tests.run = false;
++
++  platforms.os = [ "linux" ];
++}
+diff --git a/pkgs/li/linux-kernel/sources.toml b/pkgs/li/linux-kernel/sources.toml
+new file mode 100644
+index 0000000..bb05fa4
+--- /dev/null
++++ b/pkgs/li/linux-kernel/sources.toml
+@@ -0,0 +1,13 @@
++# Linux kernel for Golconda: pinned to 6.18.y LTS series
++[upstream]
++purl = 'pkg:generic/linux?url=https://kernel.org/releases.json&regex=linux-(\d+\.\d+(?:\.\d+)?)\.tar\.xz'
++allow = ">=6.18,<6.19"
++
++[[source]]
++key = "default"
++url = "https://cdn.kernel.org/pub/linux/kernel/v{major}.x/linux-{version}.tar.xz"
++hash = "sha256-i0QFPjStbQOlfqW57Eq9ckYwo+s7mUOKr6AODmMW+Vo="
++
++[pin]
++version = "6.18.60"
++date = "2026-10-30"
+-- 
+2.55.0
+

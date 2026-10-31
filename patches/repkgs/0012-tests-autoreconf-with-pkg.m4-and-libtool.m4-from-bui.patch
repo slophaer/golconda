@@ -1,0 +1,114 @@
+From 236cee32a6cd356ebefef0024d719a49e9d466b5 Mon Sep 17 00:00:00 2001
+From: yolobox <yolobox@phaer.org>
+Date: Sat, 31 Oct 2026 00:34:16 +0000
+Subject: [PATCH] tests: autoreconf with pkg.m4 and libtool.m4 from build tools
+
+Add a test that verifies autoreconf works when PKG_CHECK_MODULES
+and LT_INIT macros come from build dependencies (pkgconf and
+libtool in buildDependencies, not dependencies).
+
+The test:
+- Has pkgconf and libtool only in buildDependencies
+- Uses LT_INIT and PKG_CHECK_MODULES([ZLIB], [zlib]) in configure.ac
+- Links against zlib to verify pkg-config works
+- Runs autoreconf -fi before configure
+
+Signed-off-by: helferlein <helferlein@example.com>
+---
+ tests/builder/autotools/package.nix      | 29 ++++++++++++++++++++++++
+ tests/builder/autotools/src/Makefile.am  |  4 ++++
+ tests/builder/autotools/src/configure.ac |  7 ++++++
+ tests/builder/autotools/src/hello.c      |  7 ++++++
+ tests/builder/autotools/test.nu          |  5 ++++
+ 5 files changed, 52 insertions(+)
+ create mode 100644 tests/builder/autotools/package.nix
+ create mode 100644 tests/builder/autotools/src/Makefile.am
+ create mode 100644 tests/builder/autotools/src/configure.ac
+ create mode 100644 tests/builder/autotools/src/hello.c
+ create mode 100644 tests/builder/autotools/test.nu
+
+diff --git a/tests/builder/autotools/package.nix b/tests/builder/autotools/package.nix
+new file mode 100644
+index 0000000..7916b69
+--- /dev/null
++++ b/tests/builder/autotools/package.nix
+@@ -0,0 +1,29 @@
++# Test: autotools autoreconf with pkg.m4 and libtool.m4 from build tools
++{ package, pkgs, buildPkgs }:
++package {
++  name = "test-autotools";
++  version = "1.0";
++  source = ./src;
++  uses = [ "autotools" ];
++  phases.before."autotools.configure" = [
++    {
++      name = "autoreconf";
++      run = ''
++        cd $c.src
++        x autoreconf -fi
++      '';
++    }
++  ];
++  buildDependencies = [
++    buildPkgs.autoconf
++    buildPkgs.automake
++    buildPkgs.libtool   # provides libtool.m4, ltoptions.m4
++    buildPkgs.pkgconf   # provides pkg.m4
++  ];
++  dependencies = [
++    pkgs.zlib  # for PKG_CHECK_MODULES test
++  ];
++  bin = [ "hello" ];
++  tests.run = false;
++  tests.version = false;
++}
+diff --git a/tests/builder/autotools/src/Makefile.am b/tests/builder/autotools/src/Makefile.am
+new file mode 100644
+index 0000000..bdd0ae7
+--- /dev/null
++++ b/tests/builder/autotools/src/Makefile.am
+@@ -0,0 +1,4 @@
++bin_PROGRAMS = hello
++hello_SOURCES = hello.c
++hello_CFLAGS = $(ZLIB_CFLAGS)
++hello_LDADD = $(ZLIB_LIBS)
+diff --git a/tests/builder/autotools/src/configure.ac b/tests/builder/autotools/src/configure.ac
+new file mode 100644
+index 0000000..d560884
+--- /dev/null
++++ b/tests/builder/autotools/src/configure.ac
+@@ -0,0 +1,7 @@
++AC_INIT([hello], [1.0])
++AM_INIT_AUTOMAKE([foreign])
++LT_INIT
++AC_PROG_CC
++PKG_CHECK_MODULES([ZLIB], [zlib])
++AC_CONFIG_FILES([Makefile])
++AC_OUTPUT
+diff --git a/tests/builder/autotools/src/hello.c b/tests/builder/autotools/src/hello.c
+new file mode 100644
+index 0000000..3eeb50d
+--- /dev/null
++++ b/tests/builder/autotools/src/hello.c
+@@ -0,0 +1,7 @@
++#include <stdio.h>
++#include <zlib.h>
++
++int main(void) {
++    printf("Hello, autotools! zlib version: %s\n", zlibVersion());
++    return 0;
++}
+diff --git a/tests/builder/autotools/test.nu b/tests/builder/autotools/test.nu
+new file mode 100644
+index 0000000..a455cc7
+--- /dev/null
++++ b/tests/builder/autotools/test.nu
+@@ -0,0 +1,5 @@
++# Test that autoreconf with pkg.m4 and libtool.m4 from build tools works
++let result = (^$"($env.pkg)/bin/hello" | str trim)
++if not ($result | str starts-with "Hello, autotools! zlib version:") {
++  error make {msg: $"Expected output to start with 'Hello, autotools! zlib version:', got '($result)'"}
++}
+-- 
+2.55.0
+

@@ -1,7 +1,7 @@
 From 25e7e6e08b211491d9e5bf4305b36e7b02733e4c Mon Sep 17 00:00:00 2001
 From: yolobox <yolobox@phaer.org>
 Date: Fri, 30 Oct 2026 19:27:49 +0000
-Subject: [PATCH 7/8] exports: list the executables
+Subject: [PATCH] exports: list the executables
 
 Add a 'bin' field to exports.json listing the executable names in bin/
 (user-facing launchers, not hidden .foo binaries). A symlink farm can
