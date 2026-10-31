@@ -87,6 +87,7 @@ let
     inherit (f) modules;
   };
   usrTreeLib = import ../lib/usr-tree.nix { };
+  imageLib = import ../lib/image { };
   inherit
     (import ./packages.nix {
       inherit sources;
@@ -2487,6 +2488,149 @@ let
       sort lessThan (attrNames system.packageOrigins) == sort lessThan (map merge.pkgKey system.packages)
     ))
 
+    # 12. The image chain's pure parts (lib/image)
+    (check "image: versionToEpoch is lib/usr-tree.nix's, one function" (
+      imageLib.versionToEpoch "20261031.1" == usrTreeLib.versionToEpoch "20261031.1"
+      && imageLib.versionToEpoch "20261031.1" == 1793404801
+      && imageLib.versionToEpoch "20261031.2" == 1793404802
+      && imageLib.versionToEpoch "20261101.1" == 1793404801 + 86400
+    ))
+    (check "image: the UKI's installed name carries the boot counter" (
+      imageLib.ukiName {
+        imageId = "golconda";
+        version = "20261031.1";
+      } == "golconda_20261031.1+3-0.efi"
+    ))
+    (check "image: a UUID from the first 32 hex digits" (
+      imageLib.uuidOfHex "c9c2180678d390a7a13ff0e23149523ce2ec58ab9df04ccdf87de4235b7e0476"
+      == "c9c21806-78d3-90a7-a13f-f0e23149523c"
+    ))
+    (check "image: repart definitions are the build-time partitions with the builder's fields" (
+      let
+        defs = imageLib.repartDefinitions { };
+        names = attrNames defs;
+      in
+      names == [
+        "00-esp.conf"
+        "10-usr-a.conf"
+        "11-usr-a-verity.conf"
+        "12-usr-a-verity-sig.conf"
+        "20-usr-b.conf"
+        "21-usr-b-verity.conf"
+        "22-usr-b-verity-sig.conf"
+      ]
+      # root is made on the machine at first boot, not here
+      && !(defs ? "30-root.conf")
+      # the ESP takes the staged tree; slot A takes the images and the hash-derived UUIDs
+      && hasInfix "CopyFiles={esp}:/" defs."00-esp.conf"
+      && hasInfix "CopyBlocks={usr}" defs."10-usr-a.conf"
+      && hasInfix "UUID={usrUuid}" defs."10-usr-a.conf"
+      && hasInfix "CopyBlocks={verity}" defs."11-usr-a-verity.conf"
+      && hasInfix "UUID={verityUuid}" defs."11-usr-a-verity.conf"
+      && hasInfix "CopyBlocks={sig}" defs."12-usr-a-verity-sig.conf"
+      # the B slots are the same size as A and get nothing
+      && hasInfix "SizeMinBytes=10G" defs."20-usr-b.conf"
+      && !hasInfix "CopyBlocks" defs."20-usr-b.conf"
+      # image/repart.nix's own fields render as INI (ini.nix: booleans are yes/no)
+      && hasInfix "[Partition]\n" defs."10-usr-a.conf"
+      && hasInfix "ReadOnly=yes" defs."10-usr-a.conf"
+      && hasInfix "Type=usr-verity-sig" defs."12-usr-a-verity-sig.conf"
+    ))
+    (check "image: os-release carries /system.name as ID and IMAGE_ID" (
+      let
+        os = usrTreeLib.renderOsRelease {
+          version = "20261031.1";
+          platform = {
+            name = "x86_64-linux";
+            cpu = "x86_64";
+          };
+          imageId = "server";
+        };
+      in
+      hasInfix "ID=server\n" os && hasInfix "IMAGE_ID=server\n" os
+    ))
+    (check "image: the cmdline template has usrhash and no rw or volatile" (
+      let
+        t = ((import ../image).uki { imageId = "golconda"; }).cmdlineTemplate;
+      in
+      hasInfix "usrhash={usrhash}" t && !hasInfix " rw" t && !hasInfix "volatile" t
+    ))
+
+    # 13. lib/system.nix: mkSystem entry point
+    (check "mkSystem: server.toml yields name and version" (
+      let
+        mkSystem =
+          args:
+          import ../lib/system.nix (
+            args
+            // {
+              inherit sources platform;
+              system = platform;
+            }
+          );
+        sys = mkSystem { config = ../examples/server.toml; };
+      in
+      sys.name == "server" && sys.version == "20261031.1"
+    ))
+    (check "mkSystem: extra overrides an option" (
+      let
+        mkSystem =
+          args:
+          import ../lib/system.nix (
+            args
+            // {
+              inherit sources platform;
+              system = platform;
+            }
+          );
+        sys = mkSystem {
+          config = ../examples/server.toml;
+          extra = {
+            "/system".name = "overridden";
+          };
+        };
+      in
+      sys.name == "overridden" && sys.version == "20261031.1"
+    ))
+    (check "mkSystem: config.json has the sshd table and no derivation strings" (
+      let
+        mkSystem =
+          args:
+          import ../lib/system.nix (
+            args
+            // {
+              inherit sources platform;
+              system = platform;
+            }
+          );
+        sys = mkSystem { config = ../examples/server.toml; };
+        cfg = sys.config;
+        cfgJson = builtins.toJSON cfg;
+      in
+      cfg ? "/services/sshd"
+      && cfg."/services/sshd".port == 22
+      # no store paths in the JSON
+      && match ".*(/nix/store).*" cfgJson == null
+    ))
+    (check "mkSystem: a TOML with an unknown module path throws with the path in the message" (
+      let
+        mkSystem =
+          args:
+          import ../lib/system.nix (
+            args
+            // {
+              inherit sources platform;
+              system = platform;
+            }
+          );
+        badConfig = builtins.toFile "bad.toml" ''
+          ["/unknown/module"]
+          option = "value"
+        '';
+        result = tryEval (deepSeq (mkSystem { config = badConfig; }).name true);
+      in
+      !result.success
+    ))
   ];
 in
 assert all (t: t) tests;

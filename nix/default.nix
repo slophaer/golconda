@@ -25,6 +25,7 @@ let
       inherit (schemaLib) typeRegistry;
       tree = tree { };
     };
+  imageLib = import ../lib/image { };
 in
 {
   packages =
@@ -33,12 +34,99 @@ in
       system,
       ...
     }:
+    let
+      imageSmoke =
+        let
+          # the base system of examples/server.toml, as lib.mkSystem makes it
+          sys = mkSystem {
+            inherit system;
+            platform = system;
+            config = ../examples/server.toml;
+          };
+          imageId = sys.name;
+          inherit (sys)
+            version
+            usrTree
+            platform
+            pkgs
+            ;
+          args = {
+            inherit
+              imageId
+              version
+              pkgs
+              platform
+              ;
+            buildSystem = system;
+          };
+          initrdTree = imageLib.initrdTree args;
+          keys = imageLib.throwawayKeys {
+            inherit pkgs;
+            buildSystem = system;
+          };
+        in
+        rec {
+          erofs = imageLib.erofs (args // { inherit usrTree; });
+          verity = imageLib.verity (
+            args
+            // {
+              inherit erofs;
+              key = "${keys}/verity/verity.key";
+              cert = "${keys}/verity/verity.crt";
+            }
+          );
+          initrd = imageLib.initrd (args // { usrTree = initrdTree; });
+          uki = imageLib.uki (
+            args
+            // {
+              inherit initrd verity usrTree;
+              sbKey = "${keys}/secureboot/db.key";
+              sbCert = "${keys}/secureboot/db.crt";
+              pcrKey = "${keys}/pcr/pcr.key";
+              pcrPublicKey = "${keys}/pcr/pcr.pub";
+              # Stand-ins, both for the smoke only (image/uki.nix stays the decided cmdline):
+              # LD_LIBRARY_PATH until the fork's RUNPATH reaches what systemd dlopens (libmount
+              # in PID 1, libcryptsetup for /usr, the journal's compression): the store
+              # directories behind /base's dlopen links, as the kernel hands them to PID 1
+              # (services get them from /base's system.conf.d). rw until gpt-auto-generator
+              # succeeds in the host (it exits 1 there today) and writes the remount-rw drop-in
+              # itself; without it the root partition stays read-only and sysusers, vars and
+              # state directories fail. To watch a boot add systemd.log_level=debug
+              # systemd.log_target=console systemd.journald.forward_to_console=1.
+              cmdlineExtra = "LD_LIBRARY_PATH={dlopenPath} rw";
+            }
+          );
+          disk = imageLib.disk (args // { inherit erofs verity uki; });
+          smoke = imageLib.smoke (
+            args
+            // {
+              inherit
+                erofs
+                verity
+                initrd
+                uki
+                disk
+                ;
+            }
+          );
+        };
+    in
     {
       # the patched Nix daemon repkgs needs (CA + dynamic derivations); builders run it
       inherit (pkgs) nix;
 
       # the kernel: the fork's base with Golconda's config fragment (packages/kernel)
       kernel = import ../packages/kernel { inherit pkgs; };
+
+      # The image chain (lib/image) over the /base system: erofs, verity, initrd, UKI, disk, and
+      # the proofs in proof.txt. Keys are throwaways made in the store; a release signs with the
+      # deployment's keys (image/default.nix). image-smoke-<step> exposes each step on its own.
+      image-smoke = imageSmoke.smoke;
+      image-smoke-erofs = imageSmoke.erofs;
+      image-smoke-verity = imageSmoke.verity;
+      image-smoke-initrd = imageSmoke.initrd;
+      image-smoke-uki = imageSmoke.uki;
+      image-smoke-disk = imageSmoke.disk;
 
       # Smoke test for the /usr tree builder: base system + jq via mkSystem.
       usr-tree-smoke =
