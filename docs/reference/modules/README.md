@@ -153,11 +153,10 @@ no `auth` line, so an auth request falls through to `other`), `ssl/anchors/.keep
 `ssl/blocklist/.keep`, `pkcs11/.keep`. Not seeded: `passwd`, `group`, `shadow` (systemd-sysusers
 writes them on first boot from `/usr/lib/sysusers.d`) and `machine-id` (PID 1).
 
-tmpfiles: `C+ /etc - - - - /usr/share/factory/etc` (a plain `C` skips `/etc`, which already holds
-`machine-id` when tmpfiles runs; `C+` copies what is missing and replaces nothing),
-`d /etc/ssh 0755`, the two `L` lines (`localtime`, `os-release` → `../usr/lib/os-release`),
-`d /var/empty 0755`, and `f /etc/.golconda-factory-id 0644 root root - <sha256 of the manifest>`,
-written only when the file does not exist: the stamp of the factory that seeded this `/etc`.
+tmpfiles: one `L /etc/<path> - - - - /usr/share/factory/etc/<path>` line per factory file (`L`, not
+`L+`: a regular file an admin put at that path wins and stays), `d /etc/ssh 0755`, `localtime` and
+`os-release` → `../usr/lib/os-release` as `L` lines, and `d /var/empty 0755`. No manifest, no stamp:
+`find /etc -type f` lists the admin's changes.
 
 The manifest has one line per factory path, sorted: `f <mode> root:root <sha256> /etc/<path>` for a
 file, `l - root:root <target> <path>` for a symlink, `d 0755 root:root - <path>` for a directory.

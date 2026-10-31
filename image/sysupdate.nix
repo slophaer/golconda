@@ -6,11 +6,14 @@
 # All transfers use InstancesMax=2 to keep exactly two versions (A/B).
 # ProtectVersion=%A prevents overwriting the currently booted version.
 #
-# The update source URL is configured at runtime via:
-#   /etc/sysupdate.d/00-source.conf or environment
+# The update source URL is /system.updateSource: the composer renders these
+# definitions into /usr/lib/sysupdate.d/ with Path= set when it is given.
 #
 # See docs/reference/image.md for artifact naming conventions.
-{ imageId }:
+{
+  imageId,
+  updateSource ? null,
+}:
 {
   "10-usr" = {
     Transfer = {
@@ -18,7 +21,7 @@
     };
     Source = {
       Type = "url-file";
-      # Path is set by runtime config (e.g., http://updates.example.com/)
+      Path = updateSource;
       MatchPattern = "${imageId}_@v.usr.raw";
     };
     Target = {
@@ -35,6 +38,7 @@
     };
     Source = {
       Type = "url-file";
+      Path = updateSource;
       MatchPattern = "${imageId}_@v.usr-verity.raw";
     };
     Target = {
@@ -51,6 +55,7 @@
     };
     Source = {
       Type = "url-file";
+      Path = updateSource;
       MatchPattern = "${imageId}_@v.usr-verity-sig.raw";
     };
     Target = {
@@ -67,6 +72,7 @@
     };
     Source = {
       Type = "url-file";
+      Path = updateSource;
       MatchPattern = "${imageId}_@v.efi";
     };
     Target = {
