@@ -228,6 +228,15 @@ in
         inherit text;
         mode = "0644";
       };
+      # the same [Unit] lines as a drop-in for each of the units
+      unitConditions =
+        conds: units:
+        builtins.listToAttrs (
+          map (u: {
+            name = "/usr/lib/systemd/system/${u}.d/golconda.conf";
+            value = dropIn (lines ([ "[Unit]" ] ++ conds));
+          }) units
+        );
       unitDropIns = {
         # no local login: never prompt; credentials (firstboot.*) still apply
         "/usr/lib/systemd/system/systemd-firstboot.service.d/golconda.conf" = dropIn ''
@@ -243,7 +252,18 @@ in
           [Unit]
           ConditionPathExists=/usr/bin/modprobe
         '';
-      };
+      }
+      # The initrd is built from /base too (lib/image/initrd.nix), with the .wants links above,
+      # and it reaches sockets.target and sysinit.target. sysusers does not run there, so these
+      # daemons fail at step USER, hit their start limit and stay failed after switch-root.
+      //
+        unitConditions
+          [ "ConditionPathExists=!/etc/initrd-release" ]
+          [
+            "systemd-networkd.service"
+            "systemd-networkd.socket"
+            "systemd-timesyncd.service"
+          ];
 
       # dash is /bin/sh (/bin -> usr/bin is made by the image builder).
       shLinks = [

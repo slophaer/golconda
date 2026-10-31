@@ -57,9 +57,10 @@ in
               pkgs.lvm2 # dmsetup and the dm udev rules (initrd.nu substitutes {prefix})
               pkgs.cryptsetup # veritysetup, for the initrd's own checks
             ];
-            # The initrd does not reach multi-user.target or sysinit.target, so networkd,
-            # resolved and timesyncd do not start. Their units are in the image (from /base's
-            # farm links) but the initrd's systemd never pulls them.
+            # The initrd reaches sockets.target and sysinit.target, which pull networkd (its
+            # socket) and timesyncd through /base's .wants links. sysusers does not run in the
+            # initrd, so /base gives those units ConditionPathExists=!/etc/initrd-release.
+            # resolved is wanted by multi-user.target only, which the initrd does not reach.
           }
         ];
       };

@@ -2609,6 +2609,18 @@ let
         hasInfix "ConditionPathExists=/usr/bin/modprobe"
           fs."/usr/lib/systemd/system/modprobe@.service.d/golconda.conf".text
     ))
+    (check "base: networkd and timesyncd skip the initrd (no sysusers there: 217/USER)" (
+      let
+        fs = (compose [ ]).files;
+        skips =
+          u:
+          hasInfix "[Unit]\nConditionPathExists=!/etc/initrd-release"
+            fs."/usr/lib/systemd/system/${u}.d/golconda.conf".text;
+      in
+      skips "systemd-networkd.service"
+      && skips "systemd-networkd.socket"
+      && skips "systemd-timesyncd.service"
+    ))
     (check "base: no unit is masked by a link (the systemd farm owns those paths)" (
       !(builtins.any (l: l.target == "/dev/null") (builtins.attrValues (compose [ ]).links))
     ))
