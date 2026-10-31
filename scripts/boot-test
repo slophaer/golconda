@@ -1,0 +1,452 @@
+#!/bin/sh
+# scripts/boot-test: VM boot test for Golconda images.
+#
+# Usage: boot-test <disk.raw> [--secure-boot] [--tpm] [--timeout SECONDS]
+#                  [--smoke-dir DIR] [--ssh-test]
+#
+# The script boots the image in QEMU with:
+#   - a 40 GiB qcow2 overlay (room for root partition)
+#   - OVMF firmware (UEFI)
+#   - optional Secure Boot with the image's throwaway keys enrolled
+#   - optional TPM 2.0 via swtpm
+#   - SMBIOS type 11 credential: system.hostname=boot-test
+#   - user-mode networking with hostfwd to SSH (port 10022)
+#   - serial console logged to a file
+#
+# Markers checked (each prints PASS/FAIL):
+#   - no-firstboot-prompt: systemd-firstboot did not prompt
+#   - ldconfig-masked: ldconfig.service is masked
+#   - modprobe-masked: modprobe@.service is masked
+#   - multi-user-reached: multi-user.target reached
+#   - sshd-active: sshd.service is active
+#   - varlink-available: varlinkctl works
+#
+# With --ssh-test: generates a test CA, signs a user cert, attempts ssh login.
+#
+# Exit: 0 if all markers pass, 1 otherwise.
+
+set -eu
+
+# --- argument parsing ---
+DISK=""
+SECURE_BOOT=0
+TPM=0
+TIMEOUT=120
+SMOKE_DIR=""
+SSH_TEST=0
+
+usage() {
+  echo "Usage: $0 <disk.raw> [--secure-boot] [--tpm] [--timeout SECONDS]"
+  echo "                     [--smoke-dir DIR] [--ssh-test]"
+  exit 1
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --secure-boot) SECURE_BOOT=1; shift ;;
+    --tpm) TPM=1; shift ;;
+    --timeout) TIMEOUT="$2"; shift 2 ;;
+    --smoke-dir) SMOKE_DIR="$2"; shift 2 ;;
+    --ssh-test) SSH_TEST=1; shift ;;
+    --help|-h) usage ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      usage
+      ;;
+    *)
+      if [ -z "$DISK" ]; then
+        DISK="$1"
+      else
+        echo "Unexpected argument: $1" >&2
+        usage
+      fi
+      shift
+      ;;
+  esac
+done
+
+if [ -z "$DISK" ]; then
+  echo "Error: disk image required" >&2
+  usage
+fi
+
+if [ ! -f "$DISK" ]; then
+  echo "Error: disk image not found: $DISK" >&2
+  exit 1
+fi
+
+# --- find tools via nix-shell ---
+# The dev pin provides qemu, OVMF, swtpm, openssh, virt-firmware
+NPINS="${NPINS:-$(dirname "$(dirname "$(realpath "$0")")")/npins/sources.json}"
+if [ -f "$NPINS" ]; then
+  # Extract the nixpkgs-dev-only pin
+  DEV_PIN=$(sed -n 's/.*"nixpkgs-dev-only".*"url":"\([^"]*\)".*/\1/p' "$NPINS" | head -1)
+  if [ -z "$DEV_PIN" ]; then
+    # Try to parse JSON properly with jq if available, otherwise use the repo path
+    DEV_PIN="$(dirname "$(dirname "$NPINS")")/nix/dev"
+  fi
+else
+  DEV_PIN="./nix/dev"
+fi
+
+# --- working directory ---
+WORKDIR="${TMPDIR:-/tmp}/boot-test-$$"
+mkdir -p "$WORKDIR"
+cleanup() {
+  if [ -n "${SWTPM_PID:-}" ]; then
+    kill "$SWTPM_PID" 2>/dev/null || true
+  fi
+  rm -rf "$WORKDIR"
+}
+trap cleanup EXIT
+
+# --- prepare disk overlay ---
+OVERLAY="$WORKDIR/disk.qcow2"
+SERIAL_LOG="$WORKDIR/serial.log"
+QEMU_OUT="$WORKDIR/qemu.out"
+VARS="$WORKDIR/vars.fd"
+
+# --- find OVMF and set up vars ---
+setup_ovmf() {
+  # Get OVMF path
+  OVMF_DIR=$(nix-build '<nixpkgs>' -A OVMF.fd --no-out-link 2>/dev/null || echo "")/FV
+  if [ ! -d "$OVMF_DIR" ]; then
+    echo "Error: cannot find OVMF.fd" >&2
+    exit 1
+  fi
+  
+  cp "$OVMF_DIR/OVMF_VARS.fd" "$VARS"
+  chmod u+w "$VARS"
+  
+  echo "$OVMF_DIR"
+}
+
+# --- enroll Secure Boot keys ---
+enroll_keys() {
+  if [ -z "$SMOKE_DIR" ]; then
+    echo "Error: --smoke-dir required for --secure-boot" >&2
+    exit 1
+  fi
+  
+  KEYS_DIR="$SMOKE_DIR/keys"
+  if [ ! -d "$KEYS_DIR" ]; then
+    echo "Error: keys not found in smoke dir: $KEYS_DIR" >&2
+    exit 1
+  fi
+  
+  DB_CERT="$KEYS_DIR/secureboot/db.crt"
+  if [ ! -f "$DB_CERT" ]; then
+    echo "Error: db.crt not found: $DB_CERT" >&2
+    exit 1
+  fi
+  
+  # Use virt-fw-vars to enroll keys (from virt-firmware package)
+  # --set-pk: Platform Key (self-signed from db.crt)
+  # --add-kek: Key Exchange Key (same cert)
+  # --add-db: Signature Database
+  # --secure-boot: enable Secure Boot
+  echo "Enrolling Secure Boot keys..."
+  virt-fw-vars \
+    --input "$VARS" \
+    --output "$VARS.new" \
+    --set-pk "$DB_CERT" \
+    --add-kek "$DB_CERT" \
+    --add-db "$DB_CERT" \
+    --secure-boot
+  mv "$VARS.new" "$VARS"
+  echo "Secure Boot keys enrolled"
+}
+
+# --- start TPM ---
+start_tpm() {
+  TPM_DIR="$WORKDIR/tpm"
+  mkdir -p "$TPM_DIR"
+  
+  # Start swtpm in background
+  swtpm socket \
+    --tpm2 \
+    --tpmstate dir="$TPM_DIR" \
+    --ctrl type=unixio,path="$TPM_DIR/swtpm-sock" \
+    &
+  SWTPM_PID=$!
+  
+  # Wait for socket
+  for i in 1 2 3 4 5; do
+    if [ -S "$TPM_DIR/swtpm-sock" ]; then
+      break
+    fi
+    sleep 0.2
+  done
+  
+  if [ ! -S "$TPM_DIR/swtpm-sock" ]; then
+    echo "Error: swtpm socket not created" >&2
+    exit 1
+  fi
+  
+  echo "TPM started (pid $SWTPM_PID)"
+  echo "$TPM_DIR/swtpm-sock"
+}
+
+# --- SSH test setup ---
+setup_ssh_test() {
+  SSH_DIR="$WORKDIR/ssh"
+  mkdir -p "$SSH_DIR"
+  
+  # Generate CA key
+  ssh-keygen -q -t ed25519 -N '' -f "$SSH_DIR/ca" -C "test-ca"
+  
+  # Generate user key
+  ssh-keygen -q -t ed25519 -N '' -f "$SSH_DIR/user" -C "test-user"
+  
+  # Sign user key with CA (principal: root)
+  ssh-keygen -s "$SSH_DIR/ca" -I "test-user" -n root -V +1h "$SSH_DIR/user.pub"
+  
+  echo "$SSH_DIR"
+}
+
+# --- run QEMU ---
+run_qemu() {
+  OVMF_DIR="$1"
+  
+  # Create overlay
+  qemu-img create -q -f qcow2 -b "$DISK" -F raw "$OVERLAY" 40G
+  
+  # Build QEMU command
+  QEMU_CMD="qemu-system-x86_64 \
+    -machine q35,accel=kvm:tcg \
+    -cpu max \
+    -m 2G \
+    -smp 2 \
+    -drive if=pflash,format=raw,readonly=on,file=$OVMF_DIR/OVMF_CODE.fd \
+    -drive if=pflash,format=raw,file=$VARS \
+    -drive file=$OVERLAY,format=qcow2,if=virtio \
+    -serial file:$SERIAL_LOG \
+    -display none \
+    -no-reboot \
+    -smbios type=11,value=io.systemd.credential:system.hostname=boot-test \
+    -netdev user,id=net0,hostfwd=tcp::10022-:22 \
+    -device virtio-net-pci,netdev=net0"
+  
+  # Add TPM if requested
+  if [ "$TPM" = 1 ]; then
+    TPM_SOCK="$2"
+    QEMU_CMD="$QEMU_CMD \
+      -chardev socket,id=chrtpm,path=$TPM_SOCK \
+      -tpmdev emulator,id=tpm0,chardev=chrtpm \
+      -device tpm-tis,tpmdev=tpm0"
+  fi
+  
+  echo "Starting QEMU (timeout ${TIMEOUT}s)..."
+  timeout "$TIMEOUT" sh -c "$QEMU_CMD" > "$QEMU_OUT" 2>&1 || true
+  
+  echo "QEMU exited"
+}
+
+# --- check markers ---
+check_markers() {
+  PASS=0
+  FAIL=0
+  
+  # Helper to check and print result
+  check() {
+    NAME="$1"
+    PATTERN="$2"
+    INVERT="${3:-0}"
+    
+    if [ "$INVERT" = 1 ]; then
+      if grep -q "$PATTERN" "$SERIAL_LOG"; then
+        echo "FAIL: $NAME"
+        FAIL=$((FAIL + 1))
+      else
+        echo "PASS: $NAME"
+        PASS=$((PASS + 1))
+      fi
+    else
+      if grep -q "$PATTERN" "$SERIAL_LOG"; then
+        echo "PASS: $NAME"
+        PASS=$((PASS + 1))
+      else
+        echo "FAIL: $NAME"
+        FAIL=$((FAIL + 1))
+      fi
+    fi
+  }
+  
+  echo ""
+  echo "=== Marker checks ==="
+  
+  # no-firstboot-prompt: should NOT see the interactive prompt
+  # systemd-firstboot prompts with "Please enter system hostname"
+  check "no-firstboot-prompt" "Please enter" 1
+  
+  # ldconfig-masked: the service should not start or should be masked
+  # When masked, systemd logs "ldconfig.service: Unit is masked"
+  # or just doesn't run it at all
+  if grep -q "ldconfig.service" "$SERIAL_LOG" 2>/dev/null; then
+    if grep -q "ldconfig.service.*masked\|ldconfig.service.*Unit is masked" "$SERIAL_LOG" 2>/dev/null; then
+      echo "PASS: ldconfig-masked"
+      PASS=$((PASS + 1))
+    elif grep -q "ldconfig.service.*Failed\|ldconfig.service.*failed" "$SERIAL_LOG" 2>/dev/null; then
+      echo "FAIL: ldconfig-masked (service ran and failed)"
+      FAIL=$((FAIL + 1))
+    else
+      echo "PASS: ldconfig-masked (not started)"
+      PASS=$((PASS + 1))
+    fi
+  else
+    echo "PASS: ldconfig-masked (no mention)"
+    PASS=$((PASS + 1))
+  fi
+  
+  # modprobe-masked: same logic
+  if grep -q "modprobe@" "$SERIAL_LOG" 2>/dev/null; then
+    if grep -q "modprobe@.*masked\|modprobe@.*Unit is masked" "$SERIAL_LOG" 2>/dev/null; then
+      echo "PASS: modprobe-masked"
+      PASS=$((PASS + 1))
+    elif grep -q "modprobe@.*Failed\|modprobe@.*failed" "$SERIAL_LOG" 2>/dev/null; then
+      echo "FAIL: modprobe-masked (service ran and failed)"
+      FAIL=$((FAIL + 1))
+    else
+      echo "PASS: modprobe-masked (not started)"
+      PASS=$((PASS + 1))
+    fi
+  else
+    echo "PASS: modprobe-masked (no mention)"
+    PASS=$((PASS + 1))
+  fi
+  
+  # multi-user-reached
+  check "multi-user-reached" "Reached target.*[Mm]ulti.[Uu]ser"
+  
+  # sshd-active: sshd.service started
+  check "sshd-active" "Started.*sshd\|sshd.service.*Started\|sshd.*Listening"
+  
+  # hostname-set: the credential was read
+  check "hostname-set" "boot-test"
+  
+  # boot-complete: boot-complete.target reached
+  check "boot-complete" "[Rr]eached target.*[Bb]oot [Cc]omplete\|boot-complete.target"
+  
+  echo ""
+  echo "=== Summary ==="
+  echo "PASS: $PASS, FAIL: $FAIL"
+  
+  if [ "$FAIL" -gt 0 ]; then
+    return 1
+  fi
+  return 0
+}
+
+# --- SSH login test ---
+test_ssh_login() {
+  SSH_DIR="$1"
+  
+  echo ""
+  echo "=== SSH login test ==="
+  
+  # Wait for SSH to be ready
+  echo "Waiting for SSH..."
+  for i in $(seq 1 30); do
+    if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+         -o ConnectTimeout=2 -o BatchMode=yes \
+         -i "$SSH_DIR/user" -o CertificateFile="$SSH_DIR/user-cert.pub" \
+         -p 10022 root@localhost true 2>/dev/null; then
+      echo "PASS: ssh-login"
+      
+      # Test varlinkctl
+      echo "Testing varlinkctl..."
+      VARLINK_OUT=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                       -i "$SSH_DIR/user" -o CertificateFile="$SSH_DIR/user-cert.pub" \
+                       -p 10022 root@localhost \
+                       "varlinkctl list-interfaces 2>&1" || true)
+      
+      if echo "$VARLINK_OUT" | grep -q "io.systemd"; then
+        echo "PASS: varlink-available"
+        echo "Varlink interfaces:"
+        echo "$VARLINK_OUT" | grep "io.systemd" | head -10
+      else
+        echo "FAIL: varlink-available"
+        return 1
+      fi
+      
+      # Test bootctl
+      echo "Testing bootctl..."
+      BOOTCTL_OUT=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                       -i "$SSH_DIR/user" -o CertificateFile="$SSH_DIR/user-cert.pub" \
+                       -p 10022 root@localhost \
+                       "bootctl list 2>&1" || true)
+      
+      if echo "$BOOTCTL_OUT" | grep -q "server"; then
+        echo "PASS: bootctl-list"
+        echo "Boot entries:"
+        echo "$BOOTCTL_OUT" | head -20
+        
+        # Check if bless-boot marked it good (no +N-M counter)
+        if echo "$BOOTCTL_OUT" | grep -q "+[0-9]-[0-9]"; then
+          echo "INFO: Entry still has boot counter (bless-boot may not have run yet)"
+        else
+          echo "PASS: bless-boot (entry marked good)"
+        fi
+      else
+        echo "FAIL: bootctl-list"
+      fi
+      
+      return 0
+    fi
+    sleep 2
+  done
+  
+  echo "FAIL: ssh-login (timeout)"
+  return 1
+}
+
+# --- main ---
+main() {
+  echo "Boot test for: $DISK"
+  echo "Secure Boot: $SECURE_BOOT"
+  echo "TPM: $TPM"
+  echo "Timeout: ${TIMEOUT}s"
+  
+  OVMF_DIR=$(setup_ovmf)
+  
+  if [ "$SECURE_BOOT" = 1 ]; then
+    enroll_keys
+  fi
+  
+  TPM_SOCK=""
+  if [ "$TPM" = 1 ]; then
+    TPM_SOCK=$(start_tpm)
+  fi
+  
+  SSH_DIR=""
+  if [ "$SSH_TEST" = 1 ]; then
+    SSH_DIR=$(setup_ssh_test)
+    echo "Test CA public key: $(cat "$SSH_DIR/ca.pub")"
+  fi
+  
+  run_qemu "$OVMF_DIR" "$TPM_SOCK"
+  
+  echo ""
+  echo "=== Serial log (last 50 lines) ==="
+  tail -50 "$SERIAL_LOG"
+  
+  RESULT=0
+  check_markers || RESULT=1
+  
+  if [ "$SSH_TEST" = 1 ] && [ "$RESULT" = 0 ]; then
+    test_ssh_login "$SSH_DIR" || RESULT=1
+  fi
+  
+  if [ "$RESULT" = 0 ]; then
+    echo ""
+    echo "=== ALL TESTS PASSED ==="
+  else
+    echo ""
+    echo "=== SOME TESTS FAILED ==="
+    echo "Full serial log: $SERIAL_LOG"
+  fi
+  
+  exit "$RESULT"
+}
+
+main

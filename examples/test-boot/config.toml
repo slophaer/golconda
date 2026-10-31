@@ -1,0 +1,18 @@
+# Test configuration for VM boot tests.
+# Uses the test CA (ca.pub in this directory) for SSH certificate login.
+# Built by packages.image-smoke-test in nix/default.nix.
+
+["/system"]
+name = "boot-test"
+version = "20261031.1"
+
+["/services/sshd"]
+port = 22
+# The test CA key: matches ca.pub in this directory. The boot test
+# signs user certificates with ca (the private key).
+trustedUserCAKeys = [
+  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIObeT/GspcDHB5vrJStdpf1XAAUMvjgOqMjW8zAMXffA golconda-boot-test-ca",
+]
+# Allow root login with a certificate whose principal is "root".
+["/services/sshd".principals]
+root = ["root"]

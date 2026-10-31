@@ -23,15 +23,19 @@ in
 // {
   inherit (common) versionToEpoch uuidOfHex hexOf;
 
-  # throwawayKeys { buildSystem; pkgs; } → derivation with the three key pairs of
-  # image/default.nix keys (Secure Boot db, verity, PCR policy), self-signed, made with openssl
-  # inside the store. For the smoke only: a production key never enters the store.
+  # throwawayKeys { buildSystem; pkgs; } → derivation with the key pairs for the smoke:
+  # Secure Boot db, verity, PCR policy (made with openssl), and an SSH user CA for the boot
+  # test (made with ssh-keygen). All self-signed, all made inside the store. For the smoke
+  # only: a production key never enters the store.
   throwawayKeys =
     { buildSystem, pkgs }:
     common.nuDerivation {
       name = "golconda-throwaway-keys";
       inherit buildSystem;
       module = "keys";
-      tools = [ pkgs.openssl ];
+      tools = [
+        pkgs.openssl
+        pkgs.openssh # ssh-keygen for the test CA
+      ];
     };
 }

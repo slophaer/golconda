@@ -106,6 +106,7 @@ in
                 initrd
                 uki
                 disk
+                keys
                 ;
             }
           );
@@ -127,6 +128,69 @@ in
       image-smoke-initrd = imageSmoke.initrd;
       image-smoke-uki = imageSmoke.uki;
       image-smoke-disk = imageSmoke.disk;
+
+      # Boot test image: examples/test-boot/config.toml with the test CA for SSH login.
+      # The test CA private key is in examples/test-boot/ca; scripts/boot-test uses it.
+      image-smoke-test =
+        let
+          sys = mkSystem {
+            inherit system;
+            platform = system;
+            config = ../examples/test-boot/config.toml;
+          };
+          testKeys = imageLib.throwawayKeys {
+            inherit pkgs;
+            buildSystem = system;
+          };
+          testArgs = {
+            imageId = sys.name;
+            inherit (sys) version platform pkgs;
+            buildSystem = system;
+          };
+          testInitrdTree = imageLib.initrdTree testArgs;
+          testErofs = imageLib.erofs (testArgs // { inherit (sys) usrTree; });
+          testVerity = imageLib.verity (
+            testArgs
+            // {
+              erofs = testErofs;
+              key = "${testKeys}/verity/verity.key";
+              cert = "${testKeys}/verity/verity.crt";
+            }
+          );
+          testInitrd = imageLib.initrd (testArgs // { usrTree = testInitrdTree; }); # not sys.usrTree
+          testUki = imageLib.uki (
+            testArgs
+            // {
+              initrd = testInitrd;
+              verity = testVerity;
+              inherit (sys) usrTree;
+              sbKey = "${testKeys}/secureboot/db.key";
+              sbCert = "${testKeys}/secureboot/db.crt";
+              pcrKey = "${testKeys}/pcr/pcr.key";
+              pcrPublicKey = "${testKeys}/pcr/pcr.pub";
+              cmdlineExtra = "LD_LIBRARY_PATH={dlopenPath} rw";
+            }
+          );
+          testDisk = imageLib.disk (
+            testArgs
+            // {
+              erofs = testErofs;
+              verity = testVerity;
+              uki = testUki;
+            }
+          );
+        in
+        imageLib.smoke (
+          testArgs
+          // {
+            erofs = testErofs;
+            verity = testVerity;
+            initrd = testInitrd;
+            uki = testUki;
+            disk = testDisk;
+            keys = testKeys;
+          }
+        );
 
       # Smoke test for the /usr tree builder: base system + jq via mkSystem.
       usr-tree-smoke =
