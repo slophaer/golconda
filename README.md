@@ -41,8 +41,10 @@ nix-shell                      # or: direnv allow
 scripts/docs serve             # the book (generates the module pages first)
 ```
 
-Start with [Principles](docs/design/principles.md), then read the design pages in order. Design
-pages say why; reference pages say what exists. Contributing: [CONTRIBUTING](CONTRIBUTING.md).
+Start with [Principles](docs/design/principles.md), then read the design pages in order; the
+[Walkthrough](docs/reference/walkthrough.md) goes from `examples/server.toml` to a booted machine.
+Design pages say why; reference pages say what exists. Contributing:
+[CONTRIBUTING](CONTRIBUTING.md).
 
 ## License
 

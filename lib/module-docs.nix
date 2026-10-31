@@ -265,6 +265,7 @@ let
 
     # Reference
 
+    - [Walkthrough](reference/walkthrough.md)
     - [Partitions and paths](reference/layout.md)
     - [Image artifacts](reference/image.md)
     - [Modules](reference/modules/README.md)
