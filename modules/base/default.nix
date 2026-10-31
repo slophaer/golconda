@@ -155,12 +155,9 @@ in
         }
       ];
 
-      # /usr/bin/sh -> bash (TODO: replace with dash once it's in repkgs)
-      shLink = {
-        path = "/usr/bin/sh";
-        target = "${p.bash}/bin/bash";
-        kind = "explicit";
-      };
+      # bash package advertises both "bash" and "sh" in its bin list,
+      # so /usr/bin/sh is created as a package link automatically.
+      # TODO: when dash is in repkgs, add it and use an explicit link.
 
       # Farm links: directories the image builder expands file by file.
       # systemd's lib/systemd/system, udev rules, sysusers.d, tmpfiles.d.
@@ -223,7 +220,7 @@ in
         "/usr/lib/systemd/system/dbus.socket" = dbusSocketUnit;
       };
 
-      links = linksToAttrs (dbusUnitLinks ++ wantsLinks ++ [ shLink ] ++ farmLinks ++ dlopenLinks);
+      links = linksToAttrs (dbusUnitLinks ++ wantsLinks ++ farmLinks ++ dlopenLinks);
 
       # The dbus user, if dbus-broker needs it. dbus-broker runs as root by
       # default on most configurations (UID 0 in the unit), but the messagebus

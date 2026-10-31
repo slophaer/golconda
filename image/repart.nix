@@ -106,7 +106,7 @@
       GrowFileSystem = true;
       FactoryReset = true;
       # Future: Encrypt = "tpm2"; for TPM2-bound LUKS
-      MakeDirectories = "/etc /var /home /root /tmp /run /srv";
+      MakeDirectories = "/etc /var /home /root /tmp /run";
     };
   };
 }
