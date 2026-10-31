@@ -276,6 +276,24 @@ in
             "systemd-timesyncd.service"
           ];
 
+      # PAM modules: Linux-PAM loads a relative module name from /usr/lib/security/, and the
+      # factory's stacks name <package>/<module>. Each package's module directory is one
+      # directory link: repkgs writes DT_NEEDED as $ORIGIN/../../../<dep>/lib/..., $ORIGIN is
+      # the directory of the path PAM opens, and only a directory link makes `..` reach the
+      # store (a file link breaks pam_unix's libcrypt; merged copies break $ORIGIN/../libpam).
+      pamLinks = [
+        {
+          path = "/usr/lib/security/linux-pam";
+          target = "${p.linux-pam}/lib/security";
+          kind = "explicit";
+        }
+        {
+          path = "/usr/lib/security/systemd";
+          target = "${p.systemd}/lib/security";
+          kind = "explicit";
+        }
+      ];
+
       # dash is /bin/sh (/bin -> usr/bin is made by the image builder).
       shLinks = [
         {
@@ -467,7 +485,7 @@ in
       };
 
       links = linksToAttrs (
-        dbusUnitLinks ++ wantsLinks ++ shLinks ++ systemdBinLinks ++ farmLinks ++ dlopenLinks
+        dbusUnitLinks ++ wantsLinks ++ shLinks ++ systemdBinLinks ++ farmLinks ++ dlopenLinks ++ pamLinks
       );
 
       # The dbus user, if dbus-broker needs it. dbus-broker runs as root by

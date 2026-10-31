@@ -203,11 +203,12 @@ only `/etc` content is here (`pam.d/sshd`, which sshd refuses to start without; 
 | `timezone`   | zone name, default `"UTC"`       | `L /etc/localtime - - - - /usr/share/zoneinfo/<timezone>`                                              |
 | `extraFiles` | attrs path under `/etc` → `file` | more seeds; a built-in path or `passwd`, `group`, `shadow`, `gshadow`, `machine-id`, `hostname` throws |
 
-Built-in seeds: `shells` (`/usr/bin/sh`, `/usr/bin/dash`), `pam.d/other` (every type `pam_deny`),
-`pam.d/sshd` (`account pam_unix`; `session pam_systemd` optional, `session pam_unix`; no `auth`
-line, so an auth request falls through to `other`), `ssl/anchors/.keep`, `ssl/blocklist/.keep`,
-`pkcs11/.keep`. Never seeded: `passwd`, `group`, `shadow` (systemd-sysusers writes them on first
-boot), `machine-id` (PID 1) and `hostname` (PID 1 sets it from the bootstrap credential).
+Built-in seeds: `shells` (`/usr/bin/sh`, `/usr/bin/dash`), `pam.d/other` (every type
+`linux-pam/pam_deny.so`), `pam.d/sshd` (`account linux-pam/pam_unix.so`;
+`session systemd/pam_systemd.so` optional, `session linux-pam/pam_unix.so`; no `auth` line, so an
+auth request falls through to `other`), `ssl/anchors/.keep`, `ssl/blocklist/.keep`, `pkcs11/.keep`.
+Never seeded: `passwd`, `group`, `shadow` (systemd-sysusers writes them on first boot), `machine-id`
+(PID 1) and `hostname` (PID 1 sets it from the bootstrap credential).
 
 tmpfiles: one `L /etc/<path> - - - - /usr/share/factory/etc/<path>` line per factory file (`L`, not
 `L+`: a regular file an admin put at that path wins and stays), `localtime` and `os-release` →
