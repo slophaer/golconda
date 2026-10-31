@@ -178,6 +178,12 @@ in
         after = [
           "network.target"
           (v.unitName hostkeyVar)
+          # PCR 11 holds enter-initrd:leave-initrd:sysinit from this barrier on; a
+          # service with default dependencies (after basic.target) starts later, and
+          # sshd must not load the sealed host key before the phase its .pcrsig
+          # signs (image/uki.nix, systemd-pcrphase.service(8)). Stated, not left to
+          # basic.target's ordering.
+          "systemd-pcrphase-sysinit.service"
         ];
         wants = [ (v.unitName hostkeyVar) ];
       };
