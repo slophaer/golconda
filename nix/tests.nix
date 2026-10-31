@@ -19,10 +19,16 @@ let
     ;
 
   f = import ../default.nix;
-  types = (import sources.adios).adios.types;
+  adios = import sources.adios;
+  types = adios.adios.types;
   a = import ../modules/lib/app.nix { inherit types; };
   s = import ../modules/lib/service.nix { inherit types; };
   v = import ../modules/lib/var.nix { inherit types; };
+  schemaLib = import ../lib/schema.nix { };
+  configLib = import ../lib/config.nix {
+    tree = f.modules { };
+    inherit (f) modules;
+  };
   inherit (import ./packages.nix { inherit sources platform; }) pkgs;
 
   # OpenSSH is not in repkgs yet; any derivation stands in for the type check
@@ -558,6 +564,102 @@ let
           script = "";
         }
       )
+    ))
+
+    # 5. JSON Schema export
+    (check "schema: exports JSON Schema 2020-12" (
+      let
+        schema = schemaLib.toJsonSchema (f.modules { });
+      in
+      schema."$schema" == "https://json-schema.org/draft/2020-12/schema"
+      && schema.type == "object"
+      && schema ? properties
+    ))
+    (check "schema: sshd module appears with its options" (
+      let
+        schema = schemaLib.toJsonSchema (f.modules { });
+      in
+      schema.properties ? "/services/sshd"
+      && schema.properties."/services/sshd".properties ? port
+      && schema.properties."/services/sshd".properties ? authorizedKeys
+      && schema.properties."/services/sshd".properties ? principals
+    ))
+    (check "schema: principals is object of arrays of strings" (
+      let
+        schema = schemaLib.toJsonSchema (f.modules { });
+        principals = schema.properties."/services/sshd".properties.principals;
+      in
+      principals.type == "object"
+      && principals.additionalProperties.type == "array"
+      && principals.additionalProperties.items.type == "string"
+    ))
+    (check "schema: port has default 22" (
+      let
+        schema = schemaLib.toJsonSchema (f.modules { });
+        port = schema.properties."/services/sshd".properties.port;
+      in
+      port.type == "integer" && port.default == 22
+    ))
+    (check "schema: fixed sshd_config lines are not options" (
+      let
+        schema = schemaLib.toJsonSchema (f.modules { });
+      in
+      !(schema.properties."/services/sshd".properties ? PasswordAuthentication)
+      && !(schema.properties."/services/sshd".properties ? UsePAM)
+    ))
+    (check "schema: system module has name, version, fragments" (
+      let
+        schema = schemaLib.toJsonSchema (f.modules { });
+      in
+      schema.properties ? "/system"
+      && schema.properties."/system".properties ? name
+      && schema.properties."/system".properties ? version
+      && schema.properties."/system".properties ? fragments
+    ))
+    (check "schema: parseTypeName handles nested generics" (
+      let
+        p = schemaLib.parseTypeName "attrsOf<listOf<string>>";
+      in
+      p.base == "attrsOf" && p.args == [ "listOf<string>" ]
+    ))
+    (check "schema: parseTypeName handles union" (
+      let
+        p = schemaLib.parseTypeName "union<string,int>";
+      in
+      p.base == "union"
+      &&
+        p.args == [
+          "string"
+          "int"
+        ]
+    ))
+    (check "schema: derivation maps to package marker" (
+      let
+        s = schemaLib.typeToSchemaByName "derivation";
+      in
+      s.type == "string" && s."x-golconda" == "package"
+    ))
+
+    # 6. TOML config loader
+    (check "config: validPaths includes sshd" (
+      builtins.elem "/services/sshd" configLib.validPaths && builtins.elem "/system" configLib.validPaths
+    ))
+    (check "config: loadConfig parses server.toml" (
+      let
+        cfg = configLib.loadConfig ../examples/server.toml;
+      in
+      cfg.options."/system".name == "server" && cfg.options."/services/sshd".port == 22
+    ))
+    (check "config: loadConfig rejects unknown table" (
+      !(tryEval (configLib.loadConfig ../examples/bad.toml)).success
+    ))
+    (check "config: loadAndApply applies options to tree" (
+      let
+        appliedTree = configLib.loadAndApply ../examples/server.toml;
+        # Check that the sshd module can be called and returns a fragment
+        sshdFrag = appliedTree.modules.services.modules.sshd { };
+      in
+      sshdFrag ? units && sshdFrag ? files
     ))
 
     # 5. wrapApp and renderWrapped

@@ -3,6 +3,7 @@
 { sources, self }:
 let
   dev = import ./dev { inherit sources; };
+  adios = import sources.adios;
 in
 {
   packages =
@@ -35,5 +36,26 @@ in
     };
 
   # The adios module tree (modules/). `modules { options = {...}; }` evaluates it.
-  modules = import ../modules { inherit (import sources.adios) adios; };
+  modules = import ../modules { inherit (adios) adios; };
+
+  # JSON Schema 2020-12 export of the module tree. Not per-system: the schema
+  # depends only on the module definitions, not on any packages.
+  #   iets eval --json -E '(import ./default.nix).schema'
+  schema =
+    let
+      schemaLib = import ../lib/schema.nix { };
+      tree = import ../modules { inherit (adios) adios; };
+    in
+    schemaLib.toJsonSchema (tree { });
+
+  # TOML configuration loader. Returns { loadConfig; loadAndApply; validPaths; }.
+  #   (import ./default.nix).configLib.loadConfig ./config.toml
+  configLib =
+    let
+      mods = import ../modules { inherit (adios) adios; };
+    in
+    import ../lib/config.nix {
+      tree = mods { };
+      modules = mods;
+    };
 }

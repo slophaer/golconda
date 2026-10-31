@@ -46,4 +46,14 @@ in
     fi
     touch $out
   '';
+
+  # schema export produces valid JSON; evaluated at check eval time, not build time,
+  # because the sandbox cannot fetch the sources. The schema JSON is written to $out.
+  schema =
+    let
+      schemaLib = import ../lib/schema.nix { };
+      tree = import ../modules { inherit (import sources.adios) adios; };
+      schemaJson = builtins.toJSON (schemaLib.toJsonSchema (tree { }));
+    in
+    pkgs.writeText "schema.json" schemaJson;
 }
