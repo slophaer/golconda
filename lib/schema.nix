@@ -93,11 +93,7 @@ let
       type = "object";
       properties = {
         units = {
-          type = "object";
-          additionalProperties = {
-            type = "string";
-          };
-          description = "Unit name -> unit file text.";
+          "$ref" = "#/$defs/units";
         };
         files = {
           type = "object";
@@ -192,6 +188,29 @@ let
       description = "Four octal digits, like 0644 or 0755.";
       type = "string";
       pattern = "^[0-7]{4}$";
+    };
+
+    unitName = {
+      description = "A unit file name: a stem of letters, digits, : _ . @ - and one of .service .target .socket .timer .path .mount .slice.";
+      type = "string";
+      pattern = "^[A-Za-z0-9:_.@\\-]+\\.(service|target|socket|timer|path|mount|slice)$";
+    };
+
+    unitText = {
+      description = "Unit file text with at least one section header line, such as [Unit] or [Service].";
+      type = "string";
+      pattern = "(^|\n)\\[[A-Za-z]+\\](\n|$)";
+    };
+
+    units = {
+      description = "Unit name -> unit file text, installed to /usr/lib/systemd/system/<name>; a user unit is a file under /usr/lib/systemd/user instead.";
+      type = "object";
+      propertyNames = {
+        "$ref" = "#/$defs/unitName";
+      };
+      additionalProperties = {
+        "$ref" = "#/$defs/unitText";
+      };
     };
 
     link = {
@@ -317,7 +336,7 @@ let
 
     # modules/lib/service.nix
     service = {
-      description = "A service: an app plus what only a unit has (credentials, state, user, sandbox, ordering).";
+      description = "A service: an app plus what only a unit has (scope, credentials, state, user, sandbox, ordering). `user` is required for scope system and refused for scope user, which also refuses credentials.";
       type = "object";
       properties = {
         name = {
@@ -325,6 +344,9 @@ let
         };
         app = {
           "$ref" = "#/$defs/app";
+        };
+        scope = {
+          "$ref" = "#/$defs/serviceScope";
         };
         extraArgv = {
           type = "array";
@@ -388,8 +410,15 @@ let
       required = [
         "name"
         "app"
-        "user"
         "sandbox"
+      ];
+    };
+
+    serviceScope = {
+      description = "Which manager runs the unit: system (PID 1, /usr/lib/systemd/system) or user (systemd --user, /usr/lib/systemd/user; default WantedBy=default.target).";
+      enum = [
+        "system"
+        "user"
       ];
     };
 

@@ -23,33 +23,39 @@ committed; build the book with `scripts/docs`.
 
 Plain files that modules import. The directory has no `default.nix`, so adios does not load it.
 
-| file               | exports                                                                                                                                                       |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fragment.nix`     | `fragment`: `{ units; files; sysusers; tmpfiles; packages; links; farm; dlopen }`, every field optional; `file`, `mode`, `link`                               |
-| `merge.nix`        | `merge [ fragment… ] → { ...; links; farmDirs }`: unions attrs, concatenates lists; a duplicate key or path throws; every file comes out as `{ text; mode; }` |
-| `app.nix`          | `app`, `argv`, `files`, `perMachineMarkers`, `envOp`, `credentialRef`, `isCredentialRef`, `file`, `filesPlaceholder`, `exe`                                   |
-| `service.nix`      | `service`, `render`, `renderWrapped`, `wrapApp`, `sandbox`, `sandboxLines`, `killMode`, `credential`, `credentialArg`                                         |
-| `var.nix`          | `var`, `render`, `adminVar`, `admin`, `unitName`, `credentialId`, `stateDir`                                                                                  |
-| `golconda-var-run` | POSIX sh runner for var units                                                                                                                                 |
+| file               | exports                                                                                                                                                                          |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fragment.nix`     | `fragment`: `{ units; files; sysusers; tmpfiles; packages; links; farm; dlopen }`, every field optional; `units`, `unitName`, `unitText`, `unitSuffixes`, `file`, `mode`, `link` |
+| `merge.nix`        | `merge [ fragment… ] → { ...; links; farmDirs }`: unions attrs, concatenates lists; a duplicate key or path throws; every file comes out as `{ text; mode; }`                    |
+| `app.nix`          | `app`, `argv`, `files`, `perMachineMarkers`, `envOp`, `credentialRef`, `isCredentialRef`, `file`, `filesPlaceholder`, `exe`                                                      |
+| `service.nix`      | `service`, `render`, `renderWrapped`, `wrapApp`, `sandbox`, `sandboxLines`, `killMode`, `scope`, `credential`, `credentialArg`                                                   |
+| `var.nix`          | `var`, `render`, `adminVar`, `admin`, `unitName`, `credentialId`, `stateDir`                                                                                                     |
+| `golconda-var-run` | POSIX sh runner for var units                                                                                                                                                    |
 
 ### `fragment`
 
 The return type of every module.
 
-| field      | type                       | installed to                                           |
-| ---------- | -------------------------- | ------------------------------------------------------ |
-| `units`    | attrs name → text          | `/usr/lib/systemd/system/<name>`                       |
-| `files`    | attrs path → file          | the path (must start with `/usr`)                      |
-| `sysusers` | list of string             | `/usr/lib/sysusers.d/` lines                           |
-| `tmpfiles` | list of string             | `/usr/lib/tmpfiles.d/` lines                           |
-| `packages` | list of derivation         | `/usr/nix/store` closure, `/usr/bin`                   |
-| `links`    | list of `{ path; target }` | symlinks under `/usr` (including `.wants`)             |
-| `farm`     | attrs pkgName → [ subdir ] | subdirs linked file by file (e.g., `lib/udev/rules.d`) |
-| `dlopen`   | attrs pkgName → [ soname ] | sonames linked into `/usr/lib` for dlopen              |
+| field      | type                          | installed to                                           |
+| ---------- | ----------------------------- | ------------------------------------------------------ |
+| `units`    | attrs `unitName` → `unitText` | `/usr/lib/systemd/system/<name>`                       |
+| `files`    | attrs path → file             | the path (must start with `/usr`)                      |
+| `sysusers` | list of string                | `/usr/lib/sysusers.d/` lines                           |
+| `tmpfiles` | list of string                | `/usr/lib/tmpfiles.d/` lines                           |
+| `packages` | list of derivation            | `/usr/nix/store` closure, `/usr/bin`                   |
+| `links`    | list of `{ path; target }`    | symlinks under `/usr` (including `.wants`)             |
+| `farm`     | attrs pkgName → [ subdir ]    | subdirs linked file by file (e.g., `lib/udev/rules.d`) |
+| `dlopen`   | attrs pkgName → [ soname ]    | sonames linked into `/usr/lib` for dlopen              |
 
 A `file` is either the text (installed with mode `0644`) or `{ text; mode ? "0644"; }`, where `mode`
 is four octal digits (`"0755"` for an executable). The composer's output always has the record
 shape: `files.<path> = { text; mode; }`. An `app`'s files are text only.
+
+A `unitName` is a stem of letters, digits, `: _ . @ -` and one of `.service`, `.target`, `.socket`,
+`.timer`, `.path`, `.mount`, `.slice` (`unitSuffixes`); a `unitText` is a string with at least one
+section header line (`[Unit]`, `[Service]`, ...). An empty text, a text without a header, or a name
+with another suffix is a type error that names the unit. A user unit is not in `units`: the renderer
+writes it as a file under `/usr/lib/systemd/user/`.
 
 ### `app`
 
@@ -71,20 +77,21 @@ names the file: an app file holds no per-machine value (`perMachineMarkers` in `
 
 A service is an `app` plus what only a unit has. `render service` returns a fragment.
 
-| field              | type                                                                  | rendered as                                                                    |
-| ------------------ | --------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `name`             | unit name stem                                                        | `units."<name>.service"`, `/usr/lib/<name>/` for files                         |
-| `app`              | `app`                                                                 | `ExecStart=`, `Environment=`, `files`, `packages`                              |
-| `extraArgv`        | list of string or `{ credential = "n"; prefix ? ""; }`, default `[ ]` | after `app.argv`; a ref renders as `<prefix>%d/n` and must be in `credentials` |
-| `credentials`      | attrs name → credstore id, default `{ }`                              | `LoadCredentialEncrypted=name:id`                                              |
-| `state`            | list of string, default `[ ]`                                         | `StateDirectory=`                                                              |
-| `runtimeDirectory` | word, optional                                                        | `RuntimeDirectory=`                                                            |
-| `killMode`         | `"control-group"`, `"process"` or `"mixed"`, optional                 | `KillMode=`; absent means systemd's default (`control-group`)                  |
-| `user`             | `"dynamic"`, `"root"` or a sysusers line                              | `DynamicUser=yes`, `User=root`, or `User=` plus sysusers                       |
-| `sandbox`          | `"strict"`, `"default"` or `"trusted"`                                | hardening directives from `sandboxLines`                                       |
-| `after`            | list of unit names, default `[ ]`                                     | `After=`                                                                       |
-| `wants`            | list of unit names, default `[ ]`                                     | `Wants=`                                                                       |
-| `wantedBy`         | list of target names, default `[ "multi-user.target" ]`               | `[Install] WantedBy=` and static `.wants` links                                |
+| field              | type                                                                                     | rendered as                                                                      |
+| ------------------ | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `name`             | unit name stem                                                                           | `units."<name>.service"`, `/usr/lib/<name>/` for files                           |
+| `scope`            | `"system"` or `"user"`, default `"system"`                                               | which manager: `units` or a file under `/usr/lib/systemd/user/`                  |
+| `app`              | `app`                                                                                    | `ExecStart=`, `Environment=`, `files`, `packages`                                |
+| `extraArgv`        | list of string or `{ credential = "n"; prefix ? ""; }`, default `[ ]`                    | after `app.argv`; a ref renders as `<prefix>%d/n` and must be in `credentials`   |
+| `credentials`      | attrs name → credstore id, default `{ }`                                                 | `LoadCredentialEncrypted=name:id`; refused for scope `user`                      |
+| `state`            | list of string, default `[ ]`                                                            | `StateDirectory=`                                                                |
+| `runtimeDirectory` | word, optional                                                                           | `RuntimeDirectory=`                                                              |
+| `killMode`         | `"control-group"`, `"process"` or `"mixed"`, optional                                    | `KillMode=`; absent means systemd's default (`control-group`)                    |
+| `user`             | `"dynamic"`, `"root"` or a sysusers line; required for scope `system`                    | `DynamicUser=yes`, `User=root`, or `User=` plus sysusers; refused for `user`     |
+| `sandbox`          | `"strict"`, `"default"` or `"trusted"`                                                   | hardening directives from `sandboxLines`                                         |
+| `after`            | list of unit names, default `[ ]`                                                        | `After=`                                                                         |
+| `wants`            | list of unit names, default `[ ]`                                                        | `Wants=`                                                                         |
+| `wantedBy`         | list of target names, default `[ "multi-user.target" ]` (`user`: `[ "default.target" ]`) | `[Install] WantedBy=` and static `.wants` links under the scope's unit directory |
 
 Arguments are escaped (`%` → `%%`, `$` → `$$`). `credential "n"` builds a plain ref;
 `credentialArg "RevokedKeys=" "n"` builds one with a prefix, for programs that take a path as
@@ -109,7 +116,9 @@ with `{files}`, as sshd does for `AuthorizedKeysFile`.
 - `packages` contains the wrapped derivation, not the original package.
 
 Both renderers write the same unit apart from `ExecStart=` and `Environment=`, including the
-`.wants` links. Use `render svc` when no `wrap` is at hand.
+`.wants` links, and both honour `scope`: a user service's unit is
+`files."/usr/lib/systemd/user/<name>.service"` with its `.wants` links beside it, no `User=` or
+`DynamicUser=` line and no sysusers entry. Use `render svc` when no `wrap` is at hand.
 
 ### The `{files}` placeholder
 

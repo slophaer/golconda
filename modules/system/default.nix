@@ -5,7 +5,10 @@
 #! so a module that returns several fragments applies the same rule.
 #!
 #! Output: `{ name; version; units; files; sysusers; tmpfiles; packages }`,
-#! every file as `{ text; mode; }`.
+#! every file as `{ text; mode; }`. `units` holds the system manager's units
+#! (typed names, `/usr/lib/systemd/system/<name>`); a user unit
+#! (`service.scope = "user"`) is a file under `/usr/lib/systemd/user/`, so one
+#! duplicate check covers both scopes, and its `.wants` links are explicit links.
 { types, ... }:
 let
   fragmentT = (import ../lib/fragment.nix { inherit types; }).fragment;
