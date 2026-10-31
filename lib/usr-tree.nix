@@ -9,7 +9,8 @@
 #   lib/os-release
 #   files from system.files (paths are /usr/...; the /usr prefix is stripped)
 #
-# The tree is reproducible: every file and directory gets a fixed mtime derived from the version.
+# The tree is reproducible. mtimes cannot live in a store path (Nix sets them to 1); the
+# version-derived timestamp is passed on for mkfs.erofs -T, see image/erofs.nix.
 # Build-time verification: no absolute symlinks, dlopen sonames resolve, no setuid/setgid.
 #
 # See: docs/design/layout.md, docs/reference/image.md

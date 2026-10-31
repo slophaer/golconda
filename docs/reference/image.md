@@ -57,8 +57,9 @@ complete `/usr` directory:
 
 ### Reproducibility
 
-All file and directory mtimes are set to a timestamp derived from the image version (`YYYYMMDD.N` →
-epoch seconds). This ensures `ConditionNeedsUpdate=` fires exactly once per version.
+A Nix store path carries no mtimes (Nix sets them to 1), so the tree itself has none. The image step
+applies the timestamp derived from the version (`YYYYMMDD.N` → epoch seconds) with `mkfs.erofs -T`,
+which is what makes `ConditionNeedsUpdate=` fire exactly once per version.
 
 ## Build requirements
 
