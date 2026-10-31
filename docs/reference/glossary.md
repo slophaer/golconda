@@ -13,12 +13,15 @@
   owner and sha256 for each factory file. Used by `etc-sync` *(planned)* to detect admin changes.
 - **farm package**: a package compiled with an absolute `/usr` prefix (systemd, dbus-broker,
   openssh). Reached through the symlink farm; the `prefix` field in repkgs marks them.
-- **fragment**: the typed value a module returns: `{ units; files; sysusers; tmpfiles; packages }`.
-  See [Modules](../design/modules.md).
+- **fragment**: the typed value a module returns:
+  `{ units; files; sysusers; tmpfiles; packages; links }`. See [Modules](../design/modules.md).
 - **PCR**: a TPM Platform Configuration Register; PCR 11 holds the UKI measurements.
 - **relocatable**: an output that refers to other store paths only relative to itself.
+- **link**: one symlink of `/usr` in a fragment's `links` map: `{ target; kind; }` under its path;
+  the kind (`package`, `farm`, `dlopen`, `explicit`) tells the image builder what to do with it.
 - **service**: a typed value in `modules/lib/service.nix` that embeds an `app` and adds credentials,
-  state, user, sandbox, and ordering. `render service` returns a fragment with a systemd unit.
+  state, user, sandbox, and ordering. `render service` returns a fragment with a systemd unit whose
+  `ExecStart=` is the program and its arguments; the app's files go to `/usr/lib/<name>/`.
 - **slot**: one of the two `/usr` partitions in the A/B layout. Updates write to the inactive slot.
 - **symlink farm**: `/usr/bin` and friends as links into `/usr/nix/store`.
 - **UKI**: Unified Kernel Image, one signed PE file with stub, kernel, initrd and cmdline.

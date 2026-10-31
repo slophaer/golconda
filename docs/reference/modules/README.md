@@ -7,14 +7,13 @@ The [generated module pages](generated/index.md) cover each module's options and
 
 ## Modules
 
-| path             | role                                                                                                             |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `/system`        | the composer: `name`, `version`, `fragments` → `{ units; files; sysusers; tmpfiles; packages; links; farmDirs }` |
-| `/pkgs`          | the repkgs set, passed once as `set`; returns `{ set; pkgs; wrap }` to the modules that declare it as an input   |
-| `/factory`       | the `/etc` seed under `/usr/share/factory/etc`, its manifest and first-boot stamp, the sshd user (below)         |
-| `/vars`          | installs `/usr/lib/golconda/golconda-var-run` (mode `0755`); add once when any var is used                       |
-| `/wrap`          | wraps a package from data: `package`, `argv`, `env`, `files` → the launcher derivation (`wrapApp` over `/pkgs`)  |
-| `/services/sshd` | OpenSSH as a wrapped service with an ed25519 host key var; keys and certificates only (options below)            |
+| path             | role                                                                                                                       |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `/system`        | the composer: `name`, `version`, `fragments` → `{ units; files; sysusers; tmpfiles; packages; links }`                     |
+| `/pkgs`          | the repkgs set, passed once as `set`; returns `{ set; pkgs }` to the modules that declare it as an input                   |
+| `/factory`       | the `/etc` seed under `/usr/share/factory/etc`, its manifest and first-boot stamp, the sshd user (below)                   |
+| `/vars`          | installs `/usr/lib/golconda/golconda-var-run` (mode `0755`); add once when any var is used                                 |
+| `/services/sshd` | OpenSSH as a service with its configuration under `/usr/lib/sshd/` and an ed25519 host key var; keys and certificates only |
 
 The option tables of each module are [generated from the schema](generated/index.md) and are not
 committed; build the book with `scripts/docs`.
@@ -23,29 +22,34 @@ committed; build the book with `scripts/docs`.
 
 Plain files that modules import. The directory has no `default.nix`, so adios does not load it.
 
-| file               | exports                                                                                                                                                                          |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fragment.nix`     | `fragment`: `{ units; files; sysusers; tmpfiles; packages; links; farm; dlopen }`, every field optional; `units`, `unitName`, `unitText`, `unitSuffixes`, `file`, `mode`, `link` |
-| `merge.nix`        | `merge [ fragment… ] → { ...; links; farmDirs }`: unions attrs, concatenates lists; a duplicate key or path throws; every file comes out as `{ text; mode; }`                    |
-| `app.nix`          | `app`, `argv`, `files`, `perMachineMarkers`, `envOp`, `credentialRef`, `isCredentialRef`, `file`, `filesPlaceholder`, `exe`                                                      |
-| `service.nix`      | `service`, `render`, `renderWrapped`, `wrapApp`, `sandbox`, `sandboxLines`, `killMode`, `scope`, `credential`, `credentialArg`                                                   |
-| `var.nix`          | `var`, `render`, `adminVar`, `admin`, `unitName`, `credentialId`, `stateDir`                                                                                                     |
-| `golconda-var-run` | POSIX sh runner for var units                                                                                                                                                    |
+| file               | exports                                                                                                                                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fragment.nix`     | `fragment`: `{ units; files; sysusers; tmpfiles; packages; links }`, every field optional, no other field; `units`, `unitName`, `unitText`, `unitSuffixes`, `file`, `mode`, `links`, `link`, `linkKind` |
+| `merge.nix`        | `merge [ fragment… ] → { units; files; sysusers; tmpfiles; packages; links }`: unions attrs, concatenates lists; a duplicate key or path throws; `linkSources`, `duplicateLink` expose the link check   |
+| `app.nix`          | `app`, `argv`, `files`, `perMachineMarkers`, `envOp`, `credentialRef`, `isCredentialRef`, `binName`, `exe`                                                                                              |
+| `service.nix`      | `service`, `render`, `filesDir`, `sandbox`, `sandboxLines`, `killMode`, `scope`, `credential`, `credentialArg`                                                                                          |
+| `var.nix`          | `var`, `render`, `adminVar`, `admin`, `unitName`, `credentialId`, `stateDir`                                                                                                                            |
+| `golconda-var-run` | POSIX sh runner for var units                                                                                                                                                                           |
 
 ### `fragment`
 
 The return type of every module.
 
-| field      | type                          | installed to                                           |
-| ---------- | ----------------------------- | ------------------------------------------------------ |
-| `units`    | attrs `unitName` → `unitText` | `/usr/lib/systemd/system/<name>`                       |
-| `files`    | attrs path → file             | the path (must start with `/usr`)                      |
-| `sysusers` | list of string                | `/usr/lib/sysusers.d/` lines                           |
-| `tmpfiles` | list of string                | `/usr/lib/tmpfiles.d/` lines                           |
-| `packages` | list of derivation            | `/usr/nix/store` closure, `/usr/bin`                   |
-| `links`    | list of `{ path; target }`    | symlinks under `/usr` (including `.wants`)             |
-| `farm`     | attrs pkgName → [ subdir ]    | subdirs linked file by file (e.g., `lib/udev/rules.d`) |
-| `dlopen`   | attrs pkgName → [ soname ]    | sonames linked into `/usr/lib` for dlopen              |
+| field      | type                                         | installed to                                                                  |
+| ---------- | -------------------------------------------- | ----------------------------------------------------------------------------- |
+| `units`    | attrs `unitName` → `unitText`                | `/usr/lib/systemd/system/<name>`                                              |
+| `files`    | attrs path → file                            | the path (must start with `/usr`)                                             |
+| `sysusers` | list of string                               | `/usr/lib/sysusers.d/` lines                                                  |
+| `tmpfiles` | list of string                               | `/usr/lib/tmpfiles.d/` lines                                                  |
+| `packages` | list of derivation                           | `/usr/nix/store` closure; every name in `bin` becomes `/usr/bin/<name>`       |
+| `links`    | attrs path under `/usr` → `{ target; kind }` | the other symlinks of `/usr`: `.wants`, directories to expand, dlopen sonames |
+
+A `link` is `{ target; kind; }`; its path is the key. `kind` is one of `package` (`/usr/bin/<name>`
+from a `bin` list; the composer derives these, a fragment rarely writes one), `farm` (the target is
+a directory the image builder links file by file: `lib/udev/rules.d` of a package built with
+`prefix = "/usr"`), `dlopen` (a soname the builder checks resolves) or `explicit` (anything else; a
+`.wants` link has a relative target). A path outside `/usr/`, a missing `target` or `kind`, or an
+unknown kind is a type error that names the path. The fragment refuses any other field.
 
 A `file` is either the text (installed with mode `0644`) or `{ text; mode ? "0644"; }`, where `mode`
 is four octal digits (`"0755"` for an executable). The composer's output always has the record
@@ -61,28 +65,31 @@ writes it as a file under `/usr/lib/systemd/user/`.
 
 What a program needs to run, with nothing systemd-specific. Embedded in `service`.
 
-| field     | type                                                                | meaning                                                          |
-| --------- | ------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `package` | derivation                                                          | the package; its `bin` list names its executables                |
-| `program` | string, default the first `bin` entry                               | the executable; must be in `bin` when the package declares it    |
-| `argv`    | list of string, default `[ ]`                                       | arguments after the program; `{files}` expands to the files path |
-| `env`     | attrs of one-key `{ set \| default \| prepend \| append \| unset }` | environment operations                                           |
-| `files`   | attrs name → text, default `{ }`                                    | files installed to `/usr/lib/<service>/<name>`                   |
+| field     | type                                                                  | meaning                                                                                         |
+| --------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `package` | derivation                                                            | the package; its `bin` list names its executables                                               |
+| `program` | string, default the first `bin` entry                                 | the executable; must be in `bin` when the package declares it                                   |
+| `argv`    | list of string or `{ credential = "n"; prefix ? ""; }`, default `[ ]` | arguments after the program; a ref renders as `<prefix>%d/n` and must be in `credentials`       |
+| `env`     | attrs of one-key `{ set \| default \| prepend \| append \| unset }`   | environment operations, `Environment=` lines                                                    |
+| `files`   | attrs name → text, default `{ }`                                      | files installed to `/usr/lib/<service>/<name>`; a name may hold a directory (`principals/root`) |
 
-A `{ credential = "n"; }` value in `argv` is a type error: an app runs outside systemd. A file text
-that contains `%d/`, `$CREDENTIALS_DIRECTORY`, `-----BEGIN` or `PRIVATE KEY` is a type error that
-names the file: an app file holds no per-machine value (`perMachineMarkers` in `app.nix`).
+An argument with a newline is a type error (it would end the `ExecStart=` line). A file text that
+contains `%d/`, `$CREDENTIALS_DIRECTORY`, `/etc/credstore`, `-----BEGIN` or `PRIVATE KEY` is a type
+error that names the file: an app file holds no per-machine value (`perMachineMarkers` in
+`app.nix`); a secret is a credential, referenced from `argv`. An unknown field is a type error.
 
 ### `service`
 
-A service is an `app` plus what only a unit has. `render service` returns a fragment.
+A service is an `app` plus what only a unit has. `render service` returns a fragment: the unit with
+`ExecStart=/usr/bin/<program> <argv…>`, the app's files under `/usr/lib/<name>/` (`filesDir name`),
+the package, and the `.wants` links. A module writes the same `/usr/lib/<name>/` paths into `argv`
+that the renderer writes the files to; `systemctl cat` shows the whole command.
 
 | field              | type                                                                                     | rendered as                                                                      |
 | ------------------ | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | `name`             | unit name stem                                                                           | `units."<name>.service"`, `/usr/lib/<name>/` for files                           |
 | `scope`            | `"system"` or `"user"`, default `"system"`                                               | which manager: `units` or a file under `/usr/lib/systemd/user/`                  |
 | `app`              | `app`                                                                                    | `ExecStart=`, `Environment=`, `files`, `packages`                                |
-| `extraArgv`        | list of string or `{ credential = "n"; prefix ? ""; }`, default `[ ]`                    | after `app.argv`; a ref renders as `<prefix>%d/n` and must be in `credentials`   |
 | `credentials`      | attrs name → credstore id, default `{ }`                                                 | `LoadCredentialEncrypted=name:id`; refused for scope `user`                      |
 | `state`            | list of string, default `[ ]`                                                            | `StateDirectory=`                                                                |
 | `runtimeDirectory` | word, optional                                                                           | `RuntimeDirectory=`                                                              |
@@ -93,91 +100,40 @@ A service is an `app` plus what only a unit has. `render service` returns a frag
 | `wants`            | list of unit names, default `[ ]`                                                        | `Wants=`                                                                         |
 | `wantedBy`         | list of target names, default `[ "multi-user.target" ]` (`user`: `[ "default.target" ]`) | `[Install] WantedBy=` and static `.wants` links under the scope's unit directory |
 
-Arguments are escaped (`%` → `%%`, `$` → `$$`). `credential "n"` builds a plain ref;
-`credentialArg "RevokedKeys=" "n"` builds one with a prefix, for programs that take a path as
-`-o Option=<path>`. A prefix is one word of letters, digits and `_ = : / . , + -`.
-
-### `wrapApp` and `renderWrapped`
-
-`wrapApp wrap app` creates a wrapped derivation from an `app` record. `wrap` is repkgs' `set.wrap`
-function, passed by the caller. The wrapped output is a relocatable package: its `bin/<exe>` is a
-launcher that executes the original binary with the app's arguments and environment. Config files
-live in `share/wrap/<pkgname>/` and are referenced via the `{files}` placeholder. The result
-declares `bin = [ program ]` and `wraps = package`, so the farm links `/usr/bin/<program>` to the
-launcher and nothing else of the wrapped output (repkgs wraps every executable with the same argv).
-A file's text cannot name the output it is in: a directive that names a sibling file goes on `argv`
-with `{files}`, as sshd does for `AuthorizedKeysFile`.
-
-`renderWrapped wrap svc` renders a service using the wrapped binary:
-
-- `ExecStart=` is the wrapped binary plus `extraArgv` only; `argv`, `env` and `files` are in the
-  launch record.
-- No files are written to `/usr/lib/<name>/`; they are in the wrapped output.
-- `packages` contains the wrapped derivation, not the original package.
-
-Both renderers write the same unit apart from `ExecStart=` and `Environment=`, including the
-`.wants` links, and both honour `scope`: a user service's unit is
-`files."/usr/lib/systemd/user/<name>.service"` with its `.wants` links beside it, no `User=` or
-`DynamicUser=` line and no sysusers entry. Use `render svc` when no `wrap` is at hand.
-
-### The `{files}` placeholder
-
-`file "name"` expands to `{files}/name`. Each renderer expands `{files}` to where it puts the app's
-files:
-
-| renderer        | `{files}` expands to          |
-| --------------- | ----------------------------- |
-| `render`        | `/usr/lib/<service>`          |
-| `renderWrapped` | `{root}/share/wrap/<pkgname>` |
-
-`{root}` is a launch placeholder expanded by repkgs' `launch` at run time. Config files live in ONE
-place: the wrapped output when using `renderWrapped`, or `/usr/lib/<name>/` when using `render`.
+Arguments are escaped (`%` → `%%`, `$` → `$$`; a literal `%u` for sshd is `%%u` in the unit).
+`credential "n"` builds a plain ref; `credentialArg "RevokedKeys=" "n"` builds one with a prefix,
+for programs that take a path as `-o Option=<path>`. A prefix is one word of letters, digits and
+`_ = : / . , + -`. A ref that names a credential the service does not declare throws. A user
+service's unit is `files."/usr/lib/systemd/user/<name>.service"` with its `.wants` links beside it,
+no `User=` or `DynamicUser=` line and no sysusers entry; its files still go to `/usr/lib/<name>/`.
+An unknown field (`extraArgv`) is a type error.
 
 ### `merge`
 
-`merge [ fragmentA fragmentB ]` unions `units` and `files` (a repeated key throws, whichever shape
-the two values have), normalises every file to `{ text; mode; }`, concatenates `sysusers` and
-`tmpfiles`, and checks `packages`: two packages with the same `/usr/bin` name throw. The output
-adds:
+`merge [ fragmentA fragmentB ]` unions `units`, `files` and `links` (a repeated key throws,
+whichever shape the two values have), normalises every file to `{ text; mode; }`, concatenates
+`sysusers` and `tmpfiles`, and returns `packages` with each package once. The output's `links` is
+one map, path → `{ target; kind }`: the composer derives `/usr/bin/<name>` for every name in a
+package's `bin` list (kind `package`) into the same map as the fragments' links, then runs one
+duplicate check over the whole map. A path with two sources throws and names both, whatever their
+kinds; a link path that collides with a file path is an error too. The one non-duplicate is a
+`package` link that repeats a `package` link to the same target: a module that merges its own
+fragments with `merge` returns a fragment whose `links` already hold its packages' `/usr/bin` links,
+and the composer derives them again. `merge.linkSources fragments` lists every link with its source
+and `merge.duplicateLink` returns the message or `null`, so a test can read what the error says.
 
-| field      | from                                                                             |
-| ---------- | -------------------------------------------------------------------------------- |
-| `links`    | `/usr/bin/<name>` from packages, `/usr/lib/<soname>` from dlopen, explicit links |
-| `farmDirs` | `farm` declarations expanded to `{ path; target }` for the image builder         |
-
-A link path that collides with a file path is an error. Two sources for the same link path is an
-error naming both sources. One exception: a launcher from `wrapApp` stands in for the program of the
-package it wraps (compared by store path), so the plain package's `/usr/bin/<program>` gives way to
-it while its other executables stay. A launcher for another package's program, or two launchers for
-one program, still clash.
-
-Error message example: `golconda: /usr/bin/jq defined twice: package jq-1.7, package jq-wrap-1.7`.
+Error message examples:
+`golconda: /usr/bin/jq defined twice: package jq-1.7, explicit link to /nix/store/…/bin/jq`;
+`golconda: /usr/lib/x defined twice: explicit link to a, explicit link to b`.
 
 ### `/pkgs`
 
 One option, `set`: the repkgs set of the platform (`nix/packages.nix`), which `nix/default.nix`
-passes as `options."/pkgs".set`. The module returns `{ set; pkgs; wrap; }`. A module that needs a
-package declares `inputs.pkgs.path = "/pkgs"` and reads `results.pkgs.pkgs.<name>` or
-`results.pkgs.wrap`; a package option defaults with `defaultFunc = { results }: ...`. A tree without
-the set throws when a module first needs a package. `set` is the one option that is not
-configuration data: the TOML loader refuses a `/pkgs` table, and `configLib.withPkgs set` binds the
-set instead.
-
-### `/wrap`
-
-The module takes the arguments of an `app` and returns the wrapped derivation: `wrapApp` over
-`results.pkgs.wrap` from `/pkgs`. The output's `bin/<program>` is a launcher with launch records in
-`bin/.<x>.launch`; it declares `bin = [ program ]` and `wraps = package`, so in a fragment's
-`packages` it stands in for the program of the package it wraps.
-
-| option    | type                          | meaning                                                                 |
-| --------- | ----------------------------- | ----------------------------------------------------------------------- |
-| `package` | derivation                    | the package to wrap; its first `bin` entry is the program               |
-| `argv`    | list of string, default `[ ]` | prepended arguments; `{files}` (via `file "name"`) expands to the files |
-| `env`     | attrs, default `{ }`          | `{ VAR = { op = value; }; }`                                            |
-| `files`   | attrs name → text             | installed to `{root}/share/wrap/<pkgname>/<name>`                       |
-
-`packages.<system>.wrap-smoke` wraps `jq` with `--version` through this module as a build check.
+passes as `options."/pkgs".set`. The module returns `{ set; pkgs; }`. A module that needs a package
+declares `inputs.pkgs.path = "/pkgs"` and reads `results.pkgs.pkgs.<name>`; a package option
+defaults with `defaultFunc = { results }: ...`. A tree without the set throws when a module first
+needs a package. `set` is the one option that is not configuration data: the TOML loader refuses a
+`/pkgs` table, and `configLib.withPkgs set` binds the set instead.
 
 ### `/factory`
 
@@ -210,26 +166,26 @@ Two modules that write one factory path are a composer error, like any duplicate
 ### `/services/sshd`
 
 One fragment: the host key var `sshd-hostkey` (credential `sshd-hostkey.key`, passed with `-h`),
-`sshd.service` (`KillMode=process`: sessions outlive a restart; no `RuntimeDirectory=`, the
-privilege-separation directory is `/var/empty` from `/factory`), the sshd launcher (`renderWrapped`:
-`/usr/bin/sshd` carries `-D -e -f` and the configuration in its `share/wrap/openssh/`), and, when
-their options are on, the admin vars `sshd-host-cert` and `sshd-revoked-keys`. The generated
-`sshd_config` fixes `PasswordAuthentication no`, `KbdInteractiveAuthentication no`,
+`sshd.service` (`ExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config -h %d/hostkey …`;
+`KillMode=process`: sessions outlive a restart; no `RuntimeDirectory=`, the privilege-separation
+directory is `/var/empty` from `/factory`), the files under `/usr/lib/sshd/`, and, when their
+options are on, the admin vars `sshd-host-cert` and `sshd-revoked-keys`. The generated `sshd_config`
+fixes `PasswordAuthentication no`, `KbdInteractiveAuthentication no`,
 `ChallengeResponseAuthentication no`, `PermitRootLogin prohibit-password`, `UsePAM yes`,
 `LogLevel VERBOSE` and `Subsystem sftp internal-sftp`; no option changes them
 ([design/trust](../../design/trust.md#identity)). `/etc/pam.d/sshd` comes from `/factory`.
 
 | option              | type                                       | rendered as                                                                                                          |
 | ------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| `package`           | derivation, default `pkgs.openssh`         | from `/pkgs`; `program = "sshd"`; the launcher comes from `results.pkgs.wrap`                                        |
+| `package`           | derivation, default `pkgs.openssh`         | from `/pkgs`; `program = "sshd"`                                                                                     |
 | `port`              | int, default `22`                          | `Port`                                                                                                               |
-| `authorizedKeys`    | list of string, default `[ ]`              | `authorized_keys.root` in the launcher; bootstrap only                                                               |
-| `trustedUserCAKeys` | list of string, default `[ ]`              | `trusted_user_ca_keys` and `-o TrustedUserCAKeys={files}/trusted_user_ca_keys`                                       |
-| `principals`        | attrs user → list of string, default `{ }` | `principals.<user>` and `-o AuthorizedPrincipalsFile={files}/principals.%u`                                          |
+| `authorizedKeys`    | list of string, default `[ ]`              | `/usr/lib/sshd/authorized_keys/root`; bootstrap only                                                                 |
+| `trustedUserCAKeys` | list of string, default `[ ]`              | `/usr/lib/sshd/ca.pub` and `-o TrustedUserCAKeys=/usr/lib/sshd/ca.pub`                                               |
+| `principals`        | attrs user → list of string, default `{ }` | `/usr/lib/sshd/principals/<user>` and `-o AuthorizedPrincipalsFile=/usr/lib/sshd/principals/%u`                      |
 | `revokedKeys`       | bool, default `false`                      | admin var `sshd-revoked-keys`; `LoadCredentialEncrypted=krl:sshd-revoked-keys.krl`, `-o RevokedKeys=%d/krl`          |
 | `hostCertificate`   | bool, default `false`                      | admin var `sshd-host-cert`; `LoadCredentialEncrypted=hostcert:sshd-host-cert.cert`, `-o HostCertificate=%d/hostcert` |
 
-`AuthorizedKeysFile .ssh/authorized_keys {files}/authorized_keys.%u` is always a `-o` argument.
+`sshd_config` holds `AuthorizedKeysFile .ssh/authorized_keys /usr/lib/sshd/authorized_keys/%u`.
 `revokedKeys` and `hostCertificate` declare admin-supplied vars (a KRL and the signed host
 certificate); they reach sshd on the command line because `sshd_config` cannot refer to the
 credentials directory, and an app file may not ([`app`](#app)).
