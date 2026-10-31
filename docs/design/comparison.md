@@ -6,11 +6,12 @@ behind.
 
 ## From NixOS and nixpkgs
 
-| taken                                                        | left behind                                                     |
-| ------------------------------------------------------------ | --------------------------------------------------------------- |
-| the Nix language, the store, content-addressed derivations   | nixpkgs, stdenv, overlays, store paths on the machine           |
-| building the whole system from one expression                | the NixOS module system, generations, `switch-to-configuration` |
-| `image.repart`, `boot.uki`, `systemd.sysupdate` as prior art | GRUB, non-systemd initrd, `/etc` as a symlink farm              |
+| taken                                                                   | left behind                                                     |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------- |
+| the Nix language, the store, content-addressed derivations              | nixpkgs, stdenv, overlays, store paths on the machine           |
+| building the whole system from one expression                           | the NixOS module system, generations, `switch-to-configuration` |
+| `image.repart`, `boot.uki`, `systemd.sysupdate` as prior art            | GRUB, non-systemd initrd, `/etc` as a symlink farm              |
+| units that say what runs: `ExecStart=` is the program and its arguments | wrapping programs into launchers that carry their configuration |
 
 ## From ParticleOS and mkosi
 

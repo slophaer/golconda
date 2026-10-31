@@ -220,7 +220,7 @@ let
     };
 
     linkKind = {
-      description = "What a link is for: package (/usr/bin/<name> from a bin list, derived by the composer), farm (a directory the image builder expands file by file), dlopen (a soname the builder checks resolves) or explicit (.wants and the like).";
+      description = "What a link is for: package (`/usr/bin/<name>` from a bin list, derived by the composer), farm (a directory the image builder expands file by file), dlopen (a soname the builder checks resolves) or explicit (.wants and the like).";
       enum = [
         "package"
         "farm"
@@ -272,7 +272,7 @@ let
     };
 
     appFiles = {
-      description = "File name -> text, installed to /usr/lib/<service>/<name>; no per-machine values.";
+      description = "File name -> text, installed to `/usr/lib/<service>/<name>`; no per-machine values.";
       type = "object";
       additionalProperties = {
         type = "string";
@@ -340,7 +340,7 @@ let
 
     # modules/lib/service.nix
     service = {
-      description = "A service: an app plus what only a unit has (scope, credentials, state, user, sandbox, ordering). Rendered as ExecStart=/usr/bin/<program> <argv> with the app's files under /usr/lib/<name>/. `user` is required for scope system and refused for scope user, which also refuses credentials.";
+      description = "A service: an app plus what only a unit has (scope, credentials, state, user, sandbox, ordering). Rendered as `ExecStart=/usr/bin/<program> <argv>` with the app's files under `/usr/lib/<name>/`. `user` is required for scope system and refused for scope user, which also refuses credentials.";
       type = "object";
       properties = {
         name = {

@@ -38,7 +38,7 @@ complete `/usr` directory:
 | path                           | content                                                                  |
 | ------------------------------ | ------------------------------------------------------------------------ |
 | `nix/store/<hash>-*`           | runtime closure of the packages (copied from the store)                  |
-| `bin/`, `lib/`, `share/`       | relative symlinks into `nix/store/` (from `links` + expanded `farmDirs`) |
+| `bin/`, `lib/`, `share/`       | relative symlinks into `nix/store/` (from `links`; kind `farm` expanded) |
 | `sbin`                         | symlink to `bin`                                                         |
 | `lib/systemd/system/*.service` | unit files (from `composerOutput.units`)                                 |
 | `lib/sysusers.d/golconda.conf` | sysusers lines                                                           |
@@ -49,8 +49,8 @@ complete `/usr` directory:
 ### Verification (build-time)
 
 1. **No absolute symlink targets.** Every symlink must use a relative path.
-1. **dlopen sonames resolve.** Each soname declared in `dlopen` must have a working symlink in
-   `lib/`.
+1. **dlopen links resolve.** Each link of kind `dlopen` must point at an existing file; a `farm`
+   link must name an existing directory.
 1. **No setuid/setgid bits.** The tree must contain no executables with special permission bits.
 1. **Allowed directories only.** Top-level directories are limited to `bin`, `lib`, `share`, `nix`,
    `libexec`, plus the `sbin` symlink.

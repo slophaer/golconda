@@ -8,7 +8,6 @@ schema is the flake one, produced by flake-incompat.
 | attribute                                      | per system  | content                                                               |
 | ---------------------------------------------- | ----------- | --------------------------------------------------------------------- |
 | `packages.<system>.nix`                        | yes         | the patched Nix daemon repkgs needs (CA + dynamic derivations)        |
-| `packages.<system>.wrap-smoke`                 | yes         | smoke test for `/wrap`: jq with `--version` prepended                 |
 | `packages.<system>.usr-tree-smoke`             | yes         | smoke test for the `/usr` tree builder: a minimal system with jq      |
 | `packages.x86_64-linux.usr-tree-smoke-aarch64` | x86_64 only | cross-compiled `/usr` tree for aarch64: proves platform flows through |
 | `checks.<system>`                              | yes         | `treefmt`, `docs`, `boundary`, `schema`                               |

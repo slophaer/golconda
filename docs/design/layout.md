@@ -30,18 +30,23 @@ block-beta
 
 ### Farm specification
 
-The composer outputs a `links` list of `{ path; target; }` entries for the image builder:
+`/usr/bin` and friends exist because systemd, PAM, sshd and `dlopen` address programs and libraries
+by name; the store path is only an identity. The composer outputs every symlink of `/usr` as one
+map, path → `{ target; kind; }`, for the image builder:
 
-- **`/usr/bin/<name>`**: one symlink per entry in a package's `bin` list. Two packages with the same
-  binary name is an error naming both packages.
-- **`/usr/lib/<soname>`**: dlopen links. Modules declare which sonames systemd (or other code) opens
-  by name: `dlopen."tpm2-tss" = [ "libtss2-esys.so.0" ]`. The renderer resolves them to store paths.
-- **`/usr/lib/<subdir>`**: farm directories. Modules declare which subdirectories are linked file by
-  file: `farm."systemd" = [ "lib/udev/rules.d" "lib/systemd/system" ]`. The image builder expands
-  them; the composer emits `farmDirs` as a list of `{ path; target; }` for expansion.
-- **`.wants` symlinks**: static enablement (see [unit enablement](#unit-enablement) below).
+- **`package`**: `/usr/bin/<name>`, one symlink per entry in a package's `bin` list; the composer
+  derives these from `packages`.
+- **`dlopen`**: `/usr/lib/<soname>` for a library systemd (or other code) opens by name:
+  `"/usr/lib/libtss2-esys.so.0" = { target = "${tpm2-tss}/lib/libtss2-esys.so.0"; kind = "dlopen"; }`.
+  The image builder checks that it resolves.
+- **`farm`**: a directory the image builder links file by file, for a package built with
+  `prefix = "/usr"`:
+  `"/usr/lib/udev/rules.d" = { target = "${systemd}/lib/udev/rules.d"; kind = "farm"; }`.
+- **`explicit`**: anything else, such as the `.wants` symlinks of static enablement (see
+  [unit enablement](#unit-enablement) below).
 
-A link path and a file at the same path is an error. Everything else stays reachable only through
+One check covers the map: a path with two sources is an error naming both, whatever their kinds. A
+link path and a file at the same path is an error. Everything else stays reachable only through
 `/usr/nix/store`.
 
 ### Unit enablement
