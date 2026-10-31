@@ -183,9 +183,10 @@ is set.
 
 ### `/factory`
 
-One fragment: the files under `/usr/share/factory/etc`, the tmpfiles lines that link them into
-`/etc`, and the sshd privilege-separation user with `/var/empty` (ambient, like `/etc/pam.d`: a
-configuration with `/services/sshd` adds `/factory` once).
+One fragment: the files under `/usr/share/factory/etc` and the tmpfiles lines that link them into
+`/etc`. The factory knows no service: a service's user and directories are in its own fragment, and
+only `/etc` content is here (`pam.d/sshd`, which sshd refuses to start without; a configuration with
+`/services/sshd` adds `/factory` once).
 
 | option       | type                             | rendered as                                                                                            |
 | ------------ | -------------------------------- | ------------------------------------------------------------------------------------------------------ |
@@ -200,17 +201,19 @@ boot), `machine-id` (PID 1) and `hostname` (systemd-firstboot from the bootstrap
 
 tmpfiles: one `L /etc/<path> - - - - /usr/share/factory/etc/<path>` line per factory file (`L`, not
 `L+`: a regular file an admin put at that path wins and stays), `localtime` and `os-release` →
-`../usr/lib/os-release` as `L` lines, `d /etc/ssh 0755`, and `d /var/empty 0755`. Two modules that
-write one factory path are a composer error, like any duplicate file.
+`../usr/lib/os-release` as `L` lines, and `d /etc/ssh 0755`. Two modules that write one factory path
+are a composer error, like any duplicate file.
 
 ### `/services/sshd`
 
 One fragment: the host key var `sshd-hostkey` (credential `sshd-hostkey.key`, passed with `-h`),
 `sshd.service` (`ExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config -h %d/hostkey …`;
-`KillMode=process`: sessions outlive a restart; no `RuntimeDirectory=`, the privilege-separation
-directory is `/var/empty` from `/factory`; sandbox `trusted`, because the sessions it spawns must
-see the real system), the files under `/usr/lib/sshd/`, and, when their options are on, the admin
-vars `sshd-host-cert` and `sshd-revoked-keys`. The generated `sshd_config` fixes
+`KillMode=process`: sessions outlive a restart; sandbox `trusted`, because the sessions it spawns
+must see the real system), the files under `/usr/lib/sshd/`, the privilege-separation user
+(`u sshd - "SSH privilege separation" /var/empty`) with its directory (`d /var/empty 0755`; no
+`RuntimeDirectory=`, repkgs' openssh is built with `--with-privsep-path=/var/empty`), and, when
+their options are on, the admin vars `sshd-host-cert` and `sshd-revoked-keys`. Only credentials go
+on the command line; every fixed path is a line in `sshd_config`. The generated `sshd_config` fixes
 `PasswordAuthentication no`, `KbdInteractiveAuthentication no`,
 `ChallengeResponseAuthentication no`, `PermitRootLogin prohibit-password`, `UsePAM yes`,
 `LogLevel VERBOSE`, `PidFile none` and `Subsystem sftp internal-sftp`; no option changes them
@@ -221,8 +224,8 @@ vars `sshd-host-cert` and `sshd-revoked-keys`. The generated `sshd_config` fixes
 | `package`           | derivation, default `pkgs.openssh`         | from `/pkgs`; `program = "sshd"`                                                                                     |
 | `port`              | int, default `22`                          | `Port`                                                                                                               |
 | `authorizedKeys`    | list of string, default `[ ]`              | `/usr/lib/sshd/authorized_keys/root`; bootstrap only                                                                 |
-| `trustedUserCAKeys` | list of string, default `[ ]`              | `/usr/lib/sshd/ca.pub` and `-o TrustedUserCAKeys=/usr/lib/sshd/ca.pub`                                               |
-| `principals`        | attrs user → list of string, default `{ }` | `/usr/lib/sshd/principals/<user>` and `-o AuthorizedPrincipalsFile=/usr/lib/sshd/principals/%u`                      |
+| `trustedUserCAKeys` | list of string, default `[ ]`              | `/usr/lib/sshd/ca.pub` and `TrustedUserCAKeys /usr/lib/sshd/ca.pub` in `sshd_config`                                 |
+| `principals`        | attrs user → list of string, default `{ }` | `/usr/lib/sshd/principals/<user>` and `AuthorizedPrincipalsFile /usr/lib/sshd/principals/%u` in `sshd_config`        |
 | `revokedKeys`       | bool, default `false`                      | admin var `sshd-revoked-keys`; `LoadCredentialEncrypted=krl:sshd-revoked-keys.krl`, `-o RevokedKeys=%d/krl`          |
 | `hostCertificate`   | bool, default `false`                      | admin var `sshd-host-cert`; `LoadCredentialEncrypted=hostcert:sshd-host-cert.cert`, `-o HostCertificate=%d/hostcert` |
 
