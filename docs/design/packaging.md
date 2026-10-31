@@ -63,6 +63,18 @@ At build time, clang and lld are the toolchain. Nushell drives repkgs builders. 
 meson, systemd's jinja2 templates, and ukify (build-only; not in the image). Perl is needed for
 OpenSSL's Configure and some autotools. Rust builds iets and dbus-broker's main branch.
 
+## The kernel: base in the fork, policy here
+
+The fork's `linux-kernel` is a small bootable base: x86_64 `defconfig`, virtio, the serial console,
+devtmpfs and the initramfs path, enough to boot in QEMU and pass the fork's own smoke test. Golconda
+owns every policy choice as a kconfig fragment, `packages/kernel/golconda.config`: dm-verity with
+signed root hashes, erofs, the TPM drivers, EFI, the LSMs (built in, not forced on), nftables,
+WireGuard, the systemd requirements, and the hardening that costs nothing at run time. A comment
+above each option says why. `nix/packages.nix` appends the file through the set's override path
+(`overrides.linux-kernel.kbuild.configFragments.append`); the fork merges it onto the base with
+`merge_config.sh` and fails the build when a line does not survive `olddefconfig`. A wrong option
+name is a build error, not a silent loss. The result is `packages.<system>.kernel`.
+
 ## Round-1 packages
 
 Packages in progress on the fork, by work package:

@@ -24,6 +24,8 @@ let
   set = import "${sources.repkgs}/nix/set.nix" {
     inherit system platform;
     packages = import ../packages;
+    # The kernel policy: Golconda's kconfig fragment on the fork's base (packages/kernel).
+    overrides.linux-kernel.kbuild.configFragments.append = [ ../packages/kernel/golconda.config ];
     # Set-wide choices: one TLS stack, one of each (docs/design/principles.md).
     features = {
       tls = "openssl";

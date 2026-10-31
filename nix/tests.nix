@@ -13,7 +13,15 @@ let
     attrNames
     deepSeq
     elem
+    elemAt
+    filter
     genList
+    isString
+    length
+    listToAttrs
+    match
+    readFile
+    split
     stringLength
     substring
     tryEval
@@ -2303,6 +2311,44 @@ let
       && hasInfix "Name=eth0" result.files."/usr/lib/systemd/network/static.network".text
       && hasInfix "Address=10.0.0.1/24" result.files."/usr/lib/systemd/network/static.network".text
       && !(result.files ? "/usr/lib/systemd/network/default-dhcp.network")
+    ))
+
+    # 12. The kernel config fragment (packages/kernel/golconda.config)
+    (check "kernel: the fragment is KEY=VALUE lines, comments and 'is not set' lines, no name twice" (
+      let
+        lines = filter (l: isString l && l != "") (
+          split "\n" (readFile ../packages/kernel/golconda.config)
+        );
+        isComment = l: match "#.*" l != null && match "# CONFIG_[A-Za-z0-9_]+ is not set" l == null;
+        isSet = l: match "CONFIG_[A-Za-z0-9_]+=.+" l != null;
+        isUnset = l: match "# CONFIG_[A-Za-z0-9_]+ is not set" l != null;
+        nameOf =
+          l:
+          if isUnset l then
+            elemAt (match "# CONFIG_([A-Za-z0-9_]+) is not set" l) 0
+          else
+            elemAt (match "CONFIG_([A-Za-z0-9_]+)=.*" l) 0;
+        names = map nameOf (filter (l: isSet l || isUnset l) lines);
+      in
+      all (l: isComment l || isSet l || isUnset l) lines
+      && length names > 100
+      &&
+        length (
+          attrNames (
+            listToAttrs (
+              map (n: {
+                name = n;
+                value = true;
+              }) names
+            )
+          )
+        ) == length names
+    ))
+    (check "kernel: the override reaches the derivation (kbuild.configFragments holds the file)" (
+      let
+        fragments = pkgs.linux-kernel.drvAttrs.spec.kbuild.configFragments;
+      in
+      length fragments == 1 && match ".*/golconda\\.config" (toString (elemAt fragments 0)) != null
     ))
   ];
 in
