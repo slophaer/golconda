@@ -61,7 +61,8 @@ f.modules cfg
 - `loadConfig path`: parses the TOML file and returns `{ options = {...}; }` for the adios tree.
   Table names are absolute module paths (`/services/sshd`). Unknown paths throw with the valid list.
 - `loadAndApply path`: calls `loadConfig` then applies the result to the module tree.
-- `validPaths`: list of all module paths that accept options; `/pkgs` is not one (its `set` is not
-  data, and a `/pkgs` table throws).
-- `withPkgs set`: the same loader with the repkgs set bound, so its options carry `"/pkgs".set` and
-  a module that needs a package evaluates: `(f.configLib.withPkgs set).loadAndApply ./server.toml`.
+- `validPaths`: list of all module paths that accept options; `/pkgs` is not one (its `target` is
+  not data, and a `/pkgs` table throws).
+- `withPkgs set`: the same loader with the repkgs set bound, so its options carry `"/pkgs".target`
+  and a module that needs a package evaluates:
+  `(f.configLib.withPkgs set).loadAndApply ./server.toml`.
