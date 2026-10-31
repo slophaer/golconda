@@ -19,7 +19,10 @@ let
 in
 golconda.lib.mkSystem {
   config = ./server.toml;
-  # platform = "x86_64-linux";  # default: the build host's
+  # The build host, explicit so that `iets eval` stays pure: left out, `system` is
+  # builtins.currentSystem, which needs `--impure`.
+  system = "x86_64-linux";
+  # platform = "aarch64-linux";  # default: the build host's
   # extra = {                   # Nix-only options, merged into the TOML
   #   "/services/sshd".package = myOpenSSH;
   # };

@@ -12,6 +12,9 @@ let
 in
 mkSystem {
   config = ./server.toml;
+  # The build host, explicit so that `iets eval` stays pure: left out, `system` is
+  # builtins.currentSystem, which needs `--impure`.
+  system = "x86_64-linux";
   # platform defaults to the build host's.
   # extra can add Nix-only options.
 }
