@@ -21,6 +21,7 @@
 - [Image artifacts](reference/image.md)
 - [Modules](reference/modules/README.md)
   - [vars](reference/modules/vars.md)
+- [Configuration](reference/config.md)
 - [Commands](reference/cli.md)
 - [Outputs and inputs](reference/outputs.md)
 - [Glossary](reference/glossary.md)
