@@ -99,6 +99,15 @@ in
   # the generated module pages alone: `nix-build -A checks.x86_64-linux.module-docs`
   module-docs = moduleDocs;
 
+  # the /usr tree builder's link-target conversion: this runs the Nu function the
+  # builder runs (lib/usr-tree/main.nu), not a Nix copy of it.
+  usr-tree-test = pkgs.runCommand "check-usr-tree-test" { nativeBuildInputs = [ pkgs.nushell ]; } ''
+    cp -r ${src}/lib/usr-tree usr-tree
+    cd usr-tree
+    nu --no-config-file --include-path . test.nu
+    touch $out
+  '';
+
   # nixpkgs is dev tooling only: the dev pin is referenced nowhere but nix/dev and nix/checks.nix
   boundary = pkgs.runCommand "check-boundary" { } ''
     cd ${src}
