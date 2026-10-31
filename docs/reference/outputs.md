@@ -5,18 +5,18 @@ schema is the flake one, produced by flake-incompat.
 
 ## Outputs
 
-| attribute                                      | per system  | content                                                               |
-| ---------------------------------------------- | ----------- | --------------------------------------------------------------------- |
-| `packages.<system>.nix`                        | yes         | the patched Nix daemon repkgs needs (CA + dynamic derivations)        |
-| `packages.<system>.usr-tree-smoke`             | yes         | smoke test for the `/usr` tree builder: a minimal system with jq      |
-| `packages.x86_64-linux.usr-tree-smoke-aarch64` | x86_64 only | cross-compiled `/usr` tree for aarch64: proves platform flows through |
-| `checks.<system>`                              | yes         | `treefmt`, `docs`, `boundary`, `schema`                               |
-| `formatter.<system>`                           | yes         | treefmt with pinned tools                                             |
-| `devShells.<system>.default`                   | yes         | treefmt, mdbook, iets, npins                                          |
-| `modules`                                      | no          | the adios tree                                                        |
-| `schema`                                       | no          | JSON Schema 2020-12 of the module tree (see below)                    |
-| `configLib`                                    | no          | TOML configuration loader (see below)                                 |
-| `platforms`                                    | no          | the platforms table (repkgs `nix/platforms.nix`)                      |
+| attribute                                      | per system  | content                                                                                                                        |
+| ---------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `packages.<system>.nix`                        | yes         | the patched Nix daemon repkgs needs (CA + dynamic derivations)                                                                 |
+| `packages.<system>.usr-tree-smoke`             | yes         | smoke test for the `/usr` tree builder: a minimal system with jq                                                               |
+| `packages.x86_64-linux.usr-tree-smoke-aarch64` | x86_64 only | cross-compiled `/usr` tree for aarch64 (proven with jq; off until the kernel's cross build dependencies are fixed on the fork) |
+| `checks.<system>`                              | yes         | `treefmt`, `docs`, `boundary`, `schema`                                                                                        |
+| `formatter.<system>`                           | yes         | treefmt with pinned tools                                                                                                      |
+| `devShells.<system>.default`                   | yes         | treefmt, mdbook, iets, npins                                                                                                   |
+| `modules`                                      | no          | the adios tree                                                                                                                 |
+| `schema`                                       | no          | JSON Schema 2020-12 of the module tree (see below)                                                                             |
+| `configLib`                                    | no          | TOML configuration loader (see below)                                                                                          |
+| `platforms`                                    | no          | the platforms table (repkgs `nix/platforms.nix`)                                                                               |
 
 ## Inputs
 
