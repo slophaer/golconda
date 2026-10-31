@@ -284,7 +284,17 @@ in
             "ConditionDirectoryNotEmpty=|/etc/sysupdate.d"
             "ConditionDirectoryNotEmpty=|/run/sysupdate.d"
           ]
-          [ "systemd-sysupdate.service" "systemd-sysupdate-reboot.service" ];
+          [ "systemd-sysupdate.service" "systemd-sysupdate-reboot.service" ]
+      # systemd-coredump --check-requirements needs PIDFD_INFO_COREDUMP_SIGNAL (kernel 6.19);
+      # on an older kernel the ExecCondition skips the units, but they are started again
+      # until the start limit marks coredumpd failed
+      //
+        unitConditions
+          [ "ConditionKernelVersion=>=6.19" ]
+          [
+            "systemd-coredumpd.service"
+            "systemd-coredump-register.service"
+          ];
 
       # PAM modules: Linux-PAM loads a relative module name from /usr/lib/security/, and the
       # factory's stacks name <package>/<module>. Each package's module directory is one

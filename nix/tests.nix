@@ -2676,6 +2676,16 @@ let
         kind = "farm";
       }
     ))
+    (check "base: the coredump socket units wait for a kernel with PIDFD_INFO_COREDUMP_SIGNAL (6.19)" (
+      let
+        fs = (compose [ ]).files;
+        k =
+          u:
+          hasInfix "[Unit]\nConditionKernelVersion=>=6.19"
+            fs."/usr/lib/systemd/system/${u}.d/golconda.conf".text;
+      in
+      k "systemd-coredumpd.service" && k "systemd-coredump-register.service"
+    ))
     (check "base: sysupdate units run only with a transfer definition" (
       let
         fs = (compose [ ]).files;
