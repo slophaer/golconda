@@ -22,6 +22,7 @@
 # Markers checked (each prints PASS/FAIL, only on positive evidence):
 #   - multi-user-reached: multi-user.target reached
 #   - sshd-active: sshd.service started (Listening on port)
+#   - var-sshd-hostkey: the host key var finished (it needs a writable root)
 #   - boot-complete: boot-complete.target reached
 #
 # With --ssh-test: logs in with tests/fixtures/snakeoil-ssh and checks
@@ -320,6 +321,17 @@ check_markers() {
     FAIL=$((FAIL + 1))
   fi
   
+  # var-sshd-hostkey: the host key var generated and sealed. This is the proof that
+  # the root was writable when the unit ran (docs/design/boot.md). The serial console
+  # colours the unit name, so match across the escape sequence.
+  if grep -qi "Finished.*Generate var sshd-hostkey" "$SERIAL_LOG" 2>/dev/null; then
+    echo "PASS: var-sshd-hostkey"
+    PASS=$((PASS + 1))
+  else
+    echo "FAIL: var-sshd-hostkey (not found in log)"
+    FAIL=$((FAIL + 1))
+  fi
+
   # boot-complete: boot-complete.target reached
   if grep -qi "Reached target.*Boot Complete\|boot-complete.target" "$SERIAL_LOG" 2>/dev/null; then
     echo "PASS: boot-complete"
