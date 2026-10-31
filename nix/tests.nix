@@ -2644,6 +2644,12 @@ let
       in
       hasInfix "usrhash={usrhash}" t && !hasInfix " rw" t && !hasInfix "volatile" t
     ))
+    # without the option, veritysetup activates /usr unsigned and IPE's dmverity_signature is
+    # false for every /usr file (docs/design/trust.md)
+    (check "image: the cmdline hands the usr root hash signature to veritysetup" (
+      hasInfix "systemd.verity_usr_options=root-hash-signature=base64:{usrhashSig}" (import ../image)
+      .uki.cmdlineTemplate
+    ))
 
     # 13. lib/system.nix: mkSystem entry point
     (check "mkSystem: server.toml yields name and version" (

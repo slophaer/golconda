@@ -71,8 +71,10 @@ in
             args
             // {
               inherit erofs;
-              key = "${keys}/verity/verity.key";
-              cert = "${keys}/verity/verity.crt";
+              # the db key signs the root hash too: the kernel checks it against the platform
+              # keyring, which holds the firmware db (docs/design/trust.md)
+              key = "${keys}/secureboot/db.key";
+              cert = "${keys}/secureboot/db.crt";
             }
           );
           initrd = imageLib.initrd (args // { usrTree = initrdTree; });
@@ -165,8 +167,8 @@ in
             testArgs
             // {
               erofs = testErofs;
-              key = "${testKeys}/verity/verity.key";
-              cert = "${testKeys}/verity/verity.crt";
+              key = "${testKeys}/secureboot/db.key"; # the db key, as above
+              cert = "${testKeys}/secureboot/db.crt";
             }
           );
           testInitrd = imageLib.initrd (testArgs // { usrTree = testInitrdTree; }); # not sys.usrTree

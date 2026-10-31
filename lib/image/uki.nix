@@ -7,8 +7,10 @@
 #   cmdline                          what went in, for the record
 #
 # ukify build (packages/ukify) joins systemd's stub, the kernel from the linux-kernel package,
-# the initrd, the cmdline (image/uki.nix's template with usrhash= from the verity step, plus
-# rdinit= as lib/image/initrd.nix explains), the system's os-release and the kernel's uname.
+# the initrd, the cmdline (image/uki.nix's template with usrhash= and the root hash signature
+# from the verity step, plus rdinit= as lib/image/initrd.nix explains), the system's os-release
+# and the kernel's uname. The kernel trusts the signature only if the firmware db holds its
+# signer, so the build checks it against sbCert: the verity step must sign with the db key.
 # Secure Boot: systemd-sbsign with sbKey/sbCert. Measured boot: one PCR 11 signature per
 # phase path in image/uki.nix's list (ukify --phases), signed with pcrKey, and the built
 # .pcrsig section is checked against the list (docs/design/trust.md). Keys are paths; the
@@ -53,6 +55,7 @@ rec {
       tools = [
         pkgs.ukify
         pkgs.systemd # systemd-measure, systemd-sbsign (lib/systemd, on PATH too)
+        pkgs.openssl # the root hash signature against sbCert
       ];
       libs = [
         pkgs.openssl # systemd-sbsign, systemd-measure: libcrypto
@@ -65,6 +68,7 @@ rec {
         stub = "${pkgs.systemd}/lib/systemd/boot/efi/linux${uefi}.efi.stub";
         initrd = "${initrd}/initrd.cpio.zst";
         roothash = "${verity}/roothash";
+        roothashSig = "${verity}/${imageId}_${version}.usr-verity-sig.raw";
         osRelease = "${usrTree}/lib/os-release";
         cmdlineTemplate = "${ukiConfig.cmdlineTemplate} ${cmdlineExtra}";
         phases = ukiConfig.pcrPhases;

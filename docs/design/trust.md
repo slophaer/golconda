@@ -8,7 +8,8 @@ own copy of any of them:
    TPM2-sealed credentials are bound to. Signed in the image chain today (the smoke uses throwaway
    keys); enrolment and enforcement are not proven *(planned)*.
 1. **The verity signing key** decides *what is read*: it signs the root hash of every `/usr` image.
-   Signed today; the kernel does not check the signature yet ([status](#2-verity-key)).
+   In v1 it is the Secure Boot `db` key, and the kernel checks the signature against the firmware
+   `db` at every boot ([status](#2-verity-key)).
 1. **The CA store** decides *whom the machine talks to*: one set of anchors for every TLS client.
    *(planned)*
 
@@ -30,23 +31,48 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  vk["verity signing key"] --> vsig["usr-verity-sig partition (PKCS#7 of the root hash)"]
-  cert["verity certificate, carried in the signed UKI"] --> keyring["kernel .platform keyring"]
-  vsig --> veritysetup[systemd-veritysetup]
-  keyring --> veritysetup
-  veritysetup --> usr["/usr read-only, verified per block"]
+  db["Secure Boot db key"] --> vsig["PKCS#7 of the hex root hash"]
+  vsig --> part["usr-verity-sig partition"]
+  vsig --> cmdline["UKI cmdline: systemd.verity_usr_options=root-hash-signature=base64:"]
+  fw["firmware db"] --> keyring["kernel .platform keyring"]
+  cmdline --> veritysetup[systemd-veritysetup]
+  veritysetup --> dm["dm-verity: signature checked against .platform"]
+  keyring --> dm
+  dm --> ipe["IPE: dmverity_signature=TRUE for /usr"]
 ```
 
-The `usr-verity-sig` partition holds a PKCS#7 signature of the root hash. systemd-veritysetup asks
-the kernel to check it against the keys in a kernel keyring.
+The image builder signs the hex root hash (the string the kernel gets in the verity table) with the
+Secure Boot `db` key, as PKCS#7 without certificates (`lib/image/verity.nu`). The signature goes to
+two places: the `usr-verity-sig` partition, systemd's JSON, for tools that dissect the disk; and the
+UKI cmdline as `systemd.verity_usr_options=root-hash-signature=base64:<sig>` (`image/uki.nix`). The
+generator passes the option to `systemd-veritysetup@usr.service`, which activates `/usr` with
+`crypt_activate_by_signed_key`; dm-verity checks the signature against the secondary keyring and
+then the platform keyring, which the kernel fills from the firmware `db` (`CONFIG_LOAD_UEFI_KEYS`,
+`CONFIG_DM_VERITY_VERIFY_ROOTHASH_SIG_PLATFORM_KEYRING`). IPE's `dmverity_signature` is true only
+for a volume whose signature the kernel verified.
 
-**Status.** The image builder signs the root hash with its own verity key
-(`keys/verity/verity.key`), a pair separate from the Secure Boot `db` key (`image/default.nix`
-`keys`). The certificate is in no keyring and not in the UKI, so today the kernel checks no verity
-signature, and IPE stays permissive (`ipe.enforce=0`). *(planned)*: the certificate travels in the
-signed UKI, so the kernel's `.platform` keyring trusts it, and `ipe.enforce` becomes `1`. Open: the
-`db` key itself in the platform keyring (one key for both), or a separate key added through MOK or
-built into the kernel.
+Why the cmdline and not the partition: systemd reads the partition's signature only on the gpt-auto
+path (`root-hash-signature=auto`, from the udev property `ID_DISSECT_PART_ROOTHASH_SIG` that the
+`dissect_image` builtin sets on the boot disk). Golconda finds `/usr` by `usrhash=` through the
+veritysetup generator, which takes no signature unless an option names one. The cmdline is in the
+signed UKI and measured into PCR 11, so it is as trusted as `usrhash=` itself. The signature is
+about 550 base64 characters; the cmdline is about 1250 bytes of the kernel's 2048
+(`COMMAND_LINE_SIZE`), and `lib/image/uki.nu` fails the build at 2048.
+
+Why the `db` key: the platform keyring holds the firmware `db` and nothing else, so no import step
+is needed, and a second key would add nothing: whoever holds the `db` key can already sign a UKI
+with any `usrhash=`. A rotated `db` key needs new images, as it does for the UKI.
+
+A signature that does not verify is not fatal by itself: `systemd-veritysetup` logs "Unable to
+activate verity device ... with root hash signature ..., retrying without" at info level and
+activates `/usr` unsigned. So `lib/image/uki.nu` checks the signature against the UKI's own signing
+certificate at build time and fails on a mismatch. On the machine, the firmware `db` must hold that
+certificate; the boot test enrols it only with `--secure-boot`.
+
+**Status.** Proven by boot with `--secure-boot`: the kernel loads the `db` certificate into the
+platform keyring, and with `/sys/kernel/security/ipe/success_audit` on, IPE logs
+`rule="op=EXECUTE dmverity_signature=TRUE action=ALLOW"` for files on `/usr` (`dm-0`). The builder's
+own verity key pair (`lib/image/keys.nu`) is no longer used.
 
 ### 3. CA store *(planned)*
 
@@ -161,8 +187,7 @@ the credential ids) exists: [reference: /vars](../reference/modules/generated/va
 
 Phase 1 is IPE (execute only from dm-verity volumes with a signed root hash, not a particular one:
 the policy avoids per-image kernel rebuilds) with `lockdown=integrity` and Yama, all fixed in the
-kernel config and the UKI cmdline. It enforces nothing yet: IPE is permissive (`ipe.enforce=0`),
-denials are logged, because the kernel checks no verity signature ([status](#2-verity-key)). What
-phase 1 gives today is `lockdown=integrity` and Yama. Enforcement is one change after the keyring
-work. Phase 2 is the BPF LSM for `RestrictFileSystems=`; phase 3 AppArmor profiles generated from
-the typed service. SELinux is rejected.
+kernel config and the UKI cmdline. IPE is permissive (`ipe.enforce=0`): denials are logged, not
+enforced. The kernel now verifies the `/usr` signature ([status](#2-verity-key)), and a boot logs no
+IPE denial. Phase 2 is the BPF LSM for `RestrictFileSystems=`; phase 3 AppArmor profiles generated
+from the typed service. SELinux is rejected.
