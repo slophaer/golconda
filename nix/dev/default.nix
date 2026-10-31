@@ -95,7 +95,7 @@ in
       pkgs.npins
     ];
     shellHook = ''
-      echo "golconda dev shell: treefmt | iets lint: ./scripts/lint | docs: mdbook serve docs"
+      echo "golconda dev shell: treefmt | iets lint: ./scripts/lint | docs: scripts/docs serve"
     '';
   };
 }

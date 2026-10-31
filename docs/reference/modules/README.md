@@ -12,6 +12,9 @@ This page documents every module and the shared types in `modules/lib/`.
 | `/wrap`          | typed options for repkgs' `wrap`: `package`, `argv`, `env`, `files`; the caller uses `set.wrap`                  |
 | `/services/sshd` | OpenSSH as a service with an ed25519 host key var; keys and certificates only (options below)                    |
 
+The option tables of each module are [generated from the schema](generated/index.md) and are not
+committed; build the book with `scripts/docs`.
+
 ## Shared types (`modules/lib/`)
 
 Plain files that modules import. The directory has no `default.nix`, so adios does not load it.

@@ -32,7 +32,9 @@
 nix-shell                                   # or: direnv allow
 treefmt                                     # format (nixfmt, statix, deadnix, mdformat, taplo)
 ./scripts/lint                              # strict iets lint, module tests, sandboxed checks
-nix-build -A checks.x86_64-linux.docs       # the book; or: mdbook serve docs
+scripts/docs                                # generate the module pages, then build the book
+scripts/docs serve                          # the same, then mdbook serve (pages are not committed)
+nix-build -A checks.x86_64-linux.docs       # the book in the sandbox (generates the pages itself)
 iets eval --expr 'import ./nix/tests.nix { }'   # the module tests alone
 ```
 
