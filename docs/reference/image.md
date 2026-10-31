@@ -117,8 +117,9 @@ throwaway ones in the store (`throwawayKeys`); a release signs with the deployme
 (`image/default.nix` `keys`), which never enter the store. Not yet: the verity certificate in the
 kernel keyring, a TPM.
 
-The smoke's cmdline is `image/uki.nix`'s template plus `rdinit=/init`; its `cmdlineExtra` is for
-debug flags only ([Boot: Kernel command line](../design/boot.md#kernel-command-line)).
+The smoke's cmdline is `image/uki.nix`'s template plus `rdinit=/init`; the test image and the
+production image boot the same cmdline, and any `cmdlineExtra` is for debug flags only
+([Boot: Kernel command line](../design/boot.md#kernel-command-line)).
 
 ## Builder constraints
 
