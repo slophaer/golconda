@@ -107,7 +107,10 @@ in
         if options.dns != null then
           {
             "/usr/lib/systemd/resolved.conf.d/golconda-dns.conf" = {
-              text = ini.render { Resolve.DNS = concatStringsSep " " options.dns; };
+              # FallbackDNS=, not DNS=: the option promises servers for the
+              # case where no other DNS server is known, not global servers
+              # that take part next to per-link ones.
+              text = ini.render { Resolve.FallbackDNS = concatStringsSep " " options.dns; };
               mode = "0644";
             };
           }
