@@ -22,7 +22,11 @@ export def build [] {
     $lines ++= [$"(ls $f | get size.0 | into int) ($f)"]
   }
   $lines ++= ["" "== veritysetup verify"]
-  $lines ++= [(^veritysetup verify $usr $hash $roothash | complete | get exit_code | $"exit ($in), root hash ($roothash)")]
+  let verify = (^veritysetup verify $usr $hash $roothash | complete)
+  $lines ++= [$"exit ($verify.exit_code), root hash ($roothash)"]
+  if $verify.exit_code != 0 {
+    error make {msg: $"smoke: veritysetup verify failed: ($verify.stderr)"}
+  }
   $lines ++= ["" "== initrd: first entries (bsdtar -t)"]
   $lines ++= (^bsdtar -tf $"($a.initrd)/initrd.cpio.zst" | lines | first 12)
   $lines ++= [$"... (^bsdtar -tf $"($a.initrd)/initrd.cpio.zst" | lines | length) entries, rdinit=(open --raw $"($a.initrd)/rdinit")"]

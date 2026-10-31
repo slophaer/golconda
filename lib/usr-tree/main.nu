@@ -124,7 +124,12 @@ export def build [] {
     if not ($target | path exists) {
       error make {msg: $"farm link ($path): directory ($target) does not exist"}
     }
-    let files = (^find $target -mindepth 1 '(' -type f -o -type l ')' | lines | where { $in != "" } | sort)
+    # complete: a failed find must stop the build, not look like an empty tree
+    let found = (^find $target -mindepth 1 '(' -type f -o -type l ')' -print | complete)
+    if $found.exit_code != 0 {
+      error make {msg: $"farm link ($path): find ($target) failed: ($found.stderr)"}
+    }
+    let files = ($found.stdout | lines | where { $in != "" } | sort)
     for file in $files {
       let rel = ($file | path relative-to $target)
       let dest_file = $"($dest_dir)/($rel)"
@@ -211,8 +216,13 @@ export def build [] {
   # Step 11: Verification
   log "verifying..."
 
-  # 11a: No absolute symlink targets
-  let abs_links = (^find $out -type l -print0 | ^xargs -0 -r -n1 sh -c 'readlink "$1" | grep -q "^/" && echo "$1"' -- | lines | where { $in != "" })
+  # 11a: No absolute symlink targets. -lname tests the link text, so a relative
+  # link needs no readlink/grep pipeline (whose "no match" exit status is 1).
+  let found_abs = (^find $out -type l -lname '/*' -print | complete)
+  if $found_abs.exit_code != 0 {
+    error make {msg: $"find failed while checking symlink targets: ($found_abs.stderr)"}
+  }
+  let abs_links = ($found_abs.stdout | lines | where { $in != "" })
   if ($abs_links | length) > 0 {
     error make {msg: $"absolute symlink targets found: ($abs_links | str join ', ')"}
   }
@@ -237,7 +247,11 @@ export def build [] {
   }
 
   # 11c: No setuid/setgid bits
-  let setuid = (^find $out -perm /6000 -type f | lines | where { $in != "" })
+  let found_setuid = (^find $out -perm /6000 -type f -print | complete)
+  if $found_setuid.exit_code != 0 {
+    error make {msg: $"find failed while checking setuid bits: ($found_setuid.stderr)"}
+  }
+  let setuid = ($found_setuid.stdout | lines | where { $in != "" })
   if ($setuid | length) > 0 {
     error make {msg: $"setuid/setgid files found: ($setuid | str join ', ')"}
   }
