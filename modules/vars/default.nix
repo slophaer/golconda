@@ -46,7 +46,8 @@
 #!
 #! 1. Changes to `$RUNTIME_DIRECTORY` and runs the script.
 #! 1. Seals each secret file with
-#!    `systemd-creds encrypt --with-key=tpm2 --tpm2-public-key-pcrs=11`.
+#!    `systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11 --name=<name>.<file>`
+#!    (host+tpm2 with a TPM2, the host key without one).
 #! 1. Installs the sealed credential to `/etc/credstore.encrypted/<name>.<file>`.
 #! 1. Copies public files to `/var/lib/golconda/vars/<name>/pub/`.
 #! 1. Touches `done` so the unit does not run again.
