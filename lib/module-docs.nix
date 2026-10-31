@@ -257,6 +257,7 @@ let
     - [Layout](design/layout.md)
     - [Boot](design/boot.md)
     - [Updates](design/updates.md)
+    - [Recovery](design/recovery.md)
     - [Trust](design/trust.md)
     - [Kernel](design/kernel.md)
     - [Modules](design/modules.md)
