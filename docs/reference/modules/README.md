@@ -16,14 +16,14 @@ This page documents every module and the shared types in `modules/lib/`.
 
 Plain files that modules import. The directory has no `default.nix`, so adios does not load it.
 
-| file               | exports                                                                                                                               |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `fragment.nix`     | `fragment`: `{ units; files; sysusers; tmpfiles; packages }`, every field optional; `file`, `mode`                                    |
-| `merge.nix`        | `merge [ fragment… ] → fragment`: unions attrs, concatenates lists; a duplicate key throws; every file comes out as `{ text; mode; }` |
-| `app.nix`          | `app`, `argv`, `files`, `perMachineMarkers`, `envOp`, `credentialRef`, `isCredentialRef`, `file`, `filesPlaceholder`, `exe`           |
-| `service.nix`      | `service`, `render`, `sandbox`, `sandboxLines`, `credential`, `credentialArg`                                                         |
-| `var.nix`          | `var`, `render`, `unitName`, `credentialId`, `stateDir`                                                                               |
-| `golconda-var-run` | POSIX sh runner for var units                                                                                                         |
+| file               | exports                                                                                                                                                   |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fragment.nix`     | `fragment`: `{ units; files; sysusers; tmpfiles; packages }`, every field optional; `file`, `mode`                                                        |
+| `merge.nix`        | `merge [ fragment… ] → fragment`: unions attrs, concatenates lists; a duplicate key throws; every file comes out as `{ text; mode; }`                     |
+| `app.nix`          | `app`, `argv`, `files`, `perMachineMarkers`, `envOp`, `credentialRef`, `isCredentialRef`, `file`, `filesPlaceholder`, `wrapApp`, `wrappedFilesDir`, `exe` |
+| `service.nix`      | `service`, `render`, `renderWrapped`, `wrapApp`, `sandbox`, `sandboxLines`, `credential`, `credentialArg`                                                 |
+| `var.nix`          | `var`, `render`, `unitName`, `credentialId`, `stateDir`                                                                                                   |
+| `golconda-var-run` | POSIX sh runner for var units                                                                                                                             |
 
 ### `fragment`
 
@@ -76,6 +76,35 @@ Arguments are escaped (`%` → `%%`, `$` → `$$`). The unit ends with `WantedBy
 `credential "n"` builds a plain ref; `credentialArg "RevokedKeys=" "n"` builds one with a prefix,
 for programs that take a path as `-o Option=<path>`. A prefix is one word of letters, digits and
 `_ = : / . , + -`.
+
+### `wrapApp` and `renderWrapped`
+
+`wrapApp wrap app` creates a wrapped derivation from an `app` record. `wrap` is repkgs' `set.wrap`
+function, passed by the caller. The wrapped output is a relocatable package: its `bin/<exe>` is a
+launcher that executes the original binary with the app's arguments and environment. Config files
+live in `share/wrap/<pkgname>/` and are referenced via the `{files}` placeholder.
+
+`renderWrapped wrap svc` renders a service using the wrapped binary:
+
+- `ExecStart=` is the wrapped binary plus `extraArgv` only; `argv`, `env` and `files` are in the
+  launch record.
+- No files are written to `/usr/lib/<name>/`; they are in the wrapped output.
+- `packages` contains the wrapped derivation, not the original package.
+
+Use `render svc` for backwards compatibility when wrapping is not available.
+
+### The `{files}` placeholder
+
+`file "name"` expands to `{files}/name`. Each renderer expands `{files}` to where it puts the app's
+files:
+
+| renderer        | `{files}` expands to          |
+| --------------- | ----------------------------- |
+| `render`        | `/usr/lib/<service>`          |
+| `renderWrapped` | `{root}/share/wrap/<pkgname>` |
+
+`{root}` is a launch placeholder expanded by repkgs' `launch` at run time. Config files live in ONE
+place: the wrapped output when using `renderWrapped`, or `/usr/lib/<name>/` when using `render`.
 
 ### `merge`
 

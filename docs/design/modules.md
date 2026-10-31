@@ -44,10 +44,11 @@ and user. Credential refs are refused inside `app` because it has no credentials
 
 Renderers turn these values into fragments:
 
-- **Wrapped relocatable binary.** The repkgs `launch` record bakes argv and env into the output; a
-  future `wrap` package shape will add config files. *(planned)*
-- **systemd unit.** `ExecStart=` points at the wrapped binary; `LoadCredentialEncrypted=` names
-  credentials; `StateDirectory=` names state.
+- **Wrapped relocatable binary.** `wrapApp wrap app` creates a derivation using repkgs' `wrap`. The
+  `launch` record bakes argv, env and files into the output; the wrapped binary is relocatable.
+- **systemd unit.** `render` writes config files to `/usr/lib/<name>/` and puts argv on
+  `ExecStart=`. `renderWrapped wrap` uses the wrapped binary: config files live in the wrapped
+  output's `share/wrap/<pkgname>/`, and only `extraArgv` (credential refs) stays on ExecStart.
 - **User unit.** The same, for `systemd --user`. *(planned)*
 
 Config goes to `/usr/lib/<name>/` or into the wrapper, never to `/etc`. The image holds no
