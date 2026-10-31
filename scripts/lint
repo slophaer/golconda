@@ -5,6 +5,9 @@
 # eval-jobs walks the derivation outputs; the adios tree under `modules` is not
 # a set of derivations (and recursing into it does not terminate), so it is
 # exercised by the pure-Nix module tests in nix/tests.nix instead.
+#
+# The final `iets build` runs checks for both x86_64-linux and aarch64-linux.
+# Without an aarch64 builder it fails; CI has both, local runs may not.
 set -eu
 cd "$(dirname "$0")/.."
 iets eval-jobs --force-recurse --no-instantiate \
