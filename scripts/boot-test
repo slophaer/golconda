@@ -188,7 +188,7 @@ setup_ssh_test() {
   mkdir -p "$SSH_DIR"
   
   # Use the committed test SSH key from the repo
-  TEST_KEY="$REPO_DIR/examples/test-ssh"
+  TEST_KEY="$REPO_DIR/tests/fixtures/snakeoil-ssh"
   if [ ! -f "$TEST_KEY" ]; then
     echo "Error: test SSH key not found: $TEST_KEY" >&2
     exit 1

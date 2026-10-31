@@ -152,7 +152,8 @@ Markers checked (each prints PASS/FAIL):
 | hostname-set        | the credential was read (log says `boot-test`) |
 | boot-complete       | boot-complete.target reached                   |
 
-With `--ssh-test`, the script uses the test SSH key from `examples/test-ssh` to log in, then:
+With `--ssh-test`, the script uses the test SSH key from `tests/fixtures/snakeoil-ssh` to log in,
+then:
 
 | marker            | what it proves                                              |
 | ----------------- | ----------------------------------------------------------- |
@@ -161,6 +162,6 @@ With `--ssh-test`, the script uses the test SSH key from `examples/test-ssh` to 
 | bootctl-list      | `bootctl list` shows the boot entry                         |
 | bless-boot        | the entry is marked good (no +N-M counter)                  |
 
-The test SSH keypair is a committed test fixture (`examples/test-ssh*`). The `image-smoke-test`
-reads the public key and adds it to `authorizedKeys`. The test script uses the private key to
-authenticate. See `examples/test-ssh.README` for why both keys are committed.
+The test SSH keypair is a committed test fixture (`tests/fixtures/snakeoil-ssh*`). The
+`image-smoke-test` reads the public key and adds it to `authorizedKeys`. The test script uses the
+private key to authenticate. See `tests/fixtures/README.md` for why both keys are committed.
