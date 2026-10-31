@@ -25,7 +25,7 @@
     Partition = {
       Type = "esp";
       Format = "vfat";
-      SizeMinBytes = "256M";
+      SizeMinBytes = "512M";
       SizeMaxBytes = "1G";
       # CopyFiles set by builder: systemd-boot, UKI, loader.conf
     };
@@ -35,7 +35,7 @@
     Partition = {
       Type = "usr";
       Label = "usr-a";
-      SizeMinBytes = "64M";
+      SizeMinBytes = "10G";
       ReadOnly = true;
       # CopyBlocks set by builder: the erofs image
     };
@@ -67,7 +67,7 @@
     Partition = {
       Type = "usr";
       Label = "usr-b";
-      SizeMinBytes = "64M";
+      SizeMinBytes = "10G";
       Weight = 0;
       # Empty until first update
     };
