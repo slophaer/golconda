@@ -149,10 +149,30 @@ let
   # program. A stand-in derivation falls back to pname or name.
   binName = a: head (a.package.spec.bin or [ (a.package.pname or a.package.name) ]);
 
-  # SEAM: the path a unit executes. Today the binary from the /usr/bin farm;
-  # the wrapped-binary renderer (repkgs `wrap`, on another branch) replaces
-  # this with the wrapper, which carries argv, env and files itself. Keep
-  # every ExecStart= path behind this one function.
+  # The directory for app files in a wrapped output: {root}/share/wrap/<pkgname>.
+  # The `launch` record uses {root} as a placeholder expanded at run time.
+  wrappedFilesDir = a: "{root}/share/wrap/${a.package.pname or a.package.name}";
+
+  # Wrap an app into a relocatable binary that carries its own argv, env and files.
+  # The wrapped derivation goes into the farm; its bin/<exe> is a launcher that
+  # executes the original binary with the app's arguments and environment.
+  # `wrap` is repkgs' `set.wrap` function, passed by the caller.
+  wrapApp =
+    wrap: a:
+    let
+      # Expand {files} in argv to the wrapped output's share directory
+      expandFiles = builtins.replaceStrings [ filesPlaceholder ] [ (wrappedFilesDir a) ];
+    in
+    wrap {
+      inherit (a) package;
+      argv = builtins.map expandFiles (a.argv or [ ]);
+      env = a.env or { };
+      files = a.files or { };
+    };
+
+  # The path a unit executes. With a wrapped binary this is still /usr/bin/<exe>
+  # because the farm symlinks to the wrapped output. Keep every ExecStart= path
+  # behind this one function.
   exe = a: "/usr/bin/${binName a}";
 in
 {
@@ -168,5 +188,7 @@ in
     filesPlaceholder
     isCredentialRef
     perMachineMarkers
+    wrapApp
+    wrappedFilesDir
     ;
 }
