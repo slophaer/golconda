@@ -197,7 +197,8 @@ for systemd's own directories (`/usr/lib/systemd`, `/usr/lib/udev`, `/usr/lib/sy
 `timesyncd.conf.d/golconda.conf` from `ntp`, `journald.conf.d/golconda.conf` from `journalMaxUse`,
 `/usr/lib/locale.conf` (`LANG=C.UTF-8`), `/usr/lib/repart.d/30-root.conf` (the root partition repart
 makes at first boot, from `image/repart.nix`); the tmpfiles lines `L /bin`, `L /sbin` and `L /lib`
-(merged `/usr` on the root partition); and the `messagebus` user; the boot health unit `golconda-health-network.service`, which fails unless
+(merged `/usr` on the root partition); and the `messagebus` user; the boot health unit
+`golconda-health-network.service`, which fails unless
 `systemd-networkd-wait-online --any --operational-state=routable` succeeds. It is pulled in by a
 `boot-complete.target.requires/` link and is `Before=boot-complete.target`, so a candidate without a
 routable link is not blessed ([design/boot](../../design/boot.md#boot-health)). `/security` returns
