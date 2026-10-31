@@ -25,6 +25,7 @@ let
     lessThan
     listToAttrs
     match
+    pathExists
     readFile
     replaceStrings
     sort
@@ -52,41 +53,6 @@ let
     inherit (schemaLib) typeRegistry;
     tree = f.modules { };
   };
-  # Helper for testing schema rendering with a minimal schema (no module walking)
-  mockPage =
-    schema:
-    let
-      props = schema.properties or { };
-      paths = builtins.attrNames props;
-    in
-    builtins.listToAttrs (
-      builtins.map (p: {
-        name = p;
-        value =
-          let
-            s = props.${p};
-            names = builtins.attrNames (s.properties or { });
-            row =
-              n:
-              let
-                opt = s.properties.${n};
-              in
-              "| `${n}` | ${moduleDocs.typeOf opt} | | ${
-                builtins.replaceStrings [ "\n" "|" "<" ] [ " " "\\|" "&lt;" ] (opt.description or "")
-              } |";
-            opaqueCheck = builtins.any (
-              n:
-              let
-                opt = s.properties.${n};
-              in
-              opt ? "x-golconda-opaque"
-            ) names;
-          in
-          builtins.concatStringsSep "\n" (
-            builtins.map row names ++ (if opaqueCheck then [ "\nOpaque types are not described" ] else [ ])
-          );
-      }) paths
-    );
   configLib = import ../lib/config.nix {
     tree = f.modules { };
     inherit (f) modules;
@@ -1437,22 +1403,30 @@ let
     ))
     (check "module-docs: opaque types are named and noted" (
       let
-        p = mockPage {
-          properties."/x".properties.o."x-golconda-opaque" = "mystery";
+        p = moduleDocs.page {
+          path = "/x";
+          schemaProps.properties.o."x-golconda-opaque" = "mystery";
+          docComment = null;
+          hasImpl = false;
+          hasTypes = false;
         };
       in
-      hasInfix "opaque `mystery`" p."/x" && hasInfix "Opaque types are not described" p."/x"
+      hasInfix "opaque `mystery`" p && hasInfix "Opaque types are not described" p
     ))
     (check "module-docs: a pipe or angle bracket in text cannot break the table" (
       let
-        p = mockPage {
-          properties."/x".properties.o = {
+        p = moduleDocs.page {
+          path = "/x";
+          schemaProps.properties.o = {
             type = "string";
             description = "a|b <c>";
           };
+          docComment = null;
+          hasImpl = false;
+          hasTypes = false;
         };
       in
-      hasInfix "a\\|b &lt;c>" p."/x"
+      hasInfix "a\\|b &lt;c>" p
     ))
     (check "module-docs: sshd has no opaque option; package renders as a package" (
       !hasInfix "Opaque types" docs.pages."/services/sshd"
@@ -1477,22 +1451,22 @@ let
     (check "module-docs: every module file has a #! doc comment" (
       all (m: docComments.moduleDoc m.filePath != null) modulePaths
     ))
-    (check "module-docs: discovered paths match tree module paths" (
+    (check "module-docs: discoverModulePaths finds each module file once" (
       let
-        discoveredPaths = builtins.sort (a: b: a < b) (map (m: m.path) modulePaths);
-        # Walk the tree to get all module paths
-        walkTree =
-          prefix: mod:
-          let
-            thisPath = if prefix == "" then "/" else prefix;
-            children = builtins.attrNames (mod.modules or { });
-            childPaths = builtins.concatMap (c: walkTree "${prefix}/${c}" mod.modules.${c}) children;
-          in
-          # Skip the root "/" path which doesn't have a file
-          (if prefix != "" then [ thisPath ] else [ ]) ++ childPaths;
-        treePaths = builtins.sort (a: b: a < b) (walkTree "" (f.modules { }));
+        discoveredPaths = sort (a: b: a < b) (map (m: m.path) modulePaths);
       in
-      discoveredPaths == treePaths
+      discoveredPaths == [
+        "/base"
+        "/factory"
+        "/network"
+        "/pkgs"
+        "/security"
+        "/services"
+        "/services/sshd"
+        "/system"
+        "/vars"
+      ]
+      && all (m: pathExists m.filePath) modulePaths
     ))
     (check "module-docs: types page lists every registry type" (
       let

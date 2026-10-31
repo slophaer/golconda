@@ -427,6 +427,7 @@ in
 {
   inherit
     toMarkdown
+    page
     typeOf
     fileName
     discoverModulePaths
