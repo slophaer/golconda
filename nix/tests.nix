@@ -2588,6 +2588,29 @@ let
       !result.success
     ))
 
+    # base module: service masks (no local login, monolithic kernel)
+    (check "base: systemd-firstboot.service is masked" (
+      let
+        result = compose [ ];
+      in
+      result.links ? "/usr/lib/systemd/system/systemd-firstboot.service"
+      && result.links."/usr/lib/systemd/system/systemd-firstboot.service".target == "/dev/null"
+    ))
+    (check "base: ldconfig.service is masked" (
+      let
+        result = compose [ ];
+      in
+      result.links ? "/usr/lib/systemd/system/ldconfig.service"
+      && result.links."/usr/lib/systemd/system/ldconfig.service".target == "/dev/null"
+    ))
+    (check "base: modprobe@.service is masked" (
+      let
+        result = compose [ ];
+      in
+      result.links ? "/usr/lib/systemd/system/modprobe@.service"
+      && result.links."/usr/lib/systemd/system/modprobe@.service".target == "/dev/null"
+    ))
+
     # security module: kernel hardening sysctl
     (check "security: sysctl.d file exists with Yama and hardening" (
       let

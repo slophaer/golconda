@@ -31,6 +31,11 @@
 #! `image/repart.nix`). Tmpfiles lines: `L /bin`, `L /sbin` and `L /lib`, the
 #! merged-`/usr` links on the root partition.
 #!
+#! Units masked: systemd-firstboot.service (there is no local login path,
+#! so no root password; the hostname comes from a credential), ldconfig.service
+#! (no ldconfig binary, monolithic kernel), modprobe@.service (no kmod binaries,
+#! monolithic kernel).
+#!
 #! Locale: C.UTF-8 via /usr/lib/locale.conf (PID 1 reads it before /etc
 #! exists, so the factory cannot provide it).
 #!
@@ -176,6 +181,30 @@ in
         {
           path = "/usr/lib/systemd/system/sysinit.target.wants/systemd-timesyncd.service";
           target = "../systemd-timesyncd.service";
+          kind = "explicit";
+        }
+      ];
+
+      # Masked units: services that must not run. Symlinks to /dev/null are how
+      # systemd implements masking; no InstallInfo reaches the masked name.
+      # - systemd-firstboot: there is no local login path, so no root password;
+      #   the hostname comes from a credential, firstboot would prompt otherwise.
+      # - ldconfig: the image has no ldconfig binary (monolithic kernel).
+      # - modprobe@: the image has no kmod binaries (monolithic kernel).
+      maskLinks = [
+        {
+          path = "/usr/lib/systemd/system/systemd-firstboot.service";
+          target = "/dev/null";
+          kind = "explicit";
+        }
+        {
+          path = "/usr/lib/systemd/system/ldconfig.service";
+          target = "/dev/null";
+          kind = "explicit";
+        }
+        {
+          path = "/usr/lib/systemd/system/modprobe@.service";
+          target = "/dev/null";
           kind = "explicit";
         }
       ];
@@ -357,7 +386,7 @@ in
       };
 
       links = linksToAttrs (
-        dbusUnitLinks ++ wantsLinks ++ shLinks ++ systemdBinLinks ++ farmLinks ++ dlopenLinks
+        dbusUnitLinks ++ wantsLinks ++ shLinks ++ systemdBinLinks ++ farmLinks ++ dlopenLinks ++ maskLinks
       );
 
       # The dbus user, if dbus-broker needs it. dbus-broker runs as root by
