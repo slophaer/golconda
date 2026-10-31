@@ -5,6 +5,8 @@
 set -eu
 cd "$(dirname "$0")/.."
 out=docs/reference/modules/generated
+# Delete the old pages first: a removed module's page must not linger in the book.
+rm -rf "$out"
 mkdir -p "$out"
 
 # Write the generated module and type pages
