@@ -93,7 +93,9 @@ path and no option can turn them on
 ([reference: /services/sshd](../reference/modules/README.md#servicessshd)); PAM stays for account
 and session (`pam_systemd`), never for auth: the factory's `/etc/pam.d/sshd` has no `auth` line and
 `/etc/pam.d/other` denies every type. The image carries no setuid binary: linux-pam ships without
-`unix_chkpwd`, so a non-root process cannot verify a password at all.
+`unix_chkpwd`, so a non-root process cannot verify a password at all, and pam_unix is built with
+`pam_unix-try-getspnam` so that root (sshd's account check) reads `/etc/shadow` itself
+(`nix/packages.nix`).
 
 The machine's own identity is its host key, a local var, plus a host certificate and a key
 revocation list, both admin vars; sshd reads them from its credentials directory, never from the

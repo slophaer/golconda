@@ -39,8 +39,14 @@ let
   set = import "${sources.repkgs}/nix/set.nix" {
     inherit system platform;
     packages = import ../packages;
-    # The kernel policy: Golconda's kconfig fragment with the IPE boot policy path.
-    overrides.linux-kernel.kbuild.configFragments.append = [ kernelConfigFragment ];
+    overrides = {
+      # The kernel policy: Golconda's kconfig fragment with the IPE boot policy path.
+      linux-kernel.kbuild.configFragments.append = [ kernelConfigFragment ];
+      # repkgs removes pam_unix's setuid helper unix_chkpwd (the image has no setuid binaries),
+      # but Linux-PAM >= 1.7 pam_unix reads /etc/shadow itself only with this option: without
+      # it every account check runs the helper and fails, and sshd denies every login.
+      linux-pam.meson.defs.merge."pam_unix-try-getspnam" = true;
+    };
     # Set-wide choices: one TLS stack, one of each (docs/design/principles.md).
     features = {
       tls = "openssl";
