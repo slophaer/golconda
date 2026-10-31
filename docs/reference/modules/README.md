@@ -8,9 +8,10 @@ This page documents every module and the shared types in `modules/lib/`.
 | path             | role                                                                                                             |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `/system`        | the composer: `name`, `version`, `fragments` → `{ units; files; sysusers; tmpfiles; packages; links; farmDirs }` |
+| `/factory`       | the `/etc` seed under `/usr/share/factory/etc`, its manifest and first-boot stamp, the sshd user (below)         |
 | `/vars`          | installs `/usr/lib/golconda/golconda-var-run` (mode `0755`); add once when any var is used                       |
 | `/wrap`          | typed options for repkgs' `wrap`: `package`, `argv`, `env`, `files`; the caller uses `set.wrap`                  |
-| `/services/sshd` | OpenSSH as a service with an ed25519 host key var; keys and certificates only (options below)                    |
+| `/services/sshd` | OpenSSH as a wrapped service with an ed25519 host key var; keys and certificates only (options below)            |
 
 The option tables of each module are [generated from the schema](generated/index.md) and are not
 committed; build the book with `scripts/docs`.
@@ -25,7 +26,7 @@ Plain files that modules import. The directory has no `default.nix`, so adios do
 | `merge.nix`        | `merge [ fragment… ] → { ...; links; farmDirs }`: unions attrs, concatenates lists; a duplicate key or path throws; every file comes out as `{ text; mode; }` |
 | `app.nix`          | `app`, `argv`, `files`, `perMachineMarkers`, `envOp`, `credentialRef`, `isCredentialRef`, `file`, `filesPlaceholder`, `exe`                                   |
 | `service.nix`      | `service`, `render`, `renderWrapped`, `wrapApp`, `sandbox`, `sandboxLines`, `credential`, `credentialArg`                                                     |
-| `var.nix`          | `var`, `render`, `unitName`, `credentialId`, `stateDir`                                                                                                       |
+| `var.nix`          | `var`, `render`, `adminVar`, `admin`, `unitName`, `credentialId`, `stateDir`                                                                                  |
 | `golconda-var-run` | POSIX sh runner for var units                                                                                                                                 |
 
 ### `fragment`
@@ -53,7 +54,8 @@ What a program needs to run, with nothing systemd-specific. Embedded in `service
 
 | field     | type                                                                | meaning                                                          |
 | --------- | ------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `package` | derivation                                                          | the package; its first `bin` entry is the program                |
+| `package` | derivation                                                          | the package; its `bin` list names its executables                |
+| `program` | string, default the first `bin` entry                               | the executable; must be in `bin` when the package declares it    |
 | `argv`    | list of string, default `[ ]`                                       | arguments after the program; `{files}` expands to the files path |
 | `env`     | attrs of one-key `{ set \| default \| prepend \| append \| unset }` | environment operations                                           |
 | `files`   | attrs name → text, default `{ }`                                    | files installed to `/usr/lib/<service>/<name>`                   |
@@ -88,7 +90,11 @@ Arguments are escaped (`%` → `%%`, `$` → `$$`). `credential "n"` builds a pl
 `wrapApp wrap app` creates a wrapped derivation from an `app` record. `wrap` is repkgs' `set.wrap`
 function, passed by the caller. The wrapped output is a relocatable package: its `bin/<exe>` is a
 launcher that executes the original binary with the app's arguments and environment. Config files
-live in `share/wrap/<pkgname>/` and are referenced via the `{files}` placeholder.
+live in `share/wrap/<pkgname>/` and are referenced via the `{files}` placeholder. The result
+declares `bin = [ program ]` and `wraps = package`, so the farm links `/usr/bin/<program>` to the
+launcher and nothing else of the wrapped output (repkgs wraps every executable with the same argv).
+A file's text cannot name the output it is in: a directive that names a sibling file goes on `argv`
+with `{files}`, as sshd does for `AuthorizedKeysFile`.
 
 `renderWrapped wrap svc` renders a service using the wrapped binary:
 
@@ -97,7 +103,8 @@ live in `share/wrap/<pkgname>/` and are referenced via the `{files}` placeholder
 - No files are written to `/usr/lib/<name>/`; they are in the wrapped output.
 - `packages` contains the wrapped derivation, not the original package.
 
-Use `render svc` for backwards compatibility when wrapping is not available.
+Both renderers write the same unit apart from `ExecStart=` and `Environment=`, including the
+`.wants` links. Use `render svc` when no `wrap` is at hand.
 
 ### The `{files}` placeholder
 
@@ -125,7 +132,10 @@ adds:
 | `farmDirs` | `farm` declarations expanded to `{ path; target }` for the image builder         |
 
 A link path that collides with a file path is an error. Two sources for the same link path is an
-error naming both sources.
+error naming both sources. One exception: a launcher from `wrapApp` stands in for the program of the
+package it wraps (compared by store path), so the plain package's `/usr/bin/<program>` gives way to
+it while its other executables stay. A launcher for another package's program, or two launchers for
+one program, still clash.
 
 Error message example: `golconda: /usr/bin/jq defined twice: package jq-1.7, package jq-wrap-1.7`.
 
@@ -144,24 +154,57 @@ to `set.wrap` in `nix/packages.nix`. `wrap` returns a package with launch record
 
 `packages.<system>.wrap-smoke` wraps `jq` with `--version` as a build check.
 
+### `/factory`
+
+One fragment: the files under `/usr/share/factory/etc`, `/usr/lib/golconda/etc.manifest`, the
+tmpfiles lines that seed `/etc`, and the sshd privilege-separation user with `/var/empty` (ambient,
+like `/etc/pam.d`: a configuration with `/services/sshd` adds `/factory` once).
+
+| option       | type                             | rendered as                                                                                |
+| ------------ | -------------------------------- | ------------------------------------------------------------------------------------------ |
+| `hostname`   | word, default `"golconda"`       | `hostname`                                                                                 |
+| `timezone`   | zone name, default `"UTC"`       | `L /etc/localtime - - - - /usr/share/zoneinfo/<timezone>`                                  |
+| `extraFiles` | attrs path under `/etc` → `file` | more seeds; a built-in path or `passwd`, `group`, `shadow`, `gshadow`, `machine-id` throws |
+
+Built-in seeds: `hostname`, `shells` (`/usr/bin/sh`, `/usr/bin/dash`), `pam.d/other` (every type
+`pam_deny`), `pam.d/sshd` (`account pam_unix`; `session pam_systemd` optional, `session pam_unix`;
+no `auth` line, so an auth request falls through to `other`), `ssl/anchors/.keep`,
+`ssl/blocklist/.keep`, `pkcs11/.keep`. Not seeded: `passwd`, `group`, `shadow` (systemd-sysusers
+writes them on first boot from `/usr/lib/sysusers.d`) and `machine-id` (PID 1).
+
+tmpfiles: `C+ /etc - - - - /usr/share/factory/etc` (a plain `C` skips `/etc`, which already holds
+`machine-id` when tmpfiles runs; `C+` copies what is missing and replaces nothing),
+`d /etc/ssh 0755`, the two `L` lines (`localtime`, `os-release` → `../usr/lib/os-release`),
+`d /var/empty 0755`, and `f /etc/.golconda-factory-id 0644 root root - <sha256 of the manifest>`,
+written only when the file does not exist: the stamp of the factory that seeded this `/etc`.
+
+The manifest has one line per factory path, sorted: `f <mode> root:root <sha256> /etc/<path>` for a
+file, `l - root:root <target> <path>` for a symlink, `d 0755 root:root - <path>` for a directory.
+Two modules that write one factory path are a composer error, like any duplicate file.
+
 ### `/services/sshd`
 
 One fragment: the host key var `sshd-hostkey` (credential `sshd-hostkey.key`, passed with `-h`),
-`sshd.service`, the configuration under `/usr/lib/sshd/` and the privilege-separation user. The
-generated `sshd_config` fixes `PasswordAuthentication no`, `KbdInteractiveAuthentication no`,
+`sshd.service`, the sshd launcher (`renderWrapped`: `/usr/bin/sshd` carries `-D -e -f` and the
+configuration in its `share/wrap/openssh/`), and, when their options are on, the admin vars
+`sshd-host-cert` and `sshd-revoked-keys`. The generated `sshd_config` fixes
+`PasswordAuthentication no`, `KbdInteractiveAuthentication no`,
 `ChallengeResponseAuthentication no`, `PermitRootLogin prohibit-password`, `UsePAM yes` and
 `LogLevel VERBOSE`; no option changes them ([design/trust](../../design/trust.md#identity)).
+`/etc/pam.d/sshd` comes from `/factory`.
 
-| option              | type                                       | rendered as                                                                                  |
-| ------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------- |
-| `package`           | derivation                                 | the program (its first `bin`)                                                                |
-| `port`              | int, default `22`                          | `Port`                                                                                       |
-| `authorizedKeys`    | list of string, default `[ ]`              | `/usr/lib/sshd/authorized_keys.root`; bootstrap only                                         |
-| `trustedUserCAKeys` | list of string, default `[ ]`              | `/usr/lib/sshd/trusted_user_ca_keys` and `TrustedUserCAKeys`                                 |
-| `principals`        | attrs user → list of string, default `{ }` | `/usr/lib/sshd/principals.<user>` and `AuthorizedPrincipalsFile /usr/lib/sshd/principals.%u` |
-| `revokedKeys`       | credential name or `null`, default `null`  | `LoadCredentialEncrypted=<name>:<name>` and `-o RevokedKeys=%d/<name>`                       |
-| `hostCertificate`   | bool, default `false`                      | `LoadCredentialEncrypted=hostcert:sshd-host-cert` and `-o HostCertificate=%d/hostcert`       |
+| option              | type                                       | rendered as                                                                                                          |
+| ------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `package`           | derivation                                 | repkgs `openssh`; `program = "sshd"`                                                                                 |
+| `wrap`              | function                                   | repkgs' `set.wrap`, from the configuration like `package`                                                            |
+| `port`              | int, default `22`                          | `Port`                                                                                                               |
+| `authorizedKeys`    | list of string, default `[ ]`              | `authorized_keys.root` in the launcher; bootstrap only                                                               |
+| `trustedUserCAKeys` | list of string, default `[ ]`              | `trusted_user_ca_keys` and `-o TrustedUserCAKeys={files}/trusted_user_ca_keys`                                       |
+| `principals`        | attrs user → list of string, default `{ }` | `principals.<user>` and `-o AuthorizedPrincipalsFile={files}/principals.%u`                                          |
+| `revokedKeys`       | bool, default `false`                      | admin var `sshd-revoked-keys`; `LoadCredentialEncrypted=krl:sshd-revoked-keys.krl`, `-o RevokedKeys=%d/krl`          |
+| `hostCertificate`   | bool, default `false`                      | admin var `sshd-host-cert`; `LoadCredentialEncrypted=hostcert:sshd-host-cert.cert`, `-o HostCertificate=%d/hostcert` |
 
-`revokedKeys` and `hostCertificate` name admin-supplied credentials (a KRL and the signed host
+`AuthorizedKeysFile .ssh/authorized_keys {files}/authorized_keys.%u` is always a `-o` argument.
+`revokedKeys` and `hostCertificate` declare admin-supplied vars (a KRL and the signed host
 certificate); they reach sshd on the command line because `sshd_config` cannot refer to the
 credentials directory, and an app file may not ([`app`](#app)).

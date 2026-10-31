@@ -54,7 +54,9 @@ Renderers turn these values into fragments:
   `launch` record bakes argv, env and files into the output; the wrapped binary is relocatable.
 - **systemd unit.** `render` writes config files to `/usr/lib/<name>/` and puts argv on
   `ExecStart=`. `renderWrapped wrap` uses the wrapped binary: config files live in the wrapped
-  output's `share/wrap/<pkgname>/`, and only `extraArgv` (credential refs) stays on ExecStart.
+  output's `share/wrap/<pkgname>/`, and only `extraArgv` (credential refs) stays on ExecStart. The
+  farm links `/usr/bin/<program>` to the launcher in place of the plain package's own; sshd is
+  rendered this way.
 - **User unit.** The same, for `systemd --user`. *(planned)*
 
 Config goes to `/usr/lib/<name>/` or into the wrapper, never to `/etc`. The image holds no

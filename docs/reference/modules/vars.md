@@ -22,8 +22,9 @@ A `word` is a shell-safe path component: letters, digits, `_`, `.`, `-`.
 | function                 | returns                                       |
 | ------------------------ | --------------------------------------------- |
 | `render var`             | a fragment with the unit, manifest and script |
+| `admin adminVar`         | a fragment with the manifest entry only       |
 | `unitName name`          | `"golconda-var-<name>.service"`               |
-| `credentialId name file` | `"<name>.<file>"` (for `service.credentials`) |
+| `credentialId name file` | `"<name>.<file>"`, for both classes           |
 | `stateDir name`          | `"/var/lib/golconda/vars/<name>"`             |
 
 ## Generated fragment
@@ -32,8 +33,8 @@ A `word` is a shell-safe path component: letters, digits, `_`, `.`, `-`.
 
 - `units."golconda-var-<name>.service"`: oneshot, `RemainAfterExit=yes`,
   `ConditionPathExists=!/var/lib/golconda/vars/<name>/done`. Runs after any vars in `after`.
-- `files."/usr/lib/golconda/vars.d/<name>.json"`: manifest with name, secrets, publics, after, and
-  credential ids.
+- `files."/usr/lib/golconda/vars.d/<name>.json"`: manifest with name, `class: "local"`, secrets,
+  publics, after, and credential ids.
 - `files."/usr/lib/golconda/vars.d/<name>.sh"`: the script.
 - `packages`: the packages the script needs.
 
@@ -48,6 +49,21 @@ by `ExecStart=` directly):
 1. Copies public files to `/var/lib/golconda/vars/<name>/pub/`.
 1. Touches `done` so the unit does not run again.
 
+## Type: `adminVar`
+
+An admin-supplied var: the deploy host keeps the value age-encrypted, pushes it over ssh, and the
+machine seals it with its own `systemd-creds` into `/etc/credstore.encrypted/<name>.<file>`. The
+image carries only the declaration.
+
+| field   | type         | meaning                                                   |
+| ------- | ------------ | --------------------------------------------------------- |
+| `name`  | word         | unique name; the credential prefix                        |
+| `files` | list of word | files the deploy host pushes, credentials `<name>.<file>` |
+
+`admin adminVar` returns a fragment with one file, `vars.d/<name>.json` (`name`, `class: "admin"`,
+`files`, `credentials`), and no unit: the consumer's unit waits for the push. Any other field is a
+type error. The deploy tool *(planned)* reads the manifest from the image, never from evaluation.
+
 ## Example
 
 ```nix
@@ -61,7 +77,14 @@ v.render {
 }
 ```
 
-A consumer service references the credential:
+An admin-supplied var, and the consumer that loads it the same way:
+
+```nix
+v.admin { name = "sshd-host-cert"; files = [ "cert" ]; }
+credentials.hostcert = v.credentialId "sshd-host-cert" "cert";
+```
+
+A consumer service references a local credential:
 
 ```nix
 credentials.hostkey = v.credentialId "sshd-hostkey" "key";
