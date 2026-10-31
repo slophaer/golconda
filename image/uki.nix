@@ -16,7 +16,10 @@
 {
   # Kernel command line template
   # {usrhash} is substituted with the verity root hash at build time
-  cmdlineTemplate = "usrhash={usrhash} systemd.volatile=no console=ttyS0 rw";
+  # console=tty0,ttyS0: both local console and serial
+  # ro: root and usr are read-only (dm-verity enforces this anyway)
+  # systemd.volatile=no: /var is on the root partition, not tmpfs
+  cmdlineTemplate = "usrhash={usrhash} ro systemd.volatile=no console=tty0 console=ttyS0,115200";
 
   # EFI output naming
   # {version} is the IMAGE_VERSION
