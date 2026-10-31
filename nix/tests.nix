@@ -36,12 +36,39 @@ let
   usrTreeLib = import ../lib/usr-tree.nix { };
   inherit (import ./packages.nix { inherit sources platform; }) pkgs;
 
-  # OpenSSH is not in repkgs yet; any derivation stands in for the type check
-  # (the unit then says /usr/bin/jq, which the tests do not look at).
+  # repkgs needs ca-derivations to instantiate, so no package is built here;
+  # jq stands in for the type check (the unit then says /usr/bin/jq).
   standIn = pkgs.jq;
 
   # stand-ins for repkgs packages: `bin` exists only on those
-  withBin = name: bin: pkgs.jq // { inherit name bin; };
+  withBin =
+    name: bin:
+    pkgs.jq
+    // {
+      inherit name bin;
+      outPath = "/nix/store/${name}";
+    };
+  # openssh as repkgs declares it: `bin` lists the client tools first
+  openssh =
+    withBin "openssh-10.6p1" [
+      "ssh"
+      "sshd"
+      "ssh-keygen"
+    ]
+    // {
+      pname = "openssh";
+    };
+  # a stub for repkgs' `wrap`: the same shape as its output (a new name, no
+  # `bin`), with the arguments it received
+  stubWrap =
+    args:
+    removeAttrs (args.package // { _wrapArgs = args; }) [ "bin" ]
+    // {
+      name = "${args.package.pname or args.package.name}-wrap";
+      outPath = "${args.package}-wrap-${
+        builtins.hashString "sha256" (builtins.toJSON (removeAttrs args [ "package" ]))
+      }";
+    };
   farmOf =
     packages:
     (
@@ -90,7 +117,8 @@ let
   # 1. sshd composes: the unit loads the host key credential and passes it
   tree = f.modules {
     options."/services/sshd" = {
-      package = standIn;
+      package = openssh;
+      wrap = stubWrap;
       authorizedKeys = [ "ssh-ed25519 AAAA test" ];
     };
   };
@@ -112,12 +140,15 @@ let
       { };
   unit = system.units."sshd.service";
   varUnit = system.units."golconda-var-sshd-hostkey.service";
-  sshdConfig = system.files."/usr/lib/sshd/sshd_config".text;
+  # the launcher carries the configuration: the stub wrap recorded it
+  sshdWrapped = builtins.head (builtins.filter (p: p ? _wrapArgs) system.packages);
+  sshdConfig = sshdWrapped._wrapArgs.files.sshd_config;
 
   # 1a. sshd with certificates: a user CA, principals, a KRL and a host certificate
   certTree = f.modules {
     options."/services/sshd" = {
-      package = standIn;
+      package = openssh;
+      wrap = stubWrap;
       trustedUserCAKeys = [ "ssh-ed25519 AAAA user-ca" ];
       principals.root = [ "alice@example.com" ];
       revokedKeys = "sshd-revoked-keys";
@@ -126,13 +157,16 @@ let
   };
   certSshd = compose [ (certTree.modules.services.modules.sshd { }) ];
   certUnit = certSshd.units."sshd.service";
-  certConfig = certSshd.files."/usr/lib/sshd/sshd_config".text;
+  certWrapped = builtins.head (builtins.filter (p: p ? _wrapArgs) certSshd.packages);
+  certConfig = certWrapped._wrapArgs.files.sshd_config;
+  certArgv = builtins.concatStringsSep " " certWrapped._wrapArgs.argv;
   sshdOptions = attrNames (import ../modules/services/sshd/default.nix { inherit types; }).options;
   sshdTree =
     opts:
     f.modules {
       options."/services/sshd" = {
-        package = standIn;
+        package = openssh;
+        wrap = stubWrap;
       }
       // opts;
     };
@@ -163,9 +197,38 @@ let
       hasInfix "LoadCredentialEncrypted=hostkey:sshd-hostkey.key" unit
     ))
     (check "sshd: credential ref renders as %d" (hasInfix " -h %d/hostkey" unit))
-    (check "sshd: exec reads the app file" (hasInfix "-f /usr/lib/sshd/sshd_config" unit))
-    (check "sshd: app file is installed" (system.files ? "/usr/lib/sshd/sshd_config"))
-    (check "sshd: authorized keys file" (system.files ? "/usr/lib/sshd/authorized_keys.root"))
+    (check "sshd: runs the launcher from the farm" (
+      hasInfix "\nExecStart=/usr/bin/sshd -h %d/hostkey\n" unit
+      && sshdWrapped.bin == [ "sshd" ]
+      && any (l: l.path == "/usr/bin/sshd" && l.target == "${sshdWrapped}/bin/sshd") system.links
+    ))
+    (check "sshd: the launcher reads its own sshd_config" (
+      sshdWrapped._wrapArgs.argv == [
+        "-D"
+        "-e"
+        "-f"
+        "{root}/share/wrap/openssh/sshd_config"
+        "-o"
+        "AuthorizedKeysFile=.ssh/authorized_keys {root}/share/wrap/openssh/authorized_keys.%u"
+      ]
+      && sshdWrapped._wrapArgs.package == openssh
+    ))
+    (check "sshd: no file under /usr/lib/sshd" (
+      !any (hasPrefix "/usr/lib/sshd/") (attrNames system.files)
+    ))
+    (check "sshd: authorized keys file is in the launcher" (
+      sshdWrapped._wrapArgs.files."authorized_keys.root" == "ssh-ed25519 AAAA test\n"
+    ))
+    (check "sshd: the plain package keeps its other tools" (
+      any (l: l.path == "/usr/bin/ssh-keygen" && l.target == "${openssh}/bin/ssh-keygen") system.links
+      && any (l: l.path == "/usr/bin/ssh") system.links
+    ))
+    (check "sshd: the program must be one of the package's executables" (sshdThrows {
+      package = standIn;
+    }))
+    (check "sshd: wrap is a function" (sshdThrows {
+      wrap = "set.wrap";
+    }))
     (check "sshd: waits for the var" (hasInfix "After=golconda-var-sshd-hostkey.service" unit))
     (check "sshd: privsep user" (any (hasInfix "u sshd ") system.sysusers))
     (check "var: runs once" (
@@ -200,21 +263,23 @@ let
         "principals"
         "revokedKeys"
         "trustedUserCAKeys"
+        "wrap"
       ]
     ))
     (check "sshd: without a CA no certificate lines" (
-      !hasInfix "TrustedUserCAKeys" sshdConfig
-      && !hasInfix "AuthorizedPrincipalsFile" sshdConfig
+      !any (hasInfix "TrustedUserCAKeys") sshdWrapped._wrapArgs.argv
+      && !any (hasInfix "AuthorizedPrincipalsFile") sshdWrapped._wrapArgs.argv
       && !hasInfix "HostCertificate" unit
       && !hasInfix "RevokedKeys" unit
     ))
     (check "sshd: user CA keys file" (
-      certSshd.files."/usr/lib/sshd/trusted_user_ca_keys".text == "ssh-ed25519 AAAA user-ca\n"
-      && hasInfix "\nTrustedUserCAKeys /usr/lib/sshd/trusted_user_ca_keys\n" certConfig
+      certWrapped._wrapArgs.files.trusted_user_ca_keys == "ssh-ed25519 AAAA user-ca\n"
+      && hasInfix " -o TrustedUserCAKeys={root}/share/wrap/openssh/trusted_user_ca_keys" certArgv
+      && !hasInfix "TrustedUserCAKeys" certConfig
     ))
     (check "sshd: principals file and AuthorizedPrincipalsFile" (
-      certSshd.files."/usr/lib/sshd/principals.root".text == "alice@example.com\n"
-      && hasInfix "\nAuthorizedPrincipalsFile /usr/lib/sshd/principals.%u\n" certConfig
+      certWrapped._wrapArgs.files."principals.root" == "alice@example.com\n"
+      && hasInfix " -o AuthorizedPrincipalsFile={root}/share/wrap/openssh/principals.%u" certArgv
     ))
     (check "sshd: host certificate credential and option" (
       hasInfix "LoadCredentialEncrypted=hostcert:sshd-host-cert" certUnit
@@ -857,6 +922,120 @@ let
       in
       # Environment= lines are not in the unit (they're in the launch record)
       !hasInfix "Environment=" unit
+    ))
+
+    # 5b. app.program and the launcher in the farm
+    (check "app.program defaults to the first bin and must be one of them" (
+      a.binName { package = openssh; } == "ssh"
+      &&
+        a.binName {
+          package = openssh;
+          program = "sshd";
+        } == "sshd"
+      && a.binName { package = standIn; } == "jq"
+      &&
+        a.app.verify {
+          package = openssh;
+          program = "sshd";
+        } == null
+      &&
+        a.app.verify {
+          package = openssh;
+          program = "httpd";
+        } != null
+      && hasInfix "openssh-10.6p1" (
+        a.app.verify {
+          package = openssh;
+          program = "httpd";
+        }
+      )
+    ))
+    (check "wrapApp: the launcher declares the program as its one bin and what it wraps" (
+      let
+        w = a.wrapApp stubWrap {
+          package = openssh;
+          program = "sshd";
+        };
+      in
+      w.bin == [ "sshd" ] && w.wraps == openssh && w.name == "openssh-wrap"
+    ))
+    (check "farm: a launcher stands in for the program of its own package" (
+      let
+        w = a.wrapApp stubWrap {
+          package = openssh;
+          program = "sshd";
+        };
+        inherit
+          (compose [
+            {
+              packages = [
+                openssh
+                w
+              ];
+            }
+          ])
+          links
+          ;
+        linksReversed =
+          (compose [
+            {
+              packages = [
+                w
+                openssh
+              ];
+            }
+          ]).links;
+        sshdLink = builtins.filter (l: l.path == "/usr/bin/sshd");
+      in
+      map (l: l.target) (sshdLink links) == [ "${w}/bin/sshd" ]
+      && map (l: l.target) (sshdLink linksReversed) == [ "${w}/bin/sshd" ]
+      && builtins.length links == 3
+      && any (l: l.path == "/usr/bin/ssh" && l.target == "/nix/store/openssh-10.6p1/bin/ssh") links
+    ))
+    (check "farm: a launcher does not take another package's program" (
+      !(tryEval (
+        deepSeq (farmOf [
+          (withBin "dropbear-1" [ "sshd" ])
+          (a.wrapApp stubWrap {
+            package = openssh;
+            program = "sshd";
+          })
+        ]) true
+      )).success
+    ))
+    (check "farm: two launchers for one program clash" (
+      !(tryEval (
+        deepSeq (farmOf [
+          (a.wrapApp stubWrap {
+            package = openssh;
+            program = "sshd";
+            argv = [ "-D" ];
+          })
+          (a.wrapApp stubWrap {
+            package = openssh;
+            program = "sshd";
+            argv = [ "-d" ];
+          })
+        ]) true
+      )).success
+    ))
+    (check "renderWrapped: .wants links and [Install] follow wantedBy" (
+      let
+        frag = s.renderWrapped stubWrap {
+          name = "w";
+          app.package = standIn;
+          user = "dynamic";
+          sandbox = "strict";
+          wantedBy = [ "sysinit.target" ];
+        };
+      in
+      frag.links == [
+        {
+          path = "/usr/lib/systemd/system/sysinit.target.wants/w.service";
+          target = "../w.service";
+        }
+      ]
+      && hasInfix "[Install]\nWantedBy=sysinit.target\n" frag.units."w.service"
     ))
 
     # 5. Farm specification: bin links, farm dirs, dlopen, collision checks

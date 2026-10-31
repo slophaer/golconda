@@ -126,16 +126,29 @@ let
       ) null (attrNames v)
   );
 
-  app = struct "app" {
-    package = derivation;
-    # default [ ]; may contain the `{files}` placeholder (see `file`)
-    argv = optionalAttr argv;
-    # default { }
-    env = optionalAttr (attrsOf envOp);
-    # file name -> text; default { }. Every renderer installs them and expands
-    # `{files}`. No per-machine value: see `files`.
-    files = optionalAttr files;
-  };
+  app =
+    (struct "app" {
+      package = derivation;
+      # the executable in the package's `bin` list; default: its first entry
+      program = optionalAttr string;
+      # default [ ]; may contain the `{files}` placeholder (see `file`)
+      argv = optionalAttr argv;
+      # default { }
+      env = optionalAttr (attrsOf envOp);
+      # file name -> text; default { }. Every renderer installs them and expands
+      # `{files}`. No per-machine value: see `files`.
+      files = optionalAttr files;
+    }).override
+      {
+        verify =
+          a:
+          if a ? program && a.package ? bin && !builtins.elem a.program a.package.bin then
+            "program '${a.program}' is not an executable of ${
+              a.package.name or a.package.pname
+            } (bin: [${concatStringsSep ", " a.package.bin}])"
+          else
+            null;
+      };
 
   # The path of an app file, for use inside `argv`: `file "sshd_config"` is
   # "{files}/sshd_config". Each renderer expands `{files}` to where it put
@@ -144,10 +157,10 @@ let
   filesPlaceholder = "{files}";
   file = name: "${filesPlaceholder}/${name}";
 
-  # The program name: repkgs packages list their binaries in `spec.bin`
-  # (builder/finish.nu defaults it to the package name); the first one is the
-  # program. A stand-in derivation falls back to pname or name.
-  binName = a: head (a.package.spec.bin or [ (a.package.pname or a.package.name) ]);
+  # The program name: `program`, else the first of the package's `bin` list
+  # (repkgs packages carry it at evaluation time, defaulting to the package
+  # name). A stand-in derivation falls back to pname or name.
+  binName = a: a.program or (head (a.package.bin or [ (a.package.pname or a.package.name) ]));
 
   # The directory for app files in a wrapped output: {root}/share/wrap/<pkgname>.
   # The `launch` record uses {root} as a placeholder expanded at run time.
@@ -156,7 +169,12 @@ let
   # Wrap an app into a relocatable binary that carries its own argv, env and files.
   # The wrapped derivation goes into the farm; its bin/<exe> is a launcher that
   # executes the original binary with the app's arguments and environment.
-  # `wrap` is repkgs' `set.wrap` function, passed by the caller.
+  # `wrap` is repkgs' `set.wrap` function, passed by the caller. Its output
+  # declares no `bin`, and it wraps every executable of the package with the
+  # same argv, so the farm links only the program: /usr/bin/<program> is the
+  # launcher, nothing else of the wrapped output is reachable by name.
+  # `wraps` names the package it stands in for: the farm lets the launcher
+  # take /usr/bin/<program> from that package (merge.nix), not from another.
   wrapApp =
     wrap: a:
     let
@@ -168,6 +186,10 @@ let
       argv = builtins.map expandFiles (a.argv or [ ]);
       env = a.env or { };
       files = a.files or { };
+    }
+    // {
+      bin = [ (binName a) ];
+      wraps = a.package;
     };
 
   # The path a unit executes. With a wrapped binary this is still /usr/bin/<exe>

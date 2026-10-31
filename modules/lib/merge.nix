@@ -45,9 +45,19 @@ let
   # repkgs packages carry `bin`, their executable names, at evaluation time.
   pkgName = p: p.name or "${p.pname}-${p.version}";
 
+  # A package's identity for the duplicate check: its store path, so two
+  # wrappers of one package with different arguments differ; a stand-in
+  # without one goes by name.
+  pkgId = p: p.outPath or (pkgName p);
+
   # Build /usr/bin links from packages' bin lists. Two packages with the same
   # bin name is an error with both package names. The same package listed
-  # twice is not a clash (same source); we emit one link.
+  # twice is not a clash (same identity); we emit one link. One exception: a
+  # wrapped output (app.nix `wrapApp`, `wraps` = the package) stands in for
+  # the program of its own package, so /usr/bin/<program> is the launcher
+  # and the plain package's link gives way. Two wrappers of one program, or a
+  # wrapper of another package, still clash.
+  standsInFor = wrapper: p: wrapper ? wraps && pkgId wrapper.wraps == pkgId p;
   binLinks =
     packages:
     foldl'
@@ -61,29 +71,29 @@ let
           let
             path = "/usr/bin/${b}";
             source = "package ${pn}";
-          in
-          if acc.seen ? ${path} && acc.seen.${path}.source != source then
-            throw "golconda: ${path} defined twice: ${acc.seen.${path}.source}, ${source}"
-          else
-            {
+            link = {
+              inherit path;
+              target = "${p}/bin/${b}";
+            };
+            prior = acc.seen.${path} or null;
+            take = {
               seen = acc.seen // {
-                ${path} = {
-                  inherit path source;
-                  target = "${p}/bin/${b}";
+                ${path} = link // {
+                  inherit source;
+                  package = p;
                 };
               };
-              links =
-                if acc.seen ? ${path} then
-                  acc.links
-                else
-                  acc.links
-                  ++ [
-                    {
-                      inherit path;
-                      target = "${p}/bin/${b}";
-                    }
-                  ];
-            }
+              links = filter (l: l.path != path) acc.links ++ [ link ];
+            };
+          in
+          if prior == null then
+            take
+          else if pkgId prior.package == pkgId p || standsInFor prior.package p then
+            acc
+          else if standsInFor p prior.package then
+            take
+          else
+            throw "golconda: ${path} defined twice: ${prior.source}, ${source}"
         ) acc (p.bin or [ ])
       )
       {
