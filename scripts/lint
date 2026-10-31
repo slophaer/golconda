@@ -7,6 +7,16 @@
 # exercised by the pure-Nix module tests in nix/tests.nix instead.
 set -eu
 cd "$(dirname "$0")/.."
+# A /nix/store literal in modules/ or lib/ is a relocation bug: the image's store is
+# /usr/nix/store and a store path comes from a derivation, never from typed text.
+# `/usr/nix/store` and `$out/nix/store` are relative to something, so a preceding word
+# character or `)` excuses them; a comment line and a line marked `store-path-ok` pass.
+if hits=$(grep -rnE '(^|[^A-Za-z0-9_)])/nix/store' modules lib --include='*.nix' --include='*.nu' \
+  | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' | grep -v 'store-path-ok'); then
+  echo "lint: /nix/store literal (a relocation bug; take paths from derivations, or mark the line 'store-path-ok'):" >&2
+  echo "$hits" >&2
+  exit 1
+fi
 iets eval-jobs --force-recurse --no-instantiate \
   --expr 'let f = import ./default.nix; in { inherit (f) packages checks devShells formatter; }' > /dev/null
 iets eval --expr 'import ./nix/tests.nix { }' > /dev/null
