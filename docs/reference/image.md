@@ -36,6 +36,15 @@ All transfers use `InstancesMax=2` and `ProtectVersion=%A`. The installed UKI na
 counter (`+3-0`: three tries left, none done); `systemd-bless-boot` removes the suffix after
 `boot-complete.target`.
 
+With `/system.updateSource` set, the composer writes the definitions as
+`/usr/lib/sysupdate.d/<n>.transfer` (the suffix systemd wants since 257; `.conf` still loads with a
+warning) and enables the update timer with a static link,
+`timers.target.wants/systemd-sysupdate-update.timer`. systemd 262 renamed
+`systemd-sysupdate.timer`/`.service` to `systemd-sysupdate-update.timer`/`.service` and keeps the
+old names as aliases. The timer starts `systemd-sysupdate-update.service`, which runs
+`systemd-sysupdate update --component-all --cleanup=yes` over the built-in definitions; no
+definition comes from `/etc` or `/run`.
+
 ## Image definitions (`image/`)
 
 | file             | content                                                                                     |

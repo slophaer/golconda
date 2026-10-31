@@ -256,6 +256,12 @@ let
     in
     n <= h && any (i: substring i n hay == needle) (genList (i: i) (h - n + 1));
   hasPrefix = p: s: substring 0 (stringLength p) s == p;
+  hasSuffix =
+    x: s:
+    let
+      n = stringLength s - stringLength x;
+    in
+    n >= 0 && substring n (stringLength x) s == x;
 
   # 1. sshd composes: the unit loads the host key credential and passes it
   tree = withPkgs {
@@ -1316,7 +1322,7 @@ let
     ))
 
     # 7b. /system.updateSource renders sysupdate.d
-    (check "system: updateSource renders /usr/lib/sysupdate.d with Path=" (
+    (check "system: updateSource renders /usr/lib/sysupdate.d/*.transfer with Path=" (
       let
         result = composeWith {
           "/system" = {
@@ -1326,20 +1332,42 @@ let
             updateSource = "https://updates.example/t/";
           };
         };
-        usr = result.files."/usr/lib/sysupdate.d/10-usr.conf".text;
+        usr = result.files."/usr/lib/sysupdate.d/10-usr.transfer".text;
+        names = builtins.attrNames result.files;
       in
       hasInfix "[Source]" usr
       && hasInfix "Path=https://updates.example/t/" usr
       && hasInfix "MatchPattern=t_@v.usr.@u.raw" usr
       && hasInfix "ProtectVersion=%A" usr
       && hasInfix "Verify=no" usr
-      && result.files ? "/usr/lib/sysupdate.d/40-uki.conf"
+      && result.files ? "/usr/lib/sysupdate.d/40-uki.transfer"
+      # systemd 257+ wants the .transfer suffix and warns on .conf
+      && !(builtins.any (n: hasPrefix "/usr/lib/sysupdate.d/" n && hasSuffix ".conf" n) names)
     ))
-    (check "system: no updateSource, no sysupdate.d" (
+    (check "system: updateSource enables the update timer with a static link" (
+      let
+        result = composeWith {
+          "/system" = {
+            name = "t";
+            version = "20261031.1";
+            fragments = [ ];
+            updateSource = "https://updates.example/t/";
+          };
+        };
+      in
+      # systemd 262 renamed systemd-sysupdate.timer to systemd-sysupdate-update.timer; the old
+      # name is an alias of it
+      result.links."/usr/lib/systemd/system/timers.target.wants/systemd-sysupdate-update.timer" == {
+        target = "../systemd-sysupdate-update.timer";
+        kind = "explicit";
+      }
+    ))
+    (check "system: no updateSource, no sysupdate.d and no update timer" (
       let
         result = composeWith { };
       in
       !(builtins.any (n: hasPrefix "/usr/lib/sysupdate.d/" n) (builtins.attrNames result.files))
+      && !(result.links ? "/usr/lib/systemd/system/timers.target.wants/systemd-sysupdate-update.timer")
     ))
     (check "ini: lists repeat the key, booleans are yes/no, null drops" (
       (import ../modules/lib/ini.nix).render {

@@ -30,7 +30,11 @@
 { types, ... }:
 let
   ini = import ../lib/ini.nix;
-  # /system.updateSource -> /usr/lib/sysupdate.d/*.conf (image/sysupdate.nix)
+  # /system.updateSource -> /usr/lib/sysupdate.d/*.transfer (image/sysupdate.nix), and the
+  # timer that runs them. systemd 257 named the suffix .transfer (.conf still loads, with a
+  # warning). systemd 262 renamed systemd-sysupdate.timer to systemd-sysupdate-update.timer
+  # and keeps the old name as an alias; the static .wants link enables it without presets
+  # (docs/design/layout.md).
   sysupdateFragment =
     options:
     if options.updateSource == null then
@@ -46,13 +50,17 @@ let
         {
           files = builtins.listToAttrs (
             map (n: {
-              name = "/usr/lib/sysupdate.d/${n}.conf";
+              name = "/usr/lib/sysupdate.d/${n}.transfer";
               value = {
                 text = ini.render defs.${n};
                 mode = "0644";
               };
             }) (builtins.attrNames defs)
           );
+          links."/usr/lib/systemd/system/timers.target.wants/systemd-sysupdate-update.timer" = {
+            target = "../systemd-sysupdate-update.timer";
+            kind = "explicit";
+          };
         }
       ];
   inherit (builtins)
