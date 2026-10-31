@@ -148,7 +148,7 @@ let
           "/pkgs".set = stubSet;
           "/system" = {
             name = "farm";
-            version = "0";
+            version = "20261031.1";
             fragments = [ { inherit packages; } ];
           };
         };
@@ -163,7 +163,7 @@ let
         "/pkgs".set = stubSet;
         "/system" = {
           name = "t";
-          version = "0";
+          version = "20261031.1";
           inherit fragments;
         };
       };
@@ -206,7 +206,7 @@ let
         "/pkgs".set = stubSet;
         "/system" = {
           name = "test";
-          version = "0";
+          version = "20261031.1";
           fragments = [
             sshd
             vars
@@ -719,7 +719,7 @@ let
         (f.modules {
           options."/system" = {
             name = "dup";
-            version = "0";
+            version = "20261031.1";
             fragments = [
               { units."a.service" = "[Unit]\n"; }
               { units."a.service" = "[Service]\n"; }
@@ -777,7 +777,7 @@ let
         (f.modules {
           options."/system" = {
             name = "cat";
-            version = "0";
+            version = "20261031.1";
             fragments = [
               { sysusers = [ "a" ]; }
               { sysusers = [ "b" ]; }
@@ -1050,6 +1050,59 @@ let
       && schema.properties."/system".properties ? name
       && schema.properties."/system".properties ? version
       && schema.properties."/system".properties ? fragments
+    ))
+
+    # 7. Version format: YYYYMMDD.N
+    (check "version format: YYYYMMDD.N accepted" (
+      let
+        validVersions = [
+          "20261031.1"
+          "20260101.0"
+          "20301231.99"
+        ];
+        tryVersion =
+          v:
+          (tryEval (
+            f.modules {
+              options = {
+                "/pkgs".set = stubSet;
+                "/system" = {
+                  name = "t";
+                  version = v;
+                };
+              };
+            }
+          )).success;
+      in
+      all tryVersion validVersions
+    ))
+    (check "version format: invalid versions rejected" (
+      let
+        invalidVersions = [
+          "0"
+          "2026.10.31"
+          "2026-10-31.1"
+          "20261031"
+          "v1.0.0"
+        ];
+        tryVersion =
+          v:
+          (tryEval (
+            deepSeq
+              (f.modules {
+                options = {
+                  "/pkgs".set = stubSet;
+                  "/system" = {
+                    name = "t";
+                    version = v;
+                  };
+                };
+              }).modules.system
+              { }
+              true
+          )).success;
+      in
+      !any tryVersion invalidVersions
     ))
     (check "module-docs: sshd page has the principals row and its default" (
       hasInfix "| `principals` | object of array of string | `{}` |" docs.pages."/services/sshd"
@@ -2016,7 +2069,7 @@ let
               "/pkgs".set = stubSet;
               "/system" = {
                 name = "empty";
-                version = "0";
+                version = "20261031.1";
                 fragments = [ ];
               };
             };
