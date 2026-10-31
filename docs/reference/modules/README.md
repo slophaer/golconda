@@ -108,7 +108,7 @@ that the renderer writes the files to; `systemctl cat` shows the whole command.
 | `name`             | unit name stem                                                                           | `units."<name>.service"`, `/usr/lib/<name>/` for files                           |
 | `scope`            | `"system"` or `"user"`, default `"system"`                                               | which manager: `units` or a file under `/usr/lib/systemd/user/`                  |
 | `app`              | `app`                                                                                    | `ExecStart=`, `Environment=`, `files`, `packages`                                |
-| `credentials`      | attrs name → credstore id, default `{ }`                                                 | `LoadCredentialEncrypted=name:id`; refused for scope `user`                      |
+| `credentials`      | attrs handle → credstore id, default `{ }`                                               | `LoadCredentialEncrypted=id`, argv `%d/id`; refused for scope `user`             |
 | `state`            | list of string, default `[ ]`                                                            | `StateDirectory=`                                                                |
 | `runtimeDirectory` | word, optional                                                                           | `RuntimeDirectory=`                                                              |
 | `killMode`         | `"control-group"`, `"process"` or `"mixed"`, optional                                    | `KillMode=`; absent means systemd's default (`control-group`)                    |
@@ -217,7 +217,8 @@ are a composer error, like any duplicate file.
 ### `/services/sshd`
 
 One fragment: the host key var `sshd-hostkey` (credential `sshd-hostkey.key`, passed with `-h`),
-`sshd.service` (`ExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config -h %d/hostkey …`;
+`sshd.service`
+(`ExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config -h %d/sshd-hostkey.key …`;
 `KillMode=process`: sessions outlive a restart; sandbox `trusted`, because the sessions it spawns
 must see the real system), the files under `/usr/lib/sshd/`, the privilege-separation user
 (`u sshd - "SSH privilege separation" /var/empty`) with its directory (`d /var/empty 0755`; no
@@ -229,15 +230,15 @@ on the command line; every fixed path is a line in `sshd_config`. The generated 
 `LogLevel VERBOSE`, `PidFile none` and `Subsystem sftp internal-sftp`; no option changes them
 ([design/trust](../../design/trust.md#identity)). `/etc/pam.d/sshd` comes from `/factory`.
 
-| option              | type                                       | rendered as                                                                                                          |
-| ------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| `package`           | derivation, default `pkgs.openssh`         | from `/pkgs`; `program = "sshd"`                                                                                     |
-| `port`              | int, default `22`                          | `Port`                                                                                                               |
-| `authorizedKeys`    | list of string, default `[ ]`              | `/usr/lib/sshd/authorized_keys/root`; bootstrap only                                                                 |
-| `trustedUserCAKeys` | list of string, default `[ ]`              | `/usr/lib/sshd/ca.pub` and `TrustedUserCAKeys /usr/lib/sshd/ca.pub` in `sshd_config`                                 |
-| `principals`        | attrs user → list of string, default `{ }` | `/usr/lib/sshd/principals/<user>` and `AuthorizedPrincipalsFile /usr/lib/sshd/principals/%u` in `sshd_config`        |
-| `revokedKeys`       | bool, default `false`                      | admin var `sshd-revoked-keys`; `LoadCredentialEncrypted=krl:sshd-revoked-keys.krl`, `-o RevokedKeys=%d/krl`          |
-| `hostCertificate`   | bool, default `false`                      | admin var `sshd-host-cert`; `LoadCredentialEncrypted=hostcert:sshd-host-cert.cert`, `-o HostCertificate=%d/hostcert` |
+| option              | type                                       | rendered as                                                                                                               |
+| ------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| `package`           | derivation, default `pkgs.openssh`         | from `/pkgs`; `program = "sshd"`                                                                                          |
+| `port`              | int, default `22`                          | `Port`                                                                                                                    |
+| `authorizedKeys`    | list of string, default `[ ]`              | `/usr/lib/sshd/authorized_keys/root`; bootstrap only                                                                      |
+| `trustedUserCAKeys` | list of string, default `[ ]`              | `/usr/lib/sshd/ca.pub` and `TrustedUserCAKeys /usr/lib/sshd/ca.pub` in `sshd_config`                                      |
+| `principals`        | attrs user → list of string, default `{ }` | `/usr/lib/sshd/principals/<user>` and `AuthorizedPrincipalsFile /usr/lib/sshd/principals/%u` in `sshd_config`             |
+| `revokedKeys`       | bool, default `false`                      | admin var `sshd-revoked-keys`; `LoadCredentialEncrypted=sshd-revoked-keys.krl`, `-o RevokedKeys=%d/sshd-revoked-keys.krl` |
+| `hostCertificate`   | bool, default `false`                      | admin var `sshd-host-cert`; `LoadCredentialEncrypted=sshd-host-cert.cert`, `-o HostCertificate=%d/sshd-host-cert.cert`    |
 
 `sshd_config` holds `AuthorizedKeysFile .ssh/authorized_keys /usr/lib/sshd/authorized_keys/%u`.
 `revokedKeys` and `hostCertificate` declare admin vars (a KRL and the signed host certificate); they

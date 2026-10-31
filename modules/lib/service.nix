@@ -148,9 +148,12 @@ let
       # required for a system service; refused for a user one, which runs as
       # the user whose manager starts it
       user = optionalAttr user;
-      # credential name -> credstore id: LoadCredentialEncrypted=name:id; default { }.
+      # argv handle -> credstore id; default { }. The unit loads the credential
+      # under its credstore id (LoadCredentialEncrypted=id, read as %d/id): the
+      # sealer embeds that id as the credential name and PID 1 checks the
+      # embedded name against the id it loads, so a renamed file fails.
       # System scope only: Golconda seals credentials for the system manager.
-      # app.argv names a credential as { credential = "n"; prefix ? ""; }.
+      # app.argv names a credential by its handle: { credential = "n"; prefix ? ""; }.
       credentials = optionalAttr (attrsOf string);
       # StateDirectory= entries under /var/lib; default [ ]
       state = optionalAttr (listOf string);
@@ -230,7 +233,7 @@ let
       checkedRef =
         r:
         if credentials ? ${r.credential} then
-          "${r.prefix or ""}%d/${r.credential}"
+          "${r.prefix or ""}%d/${credentials.${r.credential}}"
         else
           throw "golconda: service ${svc.name} references credential '${r.credential}' but declares only [${concatStringsSep ", " (attrNames credentials)}]";
 
@@ -262,7 +265,9 @@ let
         "ExecStart=${concatStringsSep " " execStart}"
       ]
       ++ envLines (svc.app.env or { })
-      ++ map (n: "LoadCredentialEncrypted=${n}:${credentials.${n}}") (sortStrings (attrNames credentials))
+      ++ map (id: "LoadCredentialEncrypted=${id}") (
+        sortStrings (map (n: credentials.${n}) (attrNames credentials))
+      )
       ++ map (d: "StateDirectory=${d}") (svc.state or [ ])
       ++ (if svc ? runtimeDirectory then [ "RuntimeDirectory=${svc.runtimeDirectory}" ] else [ ])
       ++ (if svc ? killMode then [ "KillMode=${svc.killMode}" ] else [ ])
@@ -351,7 +356,7 @@ in
     credentialRef
     ;
   credential = n: { credential = n; };
-  # `-o RevokedKeys=%d/krl` style: credentialArg "RevokedKeys=" "krl"
+  # `-o RevokedKeys=%d/<id of krl>` style: credentialArg "RevokedKeys=" "krl"
   credentialArg = prefix: n: {
     credential = n;
     inherit prefix;

@@ -326,12 +326,10 @@ let
   ];
 
   tests = [
-    (check "sshd: LoadCredentialEncrypted" (
-      hasInfix "LoadCredentialEncrypted=hostkey:sshd-hostkey.key" unit
-    ))
-    (check "sshd: credential ref renders as %d" (hasInfix " -h %d/hostkey" unit))
+    (check "sshd: LoadCredentialEncrypted" (hasInfix "LoadCredentialEncrypted=sshd-hostkey.key\n" unit))
+    (check "sshd: credential ref renders as %d" (hasInfix " -h %d/sshd-hostkey.key" unit))
     (check "sshd: ExecStart is the program from the farm with its config and credential" (
-      hasInfix "\nExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config -h %d/hostkey\n" unit
+      hasInfix "\nExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config -h %d/sshd-hostkey.key\n" unit
       &&
         system.links."/usr/bin/sshd" == {
           target = "${openssh}/bin/sshd";
@@ -445,8 +443,8 @@ let
     ))
     (check "sshd: the whole certificate ExecStart, in order: only credentials on the command line" (
       hasInfix (
-        "\nExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config -h %d/hostkey"
-        + " -o HostCertificate=%d/hostcert -o RevokedKeys=%d/krl\n"
+        "\nExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config -h %d/sshd-hostkey.key"
+        + " -o HostCertificate=%d/sshd-host-cert.cert -o RevokedKeys=%d/sshd-revoked-keys.krl\n"
       ) certUnit
       && !hasInfix "TrustedUserCAKeys" certUnit
       && !hasInfix "AuthorizedPrincipalsFile" certUnit
@@ -461,12 +459,12 @@ let
       && hasInfix "\nAuthorizedPrincipalsFile /usr/lib/sshd/principals/%u\n" certConfig
     ))
     (check "sshd: host certificate credential and option" (
-      hasInfix "LoadCredentialEncrypted=hostcert:sshd-host-cert.cert\n" certUnit
-      && hasInfix " -o HostCertificate=%d/hostcert" certUnit
+      hasInfix "LoadCredentialEncrypted=sshd-host-cert.cert\n" certUnit
+      && hasInfix " -o HostCertificate=%d/sshd-host-cert.cert" certUnit
     ))
     (check "sshd: revoked keys credential and option" (
-      hasInfix "LoadCredentialEncrypted=krl:sshd-revoked-keys.krl\n" certUnit
-      && hasInfix " -o RevokedKeys=%d/krl" certUnit
+      hasInfix "LoadCredentialEncrypted=sshd-revoked-keys.krl\n" certUnit
+      && hasInfix " -o RevokedKeys=%d/sshd-revoked-keys.krl" certUnit
     ))
     (check "sshd: the admin vars are declared when their options are on" (
       builtins.fromJSON certSshd.files."/usr/lib/golconda/vars.d/sshd-host-cert.json".text == {
@@ -580,7 +578,7 @@ let
 
     # 2. one argv: strings and credential refs; a ref must name a declared credential
     (check "app.argv accepts a declared credential ref and renders it as %d" (
-      hasInfix "\nExecStart=/usr/bin/jq -c %d/k\n"
+      hasInfix "\nExecStart=/usr/bin/jq -c %d/x.k\n"
         (s.render {
           name = "x";
           app = {
@@ -651,7 +649,7 @@ let
       )
     ))
     (check "app.argv renders a prefixed credential ref" (
-      hasInfix " -o RevokedKeys=%d/k\n"
+      hasInfix " -o RevokedKeys=%d/x.k\n"
         (s.render {
           name = "x";
           app = {
@@ -1405,7 +1403,7 @@ let
       ((configLib.withPkgs stubSet).loadConfig ../examples/server.toml).options."/pkgs".target.pkgs
       == stubSet.pkgs
       &&
-        hasInfix "ExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config -h %d/hostkey\n"
+        hasInfix "ExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config -h %d/sshd-hostkey.key\n"
           frag.units."sshd.service"
       && elem openssh frag.packages
     ))
@@ -2152,7 +2150,7 @@ let
       && !hasInfix "$CREDENTIALS_DIRECTORY" sshdConfig
       && !hasInfix "/etc/credstore" sshdConfig
       # credential refs are only in the unit's ExecStart
-      && hasInfix "%d/hostkey" unit
+      && hasInfix "%d/sshd-hostkey.key" unit
     ))
 
     # 10b. Negative: app.files refuses /etc/credstore absolute path

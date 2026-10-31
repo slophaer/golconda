@@ -13,7 +13,7 @@
 #                 script = "foo-keygen -o key"; packages = [ foo ]; }
 #
 # A consumer service names the credential, never a path:
-#   credentials.key = v.credentialId "foo-key" "key";    # LoadCredentialEncrypted=key:foo-key.key
+#   credentials.key = v.credentialId "foo-key" "key";    # LoadCredentialEncrypted=foo-key.key, argv %d/foo-key.key
 #   after = [ (v.unitName "foo-key") ]; wants = [ (v.unitName "foo-key") ];
 #
 # An admin-supplied var (`admin`) is the second class (docs/design/trust.md):
@@ -23,7 +23,7 @@
 # The deploy tool reads the manifest from the image. The credential id is
 # the same `<name>.<file>`, so a consumer does not know the class:
 #   v.admin { name = "foo-cert"; files = [ "cert" ]; }
-#   credentials.cert = v.credentialId "foo-cert" "cert";  # LoadCredentialEncrypted=cert:foo-cert.cert
+#   credentials.cert = v.credentialId "foo-cert" "cert";  # LoadCredentialEncrypted=foo-cert.cert
 #
 # The runner /usr/lib/golconda/golconda-var-run (modules/lib/golconda-var-run)
 # is one file for all vars, so the /vars module installs it: add `/vars` to

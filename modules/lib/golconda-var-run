@@ -8,7 +8,7 @@
 # PUBLIC is kept in $STATE_DIRECTORY/pub, the plaintext is removed and `done`
 # is touched. SECRETS and PUBLICS are space-separated file names.
 #
-# Consumers load a secret with LoadCredentialEncrypted=<n>:NAME.SECRET and read
+# Consumers load a secret with LoadCredentialEncrypted=NAME.SECRET and read
 # a public file at /var/lib/golconda/vars/NAME/pub/PUBLIC.
 set -eu
 
@@ -24,12 +24,12 @@ sh -eu "$script"
 
 mkdir -p "$credstore"
 for f in $secrets; do
-  # --with-key=auto: use TPM2 when present, fall back to host key otherwise.
-  # --name=: empty name skips the embedded-name check during decryption, so the consumer's
-  # LoadCredentialEncrypted= can name the credential as it sees fit. Without this, systemd
-  # embeds the output filename and fails decryption when the service uses a different name.
-  systemd-creds encrypt --with-key=auto --name="" --tpm2-public-key-pcrs=11 \
-    "$f" "$credstore/.$name.$f.tmp"
+  # --with-key=auto: host+tpm2 when a TPM2 is present, the host key otherwise.
+  # --name= is the credstore file name, which is also the id the consumer loads
+  # (LoadCredentialEncrypted=NAME.SECRET): PID 1 checks the embedded name against
+  # that id, so a sealed file renamed to another credential fails to decrypt.
+  systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11 \
+    --name="$name.$f" "$f" "$credstore/.$name.$f.tmp"
   mv "$credstore/.$name.$f.tmp" "$credstore/$name.$f"
 done
 
