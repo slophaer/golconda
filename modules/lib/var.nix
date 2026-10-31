@@ -1,10 +1,12 @@
-# Vars: values generated on the machine, once, that never enter the image.
-# A var is a fragment: a oneshot unit `golconda-var-<name>.service` runs the
-# generator script on first boot, seals each secret file to the TPM as the
-# credential `<name>.<file>` and keeps public files in
-# /var/lib/golconda/vars/<name>/pub. The image carries only the declaration
-# (the manifest in /usr/lib/golconda/vars.d/). Report:
-# ~/spikes/research-vars/REPORT.md section 3.1.
+# Vars: values the image names but never contains. Two classes:
+#
+#   - local: generated on the machine at first boot (ssh host keys, wireguard
+#     keys). The generator runs in a oneshot unit, seals secrets with
+#     systemd-creds, and exports only public files.
+#   - admin: kept age-encrypted on the deploy host, pushed over ssh, sealed on
+#     the machine. The image carries only the manifest entry (class "admin").
+#
+# The manifest is /usr/lib/golconda/vars.d/<name>.json.
 #
 #   let v = import ../../lib/var.nix { inherit types; };
 #   in v.render { name = "foo-key"; secrets = [ "key" ]; publics = [ "key.pub" ];
