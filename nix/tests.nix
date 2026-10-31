@@ -2007,19 +2007,21 @@ let
 
     # 8. the factory seed as symlinks (L lines, no manifest, no stamp)
     (check "factory: pam.d/sshd is account and session only" (
-      hasInfix "\naccount required pam_unix.so\n" pamSshd
-      && hasInfix "\nsession optional pam_systemd.so\n" pamSshd
-      && hasInfix "\nsession required pam_unix.so\n" pamSshd
+      hasInfix "\naccount required linux-pam/pam_unix.so\n" pamSshd
+      && hasInfix "\nsession optional systemd/pam_systemd.so\n" pamSshd
+      && hasInfix "\nsession required linux-pam/pam_unix.so\n" pamSshd
       && !hasInfix "\nauth " pamSshd
       && !hasInfix "\npassword " pamSshd
     ))
     (check "factory: pam.d/other denies everything" (
-      all (t: hasInfix "\n${t} required pam_deny.so\n" factory.files."${factoryDir}/pam.d/other") [
-        "auth"
-        "account"
-        "password"
-        "session"
-      ]
+      all
+        (t: hasInfix "\n${t} required linux-pam/pam_deny.so\n" factory.files."${factoryDir}/pam.d/other")
+        [
+          "auth"
+          "account"
+          "password"
+          "session"
+        ]
     ))
     (check "factory: no manifest, no stamp" (
       !(factory.files ? "/usr/lib/golconda/etc.manifest")
@@ -2634,6 +2636,23 @@ let
       && c.links."/usr/share/dbus-1/system.d" == farm "system.d"
       && c.links."/usr/share/dbus-1/system-services" == farm "system-services"
       && !(c.files ? "/usr/share/dbus-1/system.d/.gitkeep")
+    ))
+    (check "base: each PAM package's modules are a directory link under /usr/lib/security" (
+      # a directory link, not file links: repkgs writes DT_NEEDED as $ORIGIN/../../../<dep>,
+      # and $ORIGIN is the directory of the path PAM opens
+      let
+        l = (compose [ ]).links;
+      in
+      l."/usr/lib/security/linux-pam" == {
+        target = "${stubSet.pkgs.linux-pam}/lib/security";
+        kind = "explicit";
+      }
+      &&
+        l."/usr/lib/security/systemd" == {
+          target = "${stubSet.pkgs.systemd}/lib/security";
+          kind = "explicit";
+        }
+      && !(l ? "/usr/lib/security/pam_unix.so")
     ))
     (check "base: networkd and timesyncd skip the initrd (no sysusers there: 217/USER)" (
       let
