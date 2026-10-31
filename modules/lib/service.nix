@@ -221,8 +221,8 @@ let
   # there; `$` is literal (unlike in ExecStart=), so only % is doubled.
   envValue = s: replaceStrings [ "%" ] [ "%%" ] s;
 
-  # Environment= from launch env operations. A unit starts from an empty
-  # environment, so `default` is `set` and prepend/append have nothing to join.
+  # Environment= from launch env operations: a replacement value, or an
+  # unset marker. There are no inherited-value operations (review finding 27).
   envLines =
     env:
     map (
@@ -230,16 +230,7 @@ let
       let
         op = env.${k};
       in
-      if op ? unset then
-        "UnsetEnvironment=${k}"
-      else if op ? set then
-        "Environment=${quote "${k}=${envValue op.set}"}"
-      else if op ? default then
-        "Environment=${quote "${k}=${envValue op.default}"}"
-      else if op ? prepend then
-        "Environment=${quote "${k}=${envValue (concatStringsSep ":" op.prepend)}"}"
-      else
-        "Environment=${quote "${k}=${envValue (concatStringsSep ":" op.append)}"}"
+      if op ? unset then "UnsetEnvironment=${k}" else "Environment=${quote "${k}=${envValue op.set}"}"
     ) (attrNames env);
 
   sortStrings = sort (a: b: a < b);
