@@ -293,7 +293,7 @@ let
     };
 
     envOp = {
-      description = "Environment operation: one of set, default, prepend, append, unset.";
+      description = "Environment operation: set the value, or unset the variable (true only).";
       type = "object";
       oneOf = [
         {
@@ -303,32 +303,8 @@ let
           required = [ "set" ];
         }
         {
-          properties.default = {
-            "$ref" = "#/$defs/unitValue";
-          };
-          required = [ "default" ];
-        }
-        {
-          properties.prepend = {
-            type = "array";
-            items = {
-              "$ref" = "#/$defs/unitValue";
-            };
-          };
-          required = [ "prepend" ];
-        }
-        {
-          properties.append = {
-            type = "array";
-            items = {
-              "$ref" = "#/$defs/unitValue";
-            };
-          };
-          required = [ "append" ];
-        }
-        {
           properties.unset = {
-            type = "boolean";
+            const = true;
           };
           required = [ "unset" ];
         }
