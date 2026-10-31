@@ -1,9 +1,12 @@
-#! The seed for `/etc` and its manifest.
+#! The seed for `/etc` as symlinks into `/usr/share/factory/etc`.
 #!
-#! The composer writes files to `/usr/share/factory/etc`; on the machine a
-#! tmpfiles `C+` line copies what `/etc` lacks. Nothing replaces an existing
-#! file: an admin edit persists, and a later image changes `/etc` only through
-#! etc-sync (planned), which reads `/usr/lib/golconda/etc.manifest`.
+#! Each factory file is a symlink from `/etc/<path>` to
+#! `/usr/share/factory/etc/<path>`. An admin file at the same path (a regular
+#! file, not a symlink) wins: tmpfiles `L` (not `L+`) creates only what is
+#! missing. `find /etc -type f` lists admin changes.
+#!
+#! Hostname is not in the factory: it comes from the bootstrap credential
+#! `system.hostname` (systemd-firstboot, see docs/design/boot.md).
 #!
 #! The sshd privilege-separation user and `/var/empty` are ambient like
 #! `/etc/pam.d`: add `/factory` once when using `/services/sshd`.
@@ -13,18 +16,14 @@ let
     attrNames
     concatStringsSep
     elem
-    hashString
     isString
     listToAttrs
     match
     sort
     ;
   inherit (import ../lib/fragment.nix { inherit types; }) file;
-  inherit (import ../lib/var.nix { inherit types; }) word;
 
   factoryDir = "/usr/share/factory/etc";
-  manifestPath = "/usr/lib/golconda/etc.manifest";
-  stampPath = "/etc/.golconda-factory-id";
 
   # Files the factory must not hold, whoever asks (see the header).
   denied = [
@@ -33,6 +32,7 @@ let
     "shadow"
     "gshadow"
     "machine-id"
+    "hostname"
   ];
 
   # A path under /etc: relative, plain components, none of the denied names.
@@ -45,7 +45,7 @@ let
     then
       "'${v}' is not a path under /etc: relative components of letters, digits and _ . + -"
     else if elem v denied then
-      "'${v}' is not a factory file: sysusers or PID 1 writes it on the machine (modules/factory)"
+      "'${v}' is not a factory file: sysusers or PID 1 or bootstrap credentials write it on the machine (modules/factory)"
     else
       null
   );
@@ -86,28 +86,11 @@ let
   );
 
   lines = l: concatStringsSep "\n" l + "\n";
-  normalize =
-    v:
-    if isString v then
-      {
-        text = v;
-        mode = "0644";
-      }
-    else
-      {
-        inherit (v) text;
-        mode = v.mode or "0644";
-      };
 in
 {
   name = "factory";
 
   options = {
-    hostname = {
-      type = word;
-      default = "golconda";
-      description = "The machine's static host name (/etc/hostname).";
-    };
     timezone = {
       type = timezone;
       default = "UTC";
@@ -124,7 +107,6 @@ in
     { options }:
     let
       builtIn = {
-        hostname = options.hostname + "\n";
         shells = lines [
           "/usr/bin/sh"
           "/usr/bin/dash"
@@ -159,53 +141,36 @@ in
           builtIn // options.extraFiles;
       paths = sort (a: b: a < b) (attrNames seeds);
 
-      # Entries the tmpfiles lines make under /etc, for the manifest.
+      # Links the tmpfiles lines make under /etc.
       links = {
         "/etc/localtime" = "/usr/share/zoneinfo/${options.timezone}";
         "/etc/os-release" = "../usr/lib/os-release";
       };
       dirs = [ "/etc/ssh" ];
 
-      entries =
-        map (
-          p:
-          let
-            f = normalize seeds.${p};
-          in
-          {
-            path = "/etc/${p}";
-            line = "f ${f.mode} root:root ${hashString "sha256" f.text} /etc/${p}";
-          }
-        ) paths
-        ++ map (p: {
-          path = p;
-          line = "l - root:root ${links.${p}} ${p}";
-        }) (attrNames links)
-        ++ map (p: {
-          path = p;
-          line = "d 0755 root:root - ${p}";
-        }) dirs;
-      manifest = lines (map (e: e.line) (sort (a: b: a.path < b.path) entries));
-      manifestId = hashString "sha256" manifest;
+      # Tmpfiles lines: L for symlinks into the factory, d for directories.
+      # No C+ (the old design): each file is a symlink, admin files win.
+      # Directories that a program rewrites in place would be 'd' lines;
+      # none exist today.
+      tmpfilesLines =
+        # L /etc/<path> - - - - /usr/share/factory/etc/<path>
+        # Uses L (not L+): an existing file (admin override) is left alone.
+        map (p: "L /etc/${p} - - - - ${factoryDir}/${p}") paths
+        # Symlinks to paths outside the factory (os-release, timezone)
+        ++ map (p: "L ${p} - - - - ${links.${p}}") (attrNames links)
+        # Directories (pam.d parent is implicit; ssh needs .keep or explicit)
+        ++ map (d: "d ${d} 0755 root root -") dirs
+        # sshd privsep: /var/empty must exist
+        ++ [ "d /var/empty 0755 root root -" ];
     in
     {
-      files =
-        listToAttrs (
-          map (p: {
-            name = "${factoryDir}/${p}";
-            value = seeds.${p};
-          }) paths
-        )
-        // {
-          ${manifestPath} = manifest;
-        };
-      tmpfiles = [
-        "C+ /etc - - - - ${factoryDir}"
-        "f ${stampPath} 0644 root root - ${manifestId}"
-      ]
-      ++ map (d: "d ${d} 0755 root root -") dirs
-      ++ map (p: "L ${p} - - - - ${links.${p}}") (attrNames links)
-      ++ [ "d /var/empty 0755 root root -" ];
+      files = listToAttrs (
+        map (p: {
+          name = "${factoryDir}/${p}";
+          value = seeds.${p};
+        }) paths
+      );
+      tmpfiles = tmpfilesLines;
       sysusers = [ "u sshd - \"SSH privilege separation\" /var/empty" ];
     };
 }

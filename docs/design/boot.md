@@ -32,6 +32,31 @@ each attempt; `systemd-bless-boot` renames it to good when `boot-complete.target
 three failures systemd-boot falls back to the other entry, which is the other `/usr` slot. See
 [Updates](updates.md).
 
+## Bootstrap credentials
+
+A few values are neither in the image nor generated on the machine: they come from the firmware or
+the ESP at first boot. systemd-firstboot and systemd-sysusers read them from the credential store.
+
+| credential         | source     | what it sets                                             |
+| ------------------ | ---------- | -------------------------------------------------------- |
+| `system.hostname`  | ESP/SMBIOS | `/etc/hostname`, via systemd-firstboot (see systemd 262) |
+| `firstboot.locale` | ESP/SMBIOS | `/etc/locale.conf`, if ever needed                       |
+
+Delivery paths:
+
+- **SMBIOS**: qemu fw_cfg, the DMI Type 11 OEM Strings (`-smbios type=11,value=...`). The kernel
+  makes them readable in `/sys/firmware/dmi/entries/11-*/raw`; systemd-importd decodes them.
+- **ESP**: `loader/credentials/*.cred` files on the EFI System Partition. systemd-stub passes them
+  to the initrd, and systemd-firstboot reads them.
+
+Never put real secrets in a bootstrap credential: the ESP is not encrypted.
+
+## Serial console
+
+The kernel cmdline includes `console=ttyS0` for serial output. No getty runs on the serial console
+in v1: there is no local login path (see [Trust: Identity](trust.md#identity)). Recovery is the
+other slot or a reflash.
+
 ## Measured boot
 
 systemd-stub measures the UKI's parts into PCR 11. `systemd-measure` precomputes those values at

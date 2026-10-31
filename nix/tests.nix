@@ -14,7 +14,6 @@ let
     deepSeq
     elem
     genList
-    isString
     stringLength
     substring
     tryEval
@@ -214,25 +213,22 @@ let
   noSet = f.modules { options."/services/sshd" = { }; };
   pkgsResult = (withPkgs { }).modules.pkgs { };
 
-  # 8. the factory: /etc seeds under /usr/share/factory/etc and their manifest
+  # 8. the factory: /etc seeds under /usr/share/factory/etc as symlinks
   factoryDir = "/usr/share/factory/etc";
-  manifestPath = "/usr/lib/golconda/etc.manifest";
   factoryOf = opts: ((f.modules { options."/factory" = opts; }).modules.factory { });
   factoryThrows = opts: filesThrow [ (factoryOf opts) ];
-  sha = builtins.hashString "sha256";
   pamSshd = factory.files."${factoryDir}/pam.d/sshd";
-  manifest = factory.files.${manifestPath};
-  manifestLines = builtins.filter (l: isString l && l != "") (builtins.split "\n" manifest);
   factoryPaths = builtins.filter (p: hasPrefix factoryDir p) (attrNames factory.files);
-  # an admin edits /etc; sysusers and PID 1 write these: never in the factory
+  # an admin edits /etc; sysusers and PID 1 write these: never in the factory;
+  # hostname is a bootstrap credential, not a factory file
   neverSeeded = [
     "machine-id"
     "shadow"
     "gshadow"
     "passwd"
     "group"
+    "hostname"
   ];
-  hostnamed = factoryOf { hostname = "ariel"; };
 
   tests = [
     (check "sshd: LoadCredentialEncrypted" (
@@ -1797,7 +1793,7 @@ let
       && hasInfix "ARCHITECTURE=x86_64" osRel
     ))
 
-    # 8. the factory seed and its manifest
+    # 8. the factory seed as symlinks (L lines, no manifest, no stamp)
     (check "factory: pam.d/sshd is account and session only" (
       hasInfix "\naccount required pam_unix.so\n" pamSshd
       && hasInfix "\nsession optional pam_systemd.so\n" pamSshd
@@ -1813,30 +1809,25 @@ let
         "session"
       ]
     ))
-    (check "factory: the manifest line for pam.d/sshd carries its sha256" (
-      elem "f 0644 root:root ${sha pamSshd} /etc/pam.d/sshd" manifestLines
+    (check "factory: no manifest, no stamp" (
+      !(factory.files ? "/usr/lib/golconda/etc.manifest")
+      && !any (hasInfix "/etc/.golconda-factory-id") factory.tmpfiles
+      && !any (hasInfix "C+") factory.tmpfiles
     ))
-    (check "factory: the manifest lists every seed, the links and the directories" (
+    (check "factory: L lines per file, not C+" (
       all (
-        p: any (l: hasInfix " /etc/${substring (stringLength factoryDir + 1) 999 p}" l) manifestLines
+        p: elem "L /etc/${substring (stringLength factoryDir + 1) 999 p} - - - - ${p}" factory.tmpfiles
       ) factoryPaths
-      && elem "l - root:root /usr/share/zoneinfo/UTC /etc/localtime" manifestLines
-      && elem "l - root:root ../usr/lib/os-release /etc/os-release" manifestLines
-      && elem "d 0755 root:root - /etc/ssh" manifestLines
-      && builtins.length manifestLines == builtins.length factoryPaths + 3
+      && !any (hasInfix "C+") factory.tmpfiles
     ))
-    (check "factory: no machine-id, shadow, passwd or group in the factory or the manifest" (
-      all (
-        n: !(factory.files ? "${factoryDir}/${n}") && !any (l: hasInfix " /etc/${n}" l) manifestLines
-      ) neverSeeded
+    (check "factory: no machine-id, shadow, passwd, group or hostname in the factory" (
+      all (n: !(factory.files ? "${factoryDir}/${n}")) neverSeeded
     ))
-    (check "factory: extraFiles refuse the names sysusers and PID 1 own" (
+    (check "factory: extraFiles refuse the names sysusers and PID 1 and bootstrap own" (
       all (n: factoryThrows { extraFiles.${n} = "x"; }) neverSeeded
     ))
-    (check "factory: the seed, the links, the stamp and the sshd user" (
-      elem "C+ /etc - - - - ${factoryDir}" factory.tmpfiles
-      && elem "f /etc/.golconda-factory-id 0644 root root - ${sha manifest}" factory.tmpfiles
-      && elem "L /etc/localtime - - - - /usr/share/zoneinfo/UTC" factory.tmpfiles
+    (check "factory: the L lines, the static links and the sshd user" (
+      elem "L /etc/localtime - - - - /usr/share/zoneinfo/UTC" factory.tmpfiles
       && elem "L /etc/os-release - - - - ../usr/lib/os-release" factory.tmpfiles
       && elem "d /etc/ssh 0755 root root -" factory.tmpfiles
       && elem "d /var/empty 0755 root root -" factory.tmpfiles
@@ -1846,16 +1837,9 @@ let
     (check "factory: shells are dash and sh" (
       factory.files."${factoryDir}/shells" == "/usr/bin/sh\n/usr/bin/dash\n"
     ))
-    (check "factory: hostname changes the file, the manifest and the stamp" (
-      hostnamed.files."${factoryDir}/hostname" == "ariel\n"
-      && factory.files."${factoryDir}/hostname" == "golconda\n"
-      && hasInfix "f 0644 root:root ${sha "ariel\n"} /etc/hostname\n" hostnamed.files.${manifestPath}
-      && hostnamed.files.${manifestPath} != manifest
-      && !elem "f /etc/.golconda-factory-id 0644 root root - ${sha manifest}" hostnamed.tmpfiles
+    (check "factory: no hostname option (it is a bootstrap credential)" (
+      !((f.modules { }).modules.factory.args.options ? hostname)
     ))
-    (check "factory: hostname is one word" (factoryThrows {
-      hostname = "a b";
-    }))
     (check "factory: timezone changes the link and is a zone name" (
       elem "L /etc/localtime - - - - /usr/share/zoneinfo/Europe/Berlin"
         (factoryOf {
@@ -1864,7 +1848,7 @@ let
       && factoryThrows { timezone = "../etc/shadow"; }
       && factoryThrows { timezone = "/usr/share/zoneinfo/UTC"; }
     ))
-    (check "factory: extraFiles are seeded with their mode and listed" (
+    (check "factory: extraFiles are seeded with L lines" (
       let
         r = factoryOf {
           extraFiles."security/limits.conf" = "* hard core 0\n";
@@ -1875,15 +1859,12 @@ let
         };
       in
       r.files."${factoryDir}/security/limits.conf" == "* hard core 0\n"
-      &&
-        hasInfix "f 0644 root:root ${sha "* hard core 0\n"} /etc/security/limits.conf\n"
-          r.files.${manifestPath}
-      && hasInfix "f 0755 root:root ${sha "#!/bin/sh\n"} /etc/rc.local\n" r.files.${manifestPath}
+      && elem "L /etc/security/limits.conf - - - - ${factoryDir}/security/limits.conf" r.tmpfiles
+      && elem "L /etc/rc.local - - - - ${factoryDir}/rc.local" r.tmpfiles
     ))
-    (check "factory: an extra file at a built-in path throws" (
-      factoryThrows { extraFiles."pam.d/sshd" = "auth sufficient pam_permit.so\n"; }
-      && factoryThrows { extraFiles.hostname = "x\n"; }
-    ))
+    (check "factory: an extra file at a built-in path throws" (factoryThrows {
+      extraFiles."pam.d/sshd" = "auth sufficient pam_permit.so\n";
+    }))
     (check "factory: an extra file path is relative and plain" (
       factoryThrows { extraFiles."/etc/motd" = "x"; }
       && factoryThrows { extraFiles."../usr/lib/os-release" = "x"; }
