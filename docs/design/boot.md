@@ -80,9 +80,16 @@ the systemd-boot menu) or a reflash.
 A few values are neither in the image nor generated on the machine: they arrive as systemd
 credentials at first boot. This is Golconda's provisioning path; there is no cloud-init.
 
-| credential        | read by           | what it sets                                                 |
-| ----------------- | ----------------- | ------------------------------------------------------------ |
-| `system.hostname` | systemd-firstboot | `/etc/hostname`; without it, DHCP's host name or `localhost` |
+| credential        | read by | what it sets                                                        |
+| ----------------- | ------- | ------------------------------------------------------------------- |
+| `system.hostname` | PID 1   | the hostname, at every boot; nothing writes `/etc/hostname` from it |
+
+PID 1 takes the hostname from the first of: `systemd.hostname=` on the kernel command line,
+`/etc/hostname`, the `system.hostname` credential, the fallback `golconda` compiled into systemd
+(repkgs `fallback-hostname`). No factory file and no tmpfiles line writes `/etc/hostname`, so the
+credential wins until an admin writes one. PID 1 reads SMBIOS strings from
+`/sys/firmware/dmi/entries` and fw_cfg from `/sys/firmware/qemu_fw_cfg`: the kernel needs
+`CONFIG_DMI_SYSFS=y` and `CONFIG_FW_CFG_SYSFS=y` (built in).
 
 Delivery, in the order systemd-stub and PID 1 look:
 
@@ -101,9 +108,8 @@ What happens once, on the first boot of a disk:
 
 1. repart creates the root partition from `/usr/lib/repart.d/30-root.conf` (`GrowFileSystem=`,
    `FactoryReset=`), with `/etc`, `/var`, `/home`, `/root` inside.
-1. PID 1 writes `/etc/machine-id`; systemd-firstboot writes `/etc/hostname` from the credential.
-   Open: today firstboot also stops at its interactive root-password prompt, which must be turned
-   off (no local login).
+1. PID 1 writes `/etc/machine-id` and sets the hostname from the credential. Open: today firstboot
+   also stops at its interactive root-password prompt, which must be turned off (no local login).
 1. systemd-sysusers writes `passwd`, `group`, `shadow` from `/usr/lib/sysusers.d`.
 1. systemd-tmpfiles links each factory file into `/etc` and makes the state directories.
 1. The var units generate the machine-local secrets and seal them to the TPM

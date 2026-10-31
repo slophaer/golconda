@@ -2358,6 +2358,12 @@ let
           )
         ) == length names
     ))
+    (check "kernel: PID 1 can read SMBIOS and fw_cfg credentials (DMI_SYSFS, FW_CFG_SYSFS)" (
+      let
+        conf = readFile ../packages/kernel/golconda.config;
+      in
+      hasInfix "\nCONFIG_DMI_SYSFS=y\n" conf && hasInfix "\nCONFIG_FW_CFG_SYSFS=y\n" conf
+    ))
     (check "kernel: the override reaches the derivation (kbuild.configFragments holds the file)" (
       let
         fragments = pkgs.linux-kernel.drvAttrs.spec.kbuild.configFragments;

@@ -6,7 +6,7 @@
 #! missing. `find /etc -type f` lists admin changes.
 #!
 #! Hostname is not in the factory: it comes from the bootstrap credential
-#! `system.hostname` (systemd-firstboot, see docs/design/boot.md).
+#! `system.hostname`, which PID 1 reads at every boot (see docs/design/boot.md).
 #!
 #! The factory knows no service: a service owns its user and directories in
 #! its own fragment. Only `/etc` content is here, so `pam.d/sshd` is a
