@@ -2,6 +2,9 @@
 # that file reads NPINS_OVERRIDE_* from the environment, which the strict iets
 # lint refuses, and these ten lines are all Golconda needs. `npins` still
 # manages the JSON.
+#
+# Any pin type with `url` and `hash` works (Git, GitHub, Forgejo, Channel,
+# Tarball). npins always produces these two fields for fetchable pins.
 let
   json = builtins.fromJSON (builtins.readFile ../npins/sources.json);
   fetch =
@@ -12,6 +15,6 @@ let
         sha256 = pin.hash;
       }
     else
-      throw "golconda: pin '${name}' has no url and hash; only tarball pins are supported";
+      throw "golconda: pin '${name}' has no url and hash";
 in
 builtins.mapAttrs fetch json.pins
