@@ -288,10 +288,15 @@ let
       # These work without a first-boot step (unlike presets) and in the initrd too.
       unitFileName = "${svc.name}.service";
       unitDir = if user then "/usr/lib/systemd/user" else "/usr/lib/systemd/system";
-      wantsLinks = map (t: {
-        path = "${unitDir}/${t}.wants/${unitFileName}";
-        target = "../${unitFileName}";
-      }) wantedByTargets;
+      wantsLinks = builtins.listToAttrs (
+        map (t: {
+          name = "${unitDir}/${t}.wants/${unitFileName}";
+          value = {
+            target = "../${unitFileName}";
+            kind = "explicit";
+          };
+        }) wantedByTargets
+      );
 
       # the app's files, under /usr/lib/<name>/
       appFiles = svc.app.files or { };

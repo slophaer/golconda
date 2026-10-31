@@ -3,8 +3,8 @@
 # Called by the Nix derivation with structured attrs:
 #   closure: reference graph of the packages
 #   roots: list of store paths (the packages)
-#   links: list of { path, target } for symlinks
-#   farmDirs: list of { path, target } directories to expand file by file
+#   links: list of { path, target, kind } for symlinks; kind "farm" names a directory
+#     to expand file by file, kind "dlopen" is verified to resolve
 #   files: attrset of path -> { text, mode, dest }
 #   units: attrset of name -> text
 #   sysusers, tmpfiles: lists of lines
@@ -12,7 +12,6 @@
 #   epoch: Unix timestamp for mtimes
 #   version: image version string
 #   allowedDirs: list of allowed top-level dirs
-#   dlopenSonames: list of sonames to verify
 
 # Read the structured attrs
 def attrs [] {
@@ -82,9 +81,11 @@ export def build [] {
   log "creating sbin -> bin"
   ^ln -s "bin" $"($out)/sbin"
 
-  # Step 3: Create symlinks from links list
-  log $"creating ($attrs.links | length) symlinks..."
-  for link in $attrs.links {
+  # Step 3: Create symlinks from the links list (every kind but farm)
+  let plain_links = ($attrs.links | where kind != "farm")
+  let farm_links = ($attrs.links | where kind == "farm")
+  log $"creating ($plain_links | length) symlinks..."
+  for link in $plain_links {
     let path = $link.path
     let target = $link.target
     # Strip /usr/ prefix
@@ -103,8 +104,8 @@ export def build [] {
   }
 
   # Step 4: Expand farm directories file by file
-  log $"expanding ($attrs.farmDirs | length) farm directories..."
-  for dir in $attrs.farmDirs {
+  log $"expanding ($farm_links | length) farm directories..."
+  for dir in $farm_links {
     let path = $dir.path
     let target = $dir.target
     # Strip /usr/ prefix from path
@@ -114,24 +115,24 @@ export def build [] {
     # Create destination directory
     mkdir $dest_dir
 
-    # List files in the source directory
-    if ($target | path exists) {
-      let files = (ls $target | where type == file or type == symlink)
-      for file in $files {
-        let basename = ($file.name | path basename)
-        let dest_file = $"($dest_dir)/($basename)"
+    # Link every file of the source directory; a missing directory is an error
+    if not ($target | path exists) {
+      error make {msg: $"farm link ($path): directory ($target) does not exist"}
+    }
+    let files = (ls $target | where type == file or type == symlink)
+    for file in $files {
+      let basename = ($file.name | path basename)
+      let dest_file = $"($dest_dir)/($basename)"
 
-        if ($dest_file | path exists) {
-          # Collision: error with both sources
-          let existing_target = (ls -l $dest_file | get target? | default "file")
-          error make {msg: $"farm collision at ($path)/($basename): ($target) vs ($existing_target)"}
-        }
-
-        # Make relative symlink
-        let src_basename = ($target | path basename)
-        let rel_target = (make-relative $"($path)/($basename)" $"($file.name)")
-        ^ln -sf $rel_target $dest_file
+      if ($dest_file | path exists) {
+        # Collision: error with both sources
+        let existing_target = (ls -l $dest_file | get target? | default "file")
+        error make {msg: $"farm collision at ($path)/($basename): ($target) vs ($existing_target)"}
       }
+
+      # Make relative symlink
+      let rel_target = (make-relative $"($path)/($basename)" $"($file.name)")
+      ^ln -sf $rel_target $dest_file
     }
   }
 
@@ -197,21 +198,22 @@ export def build [] {
     error make {msg: $"absolute symlink targets found: ($abs_links | str join ', ')"}
   }
 
-  # 11b: dlopen sonames resolve
-  for soname in $attrs.dlopenSonames {
-    let link = $"($out)/lib/($soname)"
-    if not ($link | path exists) {
-      error make {msg: $"dlopen soname ($soname) has no link in /usr/lib"}
+  # 11b: dlopen links resolve
+  for link in ($attrs.links | where kind == "dlopen") {
+    let dest = $"($out)/($link.path | str replace "/usr/" "")"
+    # -n: the link itself, not what it points to (a dangling link exists)
+    if not ($dest | path exists -n) {
+      error make {msg: $"dlopen link ($link.path) was not created"}
     }
     # Follow the symlink to verify the target exists
-    let target = (ls -l $link | get target.0)
+    let target = (ls -l $dest | get target.0)
     let full_target = if ($target | str starts-with "/") {
       $target
     } else {
-      $"($out)/lib/($target)" | path expand
+      $"($dest | path dirname)/($target)" | path expand
     }
     if not ($full_target | path exists) {
-      error make {msg: $"dlopen soname ($soname) -> ($target) does not exist"}
+      error make {msg: $"dlopen link ($link.path) -> ($target) does not exist"}
     }
   }
 

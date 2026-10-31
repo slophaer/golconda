@@ -141,10 +141,15 @@ let
 
       # Static .wants symlinks: /usr/lib/systemd/system/<target>.wants/<unit> -> ../<unit>
       unit = unitName v.name;
-      wantsLinks = map (t: {
-        path = "/usr/lib/systemd/system/${t}.wants/${unit}";
-        target = "../${unit}";
-      }) wantedByTargets;
+      wantsLinks = builtins.listToAttrs (
+        map (t: {
+          name = "/usr/lib/systemd/system/${t}.wants/${unit}";
+          value = {
+            target = "../${unit}";
+            kind = "explicit";
+          };
+        }) wantedByTargets
+      );
     in
     {
       units.${unitName v.name} = text + "\n";

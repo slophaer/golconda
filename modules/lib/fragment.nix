@@ -10,6 +10,7 @@ let
     struct
     optionalAttr
     attrsOf
+    enum
     listOf
     string
     derivation
@@ -118,14 +119,52 @@ let
       ) null (attrNames v)
   );
 
-  # A symlink in the /usr farm: { path = "/usr/bin/jq"; target = "<store>/bin/jq"; }
-  # or a .wants link: { path = "/usr/.../multi-user.target.wants/sshd.service"; target = "../sshd.service"; }
-  link = struct "link" {
-    path = string;
-    target = string;
-  };
+  # What a symlink in the /usr farm is for. `package`: /usr/bin/<name> from a
+  # package's `bin` list (the composer derives these); `farm`: the target is a
+  # directory the image builder links file by file (lib/udev/rules.d of a
+  # package compiled with prefix /usr); `dlopen`: a soname systemd opens by
+  # name, which the builder checks resolves; `explicit`: anything else, such
+  # as a .wants link with a relative target.
+  linkKind = enum "linkKind" [
+    "package"
+    "farm"
+    "dlopen"
+    "explicit"
+  ];
 
-  fragment = struct "fragment" {
+  # One symlink: its target and kind; the path under /usr is the key in `links`.
+  #   "/usr/bin/sshd" = { target = "<store>/bin/sshd"; kind = "package"; };
+  #   "/usr/lib/systemd/system/multi-user.target.wants/sshd.service" =
+  #     { target = "../sshd.service"; kind = "explicit"; };
+  link =
+    (struct "link" {
+      target = string;
+      kind = linkKind;
+    }).override
+      { unknown = false; };
+
+  # path under /usr -> link; attrsOf checks values only, so the keys are
+  # checked here, and an error names the path.
+  links = typedef' "links" (
+    v:
+    if !isAttrs v then
+      "Expected type 'links' (path under /usr -> { target; kind; })"
+    else
+      foldl' (
+        err: p:
+        if err != null then
+          err
+        else if match "/usr/.+" p == null then
+          "'${p}' is not a link path: a symlink in the farm is under /usr/"
+        else
+          let
+            l = link.verify v.${p};
+          in
+          if l != null then "in link '${p}': ${l}" else null
+      ) null (attrNames v)
+  );
+
+  fragmentStruct = struct "fragment" {
     # unit file name -> unit file text, installed to /usr/lib/systemd/system
     units = optionalAttr units;
     # absolute path under /usr -> file (os-release, repart.d, sysupdate.d, ...)
@@ -134,15 +173,14 @@ let
     sysusers = optionalAttr (listOf string);
     # systemd-tmpfiles lines
     tmpfiles = optionalAttr (listOf string);
-    # closure roots that go into /usr/nix/store and the /usr/bin farm
+    # closure roots that go into /usr/nix/store; their `bin` lists become /usr/bin links
     packages = optionalAttr (listOf derivation);
-    # symlinks in the /usr farm; the composer merges and checks for duplicates
-    links = optionalAttr (listOf link);
-    # package name -> subdirs to link file by file into /usr ("lib/security", "lib/udev/rules.d", ...)
-    farm = optionalAttr (attrsOf (listOf string));
-    # package name -> sonames to link into /usr/lib for dlopen ("libtss2-esys.so.0", ...)
-    dlopen = optionalAttr (attrsOf (listOf string));
+    # path under /usr -> { target; kind; }: the symlinks of the farm (.wants, a
+    # directory to expand, a dlopen soname); the composer refuses a path with two sources
+    links = optionalAttr links;
   };
+  # no unknown field: a stale one (`farm`, `dlopen`) is an error, not ignored
+  fragment = fragmentStruct.override { unknown = false; };
 in
 {
   inherit
@@ -150,6 +188,8 @@ in
     file
     mode
     link
+    linkKind
+    links
     unitName
     unitSuffixes
     unitText
