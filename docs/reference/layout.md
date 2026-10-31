@@ -32,7 +32,7 @@ root hash, which is how gpt-auto finds the pair the UKI's `usrhash=` names.
 | `/usr/lib/systemd/network/*.network`            | image | `/network`                                                                                                                                   |
 | `/usr/lib/systemd/{timesyncd,journald}.conf.d/` | image | `/base`                                                                                                                                      |
 | `/usr/lib/locale.conf`                          | image | `/base` (`LANG=C.UTF-8`)                                                                                                                     |
-| `/usr/lib/sysupdate.d/*.conf`                   | image | `/system` from `updateSource` and `image/sysupdate.nix`                                                                                      |
+| `/usr/lib/sysupdate.d/*.transfer`               | image | `/system` from `updateSource` and `image/sysupdate.nix`                                                                                      |
 | `/usr/lib/repart.d/30-root.conf`                | image | `/base`, rendered from `image/repart.nix`                                                                                                    |
 | `/usr/lib/os-release`                           | image | `lib/usr-tree.nix` from `image/os-release.nix`; `ID`/`IMAGE_ID` are `/system.name`                                                           |
 | `/usr/lib/golconda/packages.json`               | image | `lib/usr-tree.nix` from the composer's `packageOrigins`                                                                                      |
