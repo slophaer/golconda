@@ -10,7 +10,7 @@
 #   - optional Secure Boot with keys enrolled from --keys
 #   - optional TPM 2.0 via swtpm
 #   - SMBIOS type 11 credential: system.hostname=boot-test
-#   - user-mode networking with hostfwd to SSH (port 10022)
+#   - user-mode networking with hostfwd to SSH (host port $BOOT_TEST_SSH_PORT, default 10022)
 #   - serial console logged to a file
 #
 # --keys DIR: the throwaway keys directory (from image-smoke-test's keys symlink
@@ -53,6 +53,8 @@ if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
 fi
 
 # --- argument parsing ---
+# the host port for the guest's sshd: set BOOT_TEST_SSH_PORT when another VM uses 10022
+SSH_PORT=${BOOT_TEST_SSH_PORT:-10022}
 DISK=""
 KEYS_DIR=""
 SECURE_BOOT=0
@@ -244,7 +246,7 @@ start_qemu() {
     -display none \
     $NO_REBOOT \
     -smbios type=11,value=io.systemd.credential:system.hostname=boot-test \
-    -netdev user,id=net0,hostfwd=tcp::10022-:22 \
+    -netdev user,id=net0,hostfwd=tcp::$SSH_PORT-:22 \
     -device virtio-net-pci,netdev=net0"
   
   if [ "$TPM" = 1 ]; then
@@ -350,7 +352,7 @@ check_markers() {
 NO_HOSTKEY_CHECK="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 SSH_OPTS="-F /dev/null \
   -o ConnectTimeout=2 -o ServerAliveInterval=2 -o ServerAliveCountMax=2 \
-  -o BatchMode=yes -o LogLevel=ERROR -p 10022"
+  -o BatchMode=yes -o LogLevel=ERROR -p $SSH_PORT"
 
 guest() {
   # shellcheck disable=SC2086
