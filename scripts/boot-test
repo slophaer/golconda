@@ -215,7 +215,7 @@ run_qemu() {
     -serial file:$SERIAL_LOG \
     -display none \
     -no-reboot \
-    -smbios type=11,value=io.systemd.credential:firstboot.hostname=boot-test \
+    -smbios type=11,value=io.systemd.credential:system.hostname=boot-test \
     -netdev user,id=net0,hostfwd=tcp::10022-:22 \
     -device virtio-net-pci,netdev=net0"
   
