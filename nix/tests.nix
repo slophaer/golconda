@@ -108,11 +108,29 @@ let
     // {
       pname = "openssh";
     };
+  # base packages for /base module
+  stubSystemd = withBin "systemd-262" [ "systemctl" ];
+  stubDbusBroker = withBin "dbus-broker-42" [ "dbus-broker" ];
+  stubBash = withBin "bash-5.2" [ "bash" ];
+  stubUutils = withBin "uutils-coreutils-0.0.25" [
+    "ls"
+    "cat"
+    "cp"
+    "mv"
+    "rm"
+  ];
+  stubLinuxKernel = withBin "linux-kernel-6.18.0" [ ];
   # the repkgs set as /pkgs sees it: the stand-ins above
   stubSet = {
     pkgs = {
       inherit openssh;
       jq = standIn;
+      # base packages
+      systemd = stubSystemd;
+      dbus-broker = stubDbusBroker;
+      bash = stubBash;
+      uutils-coreutils = stubUutils;
+      linux-kernel = stubLinuxKernel;
     };
   };
   withPkgs =
@@ -126,10 +144,13 @@ let
     packages:
     (
       (f.modules {
-        options."/system" = {
-          name = "farm";
-          version = "0";
-          fragments = [ { inherit packages; } ];
+        options = {
+          "/pkgs".set = stubSet;
+          "/system" = {
+            name = "farm";
+            version = "20261031.1";
+            fragments = [ { inherit packages; } ];
+          };
         };
       }).modules.system
         { }
@@ -138,11 +159,29 @@ let
   compose =
     fragments:
     (f.modules {
-      options."/system" = {
-        name = "t";
-        version = "0";
-        inherit fragments;
+      options = {
+        "/pkgs".set = stubSet;
+        "/system" = {
+          name = "t";
+          version = "20261031.1";
+          inherit fragments;
+        };
       };
+    }).modules.system
+      { };
+  # compose with extra module options (for /network, /factory, etc.)
+  composeWith =
+    extraOpts:
+    (f.modules {
+      options = {
+        "/pkgs".set = stubSet;
+        "/system" = {
+          name = "t";
+          version = "20261031.1";
+          fragments = [ ];
+        };
+      }
+      // extraOpts;
     }).modules.system
       { };
   # the composer's files, forced: a type error in a file fires here
@@ -178,14 +217,17 @@ let
   factory = tree.modules.factory { };
   system =
     (f.modules {
-      options."/system" = {
-        name = "test";
-        version = "0";
-        fragments = [
-          sshd
-          vars
-          factory
-        ];
+      options = {
+        "/pkgs".set = stubSet;
+        "/system" = {
+          name = "test";
+          version = "20261031.1";
+          fragments = [
+            sshd
+            vars
+            factory
+          ];
+        };
       };
     }).modules.system
       { };
@@ -692,7 +734,7 @@ let
         (f.modules {
           options."/system" = {
             name = "dup";
-            version = "0";
+            version = "20261031.1";
             fragments = [
               { units."a.service" = "[Unit]\n"; }
               { units."a.service" = "[Service]\n"; }
@@ -746,22 +788,25 @@ let
       { files."/usr/lib/foo/config" = "b"; }
     ]))
     (check "composer concatenates lists" (
-      (
-        (f.modules {
-          options."/system" = {
-            name = "cat";
-            version = "0";
-            fragments = [
-              { sysusers = [ "a" ]; }
-              { sysusers = [ "b" ]; }
-            ];
-          };
-        }).modules.system
-          { }
-      ).sysusers == [
-        "a"
-        "b"
-      ]
+      let
+        result =
+          (f.modules {
+            options = {
+              "/pkgs".set = stubSet;
+              "/system" = {
+                name = "cat";
+                version = "20261031.1";
+                fragments = [
+                  { sysusers = [ "a" ]; }
+                  { sysusers = [ "b" ]; }
+                ];
+              };
+            };
+          }).modules.system
+            { };
+      in
+      # /base adds its own sysusers; check that the fragments' sysusers are there
+      elem "a" result.sysusers && elem "b" result.sysusers
     ))
 
     # 3b. two packages with one /usr/bin name are a composer error
@@ -785,21 +830,21 @@ let
           b
           a
         ];
+        result = compose [ { inherit packages; } ];
       in
-      farmOf packages == [
-        a
-        b
-      ]
+      # farmOf includes /base packages; check the requested packages are there
+      elem a (farmOf packages)
+      && elem b (farmOf packages)
+      # the links include these with the right targets
       &&
-        (compose [ { inherit packages; } ]).links == {
-          "/usr/bin/x" = {
-            target = "${a}/bin/x";
-            kind = "package";
-          };
-          "/usr/bin/y" = {
-            target = "${b}/bin/y";
-            kind = "package";
-          };
+        result.links."/usr/bin/x" == {
+          target = "${a}/bin/x";
+          kind = "package";
+        }
+      &&
+        result.links."/usr/bin/y" == {
+          target = "${b}/bin/y";
+          kind = "package";
         }
     ))
 
@@ -1024,6 +1069,97 @@ let
       && schema.properties."/system".properties ? version
       && schema.properties."/system".properties ? fragments
     ))
+
+    # 7. Version format: YYYYMMDD.N
+    (check "version format: YYYYMMDD.N accepted" (
+      let
+        validVersions = [
+          "20261031.1"
+          "20260101.0"
+          "20301231.99"
+        ];
+        tryVersion =
+          v:
+          (tryEval (
+            f.modules {
+              options = {
+                "/pkgs".set = stubSet;
+                "/system" = {
+                  name = "t";
+                  version = v;
+                };
+              };
+            }
+          )).success;
+      in
+      all tryVersion validVersions
+    ))
+    (check "version format: invalid versions rejected" (
+      let
+        invalidVersions = [
+          "0"
+          "2026.10.31"
+          "2026-10-31.1"
+          "20261031"
+          "v1.0.0"
+        ];
+        tryVersion =
+          v:
+          (tryEval (
+            deepSeq
+              (f.modules {
+                options = {
+                  "/pkgs".set = stubSet;
+                  "/system" = {
+                    name = "t";
+                    version = v;
+                  };
+                };
+              }).modules.system
+              { }
+              true
+          )).success;
+      in
+      !any tryVersion invalidVersions
+    ))
+
+    # 7b. /system.updateSource renders sysupdate.d
+    (check "system: updateSource renders /usr/lib/sysupdate.d with Path=" (
+      let
+        result = composeWith {
+          "/system" = {
+            name = "t";
+            version = "20261031.1";
+            fragments = [ ];
+            updateSource = "https://updates.example/t/";
+          };
+        };
+        usr = result.files."/usr/lib/sysupdate.d/10-usr.conf".text;
+      in
+      hasInfix "[Source]" usr
+      && hasInfix "Path=https://updates.example/t/" usr
+      && hasInfix "MatchPattern=t_@v.usr.raw" usr
+      && hasInfix "ProtectVersion=%A" usr
+      && result.files ? "/usr/lib/sysupdate.d/40-uki.conf"
+    ))
+    (check "system: no updateSource, no sysupdate.d" (
+      let
+        result = composeWith { };
+      in
+      !(builtins.any (n: hasPrefix "/usr/lib/sysupdate.d/" n) (builtins.attrNames result.files))
+    ))
+    (check "ini: lists repeat the key, booleans are yes/no, null drops" (
+      (import ../modules/lib/ini.nix).render {
+        A = {
+          k = [
+            "x"
+            "y"
+          ];
+          b = true;
+          n = null;
+        };
+      } == "[A]\nb=yes\nk=x\nk=y\n"
+    ))
     (check "module-docs: sshd page has the principals row and its default" (
       hasInfix "| `principals` | object of array of string | `{}` |" docs.pages."/services/sshd"
     ))
@@ -1034,7 +1170,9 @@ let
       all (p: hasInfix "[`${p}`](${docs.fileName.${p}})" docs.index) (attrNames docs.pages)
       &&
         attrNames docs.pages == [
+          "/base"
           "/factory"
+          "/network"
           "/pkgs"
           "/services"
           "/services/sshd"
@@ -1044,8 +1182,10 @@ let
     ))
     (check "module-docs: files hold every page and the index and types" (
       attrNames docs.files == [
+        "base.md"
         "factory.md"
         "index.md"
+        "network.md"
         "pkgs.md"
         "services-sshd.md"
         "services.md"
@@ -1279,31 +1419,24 @@ let
         ];
         result = compose [ { packages = [ tool ]; } ];
       in
-      result.links == {
-        "/usr/bin/foo" = {
-          target = "${tool}/bin/foo";
-          kind = "package";
-        };
-        "/usr/bin/bar" = {
+      # compose includes /base links too; check that the tool's links are present
+      result.links."/usr/bin/foo" == {
+        target = "${tool}/bin/foo";
+        kind = "package";
+      }
+      &&
+        result.links."/usr/bin/bar" == {
           target = "${tool}/bin/bar";
           kind = "package";
-        };
-      }
+        }
     ))
-    (check "links: farm, dlopen and explicit links pass through with their kinds" (
+    (check "links: dlopen and explicit links pass through with their kinds" (
       let
-        systemd = withBin "systemd-1" [ ];
         tss = withBin "tpm2-tss-1" [ ];
         frag = {
-          packages = [
-            systemd
-            tss
-          ];
+          packages = [ tss ];
           links = {
-            "/usr/lib/udev/rules.d" = {
-              target = "${systemd}/lib/udev/rules.d";
-              kind = "farm";
-            };
+            # use paths that don't collide with /base
             "/usr/lib/libtss2-esys.so.0" = {
               target = "${tss}/lib/libtss2-esys.so.0";
               kind = "dlopen";
@@ -1314,8 +1447,11 @@ let
             };
           };
         };
+        result = compose [ frag ];
       in
-      (compose [ frag ]).links == frag.links
+      # the fragment's links are present with correct kinds
+      result.links."/usr/lib/libtss2-esys.so.0".kind == "dlopen"
+      && result.links."/usr/lib/systemd/system/sysinit.target.wants/a.service".kind == "explicit"
     ))
     (check "links: the target path, kind and shape are typed" (
       let
@@ -1434,11 +1570,9 @@ let
       in
       inner.links."/usr/bin/jq".kind == "package"
       && outer.links."/usr/bin/sshd".target == "${openssh}/bin/sshd"
-      &&
-        outer.packages == [
-          standIn
-          openssh
-        ]
+      # /base adds more packages; check the requested ones are present
+      && elem standIn outer.packages
+      && elem openssh outer.packages
       # a package link to another target is still a clash
       && !(tryEval (
         deepSeq
@@ -1481,8 +1615,9 @@ let
           {
             packages = [ tool ];
             links = {
-              "/usr/lib/udev/rules.d" = {
-                target = "${tool}/lib/udev/rules.d";
+              # use a path that doesn't conflict with /base
+              "/usr/lib/custom/rules.d" = {
+                target = "${tool}/lib/rules.d";
                 kind = "farm";
               };
               "/usr/lib/libfoo.so.1" = {
@@ -1498,9 +1633,13 @@ let
             };
           }
         ];
+        result = compose frags;
       in
       merge.duplicateLink (merge.linkSources frags) == null
-      && builtins.length (attrNames (compose frags).links) == 4
+      # /base adds links, check the fragment links are present
+      && result.links ? "/usr/lib/custom/rules.d"
+      && result.links ? "/usr/lib/libfoo.so.1"
+      && result.links ? "/usr/bin/foo"
     ))
     (check "links: a link and a file at one path is an error" (
       let
@@ -1978,6 +2117,136 @@ let
       filesThrow [ { files."/var/lib/app/data" = "x"; } ]
       && filesThrow [ { files."/run/lock" = "x"; } ]
       && filesThrow [ { files."/tmp/test" = "x"; } ]
+    ))
+
+    # 11. /base: the implicit base system
+    (check "base: is implicit in /system (a system with no fragments has systemd)" (
+      let
+        result =
+          (f.modules {
+            options = {
+              "/pkgs".set = stubSet;
+              "/system" = {
+                name = "empty";
+                version = "20261031.1";
+                fragments = [ ];
+              };
+            };
+          }).modules.system
+            { };
+      in
+      # /base's packages are there even with no fragments
+      any (p: p.name == "systemd-262") result.packages
+      && any (p: p.name == "dbus-broker-42") result.packages
+      && any (p: p.name == "bash-5.2") result.packages
+      && any (p: p.name == "uutils-coreutils-0.0.25") result.packages
+    ))
+    (check "base: sh link points to bash (TODO: dash when in repkgs)" (
+      let
+        result = compose [ ];
+      in
+      result.links ? "/usr/bin/sh" && hasInfix "bash" result.links."/usr/bin/sh".target
+    ))
+    (check "base: dbus.socket is a file (not a link, since dbus-broker lacks it)" (
+      let
+        result = compose [ ];
+      in
+      result.files ? "/usr/lib/systemd/system/dbus.socket"
+      && hasInfix "[Socket]" result.files."/usr/lib/systemd/system/dbus.socket".text
+    ))
+    (check "base: dbus-broker.service and dbus.service alias are links" (
+      let
+        result = compose [ ];
+      in
+      result.links ? "/usr/lib/systemd/system/dbus-broker.service"
+      && result.links ? "/usr/lib/systemd/system/dbus.service"
+      && result.links."/usr/lib/systemd/system/dbus.service".target == "dbus-broker.service"
+    ))
+    (check "base: locale.conf, timesyncd.conf and journald.conf exist" (
+      let
+        result = compose [ ];
+      in
+      result.files ? "/usr/lib/locale.conf"
+      && result.files ? "/usr/lib/systemd/timesyncd.conf.d/golconda.conf"
+      && result.files ? "/usr/lib/systemd/journald.conf.d/golconda.conf"
+      && hasInfix "LANG=C.UTF-8" result.files."/usr/lib/locale.conf".text
+    ))
+    (check "base: wantedBy links for networkd, resolved, timesyncd, dbus" (
+      let
+        result = compose [ ];
+      in
+      result.links ? "/usr/lib/systemd/system/sockets.target.wants/dbus.socket"
+      && result.links ? "/usr/lib/systemd/system/multi-user.target.wants/systemd-networkd.service"
+      && result.links ? "/usr/lib/systemd/system/multi-user.target.wants/systemd-resolved.service"
+      && result.links ? "/usr/lib/systemd/system/sysinit.target.wants/systemd-timesyncd.service"
+    ))
+    (check "base: farm links for systemd units and udev rules" (
+      let
+        result = compose [ ];
+      in
+      result.links ? "/usr/lib/systemd/system"
+      && result.links."/usr/lib/systemd/system".kind == "farm"
+      && result.links ? "/usr/lib/udev/rules.d"
+      && result.links."/usr/lib/udev/rules.d".kind == "farm"
+    ))
+    (check "base: dlopen link for libsystemd.so.0" (
+      let
+        result = compose [ ];
+      in
+      result.links ? "/usr/lib/libsystemd.so.0"
+      && result.links."/usr/lib/libsystemd.so.0".kind == "dlopen"
+    ))
+
+    # 12. /network: networkd configuration
+    (check "network: default DHCP on all wired interfaces" (
+      let
+        result = composeWith {
+          "/network" = { };
+        };
+      in
+      result.files ? "/usr/lib/systemd/network/default-dhcp.network"
+      && hasInfix "[Match]" result.files."/usr/lib/systemd/network/default-dhcp.network".text
+      && hasInfix "Type=ether" result.files."/usr/lib/systemd/network/default-dhcp.network".text
+      && hasInfix "DHCP=yes" result.files."/usr/lib/systemd/network/default-dhcp.network".text
+    ))
+    (check "network: defaultDhcp=false disables default network" (
+      let
+        result = composeWith {
+          "/network".defaultDhcp = false;
+        };
+      in
+      !(result.files ? "/usr/lib/systemd/network/default-dhcp.network")
+    ))
+    (check "network: dns option configures resolved" (
+      let
+        result = composeWith {
+          "/network".dns = [
+            "1.1.1.1"
+            "8.8.8.8"
+          ];
+        };
+      in
+      result.files ? "/usr/lib/systemd/resolved.conf.d/golconda-dns.conf"
+      &&
+        hasInfix "DNS=1.1.1.1 8.8.8.8"
+          result.files."/usr/lib/systemd/resolved.conf.d/golconda-dns.conf".text
+    ))
+    (check "network: custom network config" (
+      let
+        result = composeWith {
+          "/network" = {
+            defaultDhcp = false;
+            networks.static = {
+              match.Name = "eth0";
+              network.Address = "10.0.0.1/24";
+            };
+          };
+        };
+      in
+      result.files ? "/usr/lib/systemd/network/static.network"
+      && hasInfix "Name=eth0" result.files."/usr/lib/systemd/network/static.network".text
+      && hasInfix "Address=10.0.0.1/24" result.files."/usr/lib/systemd/network/static.network".text
+      && !(result.files ? "/usr/lib/systemd/network/default-dhcp.network")
     ))
   ];
 in
