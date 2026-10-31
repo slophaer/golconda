@@ -2423,9 +2423,10 @@ let
         };
       in
       result.files ? "/usr/lib/systemd/resolved.conf.d/golconda-dns.conf"
-      &&
-        hasInfix "DNS=1.1.1.1 8.8.8.8"
-          result.files."/usr/lib/systemd/resolved.conf.d/golconda-dns.conf".text
+      # the whole line: "FallbackDNS=..." must not pass a "DNS=" assertion
+      && elem "FallbackDNS=1.1.1.1 8.8.8.8" (
+        split "\n" result.files."/usr/lib/systemd/resolved.conf.d/golconda-dns.conf".text
+      )
     ))
     (check "network: custom network config" (
       let
@@ -2970,7 +2971,7 @@ let
       == "[Match]\nName=eth0\n\n[Network]\nAddress=10.0.0.1/24\nAddress=10.0.1.1/24\nIPv6AcceptRA=no\n\n[Route]\nGateway=10.0.0.254\n"
       &&
         result.files."/usr/lib/systemd/resolved.conf.d/golconda-dns.conf".text
-        == "[Resolve]\nDNS=1.1.1.1 8.8.8.8\n"
+        == "[Resolve]\nFallbackDNS=1.1.1.1 8.8.8.8\n"
     ))
     (check "network: a section the config lacks is not rendered" (
       let
