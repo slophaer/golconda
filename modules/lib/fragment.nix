@@ -181,7 +181,7 @@ let
     # directory to expand, a dlopen soname); the composer refuses a path with two sources
     links = optionalAttr links;
   };
-  # no unknown field: a stale one (`farm`, `dlopen`) is an error, not ignored
+  # no unknown field: a stale or misspelt one is an error, not ignored
   fragment = fragmentStruct.override { unknown = false; };
 in
 {

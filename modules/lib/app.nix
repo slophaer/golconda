@@ -1,7 +1,6 @@
 # The app type: what a program needs to run, with nothing systemd-specific in
 # it: package, program, argv, env and files. One core type, embedded in
-# `service` (service.nix), whose renderer turns it into a unit. Reports:
-# ~/spikes/research-services/REPORT-wrappers.md section 3.
+# `service` (service.nix), whose renderer turns it into a unit.
 #
 # modules/lib is not a module directory (no default.nix); modules import it:
 #   let a = import ../../lib/app.nix { inherit types; }; in ...

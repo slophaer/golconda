@@ -150,7 +150,7 @@ in
       dirs = [ "/etc/ssh" ];
 
       # Tmpfiles lines: L for symlinks into the factory, d for directories.
-      # No C+ (the old design): each file is a symlink, admin files win.
+      # Each file is a symlink into the factory (L); an admin file in its place wins.
       # Directories that a program rewrites in place would be 'd' lines;
       # none exist today.
       tmpfilesLines =
