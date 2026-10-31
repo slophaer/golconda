@@ -7,23 +7,30 @@ tool-independent definitions they render.
 ## A release
 
 Names carry the image id and the version; the version sorts with `strverscmp`
-([Updates: Versions](../design/updates.md#versions)).
+([Updates: Versions](../design/updates.md#versions)). The data and hash files also carry the
+partition UUID systemd derives from the verity root hash (usr: its first 128 bits, usr-verity: its
+last); the source pattern reads it with `@u`, and sysupdate gives the slot it writes that UUID, so
+the new UKI's `usrhash=` finds the new slot. The disk step writes the release under these names
+(`release/`, `releaseNames` in `lib/image/disk.nix`).
 
-| artifact         | file name                                                    | sysupdate transfer                         |
-| ---------------- | ------------------------------------------------------------ | ------------------------------------------ |
-| `/usr` image     | `<id>_<version>.usr.raw`                                     | `Type=partition`, `MatchPartitionType=usr` |
-| verity hash tree | `<id>_<version>.usr-verity.raw`                              | `MatchPartitionType=usr-verity`            |
-| verity signature | `<id>_<version>.usr-verity-sig.raw`                          | `MatchPartitionType=usr-verity-sig`        |
-| UKI              | `<id>_<version>.efi` → installed as `<id>_<version>+3-0.efi` | `Type=regular-file`, path `/EFI/Linux`     |
-| manifest         | `SHA256SUMS` *(after v1; `Verify=no` in v1)*                 | —                                          |
+| artifact         | file name                                                    | sysupdate transfer                                                   |
+| ---------------- | ------------------------------------------------------------ | -------------------------------------------------------------------- |
+| `/usr` image     | `<id>_<version>.usr.<uuid>.raw`                              | `Type=partition`, `MatchPartitionType=usr`                           |
+| verity hash tree | `<id>_<version>.usr-verity.<uuid>.raw`                       | `MatchPartitionType=usr-verity`                                      |
+| verity signature | `<id>_<version>.usr-verity-sig.raw`                          | `MatchPartitionType=usr-verity-sig`                                  |
+| UKI              | `<id>_<version>.efi` → installed as `<id>_<version>+3-0.efi` | `Type=regular-file`, `/EFI/Linux` on the ESP (`PathRelativeTo=boot`) |
+| index            | `SHA256SUMS`, what a `url-file` source lists                 | —                                                                    |
+| manifest         | `SHA256SUMS.gpg` *(after v1; `Verify=no` in v1)*             | —                                                                    |
 
 Each partition transfer finds its slots by GPT label (`image/sysupdate.nix` `slots`, the target
 `MatchPattern=`): an installed slot is `usr_<version>`, `usr-verity_<version>` or
 `usr-verity-sig_<version>`, a free slot is `_empty`. The disk builder labels slot A from the same
 patterns (`slotLabel`, `lib/image/disk.nix`) and the B slots `_empty` (`image/repart.nix`);
-sysupdate writes the formatted pattern as the label of the slot it fills. The partition type tells
-the three transfers apart, so the label carries no image id: GPT allows 36 characters, the longest
-prefix (`usr-verity-sig_`) leaves 21 for the version, and a longer label fails the build.
+sysupdate writes the formatted pattern as the label of the slot it fills, and keeps the slot's
+flags: the free usr slot is read-only without growfs, as slot A is (systemd 262.1 ignores the
+target's `ReadOnly=` for partitions). The partition type tells the three transfers apart, so the
+label carries no image id: GPT allows 36 characters, the longest prefix (`usr-verity-sig_`) leaves
+21 for the version, and a longer label fails the build.
 
 All transfers use `InstancesMax=2` and `ProtectVersion=%A`. The installed UKI name carries the boot
 counter (`+3-0`: three tries left, none done); `systemd-bless-boot` removes the suffix after
@@ -86,7 +93,7 @@ writes `proof.txt` (sizes, `veritysetup verify`, the cpio listing, `ukify inspec
 | verity | `verity { erofs; key; cert; … }`          | `<id>_<version>.usr-verity.raw`, `roothash`, `<id>_<version>.usr-verity-sig.raw`                                                                |
 | initrd | `initrdTree { … }`, `initrd { usrTree; }` | `initrd.cpio.zst`, `rdinit` ([Boot: the initrd](../design/boot.md#the-initrd))                                                                  |
 | uki    | `uki { initrd; verity; usrTree; keys… }`  | `<id>_<version>+3-0.efi` (`ukiName`), `cmdline`                                                                                                 |
-| disk   | `disk { erofs; verity; uki; keys… }`      | `disk.raw` (sparse, fully allotted: ESP with the signed loader and `loader.conf`, A and B slots, no room for `root`), `disk.json`               |
+| disk   | `disk { erofs; verity; uki; keys… }`      | `disk.raw` (sparse, fully allotted: ESP with the signed loader and `loader.conf`, A and B slots, no room for `root`), `disk.json`, `release/`   |
 
 The verity step: `veritysetup format` with a salt and superblock UUID from the version; the
 signature is `openssl smime -sign -nocerts -noattr -binary` over the hex root hash, as
@@ -103,10 +110,12 @@ from the root hash (usr: its first 128 bits, verity: its last). Before repart co
 `systemd-sbsign` signs systemd-boot with the same db key and certificate as the UKI, and
 `EFI/loader/loader.conf` is written from `lib/image/disk.nix`'s `loaderConf` (`timeout 0`,
 `editor no`). The B slots are empty, root is made on the machine (`/usr/lib/repart.d/30-root.conf`,
-written by `/base`). The ESP is filled offline with mtools (`packages/mtools`). Keys are paths: the
-smoke makes throwaway ones in the store (`throwawayKeys`); a release signs with the deployment's
-keys (`image/default.nix` `keys`), which never enter the store. Not yet: the verity certificate in
-the kernel keyring, a TPM.
+written by `/base`). `release/` holds symlinks to the step outputs under their release names (the
+UKI as `<id>_<version>.efi`) and `SHA256SUMS`: a directory an HTTP server can publish as the update
+source. The ESP is filled offline with mtools (`packages/mtools`). Keys are paths: the smoke makes
+throwaway ones in the store (`throwawayKeys`); a release signs with the deployment's keys
+(`image/default.nix` `keys`), which never enter the store. Not yet: the verity certificate in the
+kernel keyring, a TPM.
 
 Stand-ins the smoke carries on its cmdline, outside `image/uki.nix`: `LD_LIBRARY_PATH=` with the
 store directories of the libraries systemd dlopens (the fork's RUNPATH does not name them), and `rw`

@@ -1204,7 +1204,7 @@ let
       in
       hasInfix "[Source]" usr
       && hasInfix "Path=https://updates.example/t/" usr
-      && hasInfix "MatchPattern=t_@v.usr.raw" usr
+      && hasInfix "MatchPattern=t_@v.usr.@u.raw" usr
       && hasInfix "ProtectVersion=%A" usr
       && hasInfix "Verify=no" usr
       && result.files ? "/usr/lib/sysupdate.d/40-uki.conf"
@@ -3435,6 +3435,56 @@ let
         stringLength (imageLib.slotLabel "usr-verity-sig" "20261031.999999999999") == 36
         && !(tryEval (imageLib.slotLabel "usr-verity-sig" "20261031.9999999999999")).success
         && all (t: stringLength (imageLib.slotLabel t version) <= 36) kinds
+      ))
+      (check "sysupdate: the data and hash artifacts carry the hash-derived UUID, the target takes it" (
+        let
+          src = t: transfers.${partitionTransfers.${t}}.Source.MatchPattern;
+          target = t: transfers.${partitionTransfers.${t}}.Target;
+        in
+        hasInfix "@u" (src "usr")
+        && hasInfix "@u" (src "usr-verity")
+        # the signature has no hash-derived UUID
+        && !hasInfix "@u" (src "usr-verity-sig")
+        # a fixed PartitionUUID= would describe one release only, and override @u
+        && all (t: !(target t ? PartitionUUID)) kinds
+        # sysupdate keeps a slot's flags: the free usr slot has slot A's (repart marks verity
+        # partitions read-only by itself)
+        && hasInfix "ReadOnly=yes" defs."10-usr-a.conf"
+        && hasInfix "ReadOnly=yes" defs."20-usr-b.conf"
+        && hasInfix "GrowFileSystem=no" defs."20-usr-b.conf"
+      ))
+      (check "sysupdate: the UKI lands on the boot partition, not under / of the root" (
+        transfers."40-uki".Target.PathRelativeTo == "boot"
+        && transfers."40-uki".Target.Path == "/EFI/Linux"
+        && hasInfix "\nPathRelativeTo=boot\n" ((import ../modules/lib/ini.nix).render transfers."40-uki")
+      ))
+      (check "image: the release names are what the sysupdate sources match, version and UUID" (
+        let
+          uuid = imageLib.uuidOfHex (imageLib.hexOf "root hash");
+          names = imageLib.releaseNames {
+            imageId = "golconda-server";
+            inherit version;
+          };
+          fill = replaceStrings [ "@u" ] [ uuid ];
+          matches =
+            transfer: file: match (patternRegex transfers.${transfer}.Source.MatchPattern) (fill file);
+        in
+        matches "10-usr" names.usr == [
+          version
+          uuid
+        ]
+        &&
+          matches "20-usr-verity" names.verity == [
+            version
+            uuid
+          ]
+        && matches "30-usr-verity-sig" names.sig == [ version ]
+        && matches "40-uki" names.uki == [ version ]
+        && fill names.usr == "golconda-server_20261031.1.usr.${uuid}.raw"
+        # no file matches another transfer's source
+        && matches "10-usr" names.verity == null
+        && matches "20-usr-verity" names.usr == null
+        && matches "30-usr-verity-sig" names.verity == null
       ))
     ]
   );

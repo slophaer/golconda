@@ -16,7 +16,11 @@
 #     slot is `_empty` (image/repart.nix). The partition type already tells the transfers apart,
 #     so the label carries only a short kind and the version, never the image id: GPT allows 36
 #     characters, and `usr-verity-sig_` (15) leaves 21 for the version (YYYYMMDD.N is 10 + N's digits).
-#   - artifact: the release file name after `<imageId>_`.
+#   - artifact: the release file name after `<imageId>_`. The data and hash files carry `@u`, the
+#     partition UUID systemd derives from the verity root hash (usr: its first 128 bits,
+#     usr-verity: its last); sysupdate sets the written partition's UUID from it, so the new UKI's
+#     usrhash= finds the new slot. The signature has no hash-derived UUID (its JSON names the root
+#     hash), so its name has no `@u`.
 #
 # Called as a function ({ imageId; updateSource; } → transfers); `slots` is the contract.
 #
@@ -25,11 +29,11 @@ let
   slots = {
     usr = {
       label = "usr_@v";
-      artifact = "@v.usr.raw";
+      artifact = "@v.usr.@u.raw";
     };
     usr-verity = {
       label = "usr-verity_@v";
-      artifact = "@v.usr-verity.raw";
+      artifact = "@v.usr-verity.@u.raw";
     };
     usr-verity-sig = {
       label = "usr-verity-sig_@v";
@@ -56,6 +60,9 @@ let
       Path = "auto";
       MatchPattern = slots.${type}.label;
       InstancesMax = 2;
+      # No ReadOnly= or PartitionGrowFileSystem=: systemd 262.1 sets them while the partition
+      # has its "pending" type, which knows no flags, so they do nothing. The written slot keeps
+      # the flags the builder gave it (image/repart.nix).
     };
   };
 
@@ -79,6 +86,8 @@ let
         Target = {
           Type = "regular-file";
           Path = "/EFI/Linux";
+          # on the ESP (or XBOOTLDR), not the root file system
+          PathRelativeTo = "boot";
           # Match existing entries with boot counting, or plain .efi
           MatchPattern = [
             "${imageId}_@v+@l-@d.efi"

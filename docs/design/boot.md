@@ -52,7 +52,10 @@ three failures systemd-boot falls back to the other entry, which is the other `/
 systemd-sysupdate tells the slots apart by GPT label: an installed slot carries its version
 (`usr_20261031.1`, `usr-verity_…`, `usr-verity-sig_…`), a free one `_empty`, which gpt-auto also
 skips. The builder labels slot A this way and leaves B `_empty`; an update relabels the slot it
-writes ([Image artifacts](../reference/image.md#a-release)).
+writes ([Image artifacts](../reference/image.md#a-release)). It also gives the slot the partition
+UUIDs in the release file names, the two halves of the new root hash, so the new UKI's `usrhash=`
+finds its own slot and the old UKI still finds the old one. The UKI goes to `EFI/Linux` on the ESP
+(`PathRelativeTo=boot`), which gpt-auto mounts at `/boot`.
 
 ## Kernel command line
 

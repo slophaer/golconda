@@ -20,6 +20,11 @@
 # The loader is signed with the same db key and certificate as the UKI (image/default.nix
 # keys; lib/image/uki.nix): enforcing firmware starts nothing else. loader.conf is written from
 # this file's loaderConf, so the policy is one string the tests can read.
+#   release/        the release under the names image/sysupdate.nix's sources match
+#                   (releaseNames): <id>_<v>.usr.<uuid>.raw, <id>_<v>.usr-verity.<uuid>.raw with
+#                   the hash-derived UUIDs, <id>_<v>.usr-verity-sig.raw, <id>_<v>.efi, each a
+#                   symlink to its step's output, and SHA256SUMS, the index a url-file source reads
+
 #
 # systemd-repart --empty=create --size=auto --offline=yes --seed=<from the version>: no loop
 # device, no root; the usr slots are 10 GiB each (image/repart.nix), so the file is sparse and
@@ -88,6 +93,22 @@ rec {
   '';
   inherit slotLabel;
 
+  # releaseNames { imageId; version; } → { usr; verity; sig; uki; }: the release file names, the
+  # sysupdate source patterns (image/sysupdate.nix) with the version. `@u` stays for disk.nu, which
+  # puts in the UUID derived from the root hash.
+  releaseNames =
+    { imageId, version }:
+    let
+      t = image.sysupdate { inherit imageId; };
+      name = transfer: replaceStrings [ "@v" ] [ version ] t.${transfer}.Source.MatchPattern;
+    in
+    {
+      usr = name "10-usr";
+      verity = name "20-usr-verity";
+      sig = name "30-usr-verity-sig";
+      uki = name "40-uki";
+    };
+
   repartDefinitions =
     { version }:
     let
@@ -147,6 +168,7 @@ rec {
         roothash = "${verity}/roothash";
         uki = "${uki}/${ukiName}";
         inherit ukiName;
+        release = releaseNames { inherit imageId version; };
         systemdBoot = "${pkgs.systemd}/lib/systemd/boot/efi/systemd-boot${uefi}.efi";
         bootEntry = "EFI/BOOT/${removableMediaName uefi}";
         inherit loaderConf sbKey sbCert;

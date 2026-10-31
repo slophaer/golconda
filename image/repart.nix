@@ -80,6 +80,9 @@
       SizeMinBytes = "10G";
       SizeMaxBytes = "10G";
       Weight = 0;
+      # slot A's flags: sysupdate keeps a slot's flags when it writes it (image/sysupdate.nix)
+      ReadOnly = true;
+      GrowFileSystem = false;
       # Empty until first update
     };
   };
