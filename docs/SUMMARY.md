@@ -22,6 +22,7 @@
 - [Modules](reference/modules/README.md)
   - [vars](reference/modules/vars.md)
   - [Generated options](reference/modules/generated/index.md)
+    - [/factory](reference/modules/generated/factory.md)
     - [/services/sshd](reference/modules/generated/services-sshd.md)
     - [/system](reference/modules/generated/system.md)
     - [/wrap](reference/modules/generated/wrap.md)
