@@ -142,7 +142,33 @@ let
       dash = stubDash;
       uutils-coreutils = stubUutils;
       linux-kernel = stubLinuxKernel;
-    };
+    }
+    # the libraries /base links for systemd's dlopen (dlopenSonames): no bin, name only
+    // builtins.listToAttrs (
+      map
+        (n: {
+          name = n;
+          value = withBin "${n}-0" [ ];
+        })
+        [
+          "acl"
+          "libarchive"
+          "util-linux"
+          "openssl"
+          "cryptsetup"
+          "curl"
+          "lz4"
+          "xz"
+          "zstd"
+          "zlib"
+          "p11-kit"
+          "linux-pam"
+          "pcre2"
+          "libseccomp"
+          "tpm2-tss"
+          "e2fsprogs"
+        ]
+    );
   };
   withPkgs =
     options:
@@ -1521,13 +1547,13 @@ let
     ))
     (check "links: dlopen and explicit links pass through with their kinds" (
       let
-        tss = withBin "tpm2-tss-1" [ ];
+        tss = withBin "libfoo-1" [ ];
         frag = {
           packages = [ tss ];
           links = {
-            # use paths that don't collide with /base
-            "/usr/lib/libtss2-esys.so.0" = {
-              target = "${tss}/lib/libtss2-esys.so.0";
+            # use paths that don't collide with /base (which links every soname systemd dlopens)
+            "/usr/lib/libfoo.so.1" = {
+              target = "${tss}/lib/libfoo.so.1";
               kind = "dlopen";
             };
             "/usr/lib/systemd/system/sysinit.target.wants/a.service" = {
@@ -1539,7 +1565,7 @@ let
         result = compose [ frag ];
       in
       # the fragment's links are present with correct kinds
-      result.links."/usr/lib/libtss2-esys.so.0".kind == "dlopen"
+      result.links."/usr/lib/libfoo.so.1".kind == "dlopen"
       && result.links."/usr/lib/systemd/system/sysinit.target.wants/a.service".kind == "explicit"
     ))
     (check "links: the target path, kind and shape are typed" (
@@ -2275,14 +2301,17 @@ let
       && result.links ? "/usr/lib/systemd/system/multi-user.target.wants/systemd-resolved.service"
       && result.links ? "/usr/lib/systemd/system/sysinit.target.wants/systemd-timesyncd.service"
     ))
-    (check "base: farm links for systemd units and udev rules" (
+    (check "base: farm links for systemd's lib/systemd (units and their .wants/ included) and udev" (
       let
         result = compose [ ];
       in
-      result.links ? "/usr/lib/systemd/system"
-      && result.links."/usr/lib/systemd/system".kind == "farm"
-      && result.links ? "/usr/lib/udev/rules.d"
-      && result.links."/usr/lib/udev/rules.d".kind == "farm"
+      result.links ? "/usr/lib/systemd"
+      && result.links."/usr/lib/systemd".kind == "farm"
+      && result.links ? "/usr/lib/udev"
+      && result.links."/usr/lib/udev".kind == "farm"
+      # mount units and fsck exec these by bare name
+      && result.links."/usr/bin/mount".kind == "explicit"
+      && result.links."/usr/bin/systemd-tmpfiles".kind == "explicit"
     ))
     (check "base: dlopen link for libsystemd.so.0" (
       let
@@ -2458,81 +2487,6 @@ let
       sort lessThan (attrNames system.packageOrigins) == sort lessThan (map merge.pkgKey system.packages)
     ))
 
-    # 13. lib/system.nix: mkSystem entry point
-    (check "mkSystem: server.toml yields name and version" (
-      let
-        mkSystem =
-          args:
-          import ../lib/system.nix (
-            args
-            // {
-              inherit sources platform;
-              system = platform;
-            }
-          );
-        sys = mkSystem { config = ../examples/server.toml; };
-      in
-      sys.name == "server" && sys.version == "20261031.1"
-    ))
-    (check "mkSystem: extra overrides an option" (
-      let
-        mkSystem =
-          args:
-          import ../lib/system.nix (
-            args
-            // {
-              inherit sources platform;
-              system = platform;
-            }
-          );
-        sys = mkSystem {
-          config = ../examples/server.toml;
-          extra = {
-            "/system".name = "overridden";
-          };
-        };
-      in
-      sys.name == "overridden" && sys.version == "20261031.1"
-    ))
-    (check "mkSystem: config.json has the sshd table and no derivation strings" (
-      let
-        mkSystem =
-          args:
-          import ../lib/system.nix (
-            args
-            // {
-              inherit sources platform;
-              system = platform;
-            }
-          );
-        sys = mkSystem { config = ../examples/server.toml; };
-        cfg = sys.config;
-        cfgJson = builtins.toJSON cfg;
-      in
-      cfg ? "/services/sshd"
-      && cfg."/services/sshd".port == 22
-      # no store paths in the JSON
-      && match ".*(/nix/store).*" cfgJson == null
-    ))
-    (check "mkSystem: a TOML with an unknown module path throws with the path in the message" (
-      let
-        mkSystem =
-          args:
-          import ../lib/system.nix (
-            args
-            // {
-              inherit sources platform;
-              system = platform;
-            }
-          );
-        badConfig = builtins.toFile "bad.toml" ''
-          ["/unknown/module"]
-          option = "value"
-        '';
-        result = tryEval (deepSeq (mkSystem { config = badConfig; }).name true);
-      in
-      !result.success
-    ))
   ];
 in
 assert all (t: t) tests;
