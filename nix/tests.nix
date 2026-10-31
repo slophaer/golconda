@@ -2988,6 +2988,37 @@ let
       && o.packages == (compose [ ]).packageOrigins
       && system.packageOrigins == system.origins.packages
     ))
+
+    # PCR 11: a credential unseals only at a phase path the UKI signs. ukify --phases
+    # takes a list of paths (split on commas or spaces); each path is the colon chain
+    # measured into PCR 11 up to a state, and a signature covers only that path's last
+    # state. Signing the four default paths lets the host key unseal in the initrd and
+    # from sysinit on; one long "enter-initrd:...:ready" chain would leave sshd, which
+    # starts at ...:sysinit (after basic.target), with nothing it may decrypt.
+    (check "uki: the PCR phase policy signs every boot phase path" (
+      let
+        uki = import ../image/uki.nix;
+        phases = uki.pcrPhases;
+        full = "enter-initrd:leave-initrd:sysinit:ready";
+        sysinit = "enter-initrd:leave-initrd:sysinit";
+      in
+      builtins.isList phases
+      && length phases == 4
+      && elem "enter-initrd" phases
+      && elem sysinit phases
+      && elem full phases
+      # every path is the chain so far: a prefix of the full path
+      && all (p: hasPrefix p full) phases
+      # a colon chain is one state, not a list of states: no path may be a
+      # comma-joined list that ukify would split into the same single chain
+      && all (p: !(hasInfix "," p)) phases
+    ))
+    (check "sshd: the host key is loaded after the PCR phase it is sealed for" (
+      # systemd-pcrphase-sysinit.service extends PCR 11 to ...:sysinit before
+      # basic.target; sshd must not start before it, or the sealed host key has
+      # no signed phase to match
+      hasInfix "\nAfter=systemd-pcrphase-sysinit.service\n" unit
+    ))
   ];
 in
 assert all (t: t) tests;
