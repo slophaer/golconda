@@ -2609,6 +2609,26 @@ let
         hasInfix "ConditionPathExists=/usr/bin/modprobe"
           fs."/usr/lib/systemd/system/modprobe@.service.d/golconda.conf".text
     ))
+    (check "base: the D-Bus system policy is default-deny and takes systemd's service policies" (
+      let
+        c = compose [ ];
+        conf = c.files."/usr/share/dbus-1/system.conf".text;
+        farm = dir: {
+          target = "${stubSet.pkgs.systemd}/share/dbus-1/${dir}";
+          kind = "farm";
+        };
+      in
+      # every user may connect; no one owns a name or calls a method unless a policy says so
+      hasInfix "<allow user=\"*\"/>" conf
+      && hasInfix "<deny own=\"*\"/>" conf
+      && hasInfix "<deny send_type=\"method_call\"/>" conf
+      && !hasInfix "<allow own=\"*\"/>" conf
+      && !hasInfix "<allow send_destination=\"*\"/>" conf
+      && hasInfix "<includedir>system.d</includedir>" conf
+      && c.links."/usr/share/dbus-1/system.d" == farm "system.d"
+      && c.links."/usr/share/dbus-1/system-services" == farm "system-services"
+      && !(c.files ? "/usr/share/dbus-1/system.d/.gitkeep")
+    ))
     (check "base: networkd and timesyncd skip the initrd (no sysusers there: 217/USER)" (
       let
         fs = (compose [ ]).files;
