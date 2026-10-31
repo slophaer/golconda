@@ -1,6 +1,8 @@
 # sshd: the OpenSSH daemon as a service value, with its host key as a var.
-# Returns one fragment: the host-key generator unit, sshd.service, the
-# configuration under /usr/lib/sshd and the privilege-separation user.
+# Returns one fragment: the host-key generator unit, sshd.service and the
+# configuration under /usr/lib/sshd. The privilege-separation user,
+# /var/empty and /etc/pam.d/sshd are ambient: /factory provides them, so a
+# configuration with sshd adds /factory once.
 #
 # Authentication is by public key or OpenSSH certificate only. The lines
 # that turn off every password path are fixed in the generated sshd_config;
@@ -160,14 +162,9 @@ in
         wants = [ (v.unitName hostkeyVar) ];
       };
 
-      privsep = {
-        sysusers = [ "u sshd - \"SSH privilege separation\" /var/empty" ];
-        tmpfiles = [ "d /var/empty 0755 root root -" ];
-      };
     in
     merge [
       hostkey
       service
-      privsep
     ];
 }
