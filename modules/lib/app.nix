@@ -7,7 +7,6 @@
 { types }:
 let
   inherit (types)
-    bool
     derivation
     listOf
     optionalAttr
@@ -92,6 +91,14 @@ let
         v
   );
 
+  # `unset` is a presence marker: the key is the operation. `false` would
+  # otherwise be accepted and still emit UnsetEnvironment=, so it is refused
+  # instead of silently meaning something other than it says.
+  unsetFlag = typedef' "unsetFlag" (
+    v:
+    if v == true then null else "Expected true: the key is the operation; to keep the variable, omit it"
+  );
+
   # One launch env operation: exactly one key.
   #   { PATH = { prepend = [ "/usr/lib/foo/bin" ]; }; HOME = { set = "/var/lib/foo"; }; }
   envOp =
@@ -100,7 +107,7 @@ let
       default = optionalAttr unitValue;
       prepend = optionalAttr (listOf unitValue);
       append = optionalAttr (listOf unitValue);
-      unset = optionalAttr bool;
+      unset = optionalAttr unsetFlag;
     }).override
       {
         unknown = false;
