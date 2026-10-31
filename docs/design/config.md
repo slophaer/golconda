@@ -27,9 +27,10 @@ path, and nothing in it can name a derivation or a function.
 ## From document to image
 
 A document turns a module on by naming it: a table `["/services/sshd"]` means the sshd fragment is
-in `/system.fragments`; a service with no table is off. `/base` and `/network` are on in every
-image, and `/factory` and `/vars` are added once to every system. So there is no `enable` flag at
-either level: in Nix a service is on when its fragment is listed, in TOML when its table exists.
+in `/system.fragments`; a service with no table is off. `/base`, `/network` and `/security` are on
+in every image, and `/factory` and `/vars` are added once to every system. So there is no `enable`
+flag at either level: in Nix a service is on when its fragment is listed, in TOML when its table
+exists.
 
 The entry point that applies this rule is `lib/system.nix`:
 `mkSystem { config; platform?; extra?; }` takes the document (a path, or options already loaded),

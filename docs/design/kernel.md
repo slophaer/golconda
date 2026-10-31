@@ -1,8 +1,9 @@
-# Kernel Security
+# Kernel
 
 The kernel ships with Linux Security Modules (LSMs) enabled and configured for a signed, immutable
-system. The configuration is in `packages/kernel/golconda.config`; the UKI cmdline activates the
-LSMs.
+system. Status today: lockdown and Yama are on; IPE is in the kernel and on the cmdline but enforces
+nothing yet ([Trust: Verity key](trust.md#2-verity-key)). The configuration is in
+`packages/kernel/golconda.config`; the UKI cmdline activates the LSMs.
 
 ## LSM stack
 
@@ -21,15 +22,16 @@ The kernel cmdline sets `lsm=lockdown,yama,ipe,bpf`. This is the order in which 
 IPE decides which files may execute based on immutable properties of their origin. The boot policy
 (`packages/kernel/ipe-boot-policy`) allows:
 
-1. **Initramfs**: `boot_verified=TRUE` — files measured by systemd-stub into PCR 11.
+1. **Initramfs**: `boot_verified=TRUE` — the initramfs inside the UKI, which the kernel marks
+   `boot_verified`.
 1. **dm-verity volumes with a signed root hash**: `dmverity_signature=TRUE` — the `/usr` image.
 
 This policy is compiled into the kernel (`CONFIG_IPE_BOOT_POLICY`). It denies execution from any
 other source, including `/var`, `/tmp`, and unsigned verity volumes.
 
 The cmdline sets `ipe.enforce=0` (permissive: denials are audited to the journal) until the verity
-signing certificate is in a kernel keyring; then it becomes `1`. See docs/design/trust.md for the
-key.
+signing certificate is in a kernel keyring; then it becomes `1`. The key and its status are in
+[Trust: Verity key](trust.md#2-verity-key).
 
 ### Verity signature trust
 
@@ -41,9 +43,8 @@ keyrings can hold the signing certificate:
 - **Secondary keyring**: certificates signed by a key built into the kernel
   (`SECONDARY_TRUSTED_KEYRING_SIGNED_BY_BUILTIN`).
 
-The platform-keyring approach is the default: the image builder signs the verity root hash with the
-Secure Boot `db` key. Deployers who use a separate verity signing key add it to the kernel's
-secondary keyring via the UEFI MOK list or a built-in certificate.
+Which of the two Golconda uses is open. The image builder signs the verity root hash with its own
+key today, and no keyring holds the certificate: see [Trust: Verity key](trust.md#2-verity-key).
 
 ## Lockdown
 
@@ -84,6 +85,5 @@ rebuilds systemd with `bpf-framework=enabled`. This unlocks `RestrictFileSystems
 
 ## Phase 3: AppArmor
 
-Path-based MAC profiles generated from the typed service definitions. See
-[lsm.md](https://code.in.a.flawed.cloud/yolobox/golconda/src/branch/main/docs/design/lsm.md) for the
-research report.
+Path-based MAC profiles generated from the typed service definitions. The research report is outside
+the repository.

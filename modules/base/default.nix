@@ -1,15 +1,35 @@
 #! The base system: what every Golconda image contains.
 #!
-#! Always implicit: `/system` merges this fragment first, before any other
-#! module's fragment. A configuration need not declare it.
+#! Always implicit, with `/network` and `/security`: `/system` merges this
+#! fragment first, before any other module's fragment. A configuration need
+#! not declare it.
 #!
 #! Packages: systemd, dbus-broker, dash (linked as /usr/bin/sh; the image
-#! has no bash), uutils-coreutils, and the kernel (consumed later by the UKI
-#! builder). No GNU coreutils.
+#! has no bash), uutils-coreutils, tpm2-tss (only systemd's dlopen reaches
+#! it), e2fsprogs (mkfs.ext4 and fsck.ext4 for the root partition systemd-repart
+#! makes at first boot) and the kernel (consumed later by the UKI builder).
+#! No GNU coreutils.
 #!
 #! Units enabled: dbus.socket (wanted by sockets.target), dbus-broker.service
 #! (as the dbus.service alias), systemd-networkd, systemd-resolved,
-#! systemd-timesyncd.
+#! systemd-timesyncd. The `dbus.socket` unit is written as a file, not as a
+#! typed unit: dbus-broker does not ship it.
+#!
+#! Links, besides the `/usr/bin` links of the packages' `bin` lists:
+#! - farm links for systemd's own directories (`/usr/lib/systemd`,
+#!   `/usr/lib/udev`, `/usr/lib/sysusers.d`, `/usr/lib/tmpfiles.d`);
+#! - dlopen links: every soname systemd opens at run time, in `/usr/lib`;
+#! - `/usr/bin` links listed by hand for systemd and util-linux executables
+#!   that the fork's packages do not declare in their `bin` lists (a stand-in;
+#!   the list leaves when the fork declares them).
+#!
+#! Files: `/usr/lib/systemd/system.conf.d/golconda-dlopen.conf` (a stand-in:
+#! `DefaultEnvironment=LD_LIBRARY_PATH` with the dlopen libraries' store
+#! directories, until the fork's RUNPATH reaches them), the timesyncd and
+#! journald drop-ins, and `/usr/lib/repart.d/30-root.conf` (the root
+#! partition systemd-repart makes at first boot, rendered from
+#! `image/repart.nix`). Tmpfiles lines: `L /bin`, `L /sbin` and `L /lib`, the
+#! merged-`/usr` links on the root partition.
 #!
 #! Locale: C.UTF-8 via /usr/lib/locale.conf (PID 1 reads it before /etc
 #! exists, so the factory cannot provide it).

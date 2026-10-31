@@ -2,8 +2,8 @@
 
 An update is a new version of four artifacts, written to the inactive slot by systemd-sysupdate, and
 a reboot. Rollback is the previous slot, chosen by boot counting or by hand. The transfer
-definitions are rendered today (`/system.updateSource`); the artifacts come from the image builder
-*(being built)*.
+definitions are rendered (`/system.updateSource`); the artifacts come from the image builder
+([Image artifacts](../reference/image.md)). No update has run on a machine yet.
 
 ```mermaid
 flowchart TD
@@ -31,8 +31,10 @@ the image name and the update source; artifact names are in
 `/system.updateSource` is the URL of the release directory. The composer renders it as `Path=` into
 `/usr/lib/sysupdate.d/*.conf`, so the source is part of the image and never a per-machine file in
 `/etc`. When it is null (the default) no transfer definition exists and no update runs. In v1 the
-transfers carry `Verify=no` *(not rendered yet)*: what protects the machine is the verity signature
-and Secure Boot, not the download; a signed `SHA256SUMS` manifest is *(after v1)*.
+transfers carry `Verify=no` (rendered: `image/sysupdate.nix`), so sysupdate checks no manifest. The
+design relies on the verity signature and Secure Boot instead; today neither is enforced (see
+[Trust](trust.md#2-verity-key)), so an update is unauthenticated end to end until they are. A signed
+`SHA256SUMS` manifest is *(after v1)*.
 
 ## Versions
 

@@ -258,6 +258,7 @@ let
     - [Boot](design/boot.md)
     - [Updates](design/updates.md)
     - [Trust](design/trust.md)
+    - [Kernel](design/kernel.md)
     - [Modules](design/modules.md)
     - [Configuration](design/config.md)
     - [Packaging](design/packaging.md)

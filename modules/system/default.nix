@@ -4,9 +4,9 @@
 #! (see `docs/design/modules.md`). The union itself is `modules/lib/merge.nix`,
 #! so a module that returns several fragments applies the same rule.
 #!
-#! The `/base` module is always included first, before any fragment the
-#! configuration declares. A system with no fragments still has systemd,
-#! dbus-broker, dash, coreutils and the kernel.
+#! The `/base`, `/network` and `/security` modules are always included first,
+#! before any fragment the configuration declares. A system with no fragments
+#! still has systemd, dbus-broker, dash, coreutils and the kernel.
 #!
 #! Output: `{ name; version; units; files; sysusers; tmpfiles; packages; packageOrigins; links }`,
 #! every file as `{ text; mode; }` and `links` one map, path under `/usr` ->
@@ -19,7 +19,7 @@
 #!
 #! `packageOrigins` answers "why is this package here": package key (its
 #! name-version) -> the origins that brought it, `"/base"`,
-#! `"/network"`, a fragment's own `name` (a module sets its path), or
+#! `"/network"`, `"/security"`, a fragment's own `name` (a module sets its path), or
 #! `"fragments[<i>]"`. `packages` stays one deduped list.
 { types, ... }:
 let
