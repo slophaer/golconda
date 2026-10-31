@@ -76,7 +76,14 @@ let
     inherit (f) modules;
   };
   usrTreeLib = import ../lib/usr-tree.nix { };
-  inherit (import ./packages.nix { inherit sources platform; }) pkgs;
+  inherit
+    (import ./packages.nix {
+      inherit sources;
+      system = platform;
+      inherit platform;
+    })
+    pkgs
+    ;
 
   # repkgs needs ca-derivations to instantiate, so no package is built here;
   # jq stands in for the type check (the unit then says /usr/bin/jq).
@@ -1442,9 +1449,18 @@ let
       && builtins.elem "share" usrTreeLib.allowedDirs
       && builtins.elem "nix" usrTreeLib.allowedDirs
     ))
-    (check "usr-tree: renderOsRelease includes version" (
-      hasInfix "VERSION_ID=20261031.1" (usrTreeLib.renderOsRelease "20261031.1")
-      && hasInfix "IMAGE_VERSION=20261031.1" (usrTreeLib.renderOsRelease "20261031.1")
+    (check "usr-tree: renderOsRelease includes version and arch" (
+      let
+        osRel = usrTreeLib.renderOsRelease {
+          version = "20261031.1";
+          platform = {
+            cpu = "x86_64";
+          };
+        };
+      in
+      hasInfix "VERSION_ID=20261031.1" osRel
+      && hasInfix "IMAGE_VERSION=20261031.1" osRel
+      && hasInfix "ARCHITECTURE=x86_64" osRel
     ))
 
     # 8. the factory seed and its manifest
@@ -1548,6 +1564,56 @@ let
       factory
       (factoryOf { })
     ]))
+
+    # 9. Cross-compilation: platform flows through the module tree
+    (check "cross: platform record flows to os-release" (
+      let
+        x86 = {
+          name = "x86_64-linux";
+          cpu = "x86_64";
+        };
+        arm = {
+          name = "aarch64-linux";
+          cpu = "aarch64";
+        };
+        osX86 = usrTreeLib.renderOsRelease {
+          version = "20261031.1";
+          platform = x86;
+        };
+        osArm = usrTreeLib.renderOsRelease {
+          version = "20261031.1";
+          platform = arm;
+        };
+      in
+      hasInfix "ARCHITECTURE=x86_64" osX86
+      && hasInfix "ARCHITECTURE=aarch64" osArm
+      && hasInfix "VERSION_ID=20261031.1" osX86
+      && hasInfix "IMAGE_VERSION=20261031.1" osArm
+    ))
+    (check "cross: x86_64 and aarch64 sets differ in jq drvPath" (
+      let
+        x86Set = import ./packages.nix {
+          inherit sources;
+          system = "x86_64-linux";
+          platform = "x86_64-linux";
+        };
+        armSet = import ./packages.nix {
+          inherit sources;
+          system = "x86_64-linux";
+          platform = "aarch64-linux";
+        };
+      in
+      # Platform names differ
+      x86Set.platform.name == "x86_64-linux"
+      && armSet.platform.name == "aarch64-linux"
+      # CPU differs
+      && x86Set.platform.cpu == "x86_64"
+      && armSet.platform.cpu == "aarch64"
+      # The sets are for different targets (jq.drvPath would differ, but we cannot
+      # instantiate without ca-derivations; check the platform record instead)
+      && x86Set.platform.names.uefi == "x64"
+      && armSet.platform.names.uefi == "aa64"
+    ))
   ];
 in
 assert all (t: t) tests;

@@ -21,16 +21,22 @@ flake-incompat.mkFlake {
   # Per-system arguments, from the repkgs set for the platform (nix/packages.nix): `pkgs`,
   # `platform` (repkgs' record, nix/platforms.nix), and `set` (the full repkgs set with wrap,
   # closure, etc.). No nixpkgs here.
+  #
+  # The build host (`system`) is the flake system; the target (`platform`) defaults to the
+  # same. Cross-compilation: nix/default.nix builds packages for other targets under the
+  # build host's output tree (e.g., packages.x86_64-linux.usr-tree-smoke-aarch64).
   argsFun =
     name:
     let
-      set = import ./nix/packages.nix {
+      r = import ./nix/packages.nix {
         inherit sources;
+        system = name;
         platform = name;
       };
     in
     {
-      inherit set;
-      inherit (set) pkgs platform;
+      inherit (r) set pkgs platform;
+      # `system` is the build host (the flake system), for nix/default.nix to build cross targets
+      system = name;
     };
 }
