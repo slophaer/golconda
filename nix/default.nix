@@ -89,13 +89,11 @@ in
 
       # Cross-compiled usr-tree for aarch64: proves the platform argument flows through.
       # Built on x86_64, runs on aarch64. The jq binary in the output is an aarch64 ELF
-      # (proven 2026-10-31 before /base). Off until the fork's linux-kernel declares
-      # elfutils/openssl/libunwind as build dependencies: with /base the cross tree
-      # carries the kernel, whose cross evaluation fails on them today.
+      # (proven 2026-10-31).
       # Visible only in packages.x86_64-linux (cross builds from x86_64 to aarch64).
     }
     // (
-      if system == "x86_64-linux" && false then
+      if system == "x86_64-linux" then
         let
           # Build for aarch64-linux from this x86_64-linux host
           crossSet = import ./packages.nix {
