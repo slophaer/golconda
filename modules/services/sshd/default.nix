@@ -109,6 +109,9 @@ in
         # the certificate principal and key id are the audit trail
         "LogLevel VERBOSE"
         "PidFile none"
+        # file transfer without a second binary: sshd_config content, not a
+        # unit field (docs/design/modules.md, "no extras")
+        "Subsystem sftp internal-sftp"
       ];
 
       service = s.renderWrapped results.pkgs.wrap {
@@ -167,6 +170,10 @@ in
         # system: no sandbox. The privilege-separation user is in /factory.
         user = "root";
         sandbox = "trusted";
+        # a restart of sshd must not end the sessions it spawned; the
+        # privilege-separation directory is /var/empty (repkgs openssh,
+        # --with-privsep-path), so no RuntimeDirectory= is needed
+        killMode = "process";
         after = [
           "network.target"
           (v.unitName hostkeyVar)

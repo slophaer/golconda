@@ -10,6 +10,7 @@
 { types }:
 let
   appLib = import ./app.nix { inherit types; };
+  inherit (import ./var.nix { inherit types; }) word;
   inherit (appLib)
     app
     credentialRef
@@ -119,6 +120,14 @@ let
       null
   );
 
+  # How the unit's processes are killed on stop (KillMode=). `process` is for
+  # a daemon whose children must outlive it, such as sshd's sessions.
+  killMode = enum "killMode" [
+    "control-group"
+    "process"
+    "mixed"
+  ];
+
   service = struct "service" {
     inherit
       name
@@ -138,6 +147,10 @@ let
     credentials = optionalAttr (attrsOf string);
     # StateDirectory= entries under /var/lib; default [ ]
     state = optionalAttr (listOf string);
+    # RuntimeDirectory= under /run, one component; default none
+    runtimeDirectory = optionalAttr word;
+    # KillMode=; default control-group (systemd's own)
+    killMode = optionalAttr killMode;
     # unit ordering; default [ ]
     after = optionalAttr (listOf string);
     wants = optionalAttr (listOf string);
@@ -230,6 +243,8 @@ let
       ++ envLines
       ++ map (n: "LoadCredentialEncrypted=${n}:${credentials.${n}}") (sortStrings (attrNames credentials))
       ++ map (d: "StateDirectory=${d}") (svc.state or [ ])
+      ++ (if svc ? runtimeDirectory then [ "RuntimeDirectory=${svc.runtimeDirectory}" ] else [ ])
+      ++ (if svc ? killMode then [ "KillMode=${svc.killMode}" ] else [ ])
       ++ userLines
       ++ sandboxLines.${svc.sandbox};
 
@@ -316,6 +331,7 @@ in
     user
     sandbox
     sandboxLines
+    killMode
     escape
     render
     renderWrapped
