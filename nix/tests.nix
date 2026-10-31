@@ -2676,6 +2676,18 @@ let
         kind = "farm";
       }
     ))
+    (check "base: sysupdate units run only with a transfer definition" (
+      let
+        fs = (compose [ ]).files;
+        cond = u: fs."/usr/lib/systemd/system/${u}.d/golconda.conf".text;
+        all3 =
+          t:
+          hasInfix "ConditionDirectoryNotEmpty=|/usr/lib/sysupdate.d" t
+          && hasInfix "ConditionDirectoryNotEmpty=|/etc/sysupdate.d" t
+          && hasInfix "ConditionDirectoryNotEmpty=|/run/sysupdate.d" t;
+      in
+      all3 (cond "systemd-sysupdate.service") && all3 (cond "systemd-sysupdate-reboot.service")
+    ))
     (check "base: networkd and timesyncd skip the initrd (no sysusers there: 217/USER)" (
       let
         fs = (compose [ ]).files;
