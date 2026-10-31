@@ -145,6 +145,10 @@ in
               "/system" = {
                 name = "boot-test";
                 version = "20261031.1";
+                # The update test's release server: 10.0.2.2 is the host under QEMU user
+                # networking, where the test serves the next release's disk.release/ with
+                # `python3 -m http.server 8074` (docs/reference/image.md).
+                updateSource = "http://10.0.2.2:8074/";
               };
               "/services/sshd" = {
                 port = 22;
