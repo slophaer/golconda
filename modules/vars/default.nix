@@ -1,6 +1,9 @@
 #! Installs the var runner `/usr/lib/golconda/golconda-var-run` and hosts
-#! the documentation of vars: values generated on the machine or supplied by
-#! an admin, never part of the image.
+#! the documentation of vars: values the image names but never contains.
+#!
+#! Two classes: local (generated on the machine) and admin (pushed by the
+#! deploy host). Bootstrap credentials (hostname) are not vars; see
+#! [boot.md](../../../design/boot.md#bootstrap-credentials).
 #!
 #! Every var unit executes this runner (`modules/lib/var.nix`). One file for
 #! all vars, so one module installs it: a configuration with vars adds `/vars`
