@@ -12,24 +12,19 @@
   # Compression algorithm
   compression = "lz4hc";
 
-  # Derive timestamp from IMAGE_VERSION
-  # The builder calls versionToEpoch to compute -T argument for mkfs.erofs
+  # The timestamp comes from the version: lib/usr-tree.nix versionToEpoch computes the -T
+  # argument for mkfs.erofs and throws on a version that is not YYYYMMDD.N.
   #
-  # Version format: YYYYMMDD.N (e.g., 20261030.1)
+  # Version format: YYYYMMDD.N (e.g., 20261031.1)
   # Epoch formula: parse date to epoch, add N seconds for revision ordering
   #
-  # Example: 20261030.1 -> 1730246400 + 1 = 1730246401
-  #          20261030.2 -> 1730246400 + 2 = 1730246402
+  # Example: 20261031.1 -> 1793404800 + 1 = 1793404801
+  #          20261031.2 -> 1793404800 + 2 = 1793404802
   #
   # This ensures:
   # 1. Each version has a unique, increasing timestamp
   # 2. Images are reproducible (same version = same timestamp)
   # 3. ConditionNeedsUpdate= fires exactly once per new version
-  timestampFromVersion = true;
-
-  # Fallback for non-date versions (e.g., "1", "2", "test")
-  # Uses revision number directly as offset from a base epoch
-  baseEpoch = 1609459200; # 2021-01-01 00:00:00 UTC
 
   # mkfs.erofs arguments (in addition to -T and compression)
   extraArgs = [ ];

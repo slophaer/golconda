@@ -46,9 +46,10 @@ let
     name = "usr-tree-builder";
   };
 
-  # Derive epoch from version: YYYYMMDD.N -> seconds since Unix epoch
-  # The rule from image/erofs.nix: each version has a unique increasing timestamp.
-  # Uses Python-style date calculation: days since epoch.
+  # Derive epoch from version: YYYYMMDD.N -> seconds since Unix epoch. The one function for
+  # it: lib/image/common.nix re-exports it. A version in another format throws (the /system
+  # version type refuses it too). The rule from image/erofs.nix: each version has a unique
+  # increasing timestamp.
   versionToEpoch =
     version:
     let
@@ -97,12 +98,7 @@ let
       epoch = daysSinceEpoch * 86400 + rev;
     in
     if m == null then
-      # Fallback for non-date versions: use base epoch + version number
-      let
-        baseEpoch = 1609459200; # 2021-01-01 00:00:00 UTC
-        num = builtins.tryEval (builtins.fromJSON version);
-      in
-      if num.success then baseEpoch + num.value else baseEpoch
+      throw "versionToEpoch: '${version}' is not a version: YYYYMMDD.N, such as 20261031.1"
     else
       epoch;
 
