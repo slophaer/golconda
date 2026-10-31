@@ -140,18 +140,23 @@ inside the Nix sandbox (no KVM), so it is a script, not a derivation. Usage:
 # Build the test image
 nix-build -A packages.x86_64-linux.image-smoke-test
 
-# Run the boot test (basic markers)
-scripts/boot-test result/disk/disk.raw --keys result/keys --timeout 120
+# Run the boot test (basic markers). --secure-boot is required: the image
+# enforces IPE and the kernel trusts the verity signature only from the
+# platform keyring, which the firmware fills from db.
+scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --timeout 120
 
-# With Secure Boot (enrols the smoke's throwaway keys; see the note below)
-scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot
-
-# With TPM (starts swtpm)
-scripts/boot-test result/disk/disk.raw --keys result/keys --tpm
+# With TPM (starts swtpm); the db must be enrolled too
+scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --tpm
 
 # With SSH login test (needs image-smoke-test, not image-smoke)
-scripts/boot-test result/disk/disk.raw --keys result/keys --ssh-test
+scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-test
 ```
+
+The image enforces IPE (`ipe.enforce=1`): `/usr` executes only from a dm-verity mapping whose root
+hash signature the kernel verified. The signature is signed with the Secure Boot db key and its
+certificate reaches the kernel through the platform keyring, which the firmware loads from db. A
+boot without the db enrolled stops at switch-root with `Failed to execute /sbin/init`; this is the
+negative control for the mechanism, not a harness defect.
 
 `--secure-boot` enrolls the throwaway db key with `virt-fw-vars` (one fixed owner GUID) and boots
 `OVMFFull.fd` with `-machine smm=on`: plain `OVMF.fd` has no Secure Boot support. The guest must

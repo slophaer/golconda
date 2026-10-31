@@ -48,7 +48,7 @@ iets eval --expr 'import ./nix/tests.nix { }'   # the module tests alone
 
 # Boot test (needs KVM, cannot run in the sandbox)
 nix-build -A packages.x86_64-linux.image-smoke-test
-scripts/boot-test result/disk/disk.raw --smoke-dir result --timeout 120
+scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-test --timeout 120
 ```
 
 The dev shell carries treefmt, mdbook with the Pele diagram renderer, iets and npins. Building
