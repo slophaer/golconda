@@ -67,11 +67,14 @@
   # ======== Empty B slot (for A/B updates) ========
   # The same fixed sizes as A: sysupdate writes the next version into whichever slot is free,
   # so both must hold any release (usr 10 GiB; a hash tree is ~1 % of its data).
+  # Label `_empty`: an empty partition without it breaks the dissection of the whole disk (an
+  # empty usr-verity-sig is not valid JSON) and gpt-auto then mounts nothing. systemd skips the
+  # label (src/shared/dissect-image.c) and sysupdate expects it.
 
   "20-usr-b" = {
     Partition = {
       Type = "usr";
-      Label = "usr-b";
+      Label = "_empty"; # empty slot: gpt-auto skips it, sysupdate fills it
       SizeMinBytes = "10G";
       SizeMaxBytes = "10G";
       Weight = 0;
@@ -82,7 +85,7 @@
   "21-usr-b-verity" = {
     Partition = {
       Type = "usr-verity";
-      Label = "usr-b-verity";
+      Label = "_empty"; # empty slot: gpt-auto skips it, sysupdate fills it
       SizeMinBytes = "128M";
       SizeMaxBytes = "128M";
       Weight = 0;
@@ -92,7 +95,7 @@
   "22-usr-b-verity-sig" = {
     Partition = {
       Type = "usr-verity-sig";
-      Label = "usr-b-verity-sig";
+      Label = "_empty"; # empty slot: gpt-auto skips it, sysupdate fills it
       SizeMinBytes = "16K";
       SizeMaxBytes = "16K";
       Weight = 0;
