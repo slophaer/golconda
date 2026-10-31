@@ -23,5 +23,5 @@
 - **symlink farm**: `/usr/bin` and friends as links into `/usr/nix/store`.
 - **UKI**: Unified Kernel Image, one signed PE file with stub, kernel, initrd and cmdline.
 - **var**: a value generated on the machine at first boot and sealed to the TPM. Declared in the
-  image; produced by a oneshot unit. See [vars](modules/vars.md).
+  image; produced by a oneshot unit. See [vars](modules/generated/vars.md).
 - **verity**: dm-verity, block-level integrity of a read-only partition against a root hash.
