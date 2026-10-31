@@ -2385,6 +2385,9 @@ let
     (check "linux-pam: pam_unix reads shadow itself (the set has no unix_chkpwd helper)" (
       pkgs.linux-pam.drvAttrs.spec.meson.defs."pam_unix-try-getspnam" == true
     ))
+    (check "tpm2-tss: the device TCTI exports Tss2_Tcti_Info for systemd (no --enable-nodl)" (
+      !(elem "--enable-nodl" pkgs.tpm2-tss.drvAttrs.spec.autotools.flags)
+    ))
     (check "kernel: the override reaches the derivation (kbuild.configFragments holds the file)" (
       let
         fragments = pkgs.linux-kernel.drvAttrs.spec.kbuild.configFragments;
