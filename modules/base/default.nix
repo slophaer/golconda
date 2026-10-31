@@ -117,39 +117,50 @@ in
       # (the factory uses tmpfiles, which runs after PID 1 sets the locale)
       localeConf = "LANG=C.UTF-8\n";
 
-      # D-Bus system bus configuration: dbus-broker needs /usr/share/dbus-1/system.conf
-      # but doesn't ship it (dbus-broker is only the broker, not the config). This minimal
-      # config permits root and the systemd services; system.d/*.conf adds per-service rules.
+      # D-Bus system bus configuration. dbus-broker reads /usr/share/dbus-1/system.conf but
+      # does not ship it; this is the policy of the reference bus/system.conf.in (dbus 1.16):
+      # every user may connect; no one owns a name or calls a method unless a policy file in
+      # system.d allows it (systemd's, linked below, for network1, resolve1, login1, ...).
+      # <user>, <listen> and <auth> are for dbus-daemon: dbus-broker takes its socket from
+      # dbus.socket and ignores them.
       dbusSystemConf = ''
         <!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
           "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
         <busconfig>
           <type>system</type>
+          <user>messagebus</user>
           <auth>EXTERNAL</auth>
           <listen>unix:path=/run/dbus/system_bus_socket</listen>
 
-          <!-- Root can do anything -->
-          <policy user="root">
-            <allow send_destination="*" eavesdrop="true"/>
-            <allow eavesdrop="true"/>
-            <allow own="*"/>
-          </policy>
-
-          <!-- Default policy: deny everything, then allow what is needed -->
           <policy context="default">
-            <allow send_destination="*"/>
-            <allow own="*"/>
-          </policy>
-
-          <!-- systemd services and internal communication -->
-          <policy context="mandatory">
+            <allow user="*"/>
+            <deny own="*"/>
+            <deny send_type="method_call"/>
+            <allow send_type="signal"/>
+            <allow send_requested_reply="true" send_type="method_return"/>
+            <allow send_requested_reply="true" send_type="error"/>
+            <allow receive_type="method_call"/>
+            <allow receive_type="method_return"/>
+            <allow receive_type="error"/>
+            <allow receive_type="signal"/>
             <allow send_destination="org.freedesktop.DBus" send_interface="org.freedesktop.DBus"/>
             <allow send_destination="org.freedesktop.DBus" send_interface="org.freedesktop.DBus.Introspectable"/>
             <allow send_destination="org.freedesktop.DBus" send_interface="org.freedesktop.DBus.Properties"/>
-            <allow receive_sender="org.freedesktop.DBus"/>
+            <allow send_destination="org.freedesktop.DBus" send_interface="org.freedesktop.DBus.Containers1"/>
+            <deny send_destination="org.freedesktop.DBus" send_interface="org.freedesktop.DBus" send_member="UpdateActivationEnvironment"/>
+            <deny send_destination="org.freedesktop.DBus" send_interface="org.freedesktop.DBus.Debug.Stats"/>
+            <deny send_destination="org.freedesktop.DBus" send_interface="org.freedesktop.systemd1.Activator"/>
           </policy>
 
-          <includedir>/usr/share/dbus-1/system.d</includedir>
+          <policy user="root">
+            <allow send_destination="org.freedesktop.DBus" send_interface="org.freedesktop.systemd1.Activator"/>
+            <allow send_destination="org.freedesktop.DBus" send_interface="org.freedesktop.DBus.Monitoring"/>
+            <allow send_destination="org.freedesktop.DBus" send_interface="org.freedesktop.DBus.Debug.Stats"/>
+          </policy>
+
+          <includedir>system.d</includedir>
+          <includedir>/etc/dbus-1/system.d</includedir>
+          <include ignore_missing="yes">/etc/dbus-1/system-local.conf</include>
         </busconfig>
       '';
 
@@ -300,6 +311,18 @@ in
           target = "${p.systemd}/lib/tmpfiles.d";
           kind = "farm";
         }
+        # D-Bus: systemd's bus policies (system.conf includes system.d) and the activation
+        # files that map a bus name to its unit (SystemdService=)
+        {
+          path = "/usr/share/dbus-1/system.d";
+          target = "${p.systemd}/share/dbus-1/system.d";
+          kind = "farm";
+        }
+        {
+          path = "/usr/share/dbus-1/system-services";
+          target = "${p.systemd}/share/dbus-1/system-services";
+          kind = "farm";
+        }
       ];
 
       # dlopen: libraries systemd opens by soname (its ELF .note.dlopen, every one the fork
@@ -439,10 +462,8 @@ in
         "/usr/lib/repart.d/30-root.conf" = rootRepart;
         # dbus.socket unit: dbus-broker doesn't ship it
         "/usr/lib/systemd/system/dbus.socket" = dbusSocketUnit;
-        # D-Bus system bus configuration: dbus-broker needs this
+        # D-Bus system bus configuration: dbus-broker does not ship it
         "/usr/share/dbus-1/system.conf" = dbusSystemConf;
-        # system.d directory for per-service D-Bus configs (the includedir in system.conf)
-        "/usr/share/dbus-1/system.d/.gitkeep" = "";
       };
 
       links = linksToAttrs (
