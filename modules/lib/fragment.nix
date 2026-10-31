@@ -16,6 +16,7 @@ let
     derivation
     typedef'
     ;
+  path = import ./path.nix;
   inherit (builtins)
     any
     attrNames
@@ -132,13 +133,27 @@ let
     "explicit"
   ];
 
+  # A link target: a store path or a path relative to the link; it becomes the
+  # symlink's target text, so a control character is refused.
+  linkTarget = typedef' "linkTarget" (
+    v:
+    if !isString v then
+      "Expected a string"
+    else if path.hasControl v then
+      "'${v}' contains a control character: a link target is one path"
+    else if v == "" then
+      "a link target must not be empty"
+    else
+      null
+  );
+
   # One symlink: its target and kind; the path under /usr is the key in `links`.
   #   "/usr/bin/sshd" = { target = "<store>/bin/sshd"; kind = "package"; };
   #   "/usr/lib/systemd/system/multi-user.target.wants/sshd.service" =
   #     { target = "../sshd.service"; kind = "explicit"; };
   link =
     (struct "link" {
-      target = string;
+      target = linkTarget;
       kind = linkKind;
     }).override
       { unknown = false; };
@@ -154,8 +169,8 @@ let
         err: p:
         if err != null then
           err
-        else if match "/usr/.+" p == null then
-          "'${p}' is not a link path: a symlink in the farm is under /usr/"
+        else if path.usrError p != null then
+          path.usrError p
         else
           let
             l = link.verify v.${p};
