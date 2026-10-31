@@ -53,6 +53,11 @@ Renderers turn these values into fragments:
 Config goes to `/usr/lib/<name>/` or into the wrapper, never to `/etc`. The image holds no
 per-machine values. A program that insists on `/etc` gets a tmpfiles `L` symlink.
 
+An `app` file must not carry a per-machine value: one image serves every machine, so a credential
+path (`%d/`, `$CREDENTIALS_DIRECTORY`) or a key (`-----BEGIN`, `PRIVATE KEY`) in its text is a type
+error that names the file. A secret is a credential, named in the unit's `extraArgv` and read from
+the credentials directory at run time.
+
 A service is on when its fragment is in `fragments`; there is no `enable` flag. A secret is a
 `{ credential = "n"; }` reference, accepted only in the unit's `extraArgv` and rendered as `%d/n`
 from `LoadCredentialEncrypted=`. A var is a fragment too: a oneshot unit that generates the secret

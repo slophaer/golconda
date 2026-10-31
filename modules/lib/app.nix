@@ -85,14 +85,56 @@ let
             "an env operation has exactly one of set, default, prepend, append, unset; got [${concatStringsSep ", " (attrNames v)}]";
       };
 
+  # One image serves every machine, so an app file holds no per-machine
+  # value (docs/design/modules.md). A credential path or a key is the one
+  # that gets pasted by mistake; the type refuses the markers and names the
+  # file. A secret belongs in a credential, named from service.extraArgv.
+  perMachineMarkers = [
+    "%d/"
+    "$CREDENTIALS_DIRECTORY"
+    "-----BEGIN"
+    "PRIVATE KEY"
+  ];
+  hasInfix =
+    needle: hay:
+    let
+      n = builtins.stringLength needle;
+      h = builtins.stringLength hay;
+    in
+    n <= h && any (i: builtins.substring i n hay == needle) (builtins.genList (i: i) (h - n + 1));
+  files = typedef' "appFiles" (
+    v:
+    if !builtins.isAttrs v then
+      "Expected type 'appFiles' (file name -> text)"
+    else
+      builtins.foldl' (
+        err: name:
+        if err != null then
+          err
+        else if !isString v.${name} then
+          "app file '${name}' must be text"
+        else
+          builtins.foldl' (
+            err: m:
+            if err != null then
+              err
+            else if hasInfix m v.${name} then
+              "app file '${name}' contains '${m}': an app file holds no per-machine value; a credential is named in service.extraArgv and read from %d"
+            else
+              null
+          ) null perMachineMarkers
+      ) null (attrNames v)
+  );
+
   app = struct "app" {
     package = derivation;
     # default [ ]; may contain the `{files}` placeholder (see `file`)
     argv = optionalAttr argv;
     # default { }
     env = optionalAttr (attrsOf envOp);
-    # file name -> text; default { }. Every renderer installs them and expands `{files}`.
-    files = optionalAttr (attrsOf string);
+    # file name -> text; default { }. Every renderer installs them and expands
+    # `{files}`. No per-machine value: see `files`.
+    files = optionalAttr files;
   };
 
   # The path of an app file, for use inside `argv`: `file "sshd_config"` is
@@ -122,7 +164,9 @@ in
     envOp
     exe
     file
+    files
     filesPlaceholder
     isCredentialRef
+    perMachineMarkers
     ;
 }
