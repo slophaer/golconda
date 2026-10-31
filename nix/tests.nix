@@ -2588,27 +2588,25 @@ let
       !result.success
     ))
 
-    # base module: service masks (no local login, monolithic kernel)
-    (check "base: systemd-firstboot.service is masked" (
+    # base module: drop-ins for units the systemd farm ships
+    (check "base: systemd-firstboot never prompts" (
       let
-        result = compose [ ];
+        f = (compose [ ]).files."/usr/lib/systemd/system/systemd-firstboot.service.d/golconda.conf".text;
       in
-      result.links ? "/usr/lib/systemd/system/systemd-firstboot.service"
-      && result.links."/usr/lib/systemd/system/systemd-firstboot.service".target == "/dev/null"
+      hasInfix "ExecStart=\nExecStart=systemd-firstboot --mute-console=yes" f && !(hasInfix "--prompt" f)
     ))
-    (check "base: ldconfig.service is masked" (
+    (check "base: ldconfig and modprobe@ skip on a missing binary" (
       let
-        result = compose [ ];
+        fs = (compose [ ]).files;
       in
-      result.links ? "/usr/lib/systemd/system/ldconfig.service"
-      && result.links."/usr/lib/systemd/system/ldconfig.service".target == "/dev/null"
+      hasInfix "ConditionPathExists=/usr/bin/ldconfig"
+        fs."/usr/lib/systemd/system/ldconfig.service.d/golconda.conf".text
+      &&
+        hasInfix "ConditionPathExists=/usr/bin/modprobe"
+          fs."/usr/lib/systemd/system/modprobe@.service.d/golconda.conf".text
     ))
-    (check "base: modprobe@.service is masked" (
-      let
-        result = compose [ ];
-      in
-      result.links ? "/usr/lib/systemd/system/modprobe@.service"
-      && result.links."/usr/lib/systemd/system/modprobe@.service".target == "/dev/null"
+    (check "base: no unit is masked by a link (the systemd farm owns those paths)" (
+      !(builtins.any (l: l.target == "/dev/null") (builtins.attrValues (compose [ ]).links))
     ))
 
     # security module: kernel hardening sysctl

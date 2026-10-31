@@ -31,10 +31,11 @@
 #! `image/repart.nix`). Tmpfiles lines: `L /bin`, `L /sbin` and `L /lib`, the
 #! merged-`/usr` links on the root partition.
 #!
-#! Units masked: systemd-firstboot.service (there is no local login path,
-#! so no root password; the hostname comes from a credential), ldconfig.service
-#! (no ldconfig binary, monolithic kernel), modprobe@.service (no kmod binaries,
-#! monolithic kernel).
+#! Unit drop-ins (a link to /dev/null cannot mask a unit the systemd farm
+#! already ships): systemd-firstboot.service runs without prompts (no local
+#! login, so no root password; it still applies `firstboot.*` credentials),
+#! ldconfig.service skips without /usr/bin/ldconfig, modprobe@.service skips
+#! without /usr/bin/modprobe (monolithic kernel, no kmod).
 #!
 #! Locale: C.UTF-8 via /usr/lib/locale.conf (PID 1 reads it before /etc
 #! exists, so the factory cannot provide it).
@@ -185,29 +186,28 @@ in
         }
       ];
 
-      # Masked units: services that must not run. Symlinks to /dev/null are how
-      # systemd implements masking; no InstallInfo reaches the masked name.
-      # - systemd-firstboot: there is no local login path, so no root password;
-      #   the hostname comes from a credential, firstboot would prompt otherwise.
-      # - ldconfig: the image has no ldconfig binary (monolithic kernel).
-      # - modprobe@: the image has no kmod binaries (monolithic kernel).
-      maskLinks = [
-        {
-          path = "/usr/lib/systemd/system/systemd-firstboot.service";
-          target = "/dev/null";
-          kind = "explicit";
-        }
-        {
-          path = "/usr/lib/systemd/system/ldconfig.service";
-          target = "/dev/null";
-          kind = "explicit";
-        }
-        {
-          path = "/usr/lib/systemd/system/modprobe@.service";
-          target = "/dev/null";
-          kind = "explicit";
-        }
-      ];
+      # Drop-ins for units the systemd farm ships: a mask link would collide
+      # with the farm, and a condition says the real reason.
+      dropIn = text: {
+        inherit text;
+        mode = "0644";
+      };
+      unitDropIns = {
+        # no local login: never prompt; credentials (firstboot.*) still apply
+        "/usr/lib/systemd/system/systemd-firstboot.service.d/golconda.conf" = dropIn ''
+          [Service]
+          ExecStart=
+          ExecStart=systemd-firstboot --mute-console=yes
+        '';
+        "/usr/lib/systemd/system/ldconfig.service.d/golconda.conf" = dropIn ''
+          [Unit]
+          ConditionPathExists=/usr/bin/ldconfig
+        '';
+        "/usr/lib/systemd/system/modprobe@.service.d/golconda.conf" = dropIn ''
+          [Unit]
+          ConditionPathExists=/usr/bin/modprobe
+        '';
+      };
 
       # dash is /bin/sh (/bin -> usr/bin is made by the image builder).
       shLinks = [
@@ -375,7 +375,7 @@ in
         p.linux-kernel # kernel; UKI builder consumes it
       ];
 
-      files = {
+      files = unitDropIns // {
         "/usr/lib/systemd/timesyncd.conf.d/golconda.conf" = timesyncdConf;
         "/usr/lib/systemd/journald.conf.d/golconda.conf" = journaldConf;
         "/usr/lib/locale.conf" = localeConf;
@@ -386,7 +386,7 @@ in
       };
 
       links = linksToAttrs (
-        dbusUnitLinks ++ wantsLinks ++ shLinks ++ systemdBinLinks ++ farmLinks ++ dlopenLinks ++ maskLinks
+        dbusUnitLinks ++ wantsLinks ++ shLinks ++ systemdBinLinks ++ farmLinks ++ dlopenLinks
       );
 
       # The dbus user, if dbus-broker needs it. dbus-broker runs as root by
