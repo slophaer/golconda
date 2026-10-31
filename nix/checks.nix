@@ -11,7 +11,21 @@ let
   src = builtins.path {
     path = self;
     name = "golconda-src";
-    filter = p: _: baseNameOf p != ".git" && !(pkgs.lib.hasPrefix "result" (baseNameOf p));
+    # the same set .gitignore excludes: generated docs, review scratch, results, direnv
+    filter =
+      p: _:
+      let
+        b = baseNameOf p;
+        ignored = [
+          ".git"
+          ".review"
+          ".direnv"
+          "book"
+          "generated"
+          "SUMMARY.md"
+        ];
+      in
+      !(builtins.elem b ignored) && !(pkgs.lib.hasPrefix "result" b);
   };
   # the generated module pages (lib/module-docs.nix), by file name
   moduleDocs =
