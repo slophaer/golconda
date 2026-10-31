@@ -82,6 +82,12 @@ path (`%d/`, `$CREDENTIALS_DIRECTORY`) or a key (`-----BEGIN`, `PRIVATE KEY`) in
 error that names the file. A secret is a credential, named in the unit's `extraArgv` and read from
 the credentials directory at run time.
 
+The `service` type grows a field when two services would need it and it has one meaning (`killMode`,
+`runtimeDirectory`); everything else a program needs is its own configuration, which the module
+writes into the app's files (sshd's `Subsystem sftp internal-sftp` is `sshd_config` content, not a
+unit field). There is no generic escape hatch into the unit text: a module that needs a directive
+the type lacks adds the field, with its type, or does without.
+
 A service is on when its fragment is in `fragments`; there is no `enable` flag. A secret is a
 `{ credential = "n"; }` reference, accepted only in the unit's `extraArgv` and rendered as `%d/n`
 from `LoadCredentialEncrypted=`. A var is a fragment too: a oneshot unit that generates the secret

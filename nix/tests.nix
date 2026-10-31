@@ -349,6 +349,12 @@ let
       !(tryEval ((f.modules { options."/wrap".package = standIn; }).modules.wrap { }).name).success
     ))
     (check "sshd: waits for the var" (hasInfix "After=golconda-var-sshd-hostkey.service" unit))
+    (check "sshd: sessions outlive a restart; no runtime directory" (
+      hasInfix "\nKillMode=process\n" unit && !hasInfix "RuntimeDirectory=" unit
+    ))
+    (check "sshd: sftp is a subsystem in sshd_config, not a unit field" (
+      hasInfix "\nSubsystem sftp internal-sftp\n" sshdConfig && !hasInfix "Subsystem" unit
+    ))
     (check "sshd: privsep user" (any (hasInfix "u sshd ") system.sysusers))
     (check "var: runs once" (
       hasInfix "ConditionPathExists=!/var/lib/golconda/vars/sshd-hostkey/done" varUnit
@@ -753,6 +759,57 @@ let
           app.package = standIn;
           user = "bob";
           sandbox = "strict";
+        }
+      )
+    ))
+    (check "killMode and runtimeDirectory render; neither by default" (
+      let
+        base = {
+          name = "x";
+          app.package = standIn;
+          user = "dynamic";
+          sandbox = "strict";
+        };
+        plain = (s.render base).units."x.service";
+        extra =
+          (s.render (
+            base
+            // {
+              killMode = "mixed";
+              runtimeDirectory = "x";
+            }
+          )).units."x.service";
+      in
+      !hasInfix "KillMode=" plain
+      && !hasInfix "RuntimeDirectory=" plain
+      && hasInfix "\nRuntimeDirectory=x\nKillMode=mixed\n" extra
+    ))
+    (check "killMode is an enum and runtimeDirectory one component" (
+      throws (
+        s.render {
+          name = "x";
+          app.package = standIn;
+          user = "dynamic";
+          sandbox = "strict";
+          killMode = "none";
+        }
+      )
+      && throws (
+        s.render {
+          name = "x";
+          app.package = standIn;
+          user = "dynamic";
+          sandbox = "strict";
+          runtimeDirectory = "a/b";
+        }
+      )
+      && throws (
+        s.render {
+          name = "x";
+          app.package = standIn;
+          user = "dynamic";
+          sandbox = "strict";
+          runtimeDirectory = [ "a" ];
         }
       )
     ))

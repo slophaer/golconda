@@ -28,7 +28,7 @@ Plain files that modules import. The directory has no `default.nix`, so adios do
 | `fragment.nix`     | `fragment`: `{ units; files; sysusers; tmpfiles; packages; links; farm; dlopen }`, every field optional; `file`, `mode`, `link`                               |
 | `merge.nix`        | `merge [ fragment… ] → { ...; links; farmDirs }`: unions attrs, concatenates lists; a duplicate key or path throws; every file comes out as `{ text; mode; }` |
 | `app.nix`          | `app`, `argv`, `files`, `perMachineMarkers`, `envOp`, `credentialRef`, `isCredentialRef`, `file`, `filesPlaceholder`, `exe`                                   |
-| `service.nix`      | `service`, `render`, `renderWrapped`, `wrapApp`, `sandbox`, `sandboxLines`, `credential`, `credentialArg`                                                     |
+| `service.nix`      | `service`, `render`, `renderWrapped`, `wrapApp`, `sandbox`, `sandboxLines`, `killMode`, `credential`, `credentialArg`                                         |
 | `var.nix`          | `var`, `render`, `adminVar`, `admin`, `unitName`, `credentialId`, `stateDir`                                                                                  |
 | `golconda-var-run` | POSIX sh runner for var units                                                                                                                                 |
 
@@ -71,18 +71,20 @@ names the file: an app file holds no per-machine value (`perMachineMarkers` in `
 
 A service is an `app` plus what only a unit has. `render service` returns a fragment.
 
-| field         | type                                                                  | rendered as                                                                    |
-| ------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `name`        | unit name stem                                                        | `units."<name>.service"`, `/usr/lib/<name>/` for files                         |
-| `app`         | `app`                                                                 | `ExecStart=`, `Environment=`, `files`, `packages`                              |
-| `extraArgv`   | list of string or `{ credential = "n"; prefix ? ""; }`, default `[ ]` | after `app.argv`; a ref renders as `<prefix>%d/n` and must be in `credentials` |
-| `credentials` | attrs name → credstore id, default `{ }`                              | `LoadCredentialEncrypted=name:id`                                              |
-| `state`       | list of string, default `[ ]`                                         | `StateDirectory=`                                                              |
-| `user`        | `"dynamic"`, `"root"` or a sysusers line                              | `DynamicUser=yes`, `User=root`, or `User=` plus sysusers                       |
-| `sandbox`     | `"strict"`, `"default"` or `"trusted"`                                | hardening directives from `sandboxLines`                                       |
-| `after`       | list of unit names, default `[ ]`                                     | `After=`                                                                       |
-| `wants`       | list of unit names, default `[ ]`                                     | `Wants=`                                                                       |
-| `wantedBy`    | list of target names, default `[ "multi-user.target" ]`               | `[Install] WantedBy=` and static `.wants` links                                |
+| field              | type                                                                  | rendered as                                                                    |
+| ------------------ | --------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `name`             | unit name stem                                                        | `units."<name>.service"`, `/usr/lib/<name>/` for files                         |
+| `app`              | `app`                                                                 | `ExecStart=`, `Environment=`, `files`, `packages`                              |
+| `extraArgv`        | list of string or `{ credential = "n"; prefix ? ""; }`, default `[ ]` | after `app.argv`; a ref renders as `<prefix>%d/n` and must be in `credentials` |
+| `credentials`      | attrs name → credstore id, default `{ }`                              | `LoadCredentialEncrypted=name:id`                                              |
+| `state`            | list of string, default `[ ]`                                         | `StateDirectory=`                                                              |
+| `runtimeDirectory` | word, optional                                                        | `RuntimeDirectory=`                                                            |
+| `killMode`         | `"control-group"`, `"process"` or `"mixed"`, optional                 | `KillMode=`; absent means systemd's default (`control-group`)                  |
+| `user`             | `"dynamic"`, `"root"` or a sysusers line                              | `DynamicUser=yes`, `User=root`, or `User=` plus sysusers                       |
+| `sandbox`          | `"strict"`, `"default"` or `"trusted"`                                | hardening directives from `sandboxLines`                                       |
+| `after`            | list of unit names, default `[ ]`                                     | `After=`                                                                       |
+| `wants`            | list of unit names, default `[ ]`                                     | `Wants=`                                                                       |
+| `wantedBy`         | list of target names, default `[ "multi-user.target" ]`               | `[Install] WantedBy=` and static `.wants` links                                |
 
 Arguments are escaped (`%` → `%%`, `$` → `$$`). `credential "n"` builds a plain ref;
 `credentialArg "RevokedKeys=" "n"` builds one with a prefix, for programs that take a path as
@@ -199,13 +201,14 @@ Two modules that write one factory path are a composer error, like any duplicate
 ### `/services/sshd`
 
 One fragment: the host key var `sshd-hostkey` (credential `sshd-hostkey.key`, passed with `-h`),
-`sshd.service`, the sshd launcher (`renderWrapped`: `/usr/bin/sshd` carries `-D -e -f` and the
-configuration in its `share/wrap/openssh/`), and, when their options are on, the admin vars
-`sshd-host-cert` and `sshd-revoked-keys`. The generated `sshd_config` fixes
-`PasswordAuthentication no`, `KbdInteractiveAuthentication no`,
-`ChallengeResponseAuthentication no`, `PermitRootLogin prohibit-password`, `UsePAM yes` and
-`LogLevel VERBOSE`; no option changes them ([design/trust](../../design/trust.md#identity)).
-`/etc/pam.d/sshd` comes from `/factory`.
+`sshd.service` (`KillMode=process`: sessions outlive a restart; no `RuntimeDirectory=`, the
+privilege-separation directory is `/var/empty` from `/factory`), the sshd launcher (`renderWrapped`:
+`/usr/bin/sshd` carries `-D -e -f` and the configuration in its `share/wrap/openssh/`), and, when
+their options are on, the admin vars `sshd-host-cert` and `sshd-revoked-keys`. The generated
+`sshd_config` fixes `PasswordAuthentication no`, `KbdInteractiveAuthentication no`,
+`ChallengeResponseAuthentication no`, `PermitRootLogin prohibit-password`, `UsePAM yes`,
+`LogLevel VERBOSE` and `Subsystem sftp internal-sftp`; no option changes them
+([design/trust](../../design/trust.md#identity)). `/etc/pam.d/sshd` comes from `/factory`.
 
 | option              | type                                       | rendered as                                                                                                          |
 | ------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |

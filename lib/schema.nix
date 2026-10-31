@@ -350,6 +350,13 @@ let
           };
           description = "StateDirectory entries under /var/lib.";
         };
+        runtimeDirectory = {
+          "$ref" = "#/$defs/word";
+          description = "RuntimeDirectory= under /run.";
+        };
+        killMode = {
+          "$ref" = "#/$defs/killMode";
+        };
         user = {
           "$ref" = "#/$defs/serviceUser";
         };
@@ -403,6 +410,15 @@ let
         "strict"
         "default"
         "trusted"
+      ];
+    };
+
+    killMode = {
+      description = "KillMode=: control-group (default), process (children outlive the daemon, as sshd's sessions) or mixed.";
+      enum = [
+        "control-group"
+        "process"
+        "mixed"
       ];
     };
 
