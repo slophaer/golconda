@@ -10,7 +10,7 @@ This page documents every module and the shared types in `modules/lib/`.
 | `/system`        | the composer: `name`, `version`, `fragments` → `{ units; files; sysusers; tmpfiles; packages }` |
 | `/vars`          | installs `/usr/lib/golconda/golconda-var-run` (mode `0755`); add once when any var is used      |
 | `/wrap`          | typed options for repkgs' `wrap`: `package`, `argv`, `env`, `files`; the caller uses `set.wrap` |
-| `/services/sshd` | OpenSSH as a service with an ed25519 host key var; options `package`, `port`, `authorizedKeys`  |
+| `/services/sshd` | OpenSSH as a service with an ed25519 host key var; keys and certificates only (options below)   |
 
 ## Shared types (`modules/lib/`)
 
@@ -99,3 +99,25 @@ to `set.wrap` in `nix/packages.nix`. `wrap` returns a package with launch record
 | `files`   | attrs name → text             | installed to `{root}/share/wrap/<pkgname>/<name>`              |
 
 `packages.<system>.wrap-smoke` wraps `jq` with `--version` as a build check.
+
+### `/services/sshd`
+
+One fragment: the host key var `sshd-hostkey` (credential `sshd-hostkey.key`, passed with `-h`),
+`sshd.service`, the configuration under `/usr/lib/sshd/` and the privilege-separation user. The
+generated `sshd_config` fixes `PasswordAuthentication no`, `KbdInteractiveAuthentication no`,
+`ChallengeResponseAuthentication no`, `PermitRootLogin prohibit-password`, `UsePAM yes` and
+`LogLevel VERBOSE`; no option changes them ([design/trust](../../design/trust.md#identity)).
+
+| option              | type                                       | rendered as                                                                                  |
+| ------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `package`           | derivation                                 | the program (its first `bin`)                                                                |
+| `port`              | int, default `22`                          | `Port`                                                                                       |
+| `authorizedKeys`    | list of string, default `[ ]`              | `/usr/lib/sshd/authorized_keys.root`; bootstrap only                                         |
+| `trustedUserCAKeys` | list of string, default `[ ]`              | `/usr/lib/sshd/trusted_user_ca_keys` and `TrustedUserCAKeys`                                 |
+| `principals`        | attrs user → list of string, default `{ }` | `/usr/lib/sshd/principals.<user>` and `AuthorizedPrincipalsFile /usr/lib/sshd/principals.%u` |
+| `revokedKeys`       | credential name or `null`, default `null`  | `LoadCredentialEncrypted=<name>:<name>` and `-o RevokedKeys=%d/<name>`                       |
+| `hostCertificate`   | bool, default `false`                      | `LoadCredentialEncrypted=hostcert:sshd-host-cert` and `-o HostCertificate=%d/hostcert`       |
+
+`revokedKeys` and `hostCertificate` name admin-supplied credentials (a KRL and the signed host
+certificate); they reach sshd on the command line because `sshd_config` cannot refer to the
+credentials directory, and an app file may not ([`app`](#app)).

@@ -58,6 +58,26 @@ default environment. No package ships `certifi` or its own bundle.
 Leaf revocation is not unified: OpenSSL, rustls and Go do not share a mechanism. Golconda's own PKI
 uses short-lived certificates instead.
 
+## Identity
+
+Who may log in is decided outside the image. People hold short-lived OpenSSH certificates from a CA
+that runs on another host *(planned: the CA itself)*; the image ships only the CA's public key
+(`TrustedUserCAKeys`) and the allowed principals per user (`AuthorizedPrincipalsFile`). There are no
+per-human accounts: an operator logs in as root, and the certificate principal and key id in sshd's
+log (`LogLevel VERBOSE`) are the identity for audit. Bootstrap uses plain `authorizedKeys`.
+
+Nothing in the image authenticates a password: sshd fixes `PasswordAuthentication no`,
+`KbdInteractiveAuthentication no` and `ChallengeResponseAuthentication no`, and no option can turn
+them on. PAM stays for account and session (`pam_systemd`), never for auth. The image carries no
+setuid binary: linux-pam ships without `unix_chkpwd`, so a non-root process cannot verify a password
+at all. A hardware second factor (FIDO2, `sk-ssh-ed25519`) is client-side policy: the certificate
+signs a FIDO2 key and the server needs nothing extra.
+
+The machine's own identity is its host key, a machine-local var, plus a host certificate and a key
+revocation list, both admin-supplied credentials (`sshd-host-cert`, `RevokedKeys`); sshd reads them
+from its credentials directory, never from the image. Options:
+[reference/modules](../reference/modules/README.md#servicessshd).
+
 ## Verity and the kernel keyring
 
 The `usr-verity-sig` partition holds a PKCS#7 signature of the root hash. systemd-veritysetup asks
