@@ -9,10 +9,12 @@ schema is the flake one, produced by flake-incompat.
 | ------------------------------ | ---------- | -------------------------------------------------------------- |
 | `packages.<system>.nix`        | yes        | the patched Nix daemon repkgs needs (CA + dynamic derivations) |
 | `packages.<system>.wrap-smoke` | yes        | smoke test for `/wrap`: jq with `--version` prepended          |
-| `checks.<system>`              | yes        | `treefmt`, `docs`, `boundary`                                  |
+| `checks.<system>`              | yes        | `treefmt`, `docs`, `boundary`, `schema`                        |
 | `formatter.<system>`           | yes        | treefmt with pinned tools                                      |
 | `devShells.<system>.default`   | yes        | treefmt, mdbook, iets, npins                                   |
 | `modules`                      | no         | the adios tree                                                 |
+| `schema`                       | no         | JSON Schema 2020-12 of the module tree (see below)             |
+| `configLib`                    | no         | TOML configuration loader (see below)                          |
 
 ## Inputs
 
@@ -24,3 +26,35 @@ Pinned in `npins/sources.json`, read by `nix/sources.nix`:
 - `iets`: the evaluator and linter
 - `pele`: the diagram renderer for the docs build
 - `nixpkgs-dev-only`: developer tooling, used nowhere else
+
+## `schema`
+
+JSON Schema 2020-12 export of the module tree. The schema does not depend on any packages; it is not
+per-system.
+
+```sh
+iets eval --json -E '(import ./default.nix).schema' > schema.json
+```
+
+The schema has a property for each module path (`/services/sshd`, `/system`). Each property is an
+object describing that module's options with their types, descriptions and defaults. Use any JSON
+Schema validator (ajv, jsonschema, etc.) to validate a TOML config after converting it to JSON.
+
+Golconda does not ship a validator in the image yet.
+
+## `configLib`
+
+TOML configuration loader. Exports `{ loadConfig; loadAndApply; validPaths; }`.
+
+```nix
+let
+  f = import ./default.nix;
+  cfg = f.configLib.loadConfig ./examples/server.toml;
+in
+f.modules cfg
+```
+
+- `loadConfig path`: parses the TOML file and returns `{ options = {...}; }` for the adios tree.
+  Table names are absolute module paths (`/services/sshd`). Unknown paths throw with the valid list.
+- `loadAndApply path`: calls `loadConfig` then applies the result to the module tree.
+- `validPaths`: list of all module paths that accept options.
