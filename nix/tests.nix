@@ -108,11 +108,29 @@ let
     // {
       pname = "openssh";
     };
+  # base packages for /base module
+  stubSystemd = withBin "systemd-262" [ "systemctl" ];
+  stubDbusBroker = withBin "dbus-broker-42" [ "dbus-broker" ];
+  stubDash = withBin "dash-0.5.12" [ "dash" ];
+  stubUutils = withBin "uutils-coreutils-0.0.25" [
+    "ls"
+    "cat"
+    "cp"
+    "mv"
+    "rm"
+  ];
+  stubLinux = withBin "linux-6.18.0" [ ];
   # the repkgs set as /pkgs sees it: the stand-ins above
   stubSet = {
     pkgs = {
       inherit openssh;
       jq = standIn;
+      # base packages
+      systemd = stubSystemd;
+      dbus-broker = stubDbusBroker;
+      dash = stubDash;
+      uutils-coreutils = stubUutils;
+      linux = stubLinux;
     };
   };
   withPkgs =
@@ -126,10 +144,13 @@ let
     packages:
     (
       (f.modules {
-        options."/system" = {
-          name = "farm";
-          version = "0";
-          fragments = [ { inherit packages; } ];
+        options = {
+          "/pkgs".set = stubSet;
+          "/system" = {
+            name = "farm";
+            version = "0";
+            fragments = [ { inherit packages; } ];
+          };
         };
       }).modules.system
         { }
@@ -138,10 +159,13 @@ let
   compose =
     fragments:
     (f.modules {
-      options."/system" = {
-        name = "t";
-        version = "0";
-        inherit fragments;
+      options = {
+        "/pkgs".set = stubSet;
+        "/system" = {
+          name = "t";
+          version = "0";
+          inherit fragments;
+        };
       };
     }).modules.system
       { };
@@ -178,14 +202,17 @@ let
   factory = tree.modules.factory { };
   system =
     (f.modules {
-      options."/system" = {
-        name = "test";
-        version = "0";
-        fragments = [
-          sshd
-          vars
-          factory
-        ];
+      options = {
+        "/pkgs".set = stubSet;
+        "/system" = {
+          name = "test";
+          version = "0";
+          fragments = [
+            sshd
+            vars
+            factory
+          ];
+        };
       };
     }).modules.system
       { };
@@ -1978,6 +2005,85 @@ let
       filesThrow [ { files."/var/lib/app/data" = "x"; } ]
       && filesThrow [ { files."/run/lock" = "x"; } ]
       && filesThrow [ { files."/tmp/test" = "x"; } ]
+    ))
+
+    # 11. /base: the implicit base system
+    (check "base: is implicit in /system (a system with no fragments has systemd)" (
+      let
+        result =
+          (f.modules {
+            options = {
+              "/pkgs".set = stubSet;
+              "/system" = {
+                name = "empty";
+                version = "0";
+                fragments = [ ];
+              };
+            };
+          }).modules.system
+            { };
+      in
+      # /base's packages are there even with no fragments
+      any (p: p.name == "systemd-262") result.packages
+      && any (p: p.name == "dbus-broker-42") result.packages
+      && any (p: p.name == "dash-0.5.12") result.packages
+      && any (p: p.name == "uutils-coreutils-0.0.25") result.packages
+    ))
+    (check "base: sh link points to dash" (
+      let
+        result = compose [ ];
+      in
+      result.links ? "/usr/bin/sh"
+      && hasInfix "dash" result.links."/usr/bin/sh".target
+    ))
+    (check "base: dbus.socket is a file (not a link, since dbus-broker lacks it)" (
+      let
+        result = compose [ ];
+      in
+      result.files ? "/usr/lib/systemd/system/dbus.socket"
+      && hasInfix "[Socket]" result.files."/usr/lib/systemd/system/dbus.socket".text
+    ))
+    (check "base: dbus-broker.service and dbus.service alias are links" (
+      let
+        result = compose [ ];
+      in
+      result.links ? "/usr/lib/systemd/system/dbus-broker.service"
+      && result.links ? "/usr/lib/systemd/system/dbus.service"
+      && result.links."/usr/lib/systemd/system/dbus.service".target == "dbus-broker.service"
+    ))
+    (check "base: locale.conf, timesyncd.conf and journald.conf exist" (
+      let
+        result = compose [ ];
+      in
+      result.files ? "/usr/lib/locale.conf"
+      && result.files ? "/usr/lib/systemd/timesyncd.conf.d/golconda.conf"
+      && result.files ? "/usr/lib/systemd/journald.conf.d/golconda.conf"
+      && hasInfix "LANG=C.UTF-8" result.files."/usr/lib/locale.conf".text
+    ))
+    (check "base: wantedBy links for networkd, resolved, timesyncd, dbus" (
+      let
+        result = compose [ ];
+      in
+      result.links ? "/usr/lib/systemd/system/sockets.target.wants/dbus.socket"
+      && result.links ? "/usr/lib/systemd/system/multi-user.target.wants/systemd-networkd.service"
+      && result.links ? "/usr/lib/systemd/system/multi-user.target.wants/systemd-resolved.service"
+      && result.links ? "/usr/lib/systemd/system/sysinit.target.wants/systemd-timesyncd.service"
+    ))
+    (check "base: farm links for systemd units and udev rules" (
+      let
+        result = compose [ ];
+      in
+      result.links ? "/usr/lib/systemd/system"
+      && result.links."/usr/lib/systemd/system".kind == "farm"
+      && result.links ? "/usr/lib/udev/rules.d"
+      && result.links."/usr/lib/udev/rules.d".kind == "farm"
+    ))
+    (check "base: dlopen link for libsystemd.so.0" (
+      let
+        result = compose [ ];
+      in
+      result.links ? "/usr/lib/libsystemd.so.0"
+      && result.links."/usr/lib/libsystemd.so.0".kind == "dlopen"
     ))
   ];
 in
