@@ -233,6 +233,19 @@ let
           sandbox = "trusted";
         }).units."esc.service"
     ))
+    (check "argv rejects newlines" (
+      throws (
+        s.render {
+          name = "x";
+          app = {
+            package = standIn;
+            argv = [ "line1\nline2" ];
+          };
+          user = "root";
+          sandbox = "strict";
+        }
+      )
+    ))
     (check "user must be dynamic, root or a sysusers line" (
       throws (
         s.render {

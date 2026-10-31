@@ -24,6 +24,7 @@ let
     head
     isList
     length
+    match
     ;
 
   # A credential reference, { credential = "name"; }. It renders as %d/name,
@@ -32,14 +33,18 @@ let
   credentialRef = (struct "credentialRef" { credential = string; }).override { unknown = false; };
   isCredentialRef = v: credentialRef.verify v == null;
 
-  # argv of an app: strings only, with a clear message for the one mistake the
-  # type exists to catch.
+  # argv of an app: strings only, with clear messages for the mistakes the
+  # type exists to catch. Newlines are rejected because systemd's ExecStart=
+  # cannot represent them (the unit file would be syntactically broken).
+  hasNewline = s: match ".*\n.*" s != null;
   argv = typedef' "argv" (
     v:
     if !isList v then
       "Expected type 'argv' (a list of strings)"
     else if any isCredentialRef v then
       "a credential reference belongs in service.extraArgv, not in app.argv: an app runs outside systemd and has no %d"
+    else if any hasNewline v then
+      "argv may not contain newlines: systemd's ExecStart= cannot represent them"
     else
       (listOf string).verify v
   );
