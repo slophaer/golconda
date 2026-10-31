@@ -18,6 +18,10 @@
 #   - usr-a-verity UUID: second 16 bytes of root hash, formatted as UUID
 #
 # The builder computes these and sets them in the partition definitions.
+#
+# Labels: slot A's are the sysupdate target patterns with the version (image/sysupdate.nix
+# `slots`, such as usr_20261031.1), set by the builder; how sysupdate recognizes the installed
+# instance. The B slots are `_empty`, how it recognizes a free slot.
 {
   # ======== Build-time partitions (created by image builder) ========
 
@@ -34,33 +38,31 @@
   "10-usr-a" = {
     Partition = {
       Type = "usr";
-      Label = "usr-a";
       SizeMinBytes = "10G";
       SizeMaxBytes = "10G";
       ReadOnly = true;
-      # CopyBlocks set by builder: the erofs image
+      # Label, CopyBlocks, UUID set by builder: usr_<version>, the erofs image, the hash-derived UUID
     };
   };
 
   "11-usr-a-verity" = {
     Partition = {
       Type = "usr-verity";
-      Label = "usr-a-verity";
       SizeMinBytes = "128M";
       SizeMaxBytes = "128M";
       ReadOnly = true;
-      # CopyBlocks set by builder: the verity hash tree
+      # Label, CopyBlocks, UUID set by builder: usr-verity_<version>, the hash tree, the derived UUID
     };
   };
 
   "12-usr-a-verity-sig" = {
     Partition = {
       Type = "usr-verity-sig";
-      Label = "usr-a-verity-sig";
       ReadOnly = true;
       SizeMinBytes = "16K";
       SizeMaxBytes = "16K";
-      # CopyBlocks set by builder: systemd's JSON with the PKCS#7 signature of the root hash
+      # Label, CopyBlocks set by builder: usr-verity-sig_<version>, systemd's JSON with the PKCS#7
+      # signature of the root hash
     };
   };
 

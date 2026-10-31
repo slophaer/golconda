@@ -22,6 +22,7 @@ let
     listToAttrs
     match
     readFile
+    replaceStrings
     sort
     split
     stringLength
@@ -2491,7 +2492,7 @@ let
     ))
     (check "image: repart definitions are the build-time partitions with the builder's fields" (
       let
-        defs = imageLib.repartDefinitions { };
+        defs = imageLib.repartDefinitions { version = "20261031.1"; };
         names = attrNames defs;
       in
       names == [
@@ -3356,7 +3357,87 @@ let
       in
       !(withSource "https://example.com/\n[Evil]") && withSource "https://example.com/releases/"
     ))
-  ];
+
+    # sysupdate and the disk builder: one naming contract (image/sysupdate.nix `slots`)
+  ]
+  ++ (
+    let
+      sysupdate = import ../image/sysupdate.nix;
+      transfers = sysupdate { imageId = "golconda-server"; };
+      version = "20261031.1";
+      defs = imageLib.repartDefinitions { inherit version; };
+      partitionTransfers = {
+        usr = "10-usr";
+        usr-verity = "20-usr-verity";
+        usr-verity-sig = "30-usr-verity-sig";
+      };
+      slotA = {
+        usr = "10-usr-a.conf";
+        usr-verity = "11-usr-a-verity.conf";
+        usr-verity-sig = "12-usr-a-verity-sig.conf";
+      };
+      # a sysupdate pattern as a regex, as sysupdate-pattern.c reads it: @v a version, @u a UUID
+      patternRegex =
+        p:
+        replaceStrings
+          [ "@v" "@u" "." "+" ]
+          [
+            "([0-9A-Za-z.~^_-]+)"
+            "([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
+            "\\."
+            "\\+"
+          ]
+          p;
+      # the label an INI definition sets
+      labelOf =
+        text:
+        let
+          m = match ".*\nLabel=([^\n]*)\n.*" text;
+        in
+        if m == null then null else elemAt m 0;
+      kinds = attrNames partitionTransfers;
+    in
+    [
+      (check "sysupdate: each partition transfer finds its slot by a short versioned label" (
+        all (
+          t:
+          let
+            target = transfers.${partitionTransfers.${t}}.Target;
+          in
+          target.MatchPattern == sysupdate.slots.${t}.label
+          && target.MatchPartitionType == t
+          && hasInfix "@v" target.MatchPattern
+          # not the source's artifact name, which systemd would inherit without a target pattern
+          && target.MatchPattern != transfers.${partitionTransfers.${t}}.Source.MatchPattern
+          && !hasInfix "golconda-server" target.MatchPattern
+          && hasInfix "\nMatchPattern=${target.MatchPattern}\n" (
+            (import ../modules/lib/ini.nix).render transfers.${partitionTransfers.${t}}
+          )
+        ) kinds
+      ))
+      (check "image: slot A is labelled with the installed version, sysupdate reads it back" (
+        all (
+          t:
+          let
+            label = labelOf defs.${slotA.${t}};
+            m = match (patternRegex sysupdate.slots.${t}.label) label;
+          in
+          label == imageLib.slotLabel t version && m != null && elemAt m 0 == version
+        ) kinds
+        && labelOf defs."10-usr-a.conf" == "usr_20261031.1"
+        # the B slots stay free
+        && labelOf defs."20-usr-b.conf" == "_empty"
+        && labelOf defs."21-usr-b-verity.conf" == "_empty"
+        && labelOf defs."22-usr-b-verity-sig.conf" == "_empty"
+      ))
+      (check "image: a release label fits GPT's 36 characters, a longer one throws" (
+        # the longest kind with a twelve-digit counter: 36 exactly
+        stringLength (imageLib.slotLabel "usr-verity-sig" "20261031.999999999999") == 36
+        && !(tryEval (imageLib.slotLabel "usr-verity-sig" "20261031.9999999999999")).success
+        && all (t: stringLength (imageLib.slotLabel t version) <= 36) kinds
+      ))
+    ]
+  );
 in
 assert all (t: t) tests;
 assert
