@@ -36,8 +36,10 @@
     secureBootKek = "secureboot/KEK.crt";
     secureBootDb = "secureboot/db.crt";
     secureBootDbKey = "secureboot/db.key";
-    verityCert = "verity/verity.crt";
-    verityKey = "verity/verity.key";
+    # the verity root hash is signed with the db key: the kernel checks the signature against
+    # the platform keyring, which holds the firmware db and nothing else (docs/design/trust.md)
+    verityCert = "secureboot/db.crt";
+    verityKey = "secureboot/db.key";
     pcrCert = "pcr/pcr.crt";
     pcrKey = "pcr/pcr.key";
   };

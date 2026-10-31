@@ -16,6 +16,10 @@
 {
   # Kernel command line template
   # {usrhash} is substituted with the verity root hash at build time
+  # {usrhashSig}: the base64 PKCS#7 signature of that hash, from the usr-verity-sig partition.
+  #   systemd-veritysetup hands it to the kernel (root-hash-signature=base64:), which checks it
+  #   against the platform keyring (the firmware db); IPE's dmverity_signature is true only for
+  #   a volume the kernel verified. Without it /usr activates unsigned, silently.
   # console=tty0,ttyS0: the local console and the serial line, output only (no getty)
   # neither ro nor rw: gpt-auto mounts the root partition read-write only with no `ro`, and
   # /usr is read-only by dm-verity whatever is said; nothing about volatility either (/var is
@@ -26,7 +30,7 @@
   #   ipe.enforce=0               IPE in permissive mode (denials are audited) until the verity
   #                               signing certificate is in a kernel keyring; then 1
   # The builder appends rdinit= (lib/image/initrd.nix says why)
-  cmdlineTemplate = "usrhash={usrhash} lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=0 console=tty0 console=ttyS0,115200";
+  cmdlineTemplate = "usrhash={usrhash} systemd.verity_usr_options=root-hash-signature=base64:{usrhashSig} lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=0 console=tty0 console=ttyS0,115200";
 
   # PCR policy signing (for measured boot and credential decryption): the phase paths to
   # sign. A phase path is the colon-separated chain of words systemd has measured into

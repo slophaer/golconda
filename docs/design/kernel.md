@@ -35,16 +35,17 @@ signing certificate is in a kernel keyring; then it becomes `1`. The key and its
 
 ### Verity signature trust
 
-The verity root hash is signed; the kernel verifies the signature before allowing the volume. Two
-keyrings can hold the signing certificate:
+The verity root hash is signed; dm-verity verifies the signature when `/usr` is set up, before IPE
+marks the volume `dmverity_signature`. dm-verity tries two keyrings, in order:
 
-- **Platform keyring**: populated from the UEFI Secure Boot `db` at boot. The same certificate that
-  signs the UKI can sign the verity root hash — one key for both.
 - **Secondary keyring**: certificates signed by a key built into the kernel
-  (`SECONDARY_TRUSTED_KEYRING_SIGNED_BY_BUILTIN`).
+  (`SECONDARY_TRUSTED_KEYRING_SIGNED_BY_BUILTIN`). Golconda adds none.
+- **Platform keyring**: populated from the UEFI Secure Boot `db` at boot. Golconda uses this one:
+  the `db` key that signs the UKI also signs the verity root hash.
 
-Which of the two Golconda uses is open. The image builder signs the verity root hash with its own
-key today, and no keyring holds the certificate: see [Trust: Verity key](trust.md#2-verity-key).
+The signature reaches dm-verity through the UKI cmdline
+(`systemd.verity_usr_options=root-hash-signature=base64:`); why, and how it was proven, is in
+[Trust: Verity key](trust.md#2-verity-key).
 
 ## Lockdown
 

@@ -1,6 +1,6 @@
 # uki.nu: ukify build (lib/image/uki.nix).
 #
-# Structured attrs: fileName, kernel, systemd, stub, initrd, roothash, osRelease,
+# Structured attrs: fileName, kernel, systemd, stub, initrd, roothash, roothashSig, osRelease,
 # cmdlineTemplate, phases (the phase paths to sign, a list), sbKey, sbCert, pcrKey,
 # pcrPublicKey.
 
@@ -12,6 +12,7 @@ export def build [] {
   let out = $a.outputs.out
   $env.PATH = $a.PATH
   $env.LD_LIBRARY_PATH = $a.LD_LIBRARY_PATH
+  $env.OPENSSL_CONF = "/dev/null" # no /etc/ssl/openssl.cnf in the sandbox
   mkdir $out
 
   # the kernel package: lib/modules/<uname>/vmlinuz
@@ -19,8 +20,16 @@ export def build [] {
   let uname = ($moddir | path basename)
   let linux = $"($moddir)/vmlinuz"
   let roothash = (open --raw $a.roothash | str trim)
+  let usrhash_sig = (roothash-signature $a.roothashSig $roothash $a.sbCert)
   let cmdline = ($"($a.cmdlineTemplate) rdinit=(rdinit)"
-    | str replace "{usrhash}" $roothash | str replace -ra ' +' ' ')
+    | str replace "{usrhash}" $roothash | str replace "{usrhashSig}" $usrhash_sig
+    | str replace -ra ' +' ' ')
+  # the EFI stub cuts a longer cmdline at COMMAND_LINE_SIZE (2048 on x86-64 and arm64) without a
+  # word, and the cut lands on the parameters after the signature
+  let cmdline_bytes = ($cmdline | encode utf-8 | bytes length)
+  if $cmdline_bytes >= 2048 {
+    error make { msg: $"cmdline is ($cmdline_bytes) bytes; the kernel keeps 2047" }
+  }
   $cmdline | save -f $"($out)/cmdline"
   log $"kernel ($uname), cmdline: ($cmdline)"
 
@@ -34,6 +43,27 @@ export def build [] {
   log $"($a.fileName): (ls $uki | get size.0)"
 
   check-pcrsig $uki $a.phases
+}
+
+# roothash-signature PARTITION ROOTHASH CERT: the base64 signature from the usr-verity-sig
+# partition (lib/image/verity.nu's JSON, NUL-padded), checked here against the root hash and
+# CERT. The kernel checks it against the platform keyring, which holds the firmware db only; a
+# signature by another key makes systemd-veritysetup retry unsigned and log at info level, and
+# boot goes on, so a mismatch fails the build instead.
+export def roothash-signature [partition: string, roothash: string, cert: string] {
+  let sig = (open --raw $partition | decode utf-8 | str replace -ra '\x00+$' '' | from json)
+  if $sig.rootHash != $roothash {
+    error make { msg: $"($partition | path basename) signs ($sig.rootHash), not ($roothash)" }
+  }
+  let tdir = (mktemp -d -t "golconda-sig-XXXXXX")
+  $sig.signature | decode base64 | save -f $"($tdir)/sig.der"
+  $roothash | save -f $"($tdir)/roothash"
+  let r = (do { ^openssl cms -verify -binary -inform DER -in $"($tdir)/sig.der" -content $"($tdir)/roothash" -certfile $cert -CAfile $cert -purpose any -out /dev/null } | complete)
+  if $r.exit_code != 0 {
+    error make { msg: $"the root hash signature does not verify against ($cert | path basename), the key the kernel trusts: ($r.stderr | str trim)" }
+  }
+  log $"root hash signature: verifies against ($cert | path basename)"
+  $sig.signature
 }
 
 # check-pcrsig UKI PHASES: the .pcrsig section must hold one signature for each phase path,
