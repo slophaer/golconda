@@ -124,4 +124,4 @@ Three classes:
   `passwd.hashed-password.root`). Never put real secrets in a null-key credential: the ESP is not
   encrypted.
 
-See [reference/vars](../reference/modules/vars.md) for the `var` helper. *(planned)*
+See [reference/vars](../reference/modules/generated/vars.md) for the `var` helpers.

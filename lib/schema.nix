@@ -296,7 +296,7 @@ let
     };
 
     credentialRef = {
-      description = "{ credential; prefix?; } rendered as <prefix>%d/credential.";
+      description = "{ credential; prefix?; } rendered as `<prefix>%d/<credential>`.";
       type = "object";
       properties = {
         credential = {
