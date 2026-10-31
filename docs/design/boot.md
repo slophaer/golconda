@@ -76,9 +76,20 @@ login (authentication, the host key credential, `/etc/pam.d/sshd`, the listening
 What happens after a failure: the machine stays up but is not blessed, and nothing in v1 reboots it,
 so the counter falls only at the next boot. systemd-boot counts down `+3-0` → `+2-1` → `+1-2`; at
 `+0-3` the entry is bad and is no longer preferred. A second deployment entry on the ESP (the other
-`/usr` slot) is selected instead, which is the point of boot counting. The smoke image carries one
-slot only: there systemd-boot still boots the exhausted entry, and a failed health check leaves the
-machine unblessed until it is repaired or the other slot is filled.
+`/usr` slot) is selected instead, which is the point of boot counting. Before the first update the
+image carries one slot only: there systemd-boot still boots the exhausted entry, and a failed health
+check leaves the machine unblessed until it is repaired or the other slot is filled. The health
+units run only on a counted boot: `systemd-bless-boot-generator` adds `boot-complete.target` only
+when the entry has a counter, so a blessed entry boots without them.
+
+The update test proves both outcomes on a real B slot, with `--secure-boot`
+([Image artifacts: the update test](../reference/image.md#the-update-test)). 20261031.1 installs
+20261031.2 through `systemd-sysupdate-update.service`; with the network up, 20261031.2 boots, both
+health units pass, and `systemd-bless-boot` renames its entry to `boot-test_20261031.2.efi`. With
+the guest's link cut in the QEMU monitor (`set_link net0 off`), `golconda-health-network.service`
+fails after its 60 s timeout in each of three boots, `boot-complete.target` and bless-boot fail on
+the dependency, the entry falls to `boot-test_20261031.2+0-3.efi`, and the fourth boot selects
+20261031.1.
 
 systemd-sysupdate tells the slots apart by GPT label: an installed slot carries its version
 (`usr_20261031.1`, `usr-verity_…`, `usr-verity-sig_…`), a free one `_empty`, which gpt-auto also

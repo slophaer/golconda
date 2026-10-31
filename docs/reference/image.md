@@ -200,3 +200,21 @@ then:
 The test SSH keypair is a committed test fixture (`tests/fixtures/snakeoil-ssh*`). The
 `image-smoke-test` reads the public key and adds it to `authorizedKeys`. The test script uses the
 private key to authenticate. See `tests/fixtures/README.md` for why both keys are committed.
+
+### The update test
+
+`image-smoke-test` sets `updateSource = "http://10.0.2.2:8074/"`: under QEMU user networking
+10.0.2.2 is the host. The test is manual; it needs a held boot (the guest stays up after the checks)
+and a second release:
+
+1. Build the next release: the `image-smoke-test` call with `version = "20261031.2"` (and the same
+   throwaway keys). Copy its `disk/release/` with the symlinks resolved and serve it on the host:
+   `python3 -m http.server 8074 --bind 127.0.0.1`.
+1. Boot 20261031.1 with `--secure-boot --ssh-test`. In the guest,
+   `systemctl start --wait systemd-sysupdate-update.service` (the unit the timer starts) writes the
+   B slots and `EFI/Linux/boot-test_20261031.2+3-0.efi`.
+1. `systemctl reboot`: 20261031.2 boots from the B slots, the health units pass and the entry is
+   blessed ([Boot: Boot health](../design/boot.md#boot-health)).
+1. For the fallback, cut the link before the reboot (`set_link net0 off` in the QEMU monitor) and
+   reset after each failed health check: after three boots the entry is `+0-3` and systemd-boot
+   selects 20261031.1.
