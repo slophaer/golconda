@@ -151,7 +151,7 @@ let
       wrap = stubWrap;
       trustedUserCAKeys = [ "ssh-ed25519 AAAA user-ca" ];
       principals.root = [ "alice@example.com" ];
-      revokedKeys = "sshd-revoked-keys";
+      revokedKeys = true;
       hostCertificate = true;
     };
   };
@@ -282,19 +282,33 @@ let
       && hasInfix " -o AuthorizedPrincipalsFile={root}/share/wrap/openssh/principals.%u" certArgv
     ))
     (check "sshd: host certificate credential and option" (
-      hasInfix "LoadCredentialEncrypted=hostcert:sshd-host-cert" certUnit
+      hasInfix "LoadCredentialEncrypted=hostcert:sshd-host-cert.cert\n" certUnit
       && hasInfix " -o HostCertificate=%d/hostcert" certUnit
     ))
     (check "sshd: revoked keys credential and option" (
-      hasInfix "LoadCredentialEncrypted=sshd-revoked-keys:sshd-revoked-keys" certUnit
-      && hasInfix " -o RevokedKeys=%d/sshd-revoked-keys" certUnit
+      hasInfix "LoadCredentialEncrypted=krl:sshd-revoked-keys.krl\n" certUnit
+      && hasInfix " -o RevokedKeys=%d/krl" certUnit
+    ))
+    (check "sshd: the admin vars are declared when their options are on" (
+      builtins.fromJSON certSshd.files."/usr/lib/golconda/vars.d/sshd-host-cert.json".text == {
+        name = "sshd-host-cert";
+        class = "admin";
+        files = [ "cert" ];
+        credentials = [ "sshd-host-cert.cert" ];
+      }
+      &&
+        (builtins.fromJSON certSshd.files."/usr/lib/golconda/vars.d/sshd-revoked-keys.json".text)
+        .credentials == [ "sshd-revoked-keys.krl" ]
+      && !(system.files ? "/usr/lib/golconda/vars.d/sshd-host-cert.json")
+      && !(system.files ? "/usr/lib/golconda/vars.d/sshd-revoked-keys.json")
+      && !(certSshd.units ? "golconda-var-sshd-host-cert.service")
     ))
     (check "sshd: the fixed lines survive the certificate options" (
       hasInfix "\nPasswordAuthentication no\n" certConfig
       && hasInfix "\nKbdInteractiveAuthentication no\n" certConfig
     ))
-    (check "sshd: revokedKeys is one credential name" (sshdThrows {
-      revokedKeys = "../x";
+    (check "sshd: revokedKeys is a bool" (sshdThrows {
+      revokedKeys = "sshd-revoked-keys";
     }))
     (check "sshd: hostCertificate is a bool" (sshdThrows {
       hostCertificate = "yes";
@@ -648,6 +662,63 @@ let
           sandbox = "strict";
         }
       )
+    ))
+    (check "var: an admin var is a manifest entry and nothing else" (
+      let
+        frag = v.admin {
+          name = "root-password";
+          files = [
+            "hash"
+            "salt"
+          ];
+        };
+      in
+      attrNames frag == [ "files" ]
+      && attrNames frag.files == [ "/usr/lib/golconda/vars.d/root-password.json" ]
+      &&
+        builtins.fromJSON frag.files."/usr/lib/golconda/vars.d/root-password.json" == {
+          name = "root-password";
+          class = "admin";
+          files = [
+            "hash"
+            "salt"
+          ];
+          credentials = [
+            "root-password.hash"
+            "root-password.salt"
+          ];
+        }
+    ))
+    (check "var: one credential id for both classes" (
+      v.credentialId "sshd-hostkey" "key" == "sshd-hostkey.key"
+      && v.credentialId "sshd-host-cert" "cert" == "sshd-host-cert.cert"
+      &&
+        (builtins.fromJSON system.files."/usr/lib/golconda/vars.d/sshd-hostkey.json".text).class == "local"
+      &&
+        (builtins.fromJSON system.files."/usr/lib/golconda/vars.d/sshd-hostkey.json".text).credentials
+        == [ "sshd-hostkey.key" ]
+    ))
+    (check "var: admin var names and files are words, files are required" (
+      !(tryEval (
+        deepSeq (v.admin {
+          name = "a b";
+          files = [ "x" ];
+        }) true
+      )).success
+      && !(tryEval (
+        deepSeq (v.admin {
+          name = "a";
+          files = [ "../x" ];
+        }) true
+      )).success
+      && !(tryEval (deepSeq (v.admin { name = "a"; }) true)).success
+      && !(tryEval (
+        deepSeq (v.admin {
+          name = "a";
+          files = [ "x" ];
+          script = "";
+        }) true
+      )).success
     ))
     (check "var file names are one component" (
       throws (

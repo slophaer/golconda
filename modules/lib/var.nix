@@ -14,6 +14,15 @@
 #   credentials.key = v.credentialId "foo-key" "key";    # LoadCredentialEncrypted=key:foo-key.key
 #   after = [ (v.unitName "foo-key") ]; wants = [ (v.unitName "foo-key") ];
 #
+# An admin-supplied var (`admin`) is the second class (docs/design/trust.md):
+# the value is kept age-encrypted on the deploy host, pushed over ssh and
+# sealed by the machine's own systemd-creds into /etc/credstore.encrypted,
+# so the image carries only its manifest entry, class "admin", and no unit.
+# The deploy tool reads the manifest from the image. The credential id is
+# the same `<name>.<file>`, so a consumer does not know the class:
+#   v.admin { name = "foo-cert"; files = [ "cert" ]; }
+#   credentials.cert = v.credentialId "foo-cert" "cert";  # LoadCredentialEncrypted=cert:foo-cert.cert
+#
 # The runner /usr/lib/golconda/golconda-var-run (modules/lib/golconda-var-run)
 # is one file for all vars, so the /vars module installs it: add `/vars` to
 # the fragments once (mode 0755). The runner needs /bin/sh, coreutils and
@@ -74,9 +83,20 @@ let
     wantedBy = optionalAttr (listOf targetName);
   };
 
+  # An admin-supplied var: the files the deploy host pushes, each sealed as
+  # the credential <name>.<file>.
+  # Nothing else: a script or a package would be the local class.
+  adminVar =
+    (struct "adminVar" {
+      name = word;
+      files = listOf word;
+    }).override
+      { unknown = false; };
+
   unitName = name: "golconda-var-${name}.service";
   credentialId = name: file: "${name}.${file}";
   stateDir = name: "/var/lib/golconda/vars/${name}";
+  manifestPath = name: "/usr/lib/golconda/vars.d/${name}.json";
 
   build =
     v:
@@ -129,9 +149,10 @@ let
     {
       units.${unitName v.name} = text + "\n";
       files = {
-        "/usr/lib/golconda/vars.d/${v.name}.json" = toJSON {
+        ${manifestPath v.name} = toJSON {
           inherit (v) name secrets;
           inherit publics after;
+          class = "local";
           credentials = map (credentialId v.name) v.secrets;
         };
         "/usr/lib/golconda/vars.d/${v.name}.sh" = v.script + "\n";
@@ -141,12 +162,27 @@ let
     };
 
   render = v: var.check v (build v);
+
+  # adminVar -> fragment: the manifest entry only. Nothing runs on the
+  # machine; a consumer loads the credential by id and the unit fails to
+  # start until the deploy host has pushed it.
+  admin =
+    v:
+    adminVar.check v {
+      files.${manifestPath v.name} = toJSON {
+        inherit (v) name files;
+        class = "admin";
+        credentials = map (credentialId v.name) v.files;
+      };
+    };
 in
 {
   inherit
     var
+    adminVar
     word
     render
+    admin
     unitName
     credentialId
     stateDir
