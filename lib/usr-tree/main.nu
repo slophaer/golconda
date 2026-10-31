@@ -8,6 +8,7 @@
 #   files: attrset of path -> { text, mode, dest }
 #   units: attrset of name -> text
 #   sysusers, tmpfiles: lists of lines
+#   packageList: list of { name, version?, path, origins } for lib/golconda/packages.json
 #   osRelease: rendered os-release text
 #   epoch: Unix timestamp for mtimes
 #   version: image version string
@@ -185,6 +186,13 @@ export def build [] {
   # Step 9: Write os-release
   log "writing lib/os-release"
   $attrs.osRelease | save -f $"($out)/lib/os-release"
+
+  # Step 10: Write lib/golconda/packages.json (name, version when known, store path, origins)
+  log "writing lib/golconda/packages.json"
+  $attrs.packageList
+  | each {|p| if $p.version == null { $p | reject version } else { $p } }
+  | to json
+  | save -f $"($out)/lib/golconda/packages.json"
 
   # mtimes are not set here: Nix normalises every store path to mtime 1. The version-derived
   # timestamp (epoch) is applied by mkfs.erofs -T when the image is made (image/erofs.nix).

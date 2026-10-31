@@ -8,7 +8,7 @@
 #! configuration declares. A system with no fragments still has systemd,
 #! dbus-broker, dash, coreutils and the kernel.
 #!
-#! Output: `{ name; version; units; files; sysusers; tmpfiles; packages; links }`,
+#! Output: `{ name; version; units; files; sysusers; tmpfiles; packages; packageOrigins; links }`,
 #! every file as `{ text; mode; }` and `links` one map, path under `/usr` ->
 #! `{ target; kind; }`: the `/usr/bin` links of the packages' `bin` lists and
 #! the fragments' own links (`.wants`, directories to expand, dlopen sonames),
@@ -16,6 +16,11 @@
 #! the system manager's units (typed names, `/usr/lib/systemd/system/<name>`);
 #! a user unit (`service.scope = "user"`) is a file under
 #! `/usr/lib/systemd/user/`, so one duplicate check covers both scopes.
+#!
+#! `packageOrigins` answers "why is this package here": package key (its
+#! name-version) -> the origins that brought it, `"/base"`,
+#! `"/network"`, a fragment's own `name` (a module sets its path), or
+#! `"fragments[<i>]"`. `packages` stays one deduped list.
 { types, ... }:
 let
   ini = import ../lib/ini.nix;
@@ -44,7 +49,13 @@ let
           );
         }
       ];
-  inherit (builtins) isString match;
+  inherit (builtins)
+    elemAt
+    genList
+    isString
+    length
+    match
+    ;
   fragmentT = (import ../lib/fragment.nix { inherit types; }).fragment;
   merge = import ../lib/merge.nix;
 
@@ -97,13 +108,25 @@ in
   impl =
     { options, results }:
     # /base and /network fragments first, then the declared fragments
-    merge (
+    merge.withOrigins (
       [
-        results.base
-        results.network
+        {
+          origin = "/base";
+          fragment = results.base;
+        }
+        {
+          origin = "/network";
+          fragment = results.network;
+        }
       ]
-      ++ options.fragments
-      ++ sysupdateFragment options
+      ++ genList (i: {
+        origin = (elemAt options.fragments i).name or "fragments[${toString i}]";
+        fragment = elemAt options.fragments i;
+      }) (length options.fragments)
+      ++ map (fragment: {
+        origin = "/system";
+        inherit fragment;
+      }) (sysupdateFragment options)
     )
     // {
       inherit (options) name version updateSource;

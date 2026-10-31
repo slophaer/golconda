@@ -9,6 +9,8 @@
 #   lib/systemd/system/<name> = units
 #   lib/sysusers.d/golconda.conf, lib/tmpfiles.d/golconda.conf
 #   lib/os-release
+#   lib/golconda/packages.json: [{ name, version?, path, origins }], one entry per package
+#     of composerOutput.packages, origins from composerOutput.packageOrigins
 #   files from composerOutput.files (paths are /usr/...; the /usr prefix is stripped)
 #
 # Cross-compilation: `buildSystem` is where the derivation runs (the build host);
@@ -35,6 +37,8 @@ let
     stringLength
     substring
     ;
+
+  merge = import ../modules/lib/merge.nix;
 
   # The builder scripts (nu modules) are stored here
   builderTree = builtins.path {
@@ -206,6 +210,15 @@ in
         inherit (composerOutput.links.${path}) target kind;
       }) (attrNames composerOutput.links);
 
+      # packages.json: each package once, with the fragments that brought it
+      # (composerOutput.packageOrigins); `path` keeps the store path's context
+      packageList = map (p: {
+        name = p.pname or (p.name or "unknown");
+        version = p.version or null;
+        path = p.outPath;
+        origins = composerOutput.packageOrigins.${merge.pkgKey p} or [ ];
+      }) roots;
+
       epoch = versionToEpoch version;
       osRelease = renderOsRelease { inherit version platform; };
 
@@ -233,6 +246,7 @@ in
       # Pass data to the builder
       inherit
         roots
+        packageList
         epoch
         osRelease
         version

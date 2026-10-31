@@ -189,5 +189,8 @@ in
       ]
       ++ optional hasKRL [ revokedKeysVar ]
       ++ optional options.hostCertificate [ hostCertVar ]
-    );
+    )
+    // {
+      name = "/services/sshd";
+    };
 }

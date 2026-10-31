@@ -20,6 +20,12 @@
 #
 #   merge [ fragmentA fragmentB ] -> { units; files; sysusers; tmpfiles; packages; links; }
 #
+# Attribution: `merge.withOrigins [ { origin; fragment; } ... ]` is the same
+# union plus `packageOrigins`, package key -> the origins that brought it
+# (`merge.pkgKey`: name-version). The composer
+# labels its inputs by module path ("/base") and a listed fragment by its
+# `name` or "fragments[<i>]". `packages` stays one deduped list.
+#
 # `merge.linkSources fragments` lists every link with its source and
 # `merge.duplicateLink sources` is the check's message or null, so a test can
 # read what the error says.
@@ -30,6 +36,7 @@ let
     concatLists
     concatMap
     deepSeq
+    elem
     filter
     foldl'
     isString
@@ -62,6 +69,27 @@ let
   uniquePackages =
     packages:
     foldl' (acc: p: if any (q: pkgId q == pkgId p) acc then acc else acc ++ [ p ]) [ ] packages;
+
+  # The key of a package in packageOrigins: its name-version. Not the output
+  # path (a placeholder for a content-addressed output) and not the .drv path
+  # (a stand-in shares its parent's).
+  pkgKey = pkgName;
+
+  # package key -> origins (each once, in first-seen order) from
+  # [ { origin; fragment; } ]
+  packageOrigins =
+    labelled:
+    foldl' (
+      acc: l:
+      foldl' (
+        acc': p:
+        let
+          k = pkgKey p;
+          seen = acc'.${k} or [ ];
+        in
+        acc' // { ${k} = if elem l.origin seen then seen else seen ++ [ l.origin ]; }
+      ) acc (l.fragment.packages or [ ])
+    ) { } labelled;
 
   # Every link with its source, as a list of { path; target; kind; source; }:
   # /usr/bin/<name> for the packages' bin lists, then the fragments' links.
@@ -175,12 +203,9 @@ let
       throw "golconda: files must be under /usr/; paths outside it: ${toString badPaths}; /etc files go through the /factory module"
     else
       files;
-in
-{
-  inherit linkSources duplicateLink;
 
-  __functor =
-    _: fragments:
+  union =
+    fragments:
     let
       files = checkFilePaths (mapAttrs normalizeFile (unionNoDup "files" fragments));
       links = checkLinkFileCollision (linkMap (linkSources fragments)) files;
@@ -193,4 +218,16 @@ in
       # each package once; the duplicate check runs before they are handed out
       packages = deepSeq (attrNames links) (uniquePackages (concat "packages" fragments));
     };
+in
+{
+  inherit linkSources duplicateLink pkgKey;
+
+  withOrigins =
+    labelled:
+    union (map (l: l.fragment) labelled)
+    // {
+      packageOrigins = packageOrigins labelled;
+    };
+
+  __functor = _: union;
 }
