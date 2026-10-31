@@ -84,11 +84,13 @@ let
   # keyed by the type's base name (__name) and maps to a JSON Schema fragment.
   # Types that are opaque or whose schema depends on their usage are not here;
   # they get x-golconda-opaque in the output.
+  #
+  # Every entry MUST have a `description` field; the test enforces this.
   typeRegistry = {
     # modules/lib/fragment.nix
     fragment = {
+      description = "A module fragment with units, files, sysusers, tmpfiles, packages, links, farm, and dlopen.";
       type = "object";
-      description = "A module fragment with units, files, sysusers, tmpfiles, packages.";
       properties = {
         units = {
           type = "object";
@@ -119,12 +121,14 @@ let
           items = {
             type = "string";
           };
+          description = "systemd-sysusers lines.";
         };
         tmpfiles = {
           type = "array";
           items = {
             type = "string";
           };
+          description = "systemd-tmpfiles lines.";
         };
         packages = {
           type = "array";
@@ -132,11 +136,40 @@ let
             type = "string";
             "x-golconda" = "package";
           };
+          description = "Closure roots that go into /usr/nix/store and /usr/bin.";
+        };
+        links = {
+          type = "array";
+          items = {
+            "$ref" = "#/$defs/link";
+          };
+          description = "Symlinks in the /usr farm.";
+        };
+        farm = {
+          type = "object";
+          additionalProperties = {
+            type = "array";
+            items = {
+              type = "string";
+            };
+          };
+          description = "Package name -> subdirs to link file by file into /usr.";
+        };
+        dlopen = {
+          type = "object";
+          additionalProperties = {
+            type = "array";
+            items = {
+              type = "string";
+            };
+          };
+          description = "Package name -> sonames to link into /usr/lib for dlopen.";
         };
       };
     };
 
     file = {
+      description = "File text (mode 0644), or { text; mode; }.";
       anyOf = [
         { type = "string"; }
         {
@@ -153,35 +186,79 @@ let
           required = [ "text" ];
         }
       ];
-      description = "File text, or { text; mode; }.";
     };
 
     fileMode = {
+      description = "Four octal digits, like 0644 or 0755.";
       type = "string";
       pattern = "^[0-7]{4}$";
-      description = "Four octal digits, like 0644 or 0755.";
+    };
+
+    link = {
+      description = "A symlink: { path; target; }.";
+      type = "object";
+      properties = {
+        path = {
+          type = "string";
+          description = "Absolute path under /usr.";
+        };
+        target = {
+          type = "string";
+          description = "Symlink target (absolute or relative).";
+        };
+      };
+      required = [
+        "path"
+        "target"
+      ];
     };
 
     # modules/lib/app.nix
+    app = {
+      description = "What a program needs to run, with nothing systemd-specific.";
+      type = "object";
+      properties = {
+        package = {
+          type = "string";
+          "x-golconda" = "package";
+          description = "The package; its first bin entry is the program.";
+        };
+        argv = {
+          "$ref" = "#/$defs/argv";
+        };
+        env = {
+          type = "object";
+          additionalProperties = {
+            "$ref" = "#/$defs/envOp";
+          };
+          description = "Environment operations.";
+        };
+        files = {
+          "$ref" = "#/$defs/appFiles";
+        };
+      };
+      required = [ "package" ];
+    };
+
     argv = {
+      description = "Program arguments (strings only in app.argv; credential refs only in service.extraArgv).";
       type = "array";
       items = {
         type = "string";
       };
-      description = "Program arguments (strings only in app.argv; credential refs only in service.extraArgv).";
     };
 
     appFiles = {
+      description = "File name -> text, no per-machine values.";
       type = "object";
       additionalProperties = {
         type = "string";
       };
-      description = "File name -> text, no per-machine values.";
     };
 
     envOp = {
-      type = "object";
       description = "Environment operation: one of set, default, prepend, append, unset.";
+      type = "object";
       oneOf = [
         {
           properties.set = {
@@ -219,6 +296,7 @@ let
     };
 
     credentialRef = {
+      description = "{ credential; prefix?; } rendered as <prefix>%d/credential.";
       type = "object";
       properties = {
         credential = {
@@ -229,40 +307,171 @@ let
         };
       };
       required = [ "credential" ];
-      description = "{ credential; prefix?; } rendered as <prefix>%d/credential.";
     };
 
     credentialPrefix = {
+      description = "A credential argument prefix: letters, digits, and _ = : / . , + -.";
       type = "string";
       pattern = "^[A-Za-z0-9_=:/.,+-]*$";
     };
 
     # modules/lib/service.nix
+    service = {
+      description = "A service: an app plus what only a unit has (credentials, state, user, sandbox, ordering).";
+      type = "object";
+      properties = {
+        name = {
+          "$ref" = "#/$defs/serviceName";
+        };
+        app = {
+          "$ref" = "#/$defs/app";
+        };
+        extraArgv = {
+          type = "array";
+          items = {
+            anyOf = [
+              { type = "string"; }
+              { "$ref" = "#/$defs/credentialRef"; }
+            ];
+          };
+          description = "Unit-only arguments after app.argv.";
+        };
+        credentials = {
+          type = "object";
+          additionalProperties = {
+            type = "string";
+          };
+          description = "Credential name -> credstore id.";
+        };
+        state = {
+          type = "array";
+          items = {
+            type = "string";
+          };
+          description = "StateDirectory entries under /var/lib.";
+        };
+        user = {
+          "$ref" = "#/$defs/serviceUser";
+        };
+        sandbox = {
+          "$ref" = "#/$defs/sandbox";
+        };
+        after = {
+          type = "array";
+          items = {
+            type = "string";
+          };
+          description = "Units to order after.";
+        };
+        wants = {
+          type = "array";
+          items = {
+            type = "string";
+          };
+          description = "Units to want.";
+        };
+        wantedBy = {
+          type = "array";
+          items = {
+            "$ref" = "#/$defs/targetName";
+          };
+          description = "Targets that pull in this unit.";
+        };
+      };
+      required = [
+        "name"
+        "app"
+        "user"
+        "sandbox"
+      ];
+    };
+
     serviceName = {
+      description = "Valid systemd unit name stem.";
       type = "string";
       pattern = "^[A-Za-z0-9:_.\\-]+$";
-      description = "Valid systemd unit name stem.";
     };
 
     serviceUser = {
-      type = "string";
       description = "\"dynamic\", \"root\", or a sysusers line.";
+      type = "string";
     };
 
     sandbox = {
+      description = "Sandbox profile: strict (most restricted), default, or trusted (least restricted).";
       enum = [
         "strict"
         "default"
         "trusted"
       ];
-      description = "Sandbox profile: strict, default, or trusted.";
+    };
+
+    targetName = {
+      description = "A systemd target name (must end with .target).";
+      type = "string";
+      pattern = "^[A-Za-z0-9:_.\\-]+\\.target$";
     };
 
     # modules/lib/var.nix
+    var = {
+      description = "A var: a value generated on the machine once, never in the image.";
+      type = "object";
+      properties = {
+        name = {
+          "$ref" = "#/$defs/word";
+        };
+        secrets = {
+          type = "array";
+          items = {
+            "$ref" = "#/$defs/word";
+          };
+          description = "Files sealed as credentials <name>.<file>.";
+        };
+        publics = {
+          type = "array";
+          items = {
+            "$ref" = "#/$defs/word";
+          };
+          description = "Files kept readable in /var/lib/golconda/vars/<name>/pub/.";
+        };
+        after = {
+          type = "array";
+          items = {
+            "$ref" = "#/$defs/word";
+          };
+          description = "Vars that must run first.";
+        };
+        script = {
+          type = "string";
+          description = "POSIX sh script; runs in an empty runtime directory.";
+        };
+        packages = {
+          type = "array";
+          items = {
+            type = "string";
+            "x-golconda" = "package";
+          };
+          description = "Tools the script needs.";
+        };
+        wantedBy = {
+          type = "array";
+          items = {
+            "$ref" = "#/$defs/targetName";
+          };
+          description = "Targets that pull in this unit.";
+        };
+      };
+      required = [
+        "name"
+        "secrets"
+        "script"
+      ];
+    };
+
     word = {
+      description = "One path component: letters, digits, _ . -.";
       type = "string";
       pattern = "^[A-Za-z0-9_.-]+$";
-      description = "One path component: letters, digits, _ . -";
     };
   };
 
