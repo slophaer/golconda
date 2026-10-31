@@ -29,9 +29,7 @@ let
   inherit (builtins)
     attrNames
     concatStringsSep
-    dirOf
     filter
-    isString
     length
     map
     match
@@ -138,30 +136,6 @@ let
   # Strip /usr/ prefix from absolute paths in files
   stripUsrPrefix =
     path: if substring 0 5 path == "/usr/" then substring 5 (stringLength path - 5) path else null;
-
-  # Convert store path target to relative symlink from the link location
-  # /usr/bin/jq -> nix/store/<hash>-jq/bin/jq becomes ../nix/store/<hash>-jq/bin/jq
-  # /usr/lib/systemd/system/multi-user.target.wants/sshd.service -> ../sshd.service stays as is
-  makeRelative =
-    linkPath: target:
-    if substring 0 1 target != "/" then
-      # Already relative (e.g., ../sshd.service)
-      target
-    else
-      let
-        # Count depth from /usr to link directory: /usr/bin = 1 level
-        # From a file in /usr/bin/, one .. reaches /usr/
-        linkDir = dirOf linkPath;
-        # builtins.split returns [part, [match], part, [match], ...] so filter out lists
-        stripped = substring 5 (stringLength linkDir - 5) linkDir;
-        parts = filter isString (builtins.split "/" stripped);
-        depth = length (filter (s: s != "") parts);
-        ups = concatStringsSep "/" (builtins.genList (_: "..") depth);
-        # Target is /nix/store/... -> make it nix/store/...
-        targetRel =
-          if substring 0 1 target == "/" then substring 1 (stringLength target - 1) target else target;
-      in
-      "${ups}/${targetRel}";
 
   # Allowed top-level directories in /usr
   allowedDirs = [
@@ -303,7 +277,6 @@ in
     stripUsrPrefix
     versionToEpoch
     renderOsRelease
-    makeRelative
     allowedDirs
     ;
 }
