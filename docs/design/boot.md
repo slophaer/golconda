@@ -40,10 +40,11 @@ three failures systemd-boot falls back to the other entry, which is the other `/
 ## Kernel command line
 
 The cmdline is fixed in the UKI and measured with it:
-`usrhash=<hash> ro console=tty0 console=ttyS0,115200` (the template in `image/uki.nix`). No
-administrator edits: `loader.conf` edits are off, and nothing adds `rw` or `systemd.volatile=` (`/`
-is the state partition, mounted writable by systemd; `/usr` is verity). A debug image with more is a
-separate build *(after v1)*.
+`usrhash=<hash> console=tty0 console=ttyS0,115200`. No administrator edits: `loader.conf` edits are
+off, and nothing adds `rw` or `systemd.volatile=` (`/` is the state partition, mounted writable by
+systemd; `/usr` is verity). The template in `image/uki.nix` still carries `ro systemd.volatile=no`
+until the image builder lands *(being built)*. A debug image with more is a separate build *(after
+v1)*.
 
 ## Serial console
 
