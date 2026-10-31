@@ -1,7 +1,7 @@
 From d756d00688625134bbba785c702605dd82703f01 Mon Sep 17 00:00:00 2001
 From: yolobox <yolobox@phaer.org>
 Date: Fri, 30 Oct 2026 19:55:47 +0000
-Subject: [PATCH 4/8] nix: keep the sysroot out of RUNPATH
+Subject: [PATCH] nix: keep the sysroot out of RUNPATH
 
 jig puts the runtimes directory into the RUNPATH of every program that
 links libc++ or libunwind. The cc recipe wrote it as <sysroot>/lib, so a
