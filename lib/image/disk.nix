@@ -9,10 +9,13 @@
 #   Rendered with modules/lib/ini.nix.
 #
 # disk { erofs; verity; uki; imageId; version; platform; buildSystem; pkgs; } → derivation with
-#   disk.raw        GPT: ESP (systemd-boot as EFI/BOOT/BOOT<ARCH>.EFI, the UKI in EFI/Linux/),
-#                   usr-a, usr-a-verity, usr-a-verity-sig filled from the images, the B slots
-#                   empty, no root partition
+#   disk.raw        GPT: ESP (systemd-boot as EFI/BOOT/BOOT<ARCH>.EFI, loader.conf with the boot
+#                   policy, the UKI in EFI/Linux/), usr-a, usr-a-verity, usr-a-verity-sig filled
+#                   from the images, the B slots empty, no root partition
 #   disk.json       systemd-repart's own listing (--json=pretty) of what it made
+#
+# loader.conf is written from this file's loaderConf, so the policy is one string the tests
+# can read.
 #
 # systemd-repart --empty=create --size=auto --offline=yes --seed=<from the version>: no loop
 # device, no root; the usr slots are 10 GiB each (image/repart.nix), so the file is sparse and
@@ -52,6 +55,15 @@ let
     .${uefi} or (throw "golconda: no removable-media boot name for uefi arch ${uefi}");
 in
 rec {
+  # The ESP's systemd-boot policy (loader.conf(5), systemd v262.1): the UKI under EFI/Linux is
+  # auto-discovered, so there is no entry line; the menu does not wait and the editor is off
+  # (an editor would let anyone at the console change the measured cmdline).
+  loaderConf = ''
+    # Golconda: lib/image/disk.nix; docs/design/boot.md.
+    timeout 0
+    editor no
+  '';
+
   repartDefinitions =
     _:
     let
@@ -111,6 +123,7 @@ rec {
         inherit ukiName;
         systemdBoot = "${pkgs.systemd}/lib/systemd/boot/efi/systemd-boot${uefi}.efi";
         bootEntry = "EFI/BOOT/${removableMediaName uefi}";
+        inherit loaderConf;
         architecture = platform.names.systemd;
         seed = common.uuidOfHex (common.hexOf "${stem}.disk");
         epoch = common.versionToEpoch version;
