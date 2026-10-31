@@ -2549,6 +2549,14 @@ let
         "editor no"
       ]
     ))
+    (check "image: the disk builder signs the loader with the UKI's key" (
+      let
+        args = builtins.functionArgs imageLib.disk;
+      in
+      # the disk step takes the same sbKey/sbCert as lib/image/uki.nix and hands them to the
+      # builder (disk.nu runs systemd-sbsign); a call without them does not type-check
+      args ? sbKey && args ? sbCert && args ? pkgs && args ? uki
+    ))
     (check "image: the cmdline template has usrhash and no rw or volatile" (
       let
         t = (import ../image).uki.cmdlineTemplate;

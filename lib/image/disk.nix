@@ -8,14 +8,17 @@
 #   {esp} {usr} {verity} {sig} {usrUuid} {verityUuid}, which disk.nu fills in.
 #   Rendered with modules/lib/ini.nix.
 #
-# disk { erofs; verity; uki; imageId; version; platform; buildSystem; pkgs; } → derivation with
-#   disk.raw        GPT: ESP (systemd-boot as EFI/BOOT/BOOT<ARCH>.EFI, loader.conf with the boot
-#                   policy, the UKI in EFI/Linux/), usr-a, usr-a-verity, usr-a-verity-sig filled
-#                   from the images, the B slots empty, no root partition
+# disk { erofs; verity; uki; imageId; version; platform; buildSystem; pkgs; sbKey; sbCert; }
+#   → derivation with
+#   disk.raw        GPT: ESP (systemd-boot as EFI/BOOT/BOOT<ARCH>.EFI, signed with the UKI's
+#                   Secure Boot key and certificate; loader.conf with the boot policy; the UKI
+#                   in EFI/Linux/), usr-a, usr-a-verity, usr-a-verity-sig filled from the images,
+#                   the B slots empty, no root partition
 #   disk.json       systemd-repart's own listing (--json=pretty) of what it made
 #
-# loader.conf is written from this file's loaderConf, so the policy is one string the tests
-# can read.
+# The loader is signed with the same db key and certificate as the UKI (image/default.nix
+# keys; lib/image/uki.nix): enforcing firmware starts nothing else. loader.conf is written from
+# this file's loaderConf, so the policy is one string the tests can read.
 #
 # systemd-repart --empty=create --size=auto --offline=yes --seed=<from the version>: no loop
 # device, no root; the usr slots are 10 GiB each (image/repart.nix), so the file is sparse and
@@ -93,6 +96,8 @@ rec {
       platform,
       buildSystem,
       pkgs,
+      sbKey,
+      sbCert,
     }:
     let
       stem = "${imageId}_${version}";
@@ -123,7 +128,7 @@ rec {
         inherit ukiName;
         systemdBoot = "${pkgs.systemd}/lib/systemd/boot/efi/systemd-boot${uefi}.efi";
         bootEntry = "EFI/BOOT/${removableMediaName uefi}";
-        inherit loaderConf;
+        inherit loaderConf sbKey sbCert;
         architecture = platform.names.systemd;
         seed = common.uuidOfHex (common.hexOf "${stem}.disk");
         epoch = common.versionToEpoch version;
