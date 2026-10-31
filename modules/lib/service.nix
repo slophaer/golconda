@@ -108,6 +108,17 @@ let
     ];
   };
 
+  # A target name: what systemd accepts for WantedBy= / RequiredBy=.
+  targetName = typedef' "targetName" (
+    v:
+    if !isString v then
+      "Expected a string"
+    else if match "[A-Za-z0-9:_.\\-]+\\.target" v == null then
+      "'${v}' is not a valid target name (must end with .target)"
+    else
+      null
+  );
+
   service = struct "service" {
     inherit
       name
@@ -130,6 +141,9 @@ let
     # unit ordering; default [ ]
     after = optionalAttr (listOf string);
     wants = optionalAttr (listOf string);
+    # targets that pull in this unit; default [ "multi-user.target" ]
+    # generates static .wants symlinks; [Install] section kept for admin overrides
+    wantedBy = optionalAttr (listOf targetName);
   };
 
   # systemd command-line text: % and $ are specifiers and variables, so they
@@ -217,10 +231,12 @@ let
       ++ userLines
       ++ sandboxLines.${svc.sandbox};
 
+      wantedByTargets = svc.wantedBy or [ "multi-user.target" ];
+
       installSection = [
         "[Install]"
-        "WantedBy=multi-user.target"
-      ];
+      ]
+      ++ map (t: "WantedBy=${t}") wantedByTargets;
 
       text = concatStringsSep "\n" (concatLists [
         unitSection
@@ -229,6 +245,14 @@ let
         [ "" ]
         installSection
       ]);
+
+      # Static .wants symlinks: /usr/lib/systemd/system/<target>.wants/<unit> -> ../<unit>
+      # These work without a first-boot step (unlike presets) and in the initrd too.
+      unitFileName = "${svc.name}.service";
+      wantsLinks = map (t: {
+        path = "/usr/lib/systemd/system/${t}.wants/${unitFileName}";
+        target = "../${unitFileName}";
+      }) wantedByTargets;
     in
     {
       units."${svc.name}.service" = text + "\n";
@@ -241,6 +265,7 @@ let
       sysusers = if isSysusersLine svc.user then [ svc.user ] else [ ];
       # StateDirectory= creates and owns the state; no tmpfiles lines needed
       packages = [ svc.app.package ];
+      links = wantsLinks;
     };
 
   # Build with wrap: config files are in the wrapped output; argv is in the

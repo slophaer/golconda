@@ -46,6 +46,17 @@ let
       null
   );
 
+  # A target name: what systemd accepts for WantedBy= / RequiredBy=.
+  targetName = typedef' "targetName" (
+    v:
+    if !isString v then
+      "Expected a string"
+    else if match "[A-Za-z0-9:_.\\-]+\\.target" v == null then
+      "'${v}' is not a valid target name (must end with .target)"
+    else
+      null
+  );
+
   var = struct "var" {
     name = word;
     # files the script writes that are sealed as credentials <name>.<file>
@@ -58,6 +69,9 @@ let
     script = string;
     # tools the script needs; default [ ]
     packages = optionalAttr (listOf derivation);
+    # targets that pull in this unit; default [ "multi-user.target" ]
+    # consumer services add After=<var>.service to order themselves after the var
+    wantedBy = optionalAttr (listOf targetName);
   };
 
   unitName = name: "golconda-var-${name}.service";
@@ -70,37 +84,50 @@ let
       after = v.after or [ ];
       publics = v.publics or [ ];
       deps = concatStringsSep " " (map unitName after);
-      text = concatStringsSep "\n" (
-        [
-          "[Unit]"
-          "Description=Generate var ${v.name}"
-          "ConditionPathExists=!${stateDir v.name}/done"
-        ]
-        ++ (
-          if after == [ ] then
-            [ ]
-          else
-            [
-              "After=${deps}"
-              "Requires=${deps}"
-            ]
-        )
-        ++ [
-          ""
-          "[Service]"
-          "Type=oneshot"
-          "RemainAfterExit=yes"
-          "RuntimeDirectory=golconda-var/${v.name}"
-          "RuntimeDirectoryMode=0700"
-          "StateDirectory=golconda/vars/${v.name}"
-          "StateDirectoryMode=0700"
-          "ExecStart=/usr/lib/golconda/golconda-var-run ${v.name} \"${concatStringsSep " " v.secrets}\" \"${concatStringsSep " " publics}\""
-          ""
-        ]
+      wantedByTargets = v.wantedBy or [ "multi-user.target" ];
+
+      unitSection = [
+        "[Unit]"
+        "Description=Generate var ${v.name}"
+        "ConditionPathExists=!${stateDir v.name}/done"
+      ]
+      ++ (
+        if after == [ ] then
+          [ ]
+        else
+          [
+            "After=${deps}"
+            "Requires=${deps}"
+          ]
       );
+
+      serviceSection = [
+        "[Service]"
+        "Type=oneshot"
+        "RemainAfterExit=yes"
+        "RuntimeDirectory=golconda-var/${v.name}"
+        "RuntimeDirectoryMode=0700"
+        "StateDirectory=golconda/vars/${v.name}"
+        "StateDirectoryMode=0700"
+        "ExecStart=/usr/lib/golconda/golconda-var-run ${v.name} \"${concatStringsSep " " v.secrets}\" \"${concatStringsSep " " publics}\""
+      ];
+
+      installSection = [
+        "[Install]"
+      ]
+      ++ map (t: "WantedBy=${t}") wantedByTargets;
+
+      text = concatStringsSep "\n" (unitSection ++ [ "" ] ++ serviceSection ++ [ "" ] ++ installSection);
+
+      # Static .wants symlinks: /usr/lib/systemd/system/<target>.wants/<unit> -> ../<unit>
+      unit = unitName v.name;
+      wantsLinks = map (t: {
+        path = "/usr/lib/systemd/system/${t}.wants/${unit}";
+        target = "../${unit}";
+      }) wantedByTargets;
     in
     {
-      units.${unitName v.name} = text;
+      units.${unitName v.name} = text + "\n";
       files = {
         "/usr/lib/golconda/vars.d/${v.name}.json" = toJSON {
           inherit (v) name secrets;
@@ -110,6 +137,7 @@ let
         "/usr/lib/golconda/vars.d/${v.name}.sh" = v.script + "\n";
       };
       packages = v.packages or [ ];
+      links = wantsLinks;
     };
 
   render = v: var.check v (build v);
