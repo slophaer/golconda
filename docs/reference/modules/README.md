@@ -8,7 +8,7 @@ This page documents every module and the shared types in `modules/lib/`.
 | path             | role                                                                                            |
 | ---------------- | ----------------------------------------------------------------------------------------------- |
 | `/system`        | the composer: `name`, `version`, `fragments` → `{ units; files; sysusers; tmpfiles; packages }` |
-| `/vars`          | installs `/usr/lib/golconda/golconda-var-run`; add once when any var is used                    |
+| `/vars`          | installs `/usr/lib/golconda/golconda-var-run` (mode `0755`); add once when any var is used      |
 | `/wrap`          | typed options for repkgs' `wrap`: `package`, `argv`, `env`, `files`; the caller uses `set.wrap` |
 | `/services/sshd` | OpenSSH as a service with an ed25519 host key var; options `package`, `port`, `authorizedKeys`  |
 
@@ -16,14 +16,14 @@ This page documents every module and the shared types in `modules/lib/`.
 
 Plain files that modules import. The directory has no `default.nix`, so adios does not load it.
 
-| file               | exports                                                                                       |
-| ------------------ | --------------------------------------------------------------------------------------------- |
-| `fragment.nix`     | `fragment`: `{ units; files; sysusers; tmpfiles; packages }`, every field optional            |
-| `merge.nix`        | `merge [ fragment… ] → fragment`: unions attrs, concatenates lists; a duplicate key throws    |
-| `app.nix`          | `app`, `argv`, `envOp`, `credentialRef`, `isCredentialRef`, `file`, `filesPlaceholder`, `exe` |
-| `service.nix`      | `service`, `render`, `sandbox`, `sandboxLines`, `credential`                                  |
-| `var.nix`          | `var`, `render`, `unitName`, `credentialId`, `stateDir`                                       |
-| `golconda-var-run` | POSIX sh runner for var units                                                                 |
+| file               | exports                                                                                                                               |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `fragment.nix`     | `fragment`: `{ units; files; sysusers; tmpfiles; packages }`, every field optional; `file`, `mode`                                    |
+| `merge.nix`        | `merge [ fragment… ] → fragment`: unions attrs, concatenates lists; a duplicate key throws; every file comes out as `{ text; mode; }` |
+| `app.nix`          | `app`, `argv`, `envOp`, `credentialRef`, `isCredentialRef`, `file`, `filesPlaceholder`, `exe`                                         |
+| `service.nix`      | `service`, `render`, `sandbox`, `sandboxLines`, `credential`                                                                          |
+| `var.nix`          | `var`, `render`, `unitName`, `credentialId`, `stateDir`                                                                               |
+| `golconda-var-run` | POSIX sh runner for var units                                                                                                         |
 
 ### `fragment`
 
@@ -32,10 +32,14 @@ The return type of every module.
 | field      | type               | installed to                         |
 | ---------- | ------------------ | ------------------------------------ |
 | `units`    | attrs name → text  | `/usr/lib/systemd/system/<name>`     |
-| `files`    | attrs path → text  | the path (must start with `/usr`)    |
+| `files`    | attrs path → file  | the path (must start with `/usr`)    |
 | `sysusers` | list of string     | `/usr/lib/sysusers.d/` lines         |
 | `tmpfiles` | list of string     | `/usr/lib/tmpfiles.d/` lines         |
 | `packages` | list of derivation | `/usr/nix/store` closure, `/usr/bin` |
+
+A `file` is either the text (installed with mode `0644`) or `{ text; mode ? "0644"; }`, where `mode`
+is four octal digits (`"0755"` for an executable). The composer's output always has the record
+shape: `files.<path> = { text; mode; }`. An `app`'s files are text only.
 
 ### `app`
 
@@ -70,8 +74,9 @@ Arguments are escaped (`%` → `%%`, `$` → `$$`). The unit ends with `WantedBy
 
 ### `merge`
 
-`merge [ fragmentA fragmentB ]` unions `units` and `files` (a repeated key throws), concatenates
-`sysusers` and `tmpfiles`, and checks `packages`: two packages with the same `/usr/bin` name throw.
+`merge [ fragmentA fragmentB ]` unions `units` and `files` (a repeated key throws, whichever shape
+the two values have), normalises every file to `{ text; mode; }`, concatenates `sysusers` and
+`tmpfiles`, and checks `packages`: two packages with the same `/usr/bin` name throw.
 
 Error message example: `golconda: /usr/bin name defined twice: jq (jq-1.7, jq-wrap-1.7)`.
 

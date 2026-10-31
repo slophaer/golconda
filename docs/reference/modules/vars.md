@@ -39,7 +39,8 @@ A `word` is a shell-safe path component: letters, digits, `_`, `.`, `-`.
 
 ## On the machine
 
-The runner `/usr/lib/golconda/golconda-var-run` (installed by the `/vars` module):
+The runner `/usr/lib/golconda/golconda-var-run` (installed executable by the `/vars` module and run
+by `ExecStart=` directly):
 
 1. Changes to `$RUNTIME_DIRECTORY` and runs the script.
 1. Seals each secret file with `systemd-creds encrypt --with-key=tpm2 --tpm2-public-key-pcrs=11`.
