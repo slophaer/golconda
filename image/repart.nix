@@ -104,22 +104,17 @@
   # into the build-time definitions. systemd-repart runs on first
   # boot to create the root partition.
 
-  "30-root" = {
+  # PROTOTYPE (no initrd): the state partition, made by systemd-repart in the host at first
+  # boot and mounted on /var (modules/base var.mount). / is the erofs image itself.
+  "30-state" = {
     Partition = {
-      Type = "root";
-      Label = "root";
+      Type = "linux-generic";
+      Label = "state";
       Format = "ext4";
       SizeMinBytes = "512M";
-      GrowFileSystem = true;
       FactoryReset = true;
-      # Future: Encrypt = "tpm2"; for TPM2-bound LUKS
-      # The mount points, each needed before anything can create it: the initrd mounts root
-      # read-only (gpt-auto's default without rw=). /usr is the verity slot's. /dev /proc /sys
-      # /run: switch-root chases them in the new root without creating them
-      # (systemd src/shared/switch-root.c, chase() without CHASE_NONEXISTENT). /tmp: tmp.mount
-      # makes its mount point with mkdir, which a read-only root refuses. There is no /srv:
-      # service state lives in /var/lib. /bin /sbin /lib are tmpfiles links (/base).
-      MakeDirectories = "/usr /etc /var /home /root /tmp /run /dev /proc /sys";
+      # /etc is seeded from the image once; /var is the rest of the partition
+      CopyFiles = "/usr/lib/golconda/state-etc:/etc";
     };
   };
 }

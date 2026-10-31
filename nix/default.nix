@@ -35,6 +35,77 @@ in
       ...
     }:
     let
+      # PROTOTYPE (no initrd): the boot test's system with the erofs image as /, mapped by the
+      # kernel (dm-mod.create=), no initrd, the state partition on /var.
+      imageNoInitrd =
+        let
+          testSshPubKey = builtins.readFile ../tests/fixtures/snakeoil-ssh.pub;
+          sys = mkSystem {
+            inherit system;
+            platform = system;
+            config = {
+              "/system" = {
+                name = "boot-test";
+                version = "20261031.1";
+              };
+              "/services/sshd" = {
+                port = 22;
+                authorizedKeys = [ testSshPubKey ];
+              };
+            };
+          };
+          keys = imageLib.throwawayKeys {
+            inherit pkgs;
+            buildSystem = system;
+          };
+          a = {
+            imageId = sys.name;
+            inherit (sys) version platform pkgs;
+            buildSystem = system;
+          };
+          erofs = imageLib.erofs (
+            a
+            // {
+              inherit (sys) usrTree;
+              rootSkeleton = true;
+              pcrPublicKey = "${keys}/pcr/pcr.pub";
+            }
+          );
+          verity = imageLib.verity (
+            a
+            // {
+              inherit erofs;
+              key = "${keys}/verity/verity.key";
+              cert = "${keys}/verity/verity.crt";
+            }
+          );
+          uki = imageLib.uki (
+            a
+            // {
+              initrd = null;
+              noInitrd = true;
+              phases = "sysinit:ready";
+              inherit verity;
+              inherit (sys) usrTree;
+              sbKey = "${keys}/secureboot/db.key";
+              sbCert = "${keys}/secureboot/db.crt";
+              pcrKey = "${keys}/pcr/pcr.key";
+              pcrPublicKey = "${keys}/pcr/pcr.pub";
+              cmdlineExtra = "LD_LIBRARY_PATH={dlopenPath}";
+            }
+          );
+          disk = imageLib.disk (a // { inherit erofs verity uki; });
+        in
+        {
+          inherit
+            erofs
+            verity
+            uki
+            disk
+            keys
+            ;
+        };
+
       imageSmoke =
         let
           # the base system of examples/server.toml, as lib.mkSystem makes it
@@ -203,6 +274,12 @@ in
             keys = testKeys;
           }
         );
+
+      image-noinitrd-disk = imageNoInitrd.disk;
+      image-noinitrd-uki = imageNoInitrd.uki;
+      image-noinitrd-erofs = imageNoInitrd.erofs;
+      image-noinitrd-verity = imageNoInitrd.verity;
+      image-noinitrd-keys = imageNoInitrd.keys;
 
       # Smoke test for the /usr tree builder: base system + jq via mkSystem.
       usr-tree-smoke =

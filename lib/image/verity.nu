@@ -22,6 +22,12 @@ export def build [] {
   ^veritysetup verify $a.usrImage $hash $roothash
   log "veritysetup verify: ok"
 
+  # PROTOTYPE (no initrd): what dm-mod.create= needs besides the root hash. The hash device
+  # starts with veritysetup's superblock, so the tree starts at hash block 1.
+  let dump = (^veritysetup dump $hash | lines | parse -r '^(?P<k>[^:]+):\s+(?P<v>.*)$' | transpose -r -d)
+  {dataBlocks: ($dump."Data blocks" | into int), dataBlockSize: ($dump."Data block size" | split row " " | first | into int), hashBlockSize: ($dump."Hash block size" | split row " " | first | into int), hashStart: 1, algorithm: $dump."Hash algorithm", salt: $dump.Salt}
+    | to json -r | save -f $"($out)/table.json"
+
   # PKCS#7 of the hex root hash (systemd-veritysetup(8)), DER
   let der = $"($env.NIX_BUILD_TOP)/roothash.p7s"
   ^openssl smime -sign -nocerts -noattr -binary -in $"($out)/roothash" -inkey $a.key -signer $a.cert -outform der -out $der

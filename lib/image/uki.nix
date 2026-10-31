@@ -38,6 +38,8 @@ rec {
       sbCert,
       pcrKey,
       pcrPublicKey,
+      noInitrd ? false, # PROTOTYPE: dm-mod.create= root, no --initrd, pcrsig.json for the ESP
+      phases ? null,
       cmdlineExtra ? "", # appended to the template; the smoke's stand-ins go here, not in image/
       # ({dlopenPath} in it becomes the store lib directories of the tree's dlopen links)
       ...
@@ -63,12 +65,14 @@ rec {
         kernel = pkgs.linux-kernel;
         inherit (pkgs) systemd;
         stub = "${pkgs.systemd}/lib/systemd/boot/efi/linux${uefi}.efi.stub";
-        initrd = "${initrd}/initrd.cpio.zst";
+        initrd = if noInitrd then null else "${initrd}/initrd.cpio.zst";
+        inherit noInitrd;
+        verityTable = "${verity}/table.json";
         roothash = "${verity}/roothash";
         osRelease = "${usrTree}/lib/os-release";
         inherit usrTree; # for {dlopenPath} (uki.nu)
         cmdlineTemplate = "${ukiConfig.cmdlineTemplate} ${cmdlineExtra}";
-        phases = ukiConfig.pcrPhases;
+        phases = if phases != null then phases else ukiConfig.pcrPhases;
         inherit
           sbKey
           sbCert

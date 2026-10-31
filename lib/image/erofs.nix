@@ -22,15 +22,18 @@ in
       version,
       buildSystem,
       pkgs,
+      rootSkeleton ? false, # PROTOTYPE (no initrd): the image is / with /usr in it
+      pcrPublicKey ? null,
       ... # platform and the rest of the shared argument set
     }:
     common.nuDerivation {
       name = "${imageId}_${version}.usr.raw";
       inherit buildSystem;
       module = "erofs";
-      tools = [ pkgs.erofs-utils ];
+      tools = [ pkgs.erofs-utils ] ++ (if rootSkeleton then [ pkgs.systemd ] else [ ]);
+      libs = if rootSkeleton then [ pkgs.acl pkgs.util-linux pkgs.openssl pkgs.libseccomp ] else [ ];
       attrs = {
-        inherit usrTree;
+        inherit usrTree rootSkeleton pcrPublicKey;
         epoch = common.versionToEpoch version;
         fileName = "${imageId}_${version}.usr.raw";
         uuid = common.uuidOfHex (common.hexOf "${imageId}_${version}.usr.raw");

@@ -55,7 +55,7 @@ rec {
   repartDefinitions =
     _:
     let
-      buildTime = filter (n: image.repart.${n}.Partition.Type != "root") (attrNames image.repart);
+      buildTime = filter (n: n != "30-state") (attrNames image.repart);
       withFields =
         n:
         let
@@ -108,6 +108,8 @@ rec {
         sig = "${verity}/${stem}.usr-verity-sig.raw";
         roothash = "${verity}/roothash";
         uki = "${uki}/${ukiName}";
+        pcrsig = "${uki}/pcrsig.json"; # PROTOTYPE: absent unless the UKI was built without an initrd
+        inherit version;
         inherit ukiName;
         systemdBoot = "${pkgs.systemd}/lib/systemd/boot/efi/systemd-boot${uefi}.efi";
         bootEntry = "EFI/BOOT/${removableMediaName uefi}";

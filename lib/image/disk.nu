@@ -23,6 +23,11 @@ export def build [] {
   mkdir $"($esp)/($a.bootEntry | path dirname)" $"($esp)/EFI/Linux"
   ^cp $a.systemdBoot $"($esp)/($a.bootEntry)"
   ^cp $a.uki $"($esp)/EFI/Linux/($a.ukiName)"
+  # PROTOTYPE (no initrd): the UKI's PCR signature, which tmpfiles copies to /run/systemd
+  if ($a.pcrsig | path exists) {
+    mkdir $"($esp)/loader/golconda"
+    ^cp $a.pcrsig $"($esp)/loader/golconda/($a.version).pcrsig.json"
+  }
 
   # the two partition UUIDs systemd derives from the root hash
   let roothash = (open --raw $a.roothash | str trim)

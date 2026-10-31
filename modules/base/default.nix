@@ -111,7 +111,7 @@ in
       # repart.d: the root partition, made by systemd-repart in the initrd at first boot
       # (docs/design/layout.md); the image's own partitions are the image builder's
       # (lib/image/disk.nix renders the rest of image/repart.nix)
-      rootRepart = (import ../lib/ini.nix).render (import ../../image/repart.nix)."30-root";
+      rootRepart = (import ../lib/ini.nix).render (import ../../image/repart.nix)."30-state";
 
       # locale.conf: PID 1 reads /usr/lib/locale.conf before /etc exists
       # (the factory uses tmpfiles, which runs after PID 1 sets the locale)
@@ -202,6 +202,16 @@ in
       # dbus.socket wanted by sockets.target; systemd-networkd, systemd-resolved,
       # systemd-timesyncd enabled via their target's .wants directories.
       wantsLinks = [
+        {
+          path = "/usr/lib/systemd/system/local-fs.target.wants/var.mount";
+          target = "../var.mount";
+          kind = "explicit";
+        }
+        {
+          path = "/usr/lib/systemd/system/local-fs.target.wants/etc.mount";
+          target = "../etc.mount";
+          kind = "explicit";
+        }
         # dbus
         {
           path = "/usr/lib/systemd/system/sockets.target.wants/dbus.socket";
@@ -513,7 +523,33 @@ in
         "/usr/lib/systemd/journald.conf.d/golconda.conf" = journaldConf;
         "/usr/lib/locale.conf" = localeConf;
         "/usr/lib/systemd/system.conf.d/golconda-dlopen.conf" = dlopenEnvConf;
-        "/usr/lib/repart.d/30-root.conf" = rootRepart;
+        "/usr/lib/repart.d/30-state.conf" = rootRepart;
+        # PROTOTYPE (no initrd): the state partition on /var, after repart made it
+        "/usr/lib/systemd/system/var.mount" = dropIn ''
+          [Unit]
+          Description=State Partition
+          After=systemd-repart.service
+          Wants=systemd-repart.service
+          Before=local-fs.target
+
+          [Mount]
+          What=/dev/disk/by-partlabel/state
+          Where=/var
+          Type=ext4
+        '';
+        "/usr/lib/systemd/system/etc.mount" = dropIn ''
+          [Unit]
+          Description=etc from the state partition
+          Requires=var.mount
+          After=var.mount systemd-repart.service
+          Before=local-fs.target
+
+          [Mount]
+          What=/var/etc
+          Where=/etc
+          Type=none
+          Options=bind
+        '';
         # dbus.socket unit: dbus-broker doesn't ship it
         "/usr/lib/systemd/system/dbus.socket" = dbusSocketUnit;
         # D-Bus system bus configuration: dbus-broker does not ship it
@@ -532,10 +568,6 @@ in
       # merged /usr on the root partition: #!/bin/sh and friends (repart makes the directories,
       # image/repart.nix; the root is read-only until systemd-remount-fs, so switch-root could
       # not make these itself)
-      tmpfiles = [
-        "L /bin - - - - usr/bin"
-        "L /sbin - - - - usr/bin"
-        "L /lib - - - - usr/lib"
-      ];
+      tmpfiles = [ ]; # PROTOTYPE: /bin /sbin /lib are in the erofs root
     };
 }
