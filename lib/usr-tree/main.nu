@@ -104,7 +104,11 @@ export def build [] {
     ^ln -sf $rel_target $dest
   }
 
-  # Step 4: Expand farm directories file by file
+  # Step 4: Expand farm directories file by file, subdirectories included: systemd's
+  # lib/systemd/system carries its static enablement as <target>.wants/ directories, and a
+  # farm of lib/systemd must reach them. A file two farms both bring from the same place is
+  # fine (a farm of lib/systemd and one of lib/systemd/system overlap); a different source is
+  # a collision.
   log $"expanding ($farm_links | length) farm directories..."
   for dir in $farm_links {
     let path = $dir.path
@@ -116,23 +120,24 @@ export def build [] {
     # Create destination directory
     mkdir $dest_dir
 
-    # Link every file of the source directory; a missing directory is an error
+    # Link every file of the source tree; a missing directory is an error
     if not ($target | path exists) {
       error make {msg: $"farm link ($path): directory ($target) does not exist"}
     }
-    let files = (ls $target | where type == file or type == symlink)
+    let files = (^find $target -mindepth 1 '(' -type f -o -type l ')' | lines | where { $in != "" } | sort)
     for file in $files {
-      let basename = ($file.name | path basename)
-      let dest_file = $"($dest_dir)/($basename)"
+      let rel = ($file | path relative-to $target)
+      let dest_file = $"($dest_dir)/($rel)"
+      let rel_target = (make-relative $"($path)/($rel)" $file)
 
-      if ($dest_file | path exists) {
+      if ($dest_file | path exists -n) {
+        let existing_target = (ls -l $dest_file | get 0.target? | default "file")
+        if $existing_target == $rel_target { continue }
         # Collision: error with both sources
-        let existing_target = (ls -l $dest_file | get target? | default "file")
-        error make {msg: $"farm collision at ($path)/($basename): ($target) vs ($existing_target)"}
+        error make {msg: $"farm collision at ($path)/($rel): ($target) vs ($existing_target)"}
       }
 
-      # Make relative symlink
-      let rel_target = (make-relative $"($path)/($basename)" $"($file.name)")
+      mkdir ($dest_file | path dirname)
       ^ln -sf $rel_target $dest_file
     }
   }

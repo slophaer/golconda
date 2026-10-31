@@ -53,10 +53,16 @@ let
     version:
     let
       m = match "([0-9]{4})([0-9]{2})([0-9]{2})\\.([0-9]+)" version;
-      year = builtins.fromJSON (builtins.elemAt m 0);
-      month = builtins.fromJSON (builtins.elemAt m 1);
-      day = builtins.fromJSON (builtins.elemAt m 2);
-      rev = builtins.fromJSON (builtins.elemAt m 3);
+      # decimal digits to an integer; fromJSON would refuse a leading zero ("01")
+      toInt =
+        s:
+        builtins.foldl' (acc: i: acc * 10 + builtins.fromJSON (substring i 1 s)) 0 (
+          builtins.genList (i: i) (stringLength s)
+        );
+      year = toInt (builtins.elemAt m 0);
+      month = toInt (builtins.elemAt m 1);
+      day = toInt (builtins.elemAt m 2);
+      rev = toInt (builtins.elemAt m 3);
       # Days since epoch (1970-01-01), simplified leap year handling
       # Each year: 365 days + 1 if leap year. Accurate enough for this purpose.
       isLeap = y: (y / 4 * 4 == y) && ((y / 100 * 100 != y) || (y / 400 * 400 == y));
@@ -100,12 +106,17 @@ let
     else
       epoch;
 
-  # Render os-release from the template, with the target platform's architecture.
-  osReleaseTemplate = import ../image/os-release.nix { imageId = "golconda"; };
+  # Render os-release from the template, with the target platform's architecture. The image
+  # id (ID=, IMAGE_ID=) is /system.name: what sysupdate matches artifacts against.
   renderOsRelease =
-    { version, platform }:
+    {
+      version,
+      platform,
+      imageId ? "golconda",
+    }:
     let
       arch = platform.cpu;
+      osReleaseTemplate = import ../image/os-release.nix { inherit imageId; };
     in
     concatStringsSep "\n" (
       map (
@@ -221,7 +232,10 @@ in
       }) roots;
 
       epoch = versionToEpoch version;
-      osRelease = renderOsRelease { inherit version platform; };
+      osRelease = renderOsRelease {
+        inherit version platform;
+        imageId = composerOutput.name;
+      };
 
       script = ''
         use main.nu
