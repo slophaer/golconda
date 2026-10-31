@@ -252,6 +252,7 @@ let
     # Design
 
     - [Principles](design/principles.md)
+    - [Scope](design/scope.md)
     - [Architecture](design/architecture.md)
     - [Layout](design/layout.md)
     - [Boot](design/boot.md)

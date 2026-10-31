@@ -30,6 +30,7 @@ The module tree, the composer, the `/usr` tree builder, the schema, the TOML loa
 point (`golconda.nix`) exist and are tested. The image builder (erofs, verity, initrd, UKI, disk) is
 being built. Secure Boot, measured boot and TPM2-sealed credentials are designed and not yet proven
 on a machine. The docs mark each such thing *(planned)* or *(being built)*;
+[Scope](docs/design/scope.md) says what is v1, after v1 and out of scope, and
 [Comparison](docs/design/comparison.md) says what you give up against NixOS.
 
 ## Quick start
