@@ -255,7 +255,10 @@ start_qemu() {
   
   if [ "$TPM" = 1 ] || [ "$SECURE_BOOT" = 1 ]; then
     QEMU_ARGS="$QEMU_ARGS \
-      -machine smm=on -global driver=cfi.pflash01,property=secure,value=on \
+      -machine smm=on -global driver=cfi.pflash01,property=secure,value=on"
+  fi
+  if [ "$TPM" = 1 ]; then
+    QEMU_ARGS="$QEMU_ARGS \
       -chardev socket,id=chrtpm,path=$WORKDIR/tpm/swtpm-sock \
       -tpmdev emulator,id=tpm0,chardev=chrtpm \
       -device tpm-tis,tpmdev=tpm0"
@@ -365,6 +368,7 @@ guest() {
 
 # wait for an ssh login while QEMU runs; $1: the boot id it must differ from
 wait_for_ssh() {
+  SSH_LAST=""
   while qemu_running; do
     if BOOT_ID=$(guest cat /proc/sys/kernel/random/boot_id 2>/dev/null) \
       && [ -n "$BOOT_ID" ] && [ "$BOOT_ID" != "${1:-}" ]; then
