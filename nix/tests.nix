@@ -2447,6 +2447,82 @@ let
     (check "attribution: packageOrigins keys exactly the packages" (
       sort lessThan (attrNames system.packageOrigins) == sort lessThan (map merge.pkgKey system.packages)
     ))
+
+    # 13. lib/system.nix: mkSystem entry point
+    (check "mkSystem: server.toml yields name and version" (
+      let
+        mkSystem =
+          args:
+          import ../lib/system.nix (
+            args
+            // {
+              inherit sources platform;
+              system = platform;
+            }
+          );
+        sys = mkSystem { config = ../examples/server.toml; };
+      in
+      sys.name == "server" && sys.version == "20261031.1"
+    ))
+    (check "mkSystem: extra overrides an option" (
+      let
+        mkSystem =
+          args:
+          import ../lib/system.nix (
+            args
+            // {
+              inherit sources platform;
+              system = platform;
+            }
+          );
+        sys = mkSystem {
+          config = ../examples/server.toml;
+          extra = {
+            "/system".name = "overridden";
+          };
+        };
+      in
+      sys.name == "overridden" && sys.version == "20261031.1"
+    ))
+    (check "mkSystem: config.json has the sshd table and no derivation strings" (
+      let
+        mkSystem =
+          args:
+          import ../lib/system.nix (
+            args
+            // {
+              inherit sources platform;
+              system = platform;
+            }
+          );
+        sys = mkSystem { config = ../examples/server.toml; };
+        cfg = sys.config;
+        cfgJson = builtins.toJSON cfg;
+      in
+      cfg ? "/services/sshd"
+      && cfg."/services/sshd".port == 22
+      # no store paths in the JSON
+      && match ".*(/nix/store).*" cfgJson == null
+    ))
+    (check "mkSystem: a TOML with an unknown module path throws with the path in the message" (
+      let
+        mkSystem =
+          args:
+          import ../lib/system.nix (
+            args
+            // {
+              inherit sources platform;
+              system = platform;
+            }
+          );
+        badConfig = builtins.toFile "bad.toml" ''
+          ["/unknown/module"]
+          option = "value"
+        '';
+        result = tryEval (deepSeq (mkSystem { config = badConfig; }).name true);
+      in
+      !result.success
+    ))
   ];
 in
 assert all (t: t) tests;
