@@ -1,7 +1,9 @@
 # Modules
 
 The adios module tree lives in `modules/`. Each module returns a typed fragment for the composer.
-This page documents every module and the shared types in `modules/lib/`.
+
+The [generated module pages](generated/index.md) cover each module's options and doc comments. The
+[types page](generated/types.md) documents every type from the schema registry.
 
 ## Modules
 

@@ -3,3 +3,4 @@ docs/book/
 .direnv/
 npins/default.nix
 docs/reference/modules/generated/
+docs/SUMMARY.md

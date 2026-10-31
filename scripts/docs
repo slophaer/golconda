@@ -1,12 +1,18 @@
 #!/bin/sh
 # Write the generated module pages (docs/reference/modules/generated/, not
-# committed), then build the book, or serve it with `scripts/docs serve`.
-# Run from anywhere, inside the dev shell.
+# committed) and SUMMARY.md, then build the book, or serve it with
+# `scripts/docs serve`. Run from anywhere, inside the dev shell.
 set -eu
 cd "$(dirname "$0")/.."
 out=docs/reference/modules/generated
 mkdir -p "$out"
+
+# Write the generated module and type pages
 for f in $(iets eval --raw -E 'builtins.concatStringsSep " " (builtins.attrNames (import ./default.nix).docs-pages)'); do
   iets eval --raw -E "(import ./default.nix).docs-pages.\"$f\"" > "$out/$f"
 done
+
+# Write the generated SUMMARY.md
+iets eval --raw -E '(import ./default.nix).docs-summary' > docs/SUMMARY.md
+
 exec mdbook "${1:-build}" docs
