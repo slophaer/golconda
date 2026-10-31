@@ -1,28 +1,46 @@
 # Partitions and paths
 
 The exact on-disk layout. Type GUIDs are the Discoverable Partitions Specification names as
-`systemd-repart` spells them.
+`systemd-repart` spells them; the definitions are `image/repart.nix`.
 
 ## Partitions
 
-| label                                       | type             | filesystem | flags     | size                                                       |
-| ------------------------------------------- | ---------------- | ---------- | --------- | ---------------------------------------------------------- |
-| `esp`                                       | `esp`            | vfat       | —         | 1 GiB                                                      |
-| `usr-a`                                     | `usr`            | erofs      | read-only | image size                                                 |
-| `usr-a-verity`                              | `usr-verity`     | —          | read-only | ~1 % of usr                                                |
-| `usr-a-verity-sig`                          | `usr-verity-sig` | —          | read-only | 16 KiB                                                     |
-| `usr-b`, `usr-b-verity`, `usr-b-verity-sig` | as above         |            |           | empty until the first update                               |
-| `root`                                      | `root`           | ext4       | growfs    | rest of the disk, created on first boot (LUKS2+TPM2 later) |
+| label                                       | type             | filesystem | flags                 | size                                                                              |
+| ------------------------------------------- | ---------------- | ---------- | --------------------- | --------------------------------------------------------------------------------- |
+| `esp`                                       | `esp`            | vfat       | —                     | 512 MiB                                                                           |
+| `usr-a`                                     | `usr`            | erofs      | read-only             | 10 GiB; the erofs image inside is much smaller                                    |
+| `usr-a-verity`                              | `usr-verity`     | —          | read-only             | ~1 % of usr                                                                       |
+| `usr-a-verity-sig`                          | `usr-verity-sig` | —          | read-only             | 16 KiB                                                                            |
+| `usr-b`, `usr-b-verity`, `usr-b-verity-sig` | as above         |            |                       | the same sizes as A, empty until the first update                                 |
+| `root`                                      | `root`           | ext4       | growfs, factory-reset | the rest of the disk, created on first boot (unencrypted in v1, LUKS2+TPM2 later) |
+
+The slots are fixed at 10 GiB so an update of a grown image always fits; both slots must hold any
+release. The image builder *(being built)* sets the verity partitions to one fixed size as well. The
+partition UUIDs of `usr-a` and `usr-a-verity` are derived from the verity root hash, which is how
+gpt-auto finds the pair the UKI's `usrhash=` names.
 
 ## Paths
 
-| path                                      | kind           | owner                                                     |
-| ----------------------------------------- | -------------- | --------------------------------------------------------- |
-| `/usr/nix/store`                          | image          | repkgs closure                                            |
-| `/usr/bin`, `/usr/lib`, `/usr/share`      | image          | symlink farm (composer `links`), files                    |
-| `/usr/lib/systemd/system/<target>.wants/` | image          | static enablement symlinks (composer `links`)             |
-| `/usr/lib/os-release`                     | image          | composer: `ID`, `VERSION_ID`, `IMAGE_ID`, `IMAGE_VERSION` |
-| `/usr/share/factory/etc`                  | image          | composer                                                  |
-| `/etc`                                    | root partition | factory copy, admin                                       |
-| `/var`                                    | root partition | services                                                  |
-| `/efi`                                    | ESP            | systemd-boot, UKIs, sysupdate                             |
+| path                                            | where | written by                                                                                                                                   |
+| ----------------------------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/usr/nix/store`                                | image | `lib/usr-tree.nix`: the closure of the composer's `packages`                                                                                 |
+| `/usr/bin`, `/usr/lib`, `/usr/share`            | image | `lib/usr-tree.nix` from the composer's `links` (symlinks) and `files`                                                                        |
+| `/usr/lib/systemd/system/<name>`                | image | the composer's `units`; `.wants/` links from `links`                                                                                         |
+| `/usr/lib/systemd/user/<name>`                  | image | the composer's `files` (user-scope services)                                                                                                 |
+| `/usr/lib/sysusers.d/golconda.conf`             | image | the composer's `sysusers` lines, one file                                                                                                    |
+| `/usr/lib/tmpfiles.d/golconda.conf`             | image | the composer's `tmpfiles` lines, one file                                                                                                    |
+| `/usr/lib/systemd/network/*.network`            | image | `/network`                                                                                                                                   |
+| `/usr/lib/systemd/{timesyncd,journald}.conf.d/` | image | `/base`                                                                                                                                      |
+| `/usr/lib/locale.conf`                          | image | `/base` (`LANG=C.UTF-8`)                                                                                                                     |
+| `/usr/lib/sysupdate.d/*.conf`                   | image | `/system` from `updateSource` and `image/sysupdate.nix`                                                                                      |
+| `/usr/lib/repart.d/30-root.conf`                | image | the image builder *(being built)* from `image/repart.nix`                                                                                    |
+| `/usr/lib/os-release`                           | image | `lib/usr-tree.nix` from `image/os-release.nix`; `ID`/`IMAGE_ID` are the constant `golconda` today, `/system.name` reaches it *(being built)* |
+| `/usr/lib/golconda/packages.json`               | image | `lib/usr-tree.nix` from the composer's `packageOrigins`                                                                                      |
+| `/usr/lib/golconda/vars.d/`, `golconda-var-run` | image | `/vars` and the var renderer                                                                                                                 |
+| `/usr/lib/<service>/`                           | image | the service renderer: the app's files                                                                                                        |
+| `/usr/share/factory/etc`                        | image | `/factory`                                                                                                                                   |
+| `/etc`                                          | root  | tmpfiles `L` links into the factory; PID 1 (`machine-id`), sysusers (`passwd`, `group`, `shadow`), firstboot (`hostname`); the administrator |
+| `/etc/credstore.encrypted/`                     | root  | the var runner and the deploy tool: sealed credentials                                                                                       |
+| `/var/lib/golconda/vars/<name>/`                | root  | the var runner: public halves and the `done` marker                                                                                          |
+| `/var`                                          | root  | services (`StateDirectory=`), tmpfiles                                                                                                       |
+| `/efi`                                          | ESP   | systemd-boot, the UKIs, sysupdate                                                                                                            |

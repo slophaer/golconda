@@ -2,67 +2,46 @@
 
 *Ceci n'est pas un NixOS.*
 
-Golconda is a server operating system built with Nix but without nixpkgs or NixOS. Images are built
-on a builder and shipped whole: a signed, verity-protected `/usr` with the Nix store inside it,
-booted by a signed unified kernel image, updated A/B by systemd-sysupdate *(planned)*. The machine
-runs systemd and nothing that duplicates it.
+Golconda is a server operating system built with Nix but without nixpkgs or NixOS. A machine is
+described by one TOML document; a builder turns it into one signed image: a read-only, verity-
+protected `/usr` with the Nix store inside it, booted by a signed unified kernel image, updated A/B
+by systemd-sysupdate. The machine runs systemd and nothing that duplicates it, and it runs no Nix.
 
-## Features
+## What a Golconda system is
 
-- **Immutable by default.** `/usr` is a read-only erofs image under dm-verity. State lives on one
-  partition (unencrypted in v1; LUKS2+TPM2 later); everything else is regenerated from the image at
-  boot.
-- **A/B updates with automatic rollback.** *(planned)* Two `/usr` slots, two UKIs, boot counting by
-  systemd-boot, blessing by `systemd-bless-boot`.
-- **Secure Boot and measured boot.** *(planned)* UKIs are signed; PCR 11 policies are precomputed
-  and signed, so the TPM-bound disk unlocks after an update without re-enrolment.
-- **No Nix on the machine.** The store at `/usr/nix/store` is a build-time concept; repkgs makes
-  every output relocatable, so nothing is patched or rewritten.
+- **One image, no per-machine build.** The image holds no per-machine value. The host name and the
+  provisioning data arrive as systemd credentials at first boot; secrets are generated on the
+  machine or pushed by the administrator, never built in.
+- **Immutable `/usr`, one state partition.** `/usr` is erofs under dm-verity. `/etc` starts as
+  symlinks into the image's factory and an administrator's file at the same path wins; `/var` holds
+  state. The state partition is unencrypted in v1 (LUKS2+TPM2 later).
+- **A/B updates with rollback.** Two `/usr` slots and two UKIs; systemd-boot counts boots and falls
+  back to the other slot.
 - **One of each.** One libc, one toolchain (LLVM), one TLS stack, one CA store, one init, one
-  logger, one network stack. Choices are enforced by package features, not by convention.
-- **Typed, explicit modules.** adios modules return typed fragments; the composer unions them and
-  refuses duplicates. No global namespace, no priorities.
-- **Fast, lintable evaluation.** iets evaluates the whole package set in under a second and lints it
-  strictly; npins pins the inputs.
-- **Servers first.** UEFI, DPS/DDI partition layout, networkd, resolved, sshd.
+  logger, one network stack. Enforced by package features and lints, not by convention.
+- **Typed, explicit modules.** A module returns a typed fragment; the composer unions the fragments
+  and refuses a duplicate. No global namespace, no priorities, no overrides.
+- **Servers first.** UEFI, the Discoverable Partitions Specification, networkd with DHCP on every
+  link, resolved, timesyncd, sshd with certificates. Root only, no local login.
 
-## Limitations
+## Status
 
-- Linux, x86_64 and aarch64, UEFI only. No BIOS, no desktops.
-- Only the packages repkgs and `packages/` provide. There is no nixpkgs fallback.
-- No per-machine `nix`: configuration changes mean a new image.
-- No runtime generations list; rollback is to the other slot.
-- Developer tooling (formatter, docs) still comes from a dev-only nixpkgs pin.
-- Young dependencies: repkgs needs a patched Nix daemon to build; adios and iets change often.
-- No image builder yet. The `image/` directory holds definitions; the builder is not implemented.
-- Cross-compilation is not wired. `nix/packages.nix` uses the build platform as the target.
-- Rollback protection is not implemented. An attacker who obtains an older image signed by the same
-  key can boot it and unseal TPM2-bound credentials. See [trust](docs/design/trust.md) for
-  mitigations. No comparable project (Nixlet, Bocaditos, NixOS appliances) implements this either.
-
-## Golconda and NixOS
-
-|            | NixOS                                                | Golconda                                                    |
-| ---------- | ---------------------------------------------------- | ----------------------------------------------------------- |
-| Packages   | nixpkgs, bash builders, store paths baked in         | repkgs, nushell builders, relocatable outputs               |
-| Store      | `/nix/store` on every machine, Nix daemon required   | `/usr/nix/store` inside the image, no daemon                |
-| Modules    | global namespace, `mkForce`/priorities, fixpoint     | typed fragments, explicit inputs, duplicates are errors     |
-| Activation | `switch-to-configuration`, generations in the store  | image swap, A/B slots, boot counting                        |
-| Boot       | systemd-boot or GRUB, kernel + initrd per generation | signed UKI per slot, measured boot                          |
-| `/etc`     | generated, mostly symlinks into the store            | factory seed from `/usr`, admin state on the data partition |
-| Evaluator  | Nix                                                  | iets (Nix only on the build daemon)                         |
-| Inputs     | flakes or channels                                   | npins; flake output schema via flake-incompat               |
+The module tree, the composer, the `/usr` tree builder, the schema, the TOML loader and the entry
+point (`golconda.nix`) exist and are tested. The image builder (erofs, verity, initrd, UKI, disk) is
+being built. Secure Boot, measured boot and TPM2-sealed credentials are designed and not yet proven
+on a machine. The docs mark each such thing *(planned)* or *(being built)*;
+[Comparison](docs/design/comparison.md) says what you give up against NixOS.
 
 ## Quick start
 
 ```sh
 nix-shell                      # or: direnv allow
-iets build -A packages.x86_64-linux.nix
-./scripts/lint                 # iets lint + treefmt + docs + boundary checks
-scripts/docs serve              # the book (generates the module pages first)
+./scripts/lint                 # strict iets lint, module tests, sandboxed checks
+scripts/docs serve             # the book (generates the module pages first)
 ```
 
-Documentation: [docs/](docs/SUMMARY.md). Design pages say why; reference pages say what.
+Start with [Principles](docs/design/principles.md), then read the design pages in order. Design
+pages say why; reference pages say what exists. Contributing: [CONTRIBUTING](CONTRIBUTING.md).
 
 ## License
 

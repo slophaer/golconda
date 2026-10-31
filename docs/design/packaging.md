@@ -7,9 +7,9 @@ builder of its own.
 ## Why repkgs
 
 Golconda pins a fork of repkgs (branch `golconda`; see
-[patches/repkgs](../../patches/repkgs/README.md)) with relocation fixes: PT_INTERP via libc with
-relative sysroot links, and glibc `$ORIGIN` expansion from `AT_EXECFN` instead of `/proc`. See
-[`patches/repkgs/README.md`](../../patches/repkgs/README.md) for the patches and their issue drafts.
+[patches/repkgs](../../patches/repkgs/README.md) for the patches and their issue drafts) with
+relocation fixes: PT_INTERP via libc with relative sysroot links, and glibc `$ORIGIN` expansion from
+`AT_EXECFN` instead of `/proc`.
 
 - Outputs are relocatable, so the store can live in `/usr` and no machine needs Nix.
 - One LLVM toolchain; cross-compilation is an argument, which the platform record supplies.
@@ -30,25 +30,27 @@ what Golconda builds.
 The build host evaluates a set for the target platform; nothing in the module tree depends on the
 build host. `nix/packages.nix` takes `system` (the build host) and `platform` (the target, default:
 the build host). When they differ, repkgs cross-compiles packages that run on the target using the
-build host's toolchain. The `/usr` tree, os-release and every package output belong to the target;
-the derivation's `system` is the build host where the build runs.
+build host's toolchain; `/pkgs.build` is the host's set for tools that run on the builder. The
+`/usr` tree, os-release and every package output belong to the target; the derivation's `system` is
+the build host where the build runs. A cross-compiled `/usr` tree for aarch64 builds today
+(`packages.x86_64-linux.usr-tree-smoke-aarch64`); a bootable aarch64 image is *(planned)*.
 
 ## Set-wide features
 
 `nix/packages.nix` fixes `tls = "openssl"` for every package that declares the feature. A new
 one-of-each decision is a feature value there, and a package that cannot honour it is not packaged.
 
-## Farm packages and the prefix rule
+## Prefixed packages
 
 Some packages compile absolute paths into their binaries: systemd looks for generators in
-`/usr/lib/systemd/system-generators`, dbus-broker reads policy from `/usr/share/dbus-1`. These are
-**farm packages**: they are built with `prefix = "/usr"` in the repkgs spec and reached through the
-symlink farm at `/usr/bin`, `/usr/lib`.
-
-Farm packages in the image: systemd, dbus-broker, openssh.
+`/usr/lib/systemd/system-generators`, dbus-broker reads policy from `/usr/share/dbus-1`, sshd its
+privilege-separation directory. These are built with `prefix = "/usr"` in the repkgs spec and
+reached through the symlink farm: their directories are `farm` links the builder expands file by
+file ([Layout: The symlink map](layout.md#the-symlink-map)). Prefixed packages in the image:
+systemd, dbus-broker, openssh.
 
 Everything else is relocatable and lives only in the store. A package that cannot be relocated and
-cannot be a farm package is not packaged.
+cannot take a prefix is not packaged.
 
 ## Interpreter policy
 
@@ -57,11 +59,9 @@ cannot be a farm package is not packaged.
 | image   | dash (`/bin/sh` only); no bash, no other shells |
 | build   | clang/lld, nushell, cpython, perl, rust         |
 
-Dash is the only shell in the image. systemd units run dash scripts. Bash is not packaged.
-
-At build time, clang and lld are the toolchain. Nushell drives repkgs builders. Python is needed for
-meson, systemd's jinja2 templates, and ukify (build-only; not in the image). Perl is needed for
-OpenSSL's Configure and some autotools. Rust builds iets and dbus-broker's main branch.
+Dash is the only shell in the image; systemd units run dash scripts. At build time, clang and lld
+are the toolchain, nushell drives the repkgs builders, Python is needed for meson, systemd's jinja2
+templates and ukify, Perl for OpenSSL's Configure and some autotools, Rust for iets and dbus-broker.
 
 ## The kernel: base in the fork, policy here
 
@@ -73,17 +73,15 @@ WireGuard, the systemd requirements, and the hardening that costs nothing at run
 above each option says why. `nix/packages.nix` appends the file through the set's override path
 (`overrides.linux-kernel.kbuild.configFragments.append`); the fork merges it onto the base with
 `merge_config.sh` and fails the build when a line does not survive `olddefconfig`. A wrong option
-name is a build error, not a silent loss. The result is `packages.<system>.kernel`.
+name is a build error, not a silent loss. The result is `packages.<system>.kernel`: the latest LTS
+series, monolithic (no modules, so no kmod), built with `LLVM=1`.
 
-## Round-1 packages
+## What is packaged
 
-Packages in progress on the fork, by work package:
+| in the image                                                                                                      | build only                                             |
+| ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| systemd (with repart, sysupdate, cryptsetup, TPM2, PKCS#11, PAM), dbus-broker, dash, uutils coreutils, the kernel | clang/lld, nushell, cpython, perl, rust, GNU coreutils |
+| openssh, linux-pam (no setuid helpers), p11-kit, tpm2-tss (ESYS only), iproute2 (minimal)                         | ukify, dosfstools, erofs-utils                         |
+| e2fsprogs (first-boot `mkfs.ext4`), lvm2 (device-mapper only), libtasn1, libmnl, json-c, popt                     | automake, libtool                                      |
 
-| WP  | packages                                                                                 |
-| --- | ---------------------------------------------------------------------------------------- |
-| WP1 | kbuild build system, linux-kernel (monolithic, LTS 6.18.y, `LLVM=1`)                     |
-| WP2 | automake, libtool, json-c, popt, dosfstools, e2fsprogs, erofs-utils, lvm2 (dm-only)      |
-| WP3 | libtasn1, libmnl, p11-kit, tpm2-tss (fapi off), iproute2, linux-pam, openssh, iets       |
-| WP4 | python helpers (jinja2, pyelftools), systemd 262 with the prefix field, dbus-broker main |
-
-kmod is deferred: round 1 builds a monolithic kernel with no modules.
+A new daemon is a packaging job on the fork first ([Comparison](comparison.md)).

@@ -1,11 +1,71 @@
 # Configuration format
 
-A Golconda configuration is a TOML document where each table sets options for one module. Validate
-it against the schema before evaluation; type errors from adios tell you what the module expected.
+A Golconda configuration is a TOML document where each table sets options for one module. The loader
+is `lib/config.nix`; the schema that validates a document is `lib/schema.nix`
+([Outputs](outputs.md#schema)). Why it has this shape: [design/config](../design/config.md).
 
-## The entry point: golconda.nix
+## Document format
 
-Copy `golconda.nix` from the repository root next to your `server.toml`:
+Table names are adios absolute paths, starting with `/`:
+
+```toml
+["/system"]
+name = "server"
+version = "20261031.1"
+updateSource = "https://updates.example.com/server/"
+
+["/services/sshd"]
+port = 22
+authorizedKeys = [
+  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample admin@example.com",
+]
+trustedUserCAKeys = ["ssh-ed25519 AAAA... user-ca"]
+["/services/sshd".principals]
+root = ["alice@example.com"]
+
+["/network"]
+dns = ["192.0.2.53"]
+```
+
+An unknown table name throws with the list of valid paths. A `/pkgs` table throws: the package set
+is not data.
+
+## Valid paths
+
+```sh
+iets eval --json -E '(import ./default.nix).configLib.validPaths'
+```
+
+| path             | options                                                                                                             |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `/base`          | `ntp`, `journalMaxUse`                                                                                              |
+| `/factory`       | `timezone`, `extraFiles`                                                                                            |
+| `/network`       | `networks`, `dns`, `defaultDhcp`                                                                                    |
+| `/system`        | `name`, `version`, `updateSource`, `fragments` (Nix only: a fragment is a Nix value)                                |
+| `/services/sshd` | `package` (Nix only), `port`, `authorizedKeys`, `trustedUserCAKeys`, `principals`, `revokedKeys`, `hostCertificate` |
+
+The option types, defaults and descriptions are on the generated module pages
+([Modules](modules/README.md)).
+
+## Validation
+
+Export the schema and use any JSON Schema validator:
+
+```sh
+iets eval --json -E '(import ./default.nix).schema' > schema.json
+yj -tj < examples/server.toml > config.json      # TOML → JSON
+ajv validate -s schema.json -d config.json
+```
+
+Golconda ships no validator; type errors from adios say what a module expected, and the schema is
+for editors and external tools.
+
+## The entry point
+
+`lib/system.nix` turns a document into a system:
+`mkSystem { config; platform?; system?; sources?; extra?; }`, exposed as the output `lib.mkSystem`.
+`golconda.nix` at the repository root is the template a user copies next to `server.toml`;
+`examples/golconda.nix` does the same from inside the repository:
 
 ```nix
 let
@@ -20,109 +80,36 @@ golconda.lib.mkSystem {
 }
 ```
 
-Build the `/usr` tree:
+| argument   | meaning                                                                                                            |
+| ---------- | ------------------------------------------------------------------------------------------------------------------ |
+| `config`   | a path to a TOML file, or an attribute set of options already loaded                                               |
+| `platform` | the target platform, default the build host's (`builtins.currentSystem`)                                           |
+| `system`   | the build host, default `builtins.currentSystem`                                                                   |
+| `sources`  | the pins, default `nix/sources.nix`                                                                                |
+| `extra`    | Nix-only options merged into the TOML's, one module path at a time (a package override, a fragment written in Nix) |
+
+`mkSystem` binds `/pkgs.target` to the platform's set, turns every `/services/*` table into that
+module's fragment, adds `/vars` and `/factory`, composes, and returns:
+
+| field             | content                                                                    |
+| ----------------- | -------------------------------------------------------------------------- |
+| `composed`        | the composer output ([Modules](modules/README.md#the-composer-output))     |
+| `usrTree`         | the `/usr` tree derivation with the artifacts in `/usr/lib/golconda/`      |
+| `config`          | the normalized options by module path, derivations replaced by their names |
+| `platform`        | the elaborated platform record                                             |
+| `version`, `name` | from `/system`                                                             |
+| `pkgs`            | the platform's packages                                                    |
 
 ```sh
-nix-build ./golconda.nix -A usrTree
+iets eval -E '(import ./examples/golconda.nix).usrTree.outPath'
+nix-build -E '(import ./examples/golconda.nix).usrTree'    # through the patched daemon
 ```
 
-The result is a derivation whose output is `/usr`: units, files, packages and symlinks, plus the
-image artifacts in `/usr/lib/golconda/`.
-
-### mkSystem interface
-
-`lib.mkSystem { config; platform?; sources?; extra?; }` returns:
-
-| field      | type       | description                                         |
-| ---------- | ---------- | --------------------------------------------------- |
-| `composed` | attrset    | the composer output (units, files, links, packages) |
-| `usrTree`  | derivation | the `/usr` tree ready for the image builder         |
-| `config`   | attrset    | the normalized configuration, no derivations        |
-| `platform` | attrset    | the elaborated platform record                      |
-| `version`  | string     | YYYYMMDD.N from `/system`                           |
-| `name`     | string     | image id from `/system`                             |
-| `pkgs`     | attrset    | the packages for this platform                      |
-
-`extra` is for Nix-only values: a package override, a fragment written in Nix. It is merged into the
-options the TOML gave, so a configuration can be pure TOML or TOML + Nix.
-
-## Document format
-
-Table names are adios absolute paths, starting with `/`:
-
-```toml
-["/system"]
-name = "myserver"
-version = "2026.10.0"
-
-["/services/sshd"]
-port = 22
-authorizedKeys = [
-  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample admin@example.com",
-]
-
-# Certificates: uncomment to enable
-# trustedUserCAKeys = ["ssh-ed25519 AAAA... user-ca-key"]
-# ["/services/sshd".principals]
-# root = ["admin@example.com"]
-```
-
-Unknown table names (paths that do not match a module) throw with the list of valid paths.
-
-## Valid paths
-
-Every module with options has a path. Run:
-
-```sh
-nix-instantiate --eval -E '(import ./default.nix).configLib.validPaths' --strict
-```
-
-Current paths:
-
-| path             | options                                                                   |
-| ---------------- | ------------------------------------------------------------------------- |
-| `/system`        | `name`, `version`, `fragments`                                            |
-| `/services/sshd` | `package`, `port`, `authorizedKeys`, `trustedUserCAKeys`, `principals`, … |
-
-## Validation
-
-Export the schema and use any JSON Schema validator:
-
-```sh
-# Export the schema
-iets eval --json -E '(import ./default.nix).schema' > schema.json
-
-# Convert TOML to JSON (requires yj or similar)
-yj -tj < examples/server.toml > config.json
-
-# Validate with ajv (npm install -g ajv-cli)
-ajv validate -s schema.json -d config.json
-```
-
-Golconda does not ship a validator in the image yet. Type errors from adios show what the module
-expected; the schema is for editors and external tools.
-
-## Using the configuration
-
-```nix
-let
-  f = import ./default.nix;
-  cfg = f.configLib.loadConfig ./examples/server.toml;
-  tree = f.modules cfg;
-  sshd = tree.modules.services.modules.sshd { };
-in
-sshd
-```
-
-`loadConfig` parses the TOML and returns `{ options = {...}; }`. Pass it to `f.modules` to get an
-evaluated tree. Call each module to get its fragment.
+Below the entry point, the loader alone is `configLib` ([Outputs](outputs.md#configlib)): a caller
+can load a document and list fragments by hand, which is what the tests do.
 
 ## Nix escapes
 
-TOML covers the common path. Nix stays necessary for:
-
-- Custom modules (service definitions not in the tree)
-- Packages not in repkgs (overlays, local derivations)
-- Complex logic (conditionals on hardware, shared values)
-
-A future `imports` key may let TOML configs reference Nix modules.
+TOML covers the common path. Nix stays necessary for a custom module (a service not in the tree), a
+package not in repkgs, and logic (a value shared between options, a conditional). A document cannot
+name a derivation or a function.

@@ -5,20 +5,22 @@ schema is the flake one, produced by flake-incompat.
 
 ## Outputs
 
-| attribute                                      | per system  | content                                                                           |
-| ---------------------------------------------- | ----------- | --------------------------------------------------------------------------------- |
-| `packages.<system>.nix`                        | yes         | the patched Nix daemon repkgs needs (CA + dynamic derivations)                    |
-| `packages.<system>.kernel`                     | yes         | the Linux kernel: the fork's bootable base plus `packages/kernel/golconda.config` |
-| `packages.<system>.usr-tree-smoke`             | yes         | smoke test for the `/usr` tree builder: a minimal system with jq                  |
-| `packages.x86_64-linux.usr-tree-smoke-aarch64` | x86_64 only | cross-compiled `/usr` tree for aarch64                                            |
-| `checks.<system>`                              | yes         | `treefmt`, `docs`, `boundary`, `schema`                                           |
-| `formatter.<system>`                           | yes         | treefmt with pinned tools                                                         |
-| `devShells.<system>.default`                   | yes         | treefmt, mdbook, iets, npins                                                      |
-| `modules`                                      | no          | the adios tree                                                                    |
-| `schema`                                       | no          | JSON Schema 2020-12 of the module tree (see below)                                |
-| `configLib`                                    | no          | TOML configuration loader (see below)                                             |
-| `platforms`                                    | no          | the platforms table (repkgs `nix/platforms.nix`)                                  |
-| `lib.mkSystem`                                 | no          | entry point: TOML config → composed system and `/usr` tree (see below)            |
+| attribute                                      | per system  | content                                                                                                                 |
+| ---------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `packages.<system>.nix`                        | yes         | the patched Nix daemon repkgs needs (CA + dynamic derivations)                                                          |
+| `packages.<system>.kernel`                     | yes         | the Linux kernel: the fork's bootable base plus `packages/kernel/golconda.config`                                       |
+| `packages.<system>.usr-tree-smoke`             | yes         | smoke test for the `/usr` tree builder: the base system plus jq                                                         |
+| `packages.<system>.usr-tree-base-smoke`        | yes         | the `/usr` tree of a system with no fragments: `/base` and `/network` alone                                             |
+| `packages.x86_64-linux.usr-tree-smoke-aarch64` | x86_64 only | cross-compiled `/usr` tree for aarch64                                                                                  |
+| `checks.<system>`                              | yes         | `treefmt`, `docs`, `module-docs`, `boundary`, `schema` (the sandboxed checks)                                           |
+| `formatter.<system>`                           | yes         | treefmt with pinned tools                                                                                               |
+| `devShells.<system>.default`                   | yes         | treefmt, mdbook, iets, npins                                                                                            |
+| `modules`                                      | no          | the adios tree; `modules { options = {...}; }` evaluates it                                                             |
+| `docs-pages`, `docs-summary`                   | no          | the generated reference pages and `SUMMARY.md` (`scripts/docs` writes them)                                             |
+| `schema`                                       | no          | JSON Schema 2020-12 of the module tree (see below)                                                                      |
+| `configLib`                                    | no          | TOML configuration loader (see below)                                                                                   |
+| `platforms`                                    | no          | the platforms table (repkgs `nix/platforms.nix`)                                                                        |
+| `lib.mkSystem`                                 | no          | the entry point: a TOML document → the composed system and its `/usr` tree ([Configuration](config.md#the-entry-point)) |
 
 ## Inputs
 
@@ -67,32 +69,3 @@ f.modules cfg
 - `withPkgs set`: the same loader with the repkgs set bound, so its options carry `"/pkgs".target`
   and a module that needs a package evaluates:
   `(f.configLib.withPkgs set).loadAndApply ./server.toml`.
-
-## `lib.mkSystem`
-
-The entry point for a complete Golconda system. Takes a config and returns everything needed for the
-image builder.
-
-```nix
-let
-  f = import ./default.nix;
-  sys = f.lib.mkSystem { config = ./examples/server.toml; };
-in
-sys.usrTree
-```
-
-`mkSystem { config; platform?; sources?; extra?; }` returns:
-
-| field      | type       | description                                         |
-| ---------- | ---------- | --------------------------------------------------- |
-| `composed` | attrset    | the composer output (units, files, links, packages) |
-| `usrTree`  | derivation | the `/usr` tree with image artifacts                |
-| `config`   | attrset    | the normalized configuration, no derivations        |
-| `platform` | attrset    | the elaborated platform record                      |
-| `version`  | string     | YYYYMMDD.N from `/system`                           |
-| `name`     | string     | image id from `/system`                             |
-| `pkgs`     | attrset    | the packages for this platform                      |
-
-- `config`: a path to a TOML file or an attrset already loaded.
-- `platform`: defaults to the build host's (`builtins.currentSystem`).
-- `extra`: Nix-only options, merged into the TOML (package overrides, custom fragments).
