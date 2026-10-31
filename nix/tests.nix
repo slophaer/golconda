@@ -2354,10 +2354,10 @@ let
           "/network" = { };
         };
       in
-      result.files ? "/usr/lib/systemd/network/default-dhcp.network"
-      && hasInfix "[Match]" result.files."/usr/lib/systemd/network/default-dhcp.network".text
-      && hasInfix "Type=ether" result.files."/usr/lib/systemd/network/default-dhcp.network".text
-      && hasInfix "DHCP=yes" result.files."/usr/lib/systemd/network/default-dhcp.network".text
+      result.files ? "/usr/lib/systemd/network/99-default-dhcp.network"
+      && hasInfix "[Match]" result.files."/usr/lib/systemd/network/99-default-dhcp.network".text
+      && hasInfix "Type=ether" result.files."/usr/lib/systemd/network/99-default-dhcp.network".text
+      && hasInfix "DHCP=yes" result.files."/usr/lib/systemd/network/99-default-dhcp.network".text
     ))
     (check "network: defaultDhcp=false disables default network" (
       let
@@ -2365,7 +2365,7 @@ let
           "/network".defaultDhcp = false;
         };
       in
-      !(result.files ? "/usr/lib/systemd/network/default-dhcp.network")
+      !(result.files ? "/usr/lib/systemd/network/99-default-dhcp.network")
     ))
     (check "network: dns option configures resolved" (
       let
@@ -2393,10 +2393,31 @@ let
           };
         };
       in
-      result.files ? "/usr/lib/systemd/network/static.network"
-      && hasInfix "Name=eth0" result.files."/usr/lib/systemd/network/static.network".text
-      && hasInfix "Address=10.0.0.1/24" result.files."/usr/lib/systemd/network/static.network".text
-      && !(result.files ? "/usr/lib/systemd/network/default-dhcp.network")
+      result.files ? "/usr/lib/systemd/network/50-static.network"
+      && hasInfix "Name=eth0" result.files."/usr/lib/systemd/network/50-static.network".text
+      && hasInfix "Address=10.0.0.1/24" result.files."/usr/lib/systemd/network/50-static.network".text
+      && !(result.files ? "/usr/lib/systemd/network/99-default-dhcp.network")
+    ))
+    (check "network: an explicit network sorts before the default DHCP file" (
+      let
+        result = composeWith {
+          "/network" = {
+            networks.static = {
+              match.Name = "eth0";
+              network.Address = "10.0.0.1/24";
+            };
+          };
+        };
+        files = attrNames result.files;
+        names = filter (p: hasInfix "/systemd/network/" p) files;
+        sorted = sort (a: b: a < b) names;
+      in
+      # networkd takes the first matching file: static must come first
+      names == [
+        "/usr/lib/systemd/network/50-static.network"
+        "/usr/lib/systemd/network/99-default-dhcp.network"
+      ]
+      && sorted == names
     ))
 
     # 12. The kernel config fragment (packages/kernel/golconda.config)
@@ -2893,7 +2914,7 @@ let
           };
         };
       in
-      result.files."/usr/lib/systemd/network/static.network".text
+      result.files."/usr/lib/systemd/network/50-static.network".text
       == "[Match]\nName=eth0\n\n[Network]\nAddress=10.0.0.1/24\nAddress=10.0.1.1/24\nIPv6AcceptRA=no\n\n[Route]\nGateway=10.0.0.254\n"
       &&
         result.files."/usr/lib/systemd/resolved.conf.d/golconda-dns.conf".text
@@ -2908,7 +2929,7 @@ let
           };
         };
       in
-      result.files."/usr/lib/systemd/network/bare.network".text == "[Match]\nName=lo\n"
+      result.files."/usr/lib/systemd/network/50-bare.network".text == "[Match]\nName=lo\n"
     ))
 
     # entry point: system is explicit, platform follows it, no builtins.currentSystem

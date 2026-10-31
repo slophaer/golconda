@@ -92,9 +92,13 @@ in
       # Merge default with user networks (user wins on conflict)
       allNetworks = if options.defaultDhcp then defaultNetwork // options.networks else options.networks;
 
-      # Generate network files
+      # Generate network files. networkd tries the files that match an
+      # interface in lexical order and the first match wins, so an explicit
+      # network must sort before the catch-all DHCP file. Prefixes make that
+      # order independent of the names the operator chose.
+      networkPrefix = name: if name == "default-dhcp" then "99-" else "50-";
       networkFiles = mapAttrs (name: cfg: {
-        path = "/usr/lib/systemd/network/${name}.network";
+        path = "/usr/lib/systemd/network/${networkPrefix name}${name}.network";
         text = renderNetwork name cfg;
       }) allNetworks;
 
