@@ -30,6 +30,7 @@
 { types, ... }:
 let
   ini = import ../lib/ini.nix;
+  versionLib = import ../../lib/version.nix { };
   # /system.updateSource -> /usr/lib/sysupdate.d/*.transfer (image/sysupdate.nix), and the
   # timer that runs them. systemd 257 named the suffix .transfer (.conf still loads, with a
   # warning). systemd 262 renamed systemd-sysupdate.timer to systemd-sysupdate-update.timer
@@ -73,17 +74,11 @@ let
   fragmentT = (import ../lib/fragment.nix { inherit types; }).fragment;
   merge = import ../lib/merge.nix;
 
-  # Version format: YYYYMMDD.N (date plus revision within the day).
-  # strverscmp orders these correctly; versionToEpoch in lib/usr-tree.nix
-  # derives the erofs timestamp from this format.
+  # Version format: YYYYMMDD.N (a real calendar date plus a revision within the day).
+  # strverscmp orders these correctly; lib/version.nix is the one grammar, and
+  # lib/usr-tree.nix versionToEpoch derives the erofs timestamp from it.
   version = types.typedef' "version" (
-    v:
-    if !isString v then
-      "Expected a string"
-    else if match "[0-9]{8}\\.[0-9]+" v == null then
-      "'${v}' is not a version: YYYYMMDD.N, such as 20261031.1"
-    else
-      null
+    v: if !isString v then "Expected a string" else versionLib.error v
   );
 in
 {

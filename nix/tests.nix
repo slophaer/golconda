@@ -243,6 +243,24 @@ let
     in
     deepSeq r r;
   filesThrow = fragments: !(tryEval (filesOf fragments)).success;
+  # Force the /system version type: the composer runs it. The parentheses put
+  # the call inside deepSeq; without them it would apply deepSeq's result.
+  versionAccepted =
+    v:
+    (tryEval (
+      deepSeq (
+        (f.modules {
+          options = {
+            "/pkgs".target = stubSet;
+            "/system" = {
+              name = "t";
+              version = v;
+            };
+          };
+        }).modules.system
+          { }
+      ) true
+    )).success;
 
   check = name: cond: if cond then true else throw "golconda tests: ${name} failed";
   # forcing the units is enough: a type error fires before any field; the
@@ -1270,27 +1288,11 @@ let
 
     # 7. Version format: YYYYMMDD.N
     (check "version format: YYYYMMDD.N accepted" (
-      let
-        validVersions = [
-          "20261031.1"
-          "20260101.0"
-          "20301231.99"
-        ];
-        tryVersion =
-          v:
-          (tryEval (
-            f.modules {
-              options = {
-                "/pkgs".target = stubSet;
-                "/system" = {
-                  name = "t";
-                  version = v;
-                };
-              };
-            }
-          )).success;
-      in
-      all tryVersion validVersions
+      all versionAccepted [
+        "20261031.1"
+        "20260101.0"
+        "20301231.99"
+      ]
     ))
     (check "version format: invalid versions rejected" (
       let
@@ -1300,25 +1302,30 @@ let
           "2026-10-31.1"
           "20261031"
           "v1.0.0"
+          # a real calendar date, not only eight digits: the epoch must not alias another day
+          "20260231.1"
+          "20250229.1"
+          "20260431.1"
+          "20261301.1"
+          "20260001.1"
+          "20261032.1"
+          "20261000.1"
+          # the revision is a second inside the day, not a free counter
+          "20261031.86400"
+          "20261031.999999999999"
+          "19691231.1"
         ];
-        tryVersion =
-          v:
-          (tryEval (
-            deepSeq
-              (f.modules {
-                options = {
-                  "/pkgs".target = stubSet;
-                  "/system" = {
-                    name = "t";
-                    version = v;
-                  };
-                };
-              }).modules.system
-              { }
-              true
-          )).success;
       in
-      !any tryVersion invalidVersions
+      !(any versionAccepted invalidVersions)
+    ))
+
+    (check "version format: leap day and the last second of a day are accepted" (
+      all versionAccepted [
+        "20240229.0"
+        "20000229.1"
+        "20261031.86399"
+        "20261101.0"
+      ]
     ))
 
     # 7b. /system.updateSource renders sysupdate.d
@@ -2129,6 +2136,22 @@ let
     ))
     (check "image: versionToEpoch throws on a bad format too" (
       !(tryEval (imageLib.versionToEpoch "1")).success
+    ))
+    (check "image: versionToEpoch stays inside the date, so no revision aliases a day" (
+      let
+        epoch = usrTreeLib.versionToEpoch;
+        bad = v: !(tryEval (epoch v)).success;
+      in
+      # month, leap-year and day boundaries
+      epoch "20240229.0" - epoch "20240228.0" == 86400
+      && epoch "20240301.0" - epoch "20240229.0" == 86400
+      && epoch "20250228.0" + 86400 == epoch "20250301.0"
+      && epoch "20261031.86399" + 1 == epoch "20261101.0"
+      # the old format accepted these and made them share or pass another day's epoch
+      && bad "20260231.1"
+      && bad "20250229.1"
+      && bad "20261301.1"
+      && bad "20261031.86400"
     ))
     # make-relative is tested in lib/usr-tree/test.nu, against the function the
     # builder runs; lib/usr-tree.nix has no second copy.
@@ -3677,6 +3700,31 @@ let
         transfers."40-uki".Target.PathRelativeTo == "boot"
         && transfers."40-uki".Target.Path == "/EFI/Linux"
         && hasInfix "\nPathRelativeTo=boot\n" ((import ../modules/lib/ini.nix).render transfers."40-uki")
+      ))
+      (check "sysupdate: the UKI counters are the release's boot counter, and the source has none" (
+        let
+          inherit (import ../image/default.nix) bootCounting;
+          uki = transfers."40-uki";
+        in
+        uki.Target.TriesLeft == bootCounting.triesLeft
+        && uki.Target.TriesDone == bootCounting.triesDone
+        && uki.Source.MatchPattern == "golconda-server_@v.efi"
+        && !(hasInfix "+" uki.Source.MatchPattern)
+      ))
+      (check "image: the release UKI has no boot counter; the installed name does" (
+        let
+          release = imageLib.releaseNames {
+            imageId = "golconda-server";
+            inherit version;
+          };
+          installed = imageLib.ukiName {
+            imageId = "golconda-server";
+            inherit version;
+          };
+        in
+        release.uki == "golconda-server_${version}.efi"
+        && installed == "golconda-server_${version}+3-0.efi"
+        && !(hasInfix "+" release.uki)
       ))
       (check "image: the release names are what the sysupdate sources match, version and UUID" (
         let

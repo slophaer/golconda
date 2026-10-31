@@ -22,13 +22,10 @@
   # os-release template
   osRelease = import ./os-release.nix;
 
-  # Boot counting and blessing
-  bootCounting = {
-    triesLeft = 3;
-    triesDone = 0;
-    # UKI naming: <imageId>_<version>+<triesLeft>-<triesDone>.efi
-    # After blessing: <imageId>_<version>.efi (no counter suffix)
-  };
+  # Boot counting and blessing (one source: image/boot-counting.nix)
+  bootCounting = import ./boot-counting.nix;
+  # UKI naming: <imageId>_<version>+<triesLeft>-<triesDone>.efi
+  # After blessing: <imageId>_<version>.efi (no counter suffix)
 
   # Key layout (paths relative to deployment keys directory)
   keys = {

@@ -26,6 +26,7 @@
 #
 # See docs/reference/image.md for artifact naming conventions.
 let
+  bootCounting = import ./boot-counting.nix;
   slots = {
     usr = {
       label = "usr_@v";
@@ -94,8 +95,8 @@ let
             "${imageId}_@v.efi"
           ];
           Mode = "0644";
-          TriesLeft = 3;
-          TriesDone = 0;
+          TriesLeft = bootCounting.triesLeft;
+          TriesDone = bootCounting.triesDone;
           InstancesMax = 2;
         };
       };
