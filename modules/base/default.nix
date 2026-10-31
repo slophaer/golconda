@@ -7,8 +7,9 @@
 #! Packages: systemd, dbus-broker, dash (linked as /usr/bin/sh; the image
 #! has no bash), uutils-coreutils, tpm2-tss (only systemd's dlopen reaches
 #! it), e2fsprogs (mkfs.ext4 and fsck.ext4 for the root partition systemd-repart
-#! makes at first boot), cacert (Mozilla's roots, one bundle) and the kernel
-#! (consumed later by the UKI builder). No GNU coreutils.
+#! makes at first boot), cacert (Mozilla's roots, one bundle), tzdata
+#! (/usr/share/zoneinfo) and the kernel (consumed later by the UKI builder).
+#! No GNU coreutils.
 #!
 #! Units enabled: dbus.socket (wanted by sockets.target), dbus-broker.service
 #! (as the dbus.service alias), systemd-networkd, systemd-resolved,
@@ -29,7 +30,8 @@
 #!   units, systemd-fsck and udev rules exec (the whole packages would bring
 #!   100 more tools).
 #! - `/usr/share/ca-certificates/ca-bundle.crt`: cacert's Mozilla bundle, the
-#!   one CA file of the image.
+#!   one CA file of the image;
+#! - `/usr/share/zoneinfo`: tzdata's zone database, the one time zone source.
 #!
 #! Files: the timesyncd and journald drop-ins, and
 #! `/usr/lib/repart.d/30-root.conf` (the root partition systemd-repart makes
@@ -40,6 +42,7 @@
 #! OPENSSLDIR=/etc/ssl, so OpenSSL reads /etc/ssl/cert.pem, and curl is built
 #! with CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt. Both link the one
 #! bundle in /usr, so an update carries it and /etc holds no copy.
+#! `L /etc/localtime` is the factory's line: it links `/usr/share/zoneinfo/<timezone>`, UTC by default.
 #!
 #! Unit drop-ins (a link to /dev/null cannot mask a unit the systemd farm
 #! already ships): systemd-firstboot.service runs without prompts (no local
@@ -375,6 +378,17 @@ in
         "L /etc/ssl/certs/ca-certificates.crt - - - - /usr/share/ca-certificates/ca-bundle.crt"
       ];
 
+      # The zone database: /etc/localtime (the factory's tmpfiles line) links
+      # /usr/share/zoneinfo/<timezone>, UTC by default. One directory link: the
+      # zone files are data that no $ORIGIN rule reaches.
+      zoneinfoLinks = [
+        {
+          path = "/usr/share/zoneinfo";
+          target = "${p.tzdata}/share/zoneinfo";
+          kind = "explicit";
+        }
+      ];
+
       # PAM modules: Linux-PAM loads a relative module name from /usr/lib/security/, and the
       # factory's stacks name <package>/<module>. Each package's module directory is one
       # directory link: repkgs writes DT_NEEDED as $ORIGIN/../../../<dep>/lib/..., $ORIGIN is
@@ -518,6 +532,7 @@ in
         p.tpm2-tss # dlopen only (see dlopenSonames): nothing else brings it into the closure
         p.e2fsprogs # mkfs.ext4 and fsck.ext4: repart makes the root partition at first boot
         p.cacert # the one CA bundle: /usr/share/ca-certificates/ca-bundle.crt
+        p.tzdata # the zone database: /usr/share/zoneinfo
         p.linux-kernel # kernel; UKI builder consumes it
       ];
 
@@ -546,6 +561,7 @@ in
         ++ dlopenLinks
         ++ pamLinks
         ++ caBundleLinks
+        ++ zoneinfoLinks
       );
 
       # The dbus user, if dbus-broker needs it. dbus-broker runs as root by

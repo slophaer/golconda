@@ -47,6 +47,7 @@ administrator overrides in `/etc`, state in `/var`, exactly as systemd documents
 | users                     | sysusers + factory `/etc`                      | shadow suite                    |
 | boot                      | systemd-boot + UKI                             | GRUB, loose kernel and initrd   |
 | disk                      | repart, sysupdate, erofs, dm-verity, LUKS2     | runtime partitioners, squashfs  |
+| time zone data            | tzdata, UTC unless `/factory.timezone` says so | per-service `TZ`                |
 | filesystem layout         | merged `/usr`, `/usr/sbin → bin`               | `/lib64`, `/usr/local`, `/opt`  |
 | store                     | `/usr/nix/store`, image only                   | a Nix daemon on the machine     |
 
