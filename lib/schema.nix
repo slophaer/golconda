@@ -242,6 +242,10 @@ let
           "x-golconda" = "package";
           description = "The package; its first bin entry is the program.";
         };
+        program = {
+          type = "string";
+          description = "The executable, one of the package's bin entries; default the first.";
+        };
         argv = {
           "$ref" = "#/$defs/argv";
         };
@@ -260,15 +264,18 @@ let
     };
 
     argv = {
-      description = "Program arguments (strings only in app.argv; credential refs only in service.extraArgv).";
+      description = "Program arguments after the executable: strings (no newline) and credential references, which render as `<prefix>%d/<credential>`.";
       type = "array";
       items = {
-        type = "string";
+        anyOf = [
+          { type = "string"; }
+          { "$ref" = "#/$defs/credentialRef"; }
+        ];
       };
     };
 
     appFiles = {
-      description = "File name -> text, no per-machine values.";
+      description = "File name -> text, installed to /usr/lib/<service>/<name>; no per-machine values.";
       type = "object";
       additionalProperties = {
         type = "string";
@@ -315,7 +322,7 @@ let
     };
 
     credentialRef = {
-      description = "{ credential; prefix?; } rendered as `<prefix>%d/<credential>`.";
+      description = "{ credential; prefix?; } in an argv, rendered as `<prefix>%d/<credential>`; the service must declare the credential.";
       type = "object";
       properties = {
         credential = {
@@ -336,7 +343,7 @@ let
 
     # modules/lib/service.nix
     service = {
-      description = "A service: an app plus what only a unit has (scope, credentials, state, user, sandbox, ordering). `user` is required for scope system and refused for scope user, which also refuses credentials.";
+      description = "A service: an app plus what only a unit has (scope, credentials, state, user, sandbox, ordering). Rendered as ExecStart=/usr/bin/<program> <argv> with the app's files under /usr/lib/<name>/. `user` is required for scope system and refused for scope user, which also refuses credentials.";
       type = "object";
       properties = {
         name = {
@@ -347,16 +354,6 @@ let
         };
         scope = {
           "$ref" = "#/$defs/serviceScope";
-        };
-        extraArgv = {
-          type = "array";
-          items = {
-            anyOf = [
-              { type = "string"; }
-              { "$ref" = "#/$defs/credentialRef"; }
-            ];
-          };
-          description = "Unit-only arguments after app.argv.";
         };
         credentials = {
           type = "object";
@@ -521,7 +518,7 @@ let
 
     # modules/pkgs/default.nix
     repkgsSet = {
-      description = "The repkgs set of one platform (nix/packages.nix): `pkgs`, `wrap` and the rest. nix/default.nix passes it as options.\"/pkgs\".set; a configuration document cannot.";
+      description = "The repkgs set of one platform (nix/packages.nix): `pkgs` and the rest. nix/default.nix passes it as options.\"/pkgs\".set; a configuration document cannot.";
       "x-golconda" = "set";
     };
   };

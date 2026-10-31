@@ -1,23 +1,23 @@
-# The service type and its systemd renderer. A service is an `app` (app.nix)
-# plus what only a unit has: credentials, state, user, sandbox, ordering.
-# `render service` returns a fragment (fragment.nix) for the composer. No
-# enable flag: a service in `fragments` is on. Two instances are two names;
-# the composer refuses a duplicate unit. Report:
+# The service type and its systemd renderer, the one renderer. A service is
+# an `app` (app.nix) plus what only a unit has: credentials, state, user,
+# sandbox, ordering. `render service` returns a fragment (fragment.nix):
+# ExecStart=/usr/bin/<program> <argv...>, where a credential reference in
+# argv is %d/<name> and the app's files are written to /usr/lib/<name>/<file>
+# (`filesDir name`). No enable flag: a service in `fragments` is on. Two
+# instances are two names; the composer refuses a duplicate unit. Report:
 # ~/spikes/research-services/REPORT.md section 3.
 #
 #   let s = import ../../lib/service.nix { inherit types; };
-#   in s.render { name = "foo"; app = { package = pkg; }; user = "dynamic"; sandbox = "strict"; }
+#   in s.render { name = "foo"; app = { package = pkg; argv = [ "-f" "${s.filesDir "foo"}/foo.conf" ];
+#                 files."foo.conf" = "..."; }; user = "dynamic"; sandbox = "strict"; }
 { types }:
 let
   appLib = import ./app.nix { inherit types; };
   inherit (import ./var.nix { inherit types; }) word;
   inherit (appLib)
     app
-    credentialRef
     exe
-    filesPlaceholder
     isCredentialRef
-    wrapApp
     ;
   inherit (types)
     attrsOf
@@ -27,7 +27,6 @@ let
     string
     struct
     typedef'
-    union
     ;
   inherit (builtins)
     attrNames
@@ -149,16 +148,9 @@ let
       # required for a system service; refused for a user one, which runs as
       # the user whose manager starts it
       user = optionalAttr user;
-      # unit-only arguments after app.argv: strings or { credential = "n"; prefix ? ""; }
-      # (<prefix>%d/n); default [ ]
-      extraArgv = optionalAttr (
-        listOf (union [
-          string
-          credentialRef
-        ])
-      );
       # credential name -> credstore id: LoadCredentialEncrypted=name:id; default { }.
       # System scope only: Golconda seals credentials for the system manager.
+      # app.argv names a credential as { credential = "n"; prefix ? ""; }.
       credentials = optionalAttr (attrsOf string);
       # StateDirectory= entries under /var/lib; default [ ]
       state = optionalAttr (listOf string);
@@ -175,6 +167,8 @@ let
       wantedBy = optionalAttr (listOf targetName);
     }).override
       {
+        # no unknown field: a stale or misspelt one (`extraArgv`) is an error
+        unknown = false;
         verify =
           svc:
           if isUser svc && svc ? user then
@@ -223,15 +217,12 @@ let
 
   sortStrings = sort (a: b: a < b);
 
-  # The unit text and the parts both renderers share. `argv` is the complete
-  # ExecStart= list after the executable; `envLines` is Environment= or
-  # nothing, by whether the launch record carries the environment.
-  buildUnit =
-    {
-      svc,
-      argv,
-      envLines,
-    }:
+  # Where the renderer writes a service's app files: /usr/lib/<name>/<file>.
+  # A module uses the same function for the paths it puts in argv.
+  filesDir = name: "/usr/lib/${name}";
+
+  build =
+    svc:
     let
       credentials = svc.credentials or { };
 
@@ -246,8 +237,7 @@ let
       execStart = [
         (exe svc.app)
       ]
-      ++ argv
-      ++ map (a: if isCredentialRef a then checkedRef a else arg a) (svc.extraArgv or [ ]);
+      ++ map (a: if isCredentialRef a then checkedRef a else arg a) (svc.app.argv or [ ]);
 
       user = isUser svc;
       userLines =
@@ -271,7 +261,7 @@ let
         "[Service]"
         "ExecStart=${concatStringsSep " " execStart}"
       ]
-      ++ envLines
+      ++ envLines (svc.app.env or { })
       ++ map (n: "LoadCredentialEncrypted=${n}:${credentials.${n}}") (sortStrings (attrNames credentials))
       ++ map (d: "StateDirectory=${d}") (svc.state or [ ])
       ++ (if svc ? runtimeDirectory then [ "RuntimeDirectory=${svc.runtimeDirectory}" ] else [ ])
@@ -302,74 +292,41 @@ let
         path = "${unitDir}/${t}.wants/${unitFileName}";
         target = "../${unitFileName}";
       }) wantedByTargets;
+
+      # the app's files, under /usr/lib/<name>/
+      appFiles = svc.app.files or { };
+      files = builtins.listToAttrs (
+        map (f: {
+          name = "${filesDir svc.name}/${f}";
+          value = appFiles.${f};
+        }) (attrNames appFiles)
+      );
     in
     {
       # A system unit is a typed `units` entry; a user unit is a file under
       # /usr/lib/systemd/user, so the composer's duplicate check covers both.
       links = wantsLinks;
+      # StateDirectory= creates and owns the state; no tmpfiles lines needed
+      packages = [ svc.app.package ];
     }
     // (
       if user then
-        { files."${unitDir}/${unitFileName}" = text + "\n"; }
+        {
+          files = files // {
+            "${unitDir}/${unitFileName}" = text + "\n";
+          };
+        }
       else
         {
+          inherit files;
           units.${unitFileName} = text + "\n";
           sysusers = if isSysusersLine svc.user then [ svc.user ] else [ ];
         }
     );
 
-  # Build without wrap: config files go to /usr/lib/<name>/, argv is on ExecStart.
-  buildUnwrapped =
-    svc:
-    let
-      filesDir = "/usr/lib/${svc.name}";
-      expandFiles = replaceStrings [ filesPlaceholder ] [ filesDir ];
-      files = svc.app.files or { };
-      unit = buildUnit {
-        inherit svc;
-        argv = map (a: arg (expandFiles a)) (svc.app.argv or [ ]);
-        envLines = envLines (svc.app.env or { });
-      };
-    in
-    unit
-    // {
-      files =
-        unit.files or { }
-        // builtins.listToAttrs (
-          map (f: {
-            name = "${filesDir}/${f}";
-            value = files.${f};
-          }) (attrNames files)
-        );
-      # StateDirectory= creates and owns the state; no tmpfiles lines needed
-      packages = [ svc.app.package ];
-    };
-
-  # Build with wrap: config files are in the wrapped output; argv and env are
-  # in the launch record; only extraArgv (credential refs) stays on ExecStart.
-  buildWrapped =
-    wrap: svc:
-    let
-      unit = buildUnit {
-        inherit svc;
-        argv = [ ];
-        envLines = [ ];
-      };
-    in
-    unit
-    // {
-      # No app files: they are in the wrapped output's share/wrap/<pkgname>/
-      files = unit.files or { };
-      # The wrapped derivation goes into the farm, not the original package
-      packages = [ (wrapApp wrap svc.app) ];
-    };
-
   # service -> fragment; type-checks first, so a bad value throws with the
   # korora message instead of failing somewhere inside the text.
-  # When `wrap` is provided (repkgs' set.wrap), the wrapped binary carries
-  # argv, env and files; only extraArgv stays on ExecStart.
-  render = svc: service.check svc (buildUnwrapped svc);
-  renderWrapped = wrap: svc: service.check svc (buildWrapped wrap svc);
+  render = svc: service.check svc (build svc);
 in
 {
   inherit
@@ -381,14 +338,12 @@ in
     killMode
     scope
     escape
+    filesDir
     render
-    renderWrapped
     ;
   inherit (appLib)
     app
     credentialRef
-    file
-    wrapApp
     ;
   credential = n: { credential = n; };
   # `-o RevokedKeys=%d/krl` style: credentialArg "RevokedKeys=" "krl"

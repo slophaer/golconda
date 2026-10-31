@@ -1,6 +1,6 @@
 # The app type: what a program needs to run, with nothing systemd-specific in
-# it. One core type, embedded in `service` (service.nix) and later rendered to
-# a wrapped binary (repkgs `launch` records). Reports:
+# it: package, program, argv, env and files. One core type, embedded in
+# `service` (service.nix), whose renderer turns it into a unit. Reports:
 # ~/spikes/research-services/REPORT-wrappers.md section 3.
 #
 # modules/lib is not a module directory (no default.nix); modules import it:
@@ -16,6 +16,7 @@ let
     string
     struct
     typedef'
+    union
     ;
   inherit (builtins)
     any
@@ -28,11 +29,11 @@ let
 
   inherit (builtins) isString match;
 
-  # A credential reference, { credential = "name"; prefix ? ""; }. It renders
-  # as <prefix>%d/name, which exists only inside a systemd unit, so only
-  # `service.extraArgv` accepts it; `app.argv` refuses it below. The prefix
-  # is for programs that take a path as `-o Option=<path>`: it is glued to
-  # the path, so it is one shell word of plain characters.
+  # A credential reference, { credential = "name"; prefix ? ""; }. The
+  # renderer writes it as <prefix>%d/name and checks that the service
+  # declares the credential. The prefix is for programs that take a path as
+  # `-o Option=<path>`: it is glued to the path, so it is one shell word of
+  # plain characters.
   credentialRef =
     (struct "credentialRef" {
       credential = string;
@@ -51,18 +52,20 @@ let
       { unknown = false; };
   isCredentialRef = v: credentialRef.verify v == null;
 
-  # argv of an app: strings only, with a clear message for the one mistake the
-  # type exists to catch.
+  # argv of an app: strings and credential references, with a clear message
+  # for the one mistake the type exists to catch.
   argv = typedef' "argv" (
     v:
     if !isList v then
-      "Expected type 'argv' (a list of strings)"
-    else if any isCredentialRef v then
-      "a credential reference belongs in service.extraArgv, not in app.argv: an app runs outside systemd and has no %d"
+      "Expected type 'argv' (a list of strings and credential references)"
     else if any (a: isString a && match ".*\n.*" a != null) v then
       "an argument must not contain a newline: it would end the ExecStart= line of the unit"
     else
-      (listOf string).verify v
+      (listOf (union [
+        string
+        credentialRef
+      ])).verify
+        v
   );
 
   # One launch env operation: exactly one key.
@@ -88,7 +91,7 @@ let
   # One image serves every machine, so an app file holds no per-machine
   # value (docs/design/modules.md). A credential path or a key is the one
   # that gets pasted by mistake; the type refuses the markers and names the
-  # file. A secret belongs in a credential, named from service.extraArgv.
+  # file. A secret belongs in a credential, referenced from argv.
   perMachineMarkers = [
     "%d/"
     "$CREDENTIALS_DIRECTORY"
@@ -120,7 +123,7 @@ let
             if err != null then
               err
             else if hasInfix m v.${name} then
-              "app file '${name}' contains '${m}': an app file holds no per-machine value; a credential is named in service.extraArgv and read from %d"
+              "app file '${name}' contains '${m}': an app file holds no per-machine value; a credential is referenced from argv and read from %d"
             else
               null
           ) null perMachineMarkers
@@ -132,15 +135,17 @@ let
       package = derivation;
       # the executable in the package's `bin` list; default: its first entry
       program = optionalAttr string;
-      # default [ ]; may contain the `{files}` placeholder (see `file`)
+      # default [ ]; strings and credential references
       argv = optionalAttr argv;
       # default { }
       env = optionalAttr (attrsOf envOp);
-      # file name -> text; default { }. Every renderer installs them and expands
-      # `{files}`. No per-machine value: see `files`.
+      # file name (may hold a directory, "principals/root") -> text; default { }.
+      # The renderer installs them under /usr/lib/<service>/. No per-machine
+      # value: see `files`.
       files = optionalAttr files;
     }).override
       {
+        unknown = false;
         verify =
           a:
           if a ? program && a.package ? bin && !builtins.elem a.program a.package.bin then
@@ -151,51 +156,13 @@ let
             null;
       };
 
-  # The path of an app file, for use inside `argv`: `file "sshd_config"` is
-  # "{files}/sshd_config". Each renderer expands `{files}` to where it put
-  # `app.files` (the unit renderer: /usr/lib/<service>; the wrapped-binary
-  # renderer: its own share directory). The same placeholder style as `launch`.
-  filesPlaceholder = "{files}";
-  file = name: "${filesPlaceholder}/${name}";
-
   # The program name: `program`, else the first of the package's `bin` list
   # (repkgs packages carry it at evaluation time, defaulting to the package
   # name). A stand-in derivation falls back to pname or name.
   binName = a: a.program or (head (a.package.bin or [ (a.package.pname or a.package.name) ]));
 
-  # The directory for app files in a wrapped output: {root}/share/wrap/<pkgname>.
-  # The `launch` record uses {root} as a placeholder expanded at run time.
-  wrappedFilesDir = a: "{root}/share/wrap/${a.package.pname or a.package.name}";
-
-  # Wrap an app into a relocatable binary that carries its own argv, env and files.
-  # The wrapped derivation goes into the farm; its bin/<exe> is a launcher that
-  # executes the original binary with the app's arguments and environment.
-  # `wrap` is repkgs' `set.wrap` function, passed by the caller. Its output
-  # declares no `bin`, and it wraps every executable of the package with the
-  # same argv, so the farm links only the program: /usr/bin/<program> is the
-  # launcher, nothing else of the wrapped output is reachable by name.
-  # `wraps` names the package it stands in for: the farm lets the launcher
-  # take /usr/bin/<program> from that package (merge.nix), not from another.
-  wrapApp =
-    wrap: a:
-    let
-      # Expand {files} in argv to the wrapped output's share directory
-      expandFiles = builtins.replaceStrings [ filesPlaceholder ] [ (wrappedFilesDir a) ];
-    in
-    wrap {
-      inherit (a) package;
-      argv = builtins.map expandFiles (a.argv or [ ]);
-      env = a.env or { };
-      files = a.files or { };
-    }
-    // {
-      bin = [ (binName a) ];
-      wraps = a.package;
-    };
-
-  # The path a unit executes. With a wrapped binary this is still /usr/bin/<exe>
-  # because the farm symlinks to the wrapped output. Keep every ExecStart= path
-  # behind this one function.
+  # The path a unit executes: the program in the /usr/bin farm. Keep every
+  # ExecStart= path behind this one function.
   exe = a: "/usr/bin/${binName a}";
 in
 {
@@ -206,12 +173,8 @@ in
     credentialRef
     envOp
     exe
-    file
     files
-    filesPlaceholder
     isCredentialRef
     perMachineMarkers
-    wrapApp
-    wrappedFilesDir
     ;
 }

@@ -108,24 +108,12 @@ let
     // {
       pname = "openssh";
     };
-  # a stub for repkgs' `wrap`: the same shape as its output (a new name, no
-  # `bin`), with the arguments it received
-  stubWrap =
-    args:
-    removeAttrs (args.package // { _wrapArgs = args; }) [ "bin" ]
-    // {
-      name = "${args.package.pname or args.package.name}-wrap";
-      outPath = "${args.package}-wrap-${
-        builtins.hashString "sha256" (builtins.toJSON (removeAttrs args [ "package" ]))
-      }";
-    };
-  # the repkgs set as /pkgs sees it: the stand-ins above and the stub wrap
+  # the repkgs set as /pkgs sees it: the stand-ins above
   stubSet = {
     pkgs = {
       inherit openssh;
       jq = standIn;
     };
-    wrap = stubWrap;
   };
   withPkgs =
     options:
@@ -203,9 +191,8 @@ let
       { };
   unit = system.units."sshd.service";
   varUnit = system.units."golconda-var-sshd-hostkey.service";
-  # the launcher carries the configuration: the stub wrap recorded it
-  sshdWrapped = builtins.head (builtins.filter (p: p ? _wrapArgs) system.packages);
-  sshdConfig = sshdWrapped._wrapArgs.files.sshd_config;
+  sshdDir = "/usr/lib/sshd";
+  sshdConfig = system.files."${sshdDir}/sshd_config".text;
 
   # 1a. sshd with certificates: a user CA, principals, a KRL and a host certificate
   certTree = withPkgs {
@@ -218,9 +205,7 @@ let
   };
   certSshd = compose [ (certTree.modules.services.modules.sshd { }) ];
   certUnit = certSshd.units."sshd.service";
-  certWrapped = builtins.head (builtins.filter (p: p ? _wrapArgs) certSshd.packages);
-  certConfig = certWrapped._wrapArgs.files.sshd_config;
-  certArgv = builtins.concatStringsSep " " certWrapped._wrapArgs.argv;
+  certConfig = certSshd.files."${sshdDir}/sshd_config".text;
   sshdOptions = attrNames (import ../modules/services/sshd/default.nix { inherit types; }).options;
   sshdTree = opts: withPkgs { "/services/sshd" = opts; };
   sshdThrows = opts: throws (compose [ ((sshdTree opts).modules.services.modules.sshd { }) ]);
@@ -253,56 +238,55 @@ let
       hasInfix "LoadCredentialEncrypted=hostkey:sshd-hostkey.key" unit
     ))
     (check "sshd: credential ref renders as %d" (hasInfix " -h %d/hostkey" unit))
-    (check "sshd: runs the launcher from the farm" (
-      hasInfix "\nExecStart=/usr/bin/sshd -h %d/hostkey\n" unit
-      && sshdWrapped.bin == [ "sshd" ]
-      && any (l: l.path == "/usr/bin/sshd" && l.target == "${sshdWrapped}/bin/sshd") system.links
+    (check "sshd: ExecStart is the program from the farm with its config and credential" (
+      hasInfix "\nExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config -h %d/hostkey\n" unit
+      && any (l: l.path == "/usr/bin/sshd" && l.target == "${openssh}/bin/sshd") system.links
     ))
-    (check "sshd: the launcher reads its own sshd_config" (
-      sshdWrapped._wrapArgs.argv == [
-        "-D"
-        "-e"
-        "-f"
-        "{root}/share/wrap/openssh/sshd_config"
-        "-o"
-        "AuthorizedKeysFile=.ssh/authorized_keys {root}/share/wrap/openssh/authorized_keys.%u"
+    (check "sshd: the configuration is under /usr/lib/sshd, mode 0644" (
+      builtins.filter (hasPrefix "${sshdDir}/") (attrNames system.files) == [
+        "${sshdDir}/authorized_keys/root"
+        "${sshdDir}/sshd_config"
       ]
-      && sshdWrapped._wrapArgs.package == openssh
+      && system.files."${sshdDir}/sshd_config".mode == "0644"
+      && hasInfix "\nPort 22\n" sshdConfig
     ))
-    (check "sshd: no file under /usr/lib/sshd" (
-      !any (hasPrefix "/usr/lib/sshd/") (attrNames system.files)
+    (check "sshd: authorized keys file and the AuthorizedKeysFile line" (
+      system.files."${sshdDir}/authorized_keys/root".text == "ssh-ed25519 AAAA test\n"
+      && hasInfix "\nAuthorizedKeysFile .ssh/authorized_keys /usr/lib/sshd/authorized_keys/%u\n" sshdConfig
+      && !hasInfix "AuthorizedKeysFile" unit
     ))
-    (check "sshd: authorized keys file is in the launcher" (
-      sshdWrapped._wrapArgs.files."authorized_keys.root" == "ssh-ed25519 AAAA test\n"
-    ))
-    (check "sshd: the plain package keeps its other tools" (
+    (check "sshd: the package's other tools are in the farm" (
       any (l: l.path == "/usr/bin/ssh-keygen" && l.target == "${openssh}/bin/ssh-keygen") system.links
       && any (l: l.path == "/usr/bin/ssh") system.links
     ))
     (check "sshd: the program must be one of the package's executables" (sshdThrows {
       package = standIn;
     }))
-    (check "pkgs: /pkgs returns the set, its pkgs and wrap" (
+    (check "pkgs: /pkgs returns the set and its pkgs, nothing else" (
       pkgsResult.set.pkgs == stubSet.pkgs
       && pkgsResult.pkgs.openssh == openssh
-      && (pkgsResult.wrap { package = standIn; }).name == "jq-wrap"
+      &&
+        attrNames pkgsResult == [
+          "pkgs"
+          "set"
+        ]
     ))
     (check "pkgs: sshd takes openssh from the set" (
-      sshdWrapped._wrapArgs.package == openssh
+      elem openssh system.packages
       && (sshdTree { package = standIn; }).modules.services.modules.sshd.args.options.package == standIn
     ))
     (check "pkgs: without the set, sshd and /pkgs throw" (
       throws (noSet.modules.services.modules.sshd { }) && !(tryEval (noSet.modules.pkgs { })).success
     ))
-    (check "pkgs: the set must have pkgs and wrap" (
+    (check "pkgs: the set must have pkgs" (
       let
         setThrows =
           set:
           !(tryEval (builtins.seq ((f.modules { options."/pkgs".set = set; }).modules.pkgs { }).set true))
           .success;
       in
-      setThrows { pkgs = { }; }
-      && setThrows { wrap = stubWrap; }
+      setThrows { pkgs = [ ]; }
+      && setThrows { wrap = _: null; }
       && setThrows "repkgs"
       && !setThrows stubSet
     ))
@@ -349,19 +333,28 @@ let
       ]
     ))
     (check "sshd: without a CA no certificate lines" (
-      !any (hasInfix "TrustedUserCAKeys") sshdWrapped._wrapArgs.argv
-      && !any (hasInfix "AuthorizedPrincipalsFile") sshdWrapped._wrapArgs.argv
+      !hasInfix "TrustedUserCAKeys" unit
+      && !hasInfix "AuthorizedPrincipalsFile" unit
       && !hasInfix "HostCertificate" unit
       && !hasInfix "RevokedKeys" unit
+      && !(system.files ? "${sshdDir}/ca.pub")
+    ))
+    (check "sshd: the whole certificate ExecStart, in order" (
+      hasInfix (
+        "\nExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config -h %d/hostkey"
+        + " -o HostCertificate=%d/hostcert -o RevokedKeys=%d/krl"
+        + " -o TrustedUserCAKeys=/usr/lib/sshd/ca.pub -o AuthorizedPrincipalsFile=/usr/lib/sshd/principals/%%u\n"
+      ) certUnit
     ))
     (check "sshd: user CA keys file" (
-      certWrapped._wrapArgs.files.trusted_user_ca_keys == "ssh-ed25519 AAAA user-ca\n"
-      && hasInfix " -o TrustedUserCAKeys={root}/share/wrap/openssh/trusted_user_ca_keys" certArgv
+      certSshd.files."${sshdDir}/ca.pub".text == "ssh-ed25519 AAAA user-ca\n"
+      && hasInfix " -o TrustedUserCAKeys=/usr/lib/sshd/ca.pub" certUnit
       && !hasInfix "TrustedUserCAKeys" certConfig
     ))
     (check "sshd: principals file and AuthorizedPrincipalsFile" (
-      certWrapped._wrapArgs.files."principals.root" == "alice@example.com\n"
-      && hasInfix " -o AuthorizedPrincipalsFile={root}/share/wrap/openssh/principals.%u" certArgv
+      certSshd.files."${sshdDir}/principals/root".text == "alice@example.com\n"
+      # %u reaches sshd as a literal: the renderer writes %%u in the unit
+      && hasInfix " -o AuthorizedPrincipalsFile=/usr/lib/sshd/principals/%%u" certUnit
     ))
     (check "sshd: host certificate credential and option" (
       hasInfix "LoadCredentialEncrypted=hostcert:sshd-host-cert.cert\n" certUnit
@@ -481,19 +474,48 @@ let
       }
     ]))
 
-    # 2. a credential ref inside app.argv is a type error; in extraArgv it is not
-    (check "app.argv refuses a credential ref" (
-      throws (
-        s.render {
+    # 2. one argv: strings and credential refs; a ref must name a declared credential
+    (check "app.argv accepts a declared credential ref and renders it as %d" (
+      hasInfix "\nExecStart=/usr/bin/jq -c %d/k\n"
+        (s.render {
           name = "x";
           app = {
             package = standIn;
-            argv = [ (s.credential "k") ];
+            argv = [
+              "-c"
+              (s.credential "k")
+            ];
           };
+          credentials.k = "x.k";
           user = "dynamic";
           sandbox = "strict";
-        }
+        }).units."x.service"
+    ))
+    (check "app.argv refuses an undeclared credential ref and a malformed one" (
+      let
+        base = {
+          name = "x";
+          app.package = standIn;
+          user = "dynamic";
+          sandbox = "strict";
+        };
+      in
+      throws (s.render (base // { app.argv = [ (s.credential "k") ]; }))
+      && throws (
+        s.render (
+          base
+          // {
+            app.argv = [
+              {
+                credential = "k";
+                extra = 1;
+              }
+            ];
+            credentials.k = "x.k";
+          }
+        )
       )
+      && throws (s.render (base // { app.argv = [ 1 ]; }))
     ))
     (check "app.argv refuses an argument with a newline" (
       throws (
@@ -524,27 +546,17 @@ let
         }
       )
     ))
-    (check "extraArgv accepts a declared credential ref" (
-      !throws (
-        s.render {
-          name = "x";
-          app.package = standIn;
-          extraArgv = [ (s.credential "k") ];
-          credentials.k = "x.k";
-          user = "dynamic";
-          sandbox = "strict";
-        }
-      )
-    ))
-    (check "extraArgv renders a prefixed credential ref" (
+    (check "app.argv renders a prefixed credential ref" (
       hasInfix " -o RevokedKeys=%d/k\n"
         (s.render {
           name = "x";
-          app.package = standIn;
-          extraArgv = [
-            "-o"
-            (s.credentialArg "RevokedKeys=" "k")
-          ];
+          app = {
+            package = standIn;
+            argv = [
+              "-o"
+              (s.credentialArg "RevokedKeys=" "k")
+            ];
+          };
           credentials.k = "x.k";
           user = "dynamic";
           sandbox = "strict";
@@ -554,24 +566,66 @@ let
       throws (
         s.render {
           name = "x";
-          app.package = standIn;
-          extraArgv = [ (s.credentialArg "Revoked Keys=" "k") ];
+          app = {
+            package = standIn;
+            argv = [ (s.credentialArg "Revoked Keys=" "k") ];
+          };
           credentials.k = "x.k";
           user = "dynamic";
           sandbox = "strict";
         }
       )
     ))
-    (check "extraArgv refuses an undeclared credential ref" (
-      throws (
-        s.render {
+    (check "service and app refuse an unknown field: extraArgv is gone" (
+      let
+        base = {
           name = "x";
           app.package = standIn;
-          extraArgv = [ (s.credential "k") ];
           user = "dynamic";
           sandbox = "strict";
-        }
-      )
+        };
+      in
+      throws (s.render (base // { extraArgv = [ "-D" ]; }))
+      && throws (s.render (base // { app.wraps = standIn; }))
+      && hasInfix "extraArgv" (s.service.verify (base // { extraArgv = [ "-D" ]; }))
+      && !throws (s.render base)
+    ))
+    (check "render writes the app's files under /usr/lib/<name>, directories included" (
+      let
+        frag = s.render {
+          name = "foo";
+          app = {
+            package = standIn;
+            argv = [
+              "-f"
+              "${s.filesDir "foo"}/foo.conf"
+            ];
+            files = {
+              "foo.conf" = "a=1\n";
+              "keys/root" = "k\n";
+            };
+          };
+          user = "dynamic";
+          sandbox = "strict";
+        };
+      in
+      s.filesDir "foo" == "/usr/lib/foo"
+      && frag.files."/usr/lib/foo/foo.conf" == "a=1\n"
+      && frag.files."/usr/lib/foo/keys/root" == "k\n"
+      && hasInfix "\nExecStart=/usr/bin/jq -f /usr/lib/foo/foo.conf\n" frag.units."foo.service"
+      && frag.packages == [ standIn ]
+    ))
+    (check "render: Environment= from env operations" (
+      hasInfix "\nEnvironment=HOME=/var/lib/x\n"
+        (s.render {
+          name = "x";
+          app = {
+            package = standIn;
+            env.HOME.set = "/var/lib/x";
+          };
+          user = "dynamic";
+          sandbox = "strict";
+        }).units."x.service"
     ))
 
     # 2b. an app file holds no per-machine value: a credential path or a key is refused,
@@ -1128,8 +1182,10 @@ let
       in
       ((configLib.withPkgs stubSet).loadConfig ../examples/server.toml).options."/pkgs".set.pkgs
       == stubSet.pkgs
-      && hasInfix "ExecStart=/usr/bin/sshd -h %d/hostkey\n" frag.units."sshd.service"
-      && (builtins.head (builtins.filter (p: p ? _wrapArgs) frag.packages))._wrapArgs.package == openssh
+      &&
+        hasInfix "ExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config -h %d/hostkey\n"
+          frag.units."sshd.service"
+      && elem openssh frag.packages
     ))
     (check "config: loadAndApply without the set cannot build sshd" (
       throws (compose [
@@ -1137,122 +1193,7 @@ let
       ])
     ))
 
-    # 5. wrapApp and renderWrapped
-    # A stub wrap function that records what it was called with
-    (check "wrapApp calls wrap with the right record" (
-      let
-        # Stub wrap: returns a derivation-like record with the arguments it received
-        stubWrap =
-          args:
-          standIn
-          // {
-            _wrapArgs = args;
-          };
-        wrapped = a.wrapApp stubWrap {
-          package = standIn;
-          argv = [
-            "-f"
-            "{files}/config"
-          ];
-          env.HOME = {
-            set = "/var/lib/test";
-          };
-          files.config = "x";
-        };
-      in
-      wrapped._wrapArgs.package == standIn
-      &&
-        wrapped._wrapArgs.argv == [
-          "-f"
-          "{root}/share/wrap/jq/config"
-        ]
-      && wrapped._wrapArgs.env.HOME.set == "/var/lib/test"
-      && wrapped._wrapArgs.files.config == "x"
-    ))
-    (check "renderWrapped: ExecStart has only extraArgv" (
-      let
-        stubWrap = args: standIn // { _wrapArgs = args; };
-        frag = s.renderWrapped stubWrap {
-          name = "test";
-          app = {
-            package = standIn;
-            argv = [
-              "-D"
-              "-f"
-              "{files}/config"
-            ];
-            files.config = "Port 22\n";
-          };
-          extraArgv = [
-            "-h"
-            (s.credential "hostkey")
-          ];
-          credentials.hostkey = "test-key";
-          user = "root";
-          sandbox = "trusted";
-        };
-        unit = frag.units."test.service";
-      in
-      # ExecStart has only the binary and extraArgv, not argv
-      hasInfix "ExecStart=/usr/bin/jq -h %d/hostkey\n" unit
-      # No -D or -f in ExecStart (they're in the launch record)
-      && !hasInfix "-D" unit
-      && !hasInfix "-f" unit
-    ))
-    (check "renderWrapped: no files in fragment" (
-      let
-        stubWrap = args: standIn // { _wrapArgs = args; };
-        frag = s.renderWrapped stubWrap {
-          name = "test";
-          app = {
-            package = standIn;
-            files.config = "x";
-          };
-          user = "dynamic";
-          sandbox = "strict";
-        };
-      in
-      frag.files == { }
-    ))
-    (check "renderWrapped: packages has the wrapped derivation" (
-      let
-        stubWrap =
-          args:
-          standIn
-          // {
-            _wrapArgs = args;
-            _isWrapped = true;
-          };
-        frag = s.renderWrapped stubWrap {
-          name = "test";
-          app.package = standIn;
-          user = "dynamic";
-          sandbox = "strict";
-        };
-      in
-      (builtins.head frag.packages)._isWrapped or false == true
-    ))
-    (check "renderWrapped: no env lines in unit" (
-      let
-        stubWrap = _args: standIn;
-        frag = s.renderWrapped stubWrap {
-          name = "test";
-          app = {
-            package = standIn;
-            env.HOME = {
-              set = "/var/lib/test";
-            };
-          };
-          user = "dynamic";
-          sandbox = "strict";
-        };
-        unit = frag.units."test.service";
-      in
-      # Environment= lines are not in the unit (they're in the launch record)
-      !hasInfix "Environment=" unit
-    ))
-
-    # 5b. app.program and the launcher in the farm
+    # 5b. app.program and the /usr/bin farm
     (check "app.program defaults to the first bin and must be one of them" (
       a.binName { package = openssh; } == "ssh"
       &&
@@ -1278,78 +1219,23 @@ let
         }
       )
     ))
-    (check "wrapApp: the launcher declares the program as its one bin and what it wraps" (
-      let
-        w = a.wrapApp stubWrap {
-          package = openssh;
-          program = "sshd";
-        };
-      in
-      w.bin == [ "sshd" ] && w.wraps == openssh && w.name == "openssh-wrap"
-    ))
-    (check "farm: a launcher stands in for the program of its own package" (
-      let
-        w = a.wrapApp stubWrap {
-          package = openssh;
-          program = "sshd";
-        };
-        inherit
-          (compose [
-            {
-              packages = [
-                openssh
-                w
-              ];
-            }
-          ])
-          links
-          ;
-        linksReversed =
-          (compose [
-            {
-              packages = [
-                w
-                openssh
-              ];
-            }
-          ]).links;
-        sshdLink = builtins.filter (l: l.path == "/usr/bin/sshd");
-      in
-      map (l: l.target) (sshdLink links) == [ "${w}/bin/sshd" ]
-      && map (l: l.target) (sshdLink linksReversed) == [ "${w}/bin/sshd" ]
-      && builtins.length links == 3
-      && any (l: l.path == "/usr/bin/ssh" && l.target == "/nix/store/openssh-10.6p1/bin/ssh") links
-    ))
-    (check "farm: a launcher does not take another package's program" (
+    (check "farm: a second package with the same program clashes, whatever it is" (
       !(tryEval (
         deepSeq (farmOf [
           (withBin "dropbear-1" [ "sshd" ])
-          (a.wrapApp stubWrap {
-            package = openssh;
-            program = "sshd";
-          })
+          openssh
         ]) true
       )).success
-    ))
-    (check "farm: two launchers for one program clash" (
-      !(tryEval (
+      && !(tryEval (
         deepSeq (farmOf [
-          (a.wrapApp stubWrap {
-            package = openssh;
-            program = "sshd";
-            argv = [ "-D" ];
-          })
-          (a.wrapApp stubWrap {
-            package = openssh;
-            program = "sshd";
-            argv = [ "-d" ];
-          })
+          openssh
+          (openssh // { outPath = "/nix/store/openssh-10.6p1-other"; })
         ]) true
       )).success
     ))
-    (check "renderWrapped: .wants links and [Install] follow wantedBy" (
+    (check "render: .wants links and [Install] follow wantedBy" (
       let
-        frag = s.renderWrapped stubWrap {
+        frag = s.render {
           name = "w";
           app.package = standIn;
           user = "dynamic";
@@ -1579,18 +1465,22 @@ let
       && composed.units == { }
       && any (l: l.path == "/usr/lib/systemd/user/default.target.wants/agent.service") composed.links
     ))
-    (check "user service: renderWrapped and explicit wantedBy" (
+    (check "user service: files beside the unit and explicit wantedBy" (
       let
-        frag = s.renderWrapped stubWrap {
+        frag = s.render {
           name = "agent";
           scope = "user";
-          app.package = standIn;
+          app = {
+            package = standIn;
+            files."agent.conf" = "x";
+          };
           sandbox = "default";
           wantedBy = [ "graphical-session.target" ];
         };
       in
       hasInfix "WantedBy=graphical-session.target" frag.files."/usr/lib/systemd/user/agent.service"
-      && (builtins.head frag.packages).name == "jq-wrap"
+      && frag.files."/usr/lib/agent/agent.conf" == "x"
+      && frag.packages == [ standIn ]
       &&
         map (l: l.path) frag.links == [
           "/usr/lib/systemd/user/graphical-session.target.wants/agent.service"
@@ -1616,7 +1506,7 @@ let
         credentials.k = "x.k";
       })
       && fails { credentials.k = "x.k"; }
-      && fails { extraArgv = [ (s.credential "k") ]; }
+      && fails { app.argv = [ (s.credential "k") ]; }
       && verify { } == null
     ))
     (check "system service: user is required and scope is an enum" (
@@ -1892,13 +1782,12 @@ let
     # 10. Boundary tests: config-in-store boundary enforcement
     # (docs/design/config.md, docs/design/modules.md)
 
-    # 10a. Positive: wrapped output's config file has no credential paths
-    (check "boundary: wrapped config file has no %d or credential paths" (
-      # sshdConfig is the config file text in the wrapper, not the unit
+    # 10a. Positive: sshd_config in /usr/lib has no credential paths
+    (check "boundary: sshd_config has no %d or credential paths" (
       !hasInfix "%d/" sshdConfig
       && !hasInfix "$CREDENTIALS_DIRECTORY" sshdConfig
       && !hasInfix "/etc/credstore" sshdConfig
-      # credential refs are only in the unit's ExecStart (extraArgv)
+      # credential refs are only in the unit's ExecStart
       && hasInfix "%d/hostkey" unit
     ))
 
