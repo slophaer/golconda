@@ -129,14 +129,26 @@ in
       image-smoke-uki = imageSmoke.uki;
       image-smoke-disk = imageSmoke.disk;
 
-      # Boot test image: examples/test-boot/config.toml with the test CA for SSH login.
-      # The test CA private key is in examples/test-boot/ca; scripts/boot-test uses it.
+      # Boot test image: authorizedKeys for testing SSH login.
+      # The test SSH keypair is a committed test fixture (examples/test-ssh*).
+      # See examples/test-ssh.README for why both keys are committed.
       image-smoke-test =
         let
+          # The test SSH public key: committed in examples/test-ssh.pub.
+          testSshPubKey = builtins.readFile ../examples/test-ssh.pub;
           sys = mkSystem {
             inherit system;
             platform = system;
-            config = ../examples/test-boot/config.toml;
+            config = {
+              "/system" = {
+                name = "boot-test";
+                version = "20261031.1";
+              };
+              "/services/sshd" = {
+                port = 22;
+                authorizedKeys = [ testSshPubKey ];
+              };
+            };
           };
           testKeys = imageLib.throwawayKeys {
             inherit pkgs;
