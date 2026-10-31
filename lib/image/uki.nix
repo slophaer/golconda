@@ -9,8 +9,9 @@
 # ukify build (packages/ukify) joins systemd's stub, the kernel from the linux-kernel package,
 # the initrd, the cmdline (image/uki.nix's template with usrhash= from the verity step, plus
 # rdinit= as lib/image/initrd.nix explains), the system's os-release and the kernel's uname.
-# Secure Boot: systemd-sbsign with sbKey/sbCert. Measured boot: the PCR 11 policy for
-# image/uki.nix's phases, signed with pcrKey (docs/design/trust.md). Keys are paths; the
+# Secure Boot: systemd-sbsign with sbKey/sbCert. Measured boot: one PCR 11 signature per
+# phase path in image/uki.nix's list (ukify --phases), signed with pcrKey, and the built
+# .pcrsig section is checked against the list (docs/design/trust.md). Keys are paths; the
 # production ones live outside the store (image/default.nix keys); the smoke uses throwaways.
 _:
 let
