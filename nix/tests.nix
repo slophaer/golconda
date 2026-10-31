@@ -790,6 +790,7 @@ let
       all (p: hasInfix "[`${p}`](${docs.fileName.${p}})" docs.index) (attrNames docs.pages)
       &&
         attrNames docs.pages == [
+          "/factory"
           "/services/sshd"
           "/system"
           "/wrap"
@@ -797,6 +798,7 @@ let
     ))
     (check "module-docs: files hold every page and the index" (
       attrNames docs.files == [
+        "factory.md"
         "index.md"
         "services-sshd.md"
         "system.md"
@@ -831,8 +833,8 @@ let
       in
       hasInfix "a\\|b &lt;c>" p.pages."/x"
     ))
-    (check "module-docs: no opaque note for a fully described module" (
-      !(hasInfix "Opaque types" docs.pages."/services/sshd")
+    (check "module-docs: sshd's only opaque option is the wrap function" (
+      hasInfix "Options with one: `wrap`." docs.pages."/services/sshd"
     ))
     (check "schema: parseTypeName handles nested generics" (
       let
