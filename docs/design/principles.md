@@ -53,6 +53,11 @@ administrator overrides in `/etc`, state in `/var`, exactly as systemd documents
 The choice is enforced where it can be: repkgs `features` (`tls = "openssl"` set-wide), lints, and
 the boundary check that keeps nixpkgs out of everything but developer tooling.
 
+The one CA file is Mozilla's roots (cacert), kept in `/usr` and linked into `/etc/ssl` at boot at
+the two paths the image's clients read by default: `/etc/ssl/cert.pem` for OpenSSL
+(`OPENSSLDIR=/etc/ssl`) and `/etc/ssl/certs/ca-certificates.crt` for curl. The file lives in `/usr`,
+so an update replaces it and `/etc` keeps no copy to go stale.
+
 ## Duplicates are errors
 
 Two sources for one thing (a unit name, a file path, a `/usr/bin` name, a factory file) are an error

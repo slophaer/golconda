@@ -139,6 +139,8 @@ let
     "rm"
   ];
   stubLinuxKernel = withBin "linux-kernel-6.18.0" [ ];
+  # cacert ships one file, no bin list
+  stubCacert = withBin "cacert-2026.1" [ ];
   # the repkgs set as /pkgs sees it: the stand-ins above
   stubSet = {
     buildPkgs = stubSet.pkgs;
@@ -150,6 +152,7 @@ let
       dbus-broker = stubDbusBroker;
       dash = stubDash;
       uutils-coreutils = stubUutils;
+      cacert = stubCacert;
       linux-kernel = stubLinuxKernel;
     }
     # the libraries /base links for systemd's dlopen (dlopenSonames): no bin, name only
@@ -2360,6 +2363,21 @@ let
       in
       result.links ? "/usr/lib/libsystemd.so.0"
       && result.links."/usr/lib/libsystemd.so.0".kind == "dlopen"
+    ))
+    (check "base: the one CA bundle is cacert's, in /usr, linked from the paths OpenSSL and curl read" (
+      let
+        result = compose [ ];
+        bundle = "/usr/share/ca-certificates/ca-bundle.crt";
+      in
+      any (p: p.name == "cacert-2026.1") result.packages
+      && result.links."${bundle}" == {
+        target = "${stubCacert}/etc/ssl/certs/ca-bundle.crt";
+        kind = "explicit";
+      }
+      # OPENSSLDIR=/etc/ssl (openssl version -d): the default cert file
+      && elem "L /etc/ssl/cert.pem - - - - ${bundle}" result.tmpfiles
+      # curl's compiled-in CURL_CA_BUNDLE
+      && elem "L /etc/ssl/certs/ca-certificates.crt - - - - ${bundle}" result.tmpfiles
     ))
 
     # 12. /network: networkd configuration
