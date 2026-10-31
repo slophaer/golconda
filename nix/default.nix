@@ -130,12 +130,12 @@ in
       image-smoke-disk = imageSmoke.disk;
 
       # Boot test image: authorizedKeys for testing SSH login.
-      # The test SSH keypair is a committed test fixture (examples/test-ssh*).
-      # See examples/test-ssh.README for why both keys are committed.
+      # The test SSH keypair is a committed test fixture (tests/fixtures/snakeoil-ssh*).
+      # See tests/fixtures/README.md for why both keys are committed.
       image-smoke-test =
         let
-          # The test SSH public key: committed in examples/test-ssh.pub.
-          testSshPubKey = builtins.readFile ../examples/test-ssh.pub;
+          # The test SSH public key: committed in tests/fixtures/snakeoil-ssh.pub.
+          testSshPubKey = builtins.readFile ../tests/fixtures/snakeoil-ssh.pub;
           sys = mkSystem {
             inherit system;
             platform = system;
