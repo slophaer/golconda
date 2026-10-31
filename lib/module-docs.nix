@@ -297,13 +297,13 @@ let
         let
           d = depth path;
         in
-        "${indent d}- [\`${path}\`](reference/modules/generated/${fileName path})";
+        "${indent (d + 1)}- [\`${path}\`](reference/modules/generated/${fileName path})";
       moduleEntries = join "\n" (map moduleEntry sortedPaths);
     in
     summaryPrefix
     + moduleEntries
     + "\n"
-    + "${indent 0}- [Types](reference/modules/generated/types.md)\n"
+    + "${indent 1}- [Types](reference/modules/generated/types.md)\n"
     + summarySuffix;
 
   # The main export function.
