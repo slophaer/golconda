@@ -6,12 +6,13 @@ own copy of any of them:
 1. **Secure Boot and measured boot keys** decide *what runs*: the Secure Boot `db` key signs
    systemd-boot and every UKI; the PCR policy key signs the expected PCR 11 values and is what
    TPM2-sealed credentials are bound to. Signed in the image chain today (the smoke uses throwaway
-   keys); enrolment and enforcement are not proven *(planned)*.
+   keys) and proven in a boot test with `--secure-boot`, where firmware refuses the unsigned loader;
+   enrolment is manual and automatic enrolment is *(planned)* ([Deployment keys](#deployment-keys)).
 1. **The verity signing key** decides *what is read*: it signs the root hash of every `/usr` image.
    In v1 it is the Secure Boot `db` key, and the kernel checks the signature against the firmware
    `db` at every boot ([status](#2-verity-key)).
-1. **The CA store** decides *whom the machine talks to*: one set of anchors for every TLS client.
-   *(planned)*
+1. **The CA store** decides *whom the machine talks to*: one bundle, cacert's Mozilla roots, for
+   every TLS client ([status](#3-ca-store)).
 
 A fourth thing, who may log in, is decided outside the image ([Identity](#identity)).
 
@@ -77,30 +78,64 @@ platform keyring, and with `/sys/kernel/security/ipe/success_audit` on, IPE logs
 enrolled stops at switch-root. The builder's own verity key pair (`lib/image/keys.nu`) is no longer
 used.
 
-### 3. CA store *(planned)*
+### 3. CA store
 
 ```mermaid
 flowchart LR
-  anchors["/etc/ssl/anchors/*.pem (Mozilla roots + admin anchors)"] --> trust["p11-kit trust extract"]
-  block["/etc/ssl/blocklist/ (distrust)"] --> trust
-  trust --> bundle["/etc/ssl/certs: bundle + hashed dir"]
-  bundle --> consumers["OpenSSL (OPENSSLDIR=/etc/ssl); Go, rustls, Python via SSL_CERT_FILE"]
+  bundle["/usr/share/ca-certificates/ca-bundle.crt (cacert: Mozilla roots)"] --> pem["/etc/ssl/cert.pem (tmpfiles L link)"]
+  bundle --> crt["/etc/ssl/certs/ca-certificates.crt (tmpfiles L link)"]
+  pem --> openssl["OpenSSL (OPENSSLDIR=/etc/ssl)"]
+  crt --> curl["curl (CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt)"]
 ```
 
-The source of truth is `/etc/ssl` as a p11-kit trust path: anchors in `/etc/ssl/anchors/*.pem` and
-distrust entries in `/etc/ssl/blocklist/`. `p11-kit trust extract` derives the OpenSSL bundle and
-hashed directory from them and honours the blocklist, the only root-level revocation that works
-across TLS stacks. Every consumer points at the same bundle: OpenSSL by `OPENSSLDIR=/etc/ssl`,
-everything else by `SSL_CERT_FILE` in systemd's default environment. No package ships `certifi` or
-its own bundle; there is no Java, so no keystore.
+The image ships one CA file: cacert's Mozilla bundle, linked into `/usr` as
+`/usr/share/ca-certificates/ca-bundle.crt` (`caBundleLinks` in `modules/base/default.nix`). Two
+tmpfiles lines make the paths the image's TLS clients read by default: `L /etc/ssl/cert.pem`, which
+OpenSSL reads because `openssl version -d` says `OPENSSLDIR=/etc/ssl`, and
+`L /etc/ssl/certs/ca-certificates.crt`, which libcurl reads because it is built with
+`CURL_CA_BUNDLE` set to that path. Both are links to the one file in `/usr`, so an image update
+replaces the roots and `/etc` holds no copy to go stale. No package ships `certifi` or its own
+bundle; there is no Java, so no keystore.
 
-Today the factory seeds only the empty `anchors` and `blocklist` directories. Still to come: a
-`ca-certificates` package with the Mozilla roots as anchors in the factory, and a unit
-(`golconda-trust-extract.service`, a path unit on `/etc/ssl/anchors`) that runs `trust extract` into
-`/etc/ssl/certs`, which is a directory of its own because the program rewrites it.
+**Status.** Proven by a boot: the image's OpenSSL, run from the store, validated `example.com` with
+`Verification: OK` and no `CAfile` argument, and with the default paths disabled the same check
+failed with error 20 ("unable to get local issuer certificate"), so the success came from these
+paths and not from a file the test named. The image installs no TLS client binary; the check used
+the store's `openssl` on the held machine.
+
+The p11-kit design is the next step, not the current store: a factory `anchors`/`blocklist` pair, a
+`trust extract` unit that rewrites a hashed `/etc/ssl/certs` directory, and root-level distrust that
+works across TLS stacks. The factory today seeds only the empty directories (`ssl/anchors/.keep`,
+`ssl/blocklist/.keep`, [reference: /factory](../reference/modules/README.md)), and no unit runs
+`trust extract`. Until then the bundle is the whole store: Mozilla roots only, no administrator
+anchors, no distrust list.
 
 Leaf revocation is not unified: OpenSSL, rustls and Go do not share a mechanism. Golconda's own PKI
 uses short-lived certificates instead.
+
+## Deployment keys
+
+A release is signed with the deployment's keys, not the store's throwaways. `image/default.nix`
+names their layout as paths outside the store: `secureboot/PK.crt`, `KEK.crt`, `db.crt` and
+`db.key`, and `pcr/pcr.crt` and `pcr.key` under the keys directory the builder is given. The `db`
+key signs both the UKI (`ukify --secureboot-private-key`, `lib/image/uki.nu`) and the verity root
+hash (`lib/image/verity.nu`), and the same key signs the loader on the ESP (`lib/image/disk.nu`).
+The kernel checks the root hash signature against the platform keyring, which holds the firmware
+`db` ([Verity key](#2-verity-key)). The build checks the signature against the UKI's own certificate
+before the disk is written (`lib/image/uki.nu`, `openssl cms -verify`), so a mismatched key pair
+fails the build rather than the boot. A rotated `db` key needs new images: the UKI, the root hash
+signature and the loader are all signed with it.
+
+The operator protects the private keys offline. They never enter the store, the image or the
+machine; only the certificates are enrolled in firmware. Rotation and recovery:
+
+- **The ESP loader** (review finding 26, still open): no sysupdate transfer updates the loader, so a
+  new `db` key means writing a newly signed systemd-boot to the ESP and enrolling the new
+  certificate in firmware. Until that path exists, a loader repair is manual or a reflash.
+- **An installed machine** with a rotated key: its next UKI and root hash signatures must come from
+  the new key, and firmware must hold the new certificate, or Secure Boot and the verity check fail
+  ([Execution policy](#execution-policy)). With no local console path, that enrolment is offline
+  work on the variable store or a reinstall ([Recovery](recovery.md)).
 
 ## Identity
 
@@ -134,7 +169,21 @@ After v1: operators as `/usr/lib/userdb/*.user` records with `run0` gated by pol
 ids (a root-less image), and one CA for SSH and X.509 with TPM device attestation (workload
 identity). Both are designed, not built.
 
-## TPM2 credential decryption *(planned)*
+## TPM2 credential decryption
+
+Sealed today: the sshd host key, and nothing else. `golconda-var-sshd-hostkey.service` runs
+`/usr/lib/golconda/golconda-var-run`, which calls
+`systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11 --name=sshd-hostkey.key` and writes
+`/etc/credstore.encrypted/sshd-hostkey.key`; sshd loads it with `LoadCredentialEncrypted=`. It is
+the only local var in the image. Not sealed: the state partition (unencrypted in v1, no LUKS), the
+machine-id (a plain file PID 1 writes), the admin vars (the host certificate and the revocation
+list; the deploy tool that pushes and seals them is *(planned)*), and administrator credentials for
+the machine itself.
+
+**Status.** A boot with `--secure-boot --tpm` prints
+`sshd-hostkey.key sealed with: host key + TPM2 + signed PCR policy` (`scripts/boot-test` reads the
+credential header); after a reboot in the same QEMU with the same swtpm state the key is unchanged,
+so it was unsealed, not regenerated.
 
 A phase path is the colon-separated chain of words systemd has measured into PCR 11 up to one boot
 state (`systemd-pcrphase.service(8)`); `systemd-measure --phase=` signs exactly one path, and
