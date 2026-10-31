@@ -55,7 +55,7 @@ Plain files that modules import. The directory has no `default.nix`, so adios do
 | `app.nix`          | `app`, `argv`, `files`, `perMachineMarkers`, `envOp`, `env`, `envName`, `unitValue`, `programName`, `credentialRef`, `isCredentialRef`, `binName`, `exe`                                                                    |
 | `service.nix`      | `service`, `render`, `filesDir`, `sandbox`, `sandboxLines`, `killMode`, `scope`, `credentialId`, `stateDirectory`, `credential`, `credentialArg`                                                                            |
 | `var.nix`          | `var`, `render`, `adminVar`, `admin`, `unitName`, `credentialId`, `stateDir`                                                                                                                                                |
-| `ini.nix`          | `render`: an attribute set of sections to INI text                                                                       |
+| `ini.nix`          | `render`: an attribute set of sections to INI text (sysupdate definitions); a section name and a key are plain words, and a value holds no line break                                                                       |
 | `golconda-var-run` | POSIX sh runner for var units                                                                                                                                                                                               |
 
 ### `fragment`
