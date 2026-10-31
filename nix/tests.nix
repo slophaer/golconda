@@ -227,16 +227,6 @@ let
   # the set enters once: a tree without /pkgs cannot build what needs a package
   noSet = f.modules { options."/services/sshd" = { }; };
   pkgsResult = (withPkgs { }).modules.pkgs { };
-  wrapModule =
-    opts:
-    (withPkgs {
-      "/wrap" = {
-        package = standIn;
-      }
-      // opts;
-    }).modules.wrap
-      { };
-  wrapped = wrapModule { argv = [ "--version" ]; };
 
   # 8. the factory: /etc seeds under /usr/share/factory/etc and their manifest
   factoryDir = "/usr/share/factory/etc";
@@ -315,39 +305,6 @@ let
       && setThrows { wrap = stubWrap; }
       && setThrows "repkgs"
       && !setThrows stubSet
-    ))
-    (check "wrap: the module wraps the package through the set" (
-      wrapped._wrapArgs.package == standIn
-      && wrapped._wrapArgs.argv == [ "--version" ]
-      && wrapped.bin == [ "jq" ]
-      && wrapped.wraps == standIn
-      &&
-        (wrapModule {
-          files.conf = "x";
-          argv = [ (a.file "conf") ];
-        })._wrapArgs.argv == [
-          "{root}/share/wrap/jq/conf"
-        ]
-    ))
-    (check "wrap: a launcher from the module stands in for the program in the farm" (
-      map (l: l.target)
-        (compose [
-          {
-            packages = [
-              standIn
-              wrapped
-            ];
-          }
-        ]).links == [ "${wrapped}/bin/jq" ]
-    ))
-    (check "wrap: argv refuses a credential ref and a newline" (
-      # the stub's outPath hashes the arguments, so forcing it forces argv
-      !(tryEval (wrapModule { argv = [ (s.credential "k") ]; }).outPath).success
-      && !(tryEval (wrapModule { argv = [ "a\nb" ]; }).outPath).success
-      && (tryEval (wrapModule { argv = [ "a b" ]; }).outPath).success
-    ))
-    (check "wrap: without the set the module throws" (
-      !(tryEval ((f.modules { options."/wrap".package = standIn; }).modules.wrap { }).name).success
     ))
     (check "sshd: waits for the var" (hasInfix "After=golconda-var-sshd-hostkey.service" unit))
     (check "sshd: sessions outlive a restart; no runtime directory" (
@@ -1012,7 +969,6 @@ let
           "/services/sshd"
           "/system"
           "/vars"
-          "/wrap"
         ]
     ))
     (check "module-docs: files hold every page and the index and types" (
@@ -1025,7 +981,6 @@ let
         "system.md"
         "types.md"
         "vars.md"
-        "wrap.md"
       ]
     ))
     (check "module-docs: the generated SUMMARY links every module page" (
