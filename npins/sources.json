@@ -61,9 +61,9 @@
       },
       "branch": "reloc-boot",
       "submodules": false,
-      "revision": "d1c9a34159d30b8b9f894d1a1f3e35073043c43d",
-      "url": "https://code.in.a.flawed.cloud/yolobox/repkgs/archive/d1c9a34159d30b8b9f894d1a1f3e35073043c43d.tar.gz",
-      "hash": "sha256-mL3w3WPMKzOvc4GaHqCu5AkgaX+U2B+NNnZ8TcxkcLE="
+      "revision": "7989e316b9dbd3137f5d3c0869a06d857ba9a11e",
+      "url": "https://code.in.a.flawed.cloud/yolobox/repkgs/archive/7989e316b9dbd3137f5d3c0869a06d857ba9a11e.tar.gz",
+      "hash": "sha256-YaxD2XsB+h2a3GxaZWtxK5orWHzFveFQBLio2EWB6/w="
     }
   },
   "version": 7
