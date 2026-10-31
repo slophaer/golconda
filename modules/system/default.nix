@@ -68,6 +68,8 @@ in
   inputs.base.path = "/base";
   # /network is implicit: its files are always merged.
   inputs.network.path = "/network";
+  # /security is implicit: sysctl hardening is always applied.
+  inputs.security.path = "/security";
 
   types = {
     fragment = fragmentT;
@@ -96,11 +98,12 @@ in
 
   impl =
     { options, results }:
-    # /base and /network fragments first, then the declared fragments
+    # /base, /network and /security fragments first, then the declared fragments
     merge (
       [
         results.base
         results.network
+        results.security
       ]
       ++ options.fragments
       ++ sysupdateFragment options

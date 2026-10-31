@@ -15,11 +15,15 @@
 { imageId }:
 {
   # Kernel command line template
-  # {usrhash} is substituted with the verity root hash at build time
-  # console=tty0,ttyS0: both local console and serial
-  # ro: root and usr are read-only (dm-verity enforces this anyway)
-  # systemd.volatile=no: /var is on the root partition, not tmpfs
-  cmdlineTemplate = "usrhash={usrhash} ro systemd.volatile=no console=tty0 console=ttyS0,115200";
+  # {usrhash} is substituted with the verity root hash at build time.
+  # Security parameters (see docs/design/kernel.md):
+  #   lsm=lockdown,yama,ipe,bpf   LSM stack order (capability is always first)
+  #   lockdown=integrity          kernel lockdown level (blocks kexec, /dev/mem, etc.)
+  #   ipe.enforce=1               IPE in enforcing mode (not permissive)
+  # Console: tty0 for local, ttyS0 for serial (qemu -nographic, IPMI SOL).
+  # ro: root and usr are read-only (dm-verity enforces this anyway).
+  # systemd.volatile=no: /var is on the root partition, not tmpfs.
+  cmdlineTemplate = "usrhash={usrhash} lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=1 ro systemd.volatile=no console=tty0 console=ttyS0,115200";
 
   # EFI output naming
   # {version} is the IMAGE_VERSION
