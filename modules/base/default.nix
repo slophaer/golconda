@@ -3,8 +3,9 @@
 #! Always implicit: `/system` merges this fragment first, before any other
 #! module's fragment. A configuration need not declare it.
 #!
-#! Packages: systemd, dbus-broker, dash (as /usr/bin/sh), uutils-coreutils,
-#! and the kernel (consumed later by the UKI builder). No GNU coreutils.
+#! Packages: systemd, dbus-broker, bash (as /usr/bin/sh until dash is in
+#! repkgs), uutils-coreutils, and the kernel (consumed later by the UKI
+#! builder). No GNU coreutils.
 #!
 #! Units enabled: dbus.socket (wanted by sockets.target), dbus-broker.service
 #! (as the dbus.service alias), systemd-networkd, systemd-resolved,
@@ -154,10 +155,10 @@ in
         }
       ];
 
-      # /usr/bin/sh -> dash (dash is /bin/sh in the image)
+      # /usr/bin/sh -> bash (TODO: replace with dash once it's in repkgs)
       shLink = {
         path = "/usr/bin/sh";
-        target = "${p.dash}/bin/dash";
+        target = "${p.bash}/bin/bash";
         kind = "explicit";
       };
 
@@ -209,9 +210,9 @@ in
       packages = [
         p.systemd
         p.dbus-broker
-        p.dash
+        p.bash
         p.uutils-coreutils
-        p.linux # kernel; UKI builder consumes it
+        p.linux-kernel # kernel; UKI builder consumes it
       ];
 
       files = {

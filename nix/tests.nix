@@ -111,7 +111,7 @@ let
   # base packages for /base module
   stubSystemd = withBin "systemd-262" [ "systemctl" ];
   stubDbusBroker = withBin "dbus-broker-42" [ "dbus-broker" ];
-  stubDash = withBin "dash-0.5.12" [ "dash" ];
+  stubBash = withBin "bash-5.2" [ "bash" ];
   stubUutils = withBin "uutils-coreutils-0.0.25" [
     "ls"
     "cat"
@@ -119,7 +119,7 @@ let
     "mv"
     "rm"
   ];
-  stubLinux = withBin "linux-6.18.0" [ ];
+  stubLinuxKernel = withBin "linux-kernel-6.18.0" [ ];
   # the repkgs set as /pkgs sees it: the stand-ins above
   stubSet = {
     pkgs = {
@@ -128,9 +128,9 @@ let
       # base packages
       systemd = stubSystemd;
       dbus-broker = stubDbusBroker;
-      dash = stubDash;
+      bash = stubBash;
       uutils-coreutils = stubUutils;
-      linux = stubLinux;
+      linux-kernel = stubLinuxKernel;
     };
   };
   withPkgs =
@@ -788,22 +788,25 @@ let
       { files."/usr/lib/foo/config" = "b"; }
     ]))
     (check "composer concatenates lists" (
-      (
-        (f.modules {
-          options."/system" = {
-            name = "cat";
-            version = "20261031.1";
-            fragments = [
-              { sysusers = [ "a" ]; }
-              { sysusers = [ "b" ]; }
-            ];
-          };
-        }).modules.system
-          { }
-      ).sysusers == [
-        "a"
-        "b"
-      ]
+      let
+        result =
+          (f.modules {
+            options = {
+              "/pkgs".set = stubSet;
+              "/system" = {
+                name = "cat";
+                version = "20261031.1";
+                fragments = [
+                  { sysusers = [ "a" ]; }
+                  { sysusers = [ "b" ]; }
+                ];
+              };
+            };
+          }).modules.system
+            { };
+      in
+      # /base adds its own sysusers; check that the fragments' sysusers are there
+      elem "a" result.sysusers && elem "b" result.sysusers
     ))
 
     # 3b. two packages with one /usr/bin name are a composer error
@@ -827,21 +830,21 @@ let
           b
           a
         ];
+        result = compose [ { inherit packages; } ];
       in
-      farmOf packages == [
-        a
-        b
-      ]
+      # farmOf includes /base packages; check the requested packages are there
+      elem a (farmOf packages)
+      && elem b (farmOf packages)
+      # the links include these with the right targets
       &&
-        (compose [ { inherit packages; } ]).links == {
-          "/usr/bin/x" = {
-            target = "${a}/bin/x";
-            kind = "package";
-          };
-          "/usr/bin/y" = {
-            target = "${b}/bin/y";
-            kind = "package";
-          };
+        result.links."/usr/bin/x" == {
+          target = "${a}/bin/x";
+          kind = "package";
+        }
+      &&
+        result.links."/usr/bin/y" == {
+          target = "${b}/bin/y";
+          kind = "package";
         }
     ))
 
@@ -1167,7 +1170,9 @@ let
       all (p: hasInfix "[`${p}`](${docs.fileName.${p}})" docs.index) (attrNames docs.pages)
       &&
         attrNames docs.pages == [
+          "/base"
           "/factory"
+          "/network"
           "/pkgs"
           "/services"
           "/services/sshd"
@@ -1177,8 +1182,10 @@ let
     ))
     (check "module-docs: files hold every page and the index and types" (
       attrNames docs.files == [
+        "base.md"
         "factory.md"
         "index.md"
+        "network.md"
         "pkgs.md"
         "services-sshd.md"
         "services.md"
@@ -1412,31 +1419,24 @@ let
         ];
         result = compose [ { packages = [ tool ]; } ];
       in
-      result.links == {
-        "/usr/bin/foo" = {
-          target = "${tool}/bin/foo";
-          kind = "package";
-        };
-        "/usr/bin/bar" = {
+      # compose includes /base links too; check that the tool's links are present
+      result.links."/usr/bin/foo" == {
+        target = "${tool}/bin/foo";
+        kind = "package";
+      }
+      &&
+        result.links."/usr/bin/bar" == {
           target = "${tool}/bin/bar";
           kind = "package";
-        };
-      }
+        }
     ))
-    (check "links: farm, dlopen and explicit links pass through with their kinds" (
+    (check "links: dlopen and explicit links pass through with their kinds" (
       let
-        systemd = withBin "systemd-1" [ ];
         tss = withBin "tpm2-tss-1" [ ];
         frag = {
-          packages = [
-            systemd
-            tss
-          ];
+          packages = [ tss ];
           links = {
-            "/usr/lib/udev/rules.d" = {
-              target = "${systemd}/lib/udev/rules.d";
-              kind = "farm";
-            };
+            # use paths that don't collide with /base
             "/usr/lib/libtss2-esys.so.0" = {
               target = "${tss}/lib/libtss2-esys.so.0";
               kind = "dlopen";
@@ -1447,8 +1447,11 @@ let
             };
           };
         };
+        result = compose [ frag ];
       in
-      (compose [ frag ]).links == frag.links
+      # the fragment's links are present with correct kinds
+      result.links."/usr/lib/libtss2-esys.so.0".kind == "dlopen"
+      && result.links."/usr/lib/systemd/system/sysinit.target.wants/a.service".kind == "explicit"
     ))
     (check "links: the target path, kind and shape are typed" (
       let
@@ -1567,11 +1570,9 @@ let
       in
       inner.links."/usr/bin/jq".kind == "package"
       && outer.links."/usr/bin/sshd".target == "${openssh}/bin/sshd"
-      &&
-        outer.packages == [
-          standIn
-          openssh
-        ]
+      # /base adds more packages; check the requested ones are present
+      && elem standIn outer.packages
+      && elem openssh outer.packages
       # a package link to another target is still a clash
       && !(tryEval (
         deepSeq
@@ -1614,8 +1615,9 @@ let
           {
             packages = [ tool ];
             links = {
-              "/usr/lib/udev/rules.d" = {
-                target = "${tool}/lib/udev/rules.d";
+              # use a path that doesn't conflict with /base
+              "/usr/lib/custom/rules.d" = {
+                target = "${tool}/lib/rules.d";
                 kind = "farm";
               };
               "/usr/lib/libfoo.so.1" = {
@@ -1631,9 +1633,13 @@ let
             };
           }
         ];
+        result = compose frags;
       in
       merge.duplicateLink (merge.linkSources frags) == null
-      && builtins.length (attrNames (compose frags).links) == 4
+      # /base adds links, check the fragment links are present
+      && result.links ? "/usr/lib/custom/rules.d"
+      && result.links ? "/usr/lib/libfoo.so.1"
+      && result.links ? "/usr/bin/foo"
     ))
     (check "links: a link and a file at one path is an error" (
       let
@@ -2132,15 +2138,14 @@ let
       # /base's packages are there even with no fragments
       any (p: p.name == "systemd-262") result.packages
       && any (p: p.name == "dbus-broker-42") result.packages
-      && any (p: p.name == "dash-0.5.12") result.packages
+      && any (p: p.name == "bash-5.2") result.packages
       && any (p: p.name == "uutils-coreutils-0.0.25") result.packages
     ))
-    (check "base: sh link points to dash" (
+    (check "base: sh link points to bash (TODO: dash when in repkgs)" (
       let
         result = compose [ ];
       in
-      result.links ? "/usr/bin/sh"
-      && hasInfix "dash" result.links."/usr/bin/sh".target
+      result.links ? "/usr/bin/sh" && hasInfix "bash" result.links."/usr/bin/sh".target
     ))
     (check "base: dbus.socket is a file (not a link, since dbus-broker lacks it)" (
       let
@@ -2222,7 +2227,9 @@ let
         };
       in
       result.files ? "/usr/lib/systemd/resolved.conf.d/golconda-dns.conf"
-      && hasInfix "DNS=1.1.1.1 8.8.8.8" result.files."/usr/lib/systemd/resolved.conf.d/golconda-dns.conf".text
+      &&
+        hasInfix "DNS=1.1.1.1 8.8.8.8"
+          result.files."/usr/lib/systemd/resolved.conf.d/golconda-dns.conf".text
     ))
     (check "network: custom network config" (
       let
