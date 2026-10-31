@@ -2,7 +2,8 @@
 
 Boot is a chain of signed and measured steps from firmware to `boot-complete.target`, all of them
 systemd's. Each UKI carries the `usrhash=` of its `/usr` slot, which is how A and B differ. The UKI
-and the initrd are *(being built)*; Secure Boot and measured boot are *(planned)*.
+and the initrd are built (`lib/image/`); Secure Boot and measured boot are signed but not yet
+enforced or tested *(planned)*.
 
 ```mermaid
 sequenceDiagram
@@ -23,12 +24,23 @@ sequenceDiagram
   SYS->>SB: boot-complete.target → bless-boot marks the entry good
 ```
 
-## The initrd *(being built)*
+## The initrd
 
-The initrd is a second `/usr` tree from the same store: systemd as PID 1, udev with the
-device-mapper rules (`10-dm`, `13-dm-disk`, `95-dm-notify`) and `dmsetup`, veritysetup, repart with
-the root definition, and gpt-auto. It needs no root partition to find `/usr`: `usrhash=` on the
-cmdline names the verity root hash, and the DPS partition UUIDs are derived from that hash.
+The initrd is a second `/usr` tree from the same store (`lib/image/initrd.nix`): `/base` plus lvm2
+and cryptsetup, minus the kernel, as a zstd cpio. systemd is PID 1 (`/init` points at it), udev runs
+with systemd's rules and lvm2's device-mapper rules (`10-dm`, `13-dm-disk`, `95-dm-notify`, with
+`{prefix}` replaced by `/usr`) and `dmsetup`; `blkid` must be there too, or `13-dm-disk` cannot
+probe the verity device and systemd keeps it at `SYSTEMD_READY=0`. Around `/usr` sit
+`/etc/initrd-release` (a link to `os-release`, how systemd knows it is in an initrd), the merged-usr
+links `/bin` `/sbin` `/lib`, and the empty mount points. There is no machine-id, no shadow, no
+getty, no static init. It needs no root partition to find `/usr`: `usrhash=` on the cmdline names
+the verity root hash, the generators derive the two DPS partition UUIDs from it, veritysetup
+attaches `/dev/mapper/usr`, and repart makes the root partition from
+`/usr/lib/repart.d/30-root.conf` on first boot. The cmdline also carries
+`rdinit=/usr/nix/store/<systemd>/lib/systemd/systemd`: a repkgs binary maps its dynamic linker
+relative to its own path, which before `/proc` exists is the path the kernel execs, so the kernel
+must be told the real file, not the `/init` link. The kernel's configuration is in
+[Kernel](kernel.md).
 
 ## Boot counting and A/B
 
@@ -40,11 +52,10 @@ three failures systemd-boot falls back to the other entry, which is the other `/
 ## Kernel command line
 
 The cmdline is fixed in the UKI and measured with it:
-`usrhash=<hash> console=tty0 console=ttyS0,115200`. No administrator edits: `loader.conf` edits are
-off, and nothing adds `rw` or `systemd.volatile=` (`/` is the state partition, mounted writable by
-systemd; `/usr` is verity). The template in `image/uki.nix` still carries `ro systemd.volatile=no`
-until the image builder lands *(being built)*. A debug image with more is a separate build *(after
-v1)*.
+`usrhash=<hash> console=tty0 console=ttyS0,115200 rdinit=<systemd>` (`image/uki.nix`, plus `rdinit=`
+from the builder). No administrator edits: `loader.conf` edits are off, and nothing adds `rw`, `ro`
+or `systemd.volatile=` (`/` is the state partition, which gpt-auto mounts writable when nothing says
+`ro`; `/usr` is verity). A debug image with more is a separate build *(after v1)*.
 
 ## Serial console
 

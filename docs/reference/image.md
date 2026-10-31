@@ -1,8 +1,8 @@
 # Image artifacts
 
-The `/usr` tree builder exists (`lib/usr-tree.nix`); the erofs, verity, initrd, UKI and disk steps
-are *(being built)* in `lib/image/`. The `image/` directory holds the tool-independent definitions
-they render.
+The `/usr` tree builder exists (`lib/usr-tree.nix`) and the image chain exists (`lib/image/`):
+erofs, verity, initrd, UKI and disk, one derivation each. The `image/` directory holds the
+tool-independent definitions they render.
 
 ## A release
 
@@ -32,8 +32,8 @@ counter (`+3-0`: three tries left, none done); `systemd-bless-boot` removes the 
 | `sysupdate.nix`  | systemd-sysupdate transfer definitions (usr, verity, sig, UKI), `Path=` from `updateSource` |
 | `uki.nix`        | the UKI cmdline template, the PCR phases, the Secure Boot and PCR signing paths             |
 
-The definitions are data. The composer renders `sysupdate.nix` today; the image builder renders the
-rest.
+The definitions are data. The composer renders `sysupdate.nix` and the root definition of
+`repart.nix`; the image builder renders the rest.
 
 ## `/usr` tree (`lib/usr-tree.nix`)
 
@@ -62,12 +62,49 @@ A Nix store path carries no mtimes (Nix sets them to 1), so the tree itself has 
 applies the timestamp derived from the version (`YYYYMMDD.N` → epoch seconds, `versionToEpoch`) with
 `mkfs.erofs -T`.
 
-## Builder constraints *(being built)*
+## Built today (`lib/image/`)
 
-- The `.usr-verity-sig.raw` file is padded to a 512-byte boundary so that `systemd-repart` accepts
-  it as a `CopyBlocks=` source.
-- The UKI cmdline carries `usrhash=<root hash>`, which `systemd-gpt-auto-generator` uses to find the
-  `/usr` partition; the partition UUIDs of `usr-a` and `usr-a-verity` are the two halves of that
-  hash.
-- Outside the Nix sandbox, repart runs as
-  `unshare --map-root-user fakeroot systemd-repart --architecture=<names.systemd> …`.
+Each step is a content-addressed derivation with a nushell builder (`common.nix`), repkgs packages
+only; `packages.<system>.image-smoke` runs the chain over the system of `examples/server.toml` and
+writes `proof.txt` (sizes, `veritysetup verify`, the cpio listing, `ukify inspect`, repart's table).
+`image-smoke-<step>` exposes each step.
+
+| step   | function (`lib/image/default.nix`)        | output                                                                                                                                          |
+| ------ | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| erofs  | `erofs { usrTree; … }`                    | `<id>_<version>.usr.raw`: `mkfs.erofs -zlz4hc -T <epoch> -U <uuid> --all-root`; epoch and UUID from the version, so a rebuild is byte-identical |
+| verity | `verity { erofs; key; cert; … }`          | `<id>_<version>.usr-verity.raw`, `roothash`, `<id>_<version>.usr-verity-sig.raw`                                                                |
+| initrd | `initrdTree { … }`, `initrd { usrTree; }` | `initrd.cpio.zst`, `rdinit` ([Boot: the initrd](../design/boot.md#the-initrd))                                                                  |
+| uki    | `uki { initrd; verity; usrTree; keys… }`  | `<id>_<version>+3-0.efi` (`ukiName`), `cmdline`                                                                                                 |
+| disk   | `disk { erofs; verity; uki; … }`          | `disk.raw` (sparse), `disk.json`                                                                                                                |
+
+The verity step: `veritysetup format` with a salt and superblock UUID from the version; the
+signature is `openssl smime -sign -nocerts -noattr -binary` over the hex root hash, as
+systemd-veritysetup documents; the `-sig.raw` file is systemd's partition content, the JSON
+`{ rootHash, certificateFingerprint, signature }` NUL-padded to 4096 bytes. The UKI step runs
+`ukify build` (`packages/ukify`, systemd's `ukify.py` as a build-time package) with `--linux` from
+the kernel package, `--os-release` from the tree, `--uname`, `--phases` from `image/uki.nix`, Secure
+Boot signing by `systemd-sbsign` and the PCR 11 policy by `systemd-measure`. The disk step runs
+`systemd-repart --empty=create --size=auto --offline=yes --seed=<from the version>` over
+`image/repart.nix` rendered to `.conf` files (`repartDefinitions`, `modules/lib/ini.nix`) with the
+builder's fields added: the ESP's `CopyFiles=` (systemd-boot as `EFI/BOOT/BOOT<ARCH>.EFI`, the UKI
+in `EFI/Linux/`), slot A's `CopyBlocks=` and the two UUIDs systemd derives from the root hash (usr:
+its first 128 bits, verity: its last). The B slots are empty, root is made on the machine
+(`/usr/lib/repart.d/30-root.conf`, written by `/base`). The ESP is filled offline with mtools
+(`packages/mtools`). Keys are paths: the smoke makes throwaway ones in the store (`throwawayKeys`);
+a release signs with the deployment's keys (`image/default.nix` `keys`), which never enter the
+store. Not yet: the UKI under its sysupdate name (`<id>_<version>.efi`), a release directory, the
+verity certificate in the kernel keyring, Secure Boot enforcement, a TPM.
+
+Stand-ins the smoke carries on its cmdline, outside `image/uki.nix`: `LD_LIBRARY_PATH=` with the
+store directories of the libraries systemd dlopens (the fork's RUNPATH does not name them; `/base`
+writes the same for services into `system.conf.d`), and `rw` (gpt-auto-generator exits 1 in the
+host, so the remount drop-in it would write is missing).
+
+## Builder constraints
+
+- `systemd-repart` wants a `CopyBlocks=` source in whole sectors; the `-sig.raw` file is padded to
+  4096 bytes.
+- The UKI cmdline carries `usrhash=<root hash>`, which the generators use to find the `/usr`
+  partition; the partition UUIDs of `usr-a` and `usr-a-verity` are the two halves of that hash.
+- repart needs no root and no loop device with `--offline=yes`; outside the sandbox it runs the same
+  way. The disk file is written straight into the output: it is sparse (two 10 GiB slots).
