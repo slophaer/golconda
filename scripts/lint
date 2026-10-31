@@ -17,6 +17,14 @@ if hits=$(grep -rnE '(^|[^A-Za-z0-9_)])/nix/store' modules lib --include='*.nix'
   echo "$hits" >&2
   exit 1
 fi
+# Leftover merge conflicts, also in the shapes treefmt leaves when it reformats the
+# markers (escaped `\<<`, spaced `> > >`).
+if hits=$(git ls-files -z | xargs -0 grep -nE \
+  '^(<{7}|={7}$|>{7}|[|]{7})|\\<<\\<<|^(> ){6}>|parent of [0-9a-f]{7} ' 2>/dev/null); then
+  echo "lint: merge conflict markers:" >&2
+  echo "$hits" >&2
+  exit 1
+fi
 iets eval-jobs --force-recurse --no-instantiate \
   --expr 'let f = import ./default.nix; in { inherit (f) packages checks devShells formatter; }' > /dev/null
 iets eval --expr 'import ./nix/tests.nix { }' > /dev/null
