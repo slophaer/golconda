@@ -31,6 +31,7 @@ let
   # accepts it; `app.argv` refuses it below.
   credentialRef = (struct "credentialRef" { credential = string; }).override { unknown = false; };
   isCredentialRef = v: credentialRef.verify v == null;
+  inherit (builtins) isString match;
 
   # argv of an app: strings only, with a clear message for the one mistake the
   # type exists to catch.
@@ -40,6 +41,8 @@ let
       "Expected type 'argv' (a list of strings)"
     else if any isCredentialRef v then
       "a credential reference belongs in service.extraArgv, not in app.argv: an app runs outside systemd and has no %d"
+    else if any (a: isString a && match ".*\n.*" a != null) v then
+      "an argument must not contain a newline: it would end the ExecStart= line of the unit"
     else
       (listOf string).verify v
   );

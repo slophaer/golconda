@@ -12,6 +12,6 @@ let
         sha256 = pin.hash;
       }
     else
-      throw "golconda: pin '${name}' has no url and hash; only tarball pins are supported";
+      throw "golconda: pin '${name}' has no url and hash; every pin must be fetchable as a tarball (npins Git, GitHub, Forgejo, Channel and Tarball pins all are)";
 in
 builtins.mapAttrs fetch json.pins
