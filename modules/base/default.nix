@@ -117,6 +117,42 @@ in
       # (the factory uses tmpfiles, which runs after PID 1 sets the locale)
       localeConf = "LANG=C.UTF-8\n";
 
+      # D-Bus system bus configuration: dbus-broker needs /usr/share/dbus-1/system.conf
+      # but doesn't ship it (dbus-broker is only the broker, not the config). This minimal
+      # config permits root and the systemd services; system.d/*.conf adds per-service rules.
+      dbusSystemConf = ''
+        <!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
+          "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+        <busconfig>
+          <type>system</type>
+          <auth>EXTERNAL</auth>
+          <listen>unix:path=/run/dbus/system_bus_socket</listen>
+
+          <!-- Root can do anything -->
+          <policy user="root">
+            <allow send_destination="*" eavesdrop="true"/>
+            <allow eavesdrop="true"/>
+            <allow own="*"/>
+          </policy>
+
+          <!-- Default policy: deny everything, then allow what is needed -->
+          <policy context="default">
+            <allow send_destination="*"/>
+            <allow own="*"/>
+          </policy>
+
+          <!-- systemd services and internal communication -->
+          <policy context="mandatory">
+            <allow send_destination="org.freedesktop.DBus" send_interface="org.freedesktop.DBus"/>
+            <allow send_destination="org.freedesktop.DBus" send_interface="org.freedesktop.DBus.Introspectable"/>
+            <allow send_destination="org.freedesktop.DBus" send_interface="org.freedesktop.DBus.Properties"/>
+            <allow receive_sender="org.freedesktop.DBus"/>
+          </policy>
+
+          <includedir>/usr/share/dbus-1/system.d</includedir>
+        </busconfig>
+      '';
+
       # dbus.socket unit: dbus-broker needs the socket but doesn't ship it;
       # the socket activates dbus-broker.service (the dbus.service alias)
       dbusSocketUnit = lines [
@@ -383,6 +419,10 @@ in
         "/usr/lib/repart.d/30-root.conf" = rootRepart;
         # dbus.socket unit: dbus-broker doesn't ship it
         "/usr/lib/systemd/system/dbus.socket" = dbusSocketUnit;
+        # D-Bus system bus configuration: dbus-broker needs this
+        "/usr/share/dbus-1/system.conf" = dbusSystemConf;
+        # system.d directory for per-service D-Bus configs (the includedir in system.conf)
+        "/usr/share/dbus-1/system.d/.gitkeep" = "";
       };
 
       links = linksToAttrs (
