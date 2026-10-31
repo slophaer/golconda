@@ -349,6 +349,12 @@ let
       && hasInfix "\nAuthorizedKeysFile .ssh/authorized_keys /usr/lib/sshd/authorized_keys/%u\n" sshdConfig
       && !hasInfix "AuthorizedKeysFile" unit
     ))
+    (check "sshd: the helpers sshd execs by compiled-in path are at /usr/lib/ssh" (
+      system.links."/usr/lib/ssh" == {
+        target = "${openssh}/lib/ssh";
+        kind = "farm";
+      }
+    ))
     (check "sshd: the package's other tools are in the farm" (
       system.links."/usr/bin/ssh-keygen".target == "${openssh}/bin/ssh-keygen"
       && system.links ? "/usr/bin/ssh"
