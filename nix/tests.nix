@@ -169,6 +169,21 @@ let
       };
     }).modules.system
       { };
+  # compose with extra module options (for /network, /factory, etc.)
+  composeWith =
+    extraOpts:
+    (f.modules {
+      options = {
+        "/pkgs".set = stubSet;
+        "/system" = {
+          name = "t";
+          version = "20261031.1";
+          fragments = [ ];
+        };
+      }
+      // extraOpts;
+    }).modules.system
+      { };
   # the composer's files, forced: a type error in a file fires here
   filesOf =
     fragments:
@@ -2137,6 +2152,56 @@ let
       in
       result.links ? "/usr/lib/libsystemd.so.0"
       && result.links."/usr/lib/libsystemd.so.0".kind == "dlopen"
+    ))
+
+    # 12. /network: networkd configuration
+    (check "network: default DHCP on all wired interfaces" (
+      let
+        result = composeWith {
+          "/network" = { };
+        };
+      in
+      result.files ? "/usr/lib/systemd/network/default-dhcp.network"
+      && hasInfix "[Match]" result.files."/usr/lib/systemd/network/default-dhcp.network".text
+      && hasInfix "Type=ether" result.files."/usr/lib/systemd/network/default-dhcp.network".text
+      && hasInfix "DHCP=yes" result.files."/usr/lib/systemd/network/default-dhcp.network".text
+    ))
+    (check "network: defaultDhcp=false disables default network" (
+      let
+        result = composeWith {
+          "/network".defaultDhcp = false;
+        };
+      in
+      !(result.files ? "/usr/lib/systemd/network/default-dhcp.network")
+    ))
+    (check "network: dns option configures resolved" (
+      let
+        result = composeWith {
+          "/network".dns = [
+            "1.1.1.1"
+            "8.8.8.8"
+          ];
+        };
+      in
+      result.files ? "/usr/lib/systemd/resolved.conf.d/golconda-dns.conf"
+      && hasInfix "DNS=1.1.1.1 8.8.8.8" result.files."/usr/lib/systemd/resolved.conf.d/golconda-dns.conf".text
+    ))
+    (check "network: custom network config" (
+      let
+        result = composeWith {
+          "/network" = {
+            defaultDhcp = false;
+            networks.static = {
+              match.Name = "eth0";
+              network.Address = "10.0.0.1/24";
+            };
+          };
+        };
+      in
+      result.files ? "/usr/lib/systemd/network/static.network"
+      && hasInfix "Name=eth0" result.files."/usr/lib/systemd/network/static.network".text
+      && hasInfix "Address=10.0.0.1/24" result.files."/usr/lib/systemd/network/static.network".text
+      && !(result.files ? "/usr/lib/systemd/network/default-dhcp.network")
     ))
   ];
 in
