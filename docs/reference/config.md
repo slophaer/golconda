@@ -8,7 +8,10 @@ it against the schema before evaluation; type errors from adios tell you what th
 Copy `golconda.nix` from the repository root next to your `server.toml`:
 
 ```nix
-import <golconda> {
+let
+  golconda = import (import ./npins).golconda; # pinned with npins
+in
+golconda.lib.mkSystem {
   config = ./server.toml;
   # platform = "x86_64-linux";  # default: the build host's
   # extra = {                   # Nix-only options, merged into the TOML

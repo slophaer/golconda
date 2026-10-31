@@ -3,8 +3,8 @@
 # Copy this file next to your server.toml and edit the paths below.
 #
 # Usage:
-#   nix-build ./golconda.nix -A usrTree
 #   iets eval -E '(import ./golconda.nix).usrTree.outPath'
+#   nix-build -E '(import ./golconda.nix).usrTree'
 #
 # The result is the /usr tree: units, files, packages and symlinks,
 # ready for the image builder.
@@ -13,7 +13,11 @@
 # `extra` is for Nix-only values: package overrides, custom fragments.
 #
 # See docs/reference/config.md for the full surface.
-import <golconda> {
+let
+  # Pin Golconda with npins (`npins add git <golconda url>`) or point at a checkout.
+  golconda = import (import ./npins).golconda;
+in
+golconda.lib.mkSystem {
   config = ./server.toml;
   # platform = "x86_64-linux";  # default: the build host's
   # extra = {                   # Nix-only options, merged into the TOML
