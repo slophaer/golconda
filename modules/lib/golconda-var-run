@@ -25,13 +25,13 @@ sh -eu "$script"
 mkdir -p "$credstore"
 for f in $secrets; do
   systemd-creds encrypt --with-key=tpm2 --tpm2-public-key-pcrs=11 \
-    --name="$name.$f" "$f" "$credstore/.$name.$f.tmp"
-  mv "$credstore/.$name.$f.tmp" "$credstore/$name.$f"
+    --name="$name.$f" "$f" "$credstore/.${name}.${f}.tmp"
+  mv "$credstore/.${name}.${f}.tmp" "$credstore/${name}.${f}"
 done
 
 mkdir -p "$STATE_DIRECTORY/pub"
 for f in $publics; do
-  cp "$f" "$STATE_DIRECTORY/pub/$f"
+  cp -- "$f" "$STATE_DIRECTORY/pub/$f"
 done
 
 # RemainAfterExit= keeps the unit active, so systemd removes the runtime
