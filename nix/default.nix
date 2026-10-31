@@ -10,10 +10,15 @@ let
       tree = import ../modules { inherit (adios) adios; };
     in
     (import ../lib/module-docs.nix { }).toMarkdown (schemaLib.toJsonSchema (tree { }));
+  usrTreeLib = import ../lib/usr-tree.nix { };
 in
 {
   packages =
-    { pkgs, set }:
+    {
+      pkgs,
+      set,
+      platform,
+    }:
     {
       # the patched Nix daemon repkgs needs (CA + dynamic derivations); builders run it
       inherit (pkgs) nix;
@@ -23,6 +28,31 @@ in
         package = pkgs.jq;
         argv = [ "--version" ];
       };
+
+      # Smoke test for the /usr tree builder: a minimal system with jq
+      usr-tree-smoke =
+        let
+          # Create a minimal composer output
+          tree = import ../modules { inherit (adios) adios; };
+          composed = tree {
+            options."/system" = {
+              name = "smoke";
+              version = "20261031.1";
+              fragments = [
+                {
+                  packages = [ pkgs.jq ];
+                  # jq has bin = [ "jq" ] in repkgs
+                }
+              ];
+            };
+          };
+          system = composed.modules.system { };
+        in
+        usrTreeLib.usrTree {
+          composerOutput = system;
+          inherit platform;
+          version = "20261031.1";
+        };
     };
 
   checks =

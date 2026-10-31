@@ -1,7 +1,7 @@
 # Image artifacts
 
-*(Planned.)* The image builder is not implemented. The `image/` directory holds tool-independent
-definitions that the builder will consume.
+*(Partially implemented.)* The `/usr` tree builder exists (`lib/usr-tree.nix`); the erofs, verity,
+UKI and repart steps are planned. The `image/` directory holds tool-independent definitions.
 
 This page documents what a release contains and how sysupdate finds it. Names carry the image id and
 version; the version sorts with `strverscmp`.
@@ -27,8 +27,38 @@ All transfers use `InstancesMax=2`.
 | `sysupdate.nix`  | systemd-sysupdate transfer definitions (usr, verity, sig, UKI)        |
 | `uki.nix`        | UKI cmdline template, PCR phases, Secure Boot signing paths           |
 
-The definitions are data, not derivations. The builder (not yet implemented) renders them to INI
+The definitions are data, not derivations. The builder *(partially implemented)* renders them to INI
 files and calls the tools.
+
+## `/usr` tree (`lib/usr-tree.nix`)
+
+`usrTree { composerOutput; platform; version; }` produces a derivation whose output **is** the
+complete `/usr` directory:
+
+| path                           | content                                                                  |
+| ------------------------------ | ------------------------------------------------------------------------ |
+| `nix/store/<hash>-*`           | runtime closure of the packages (copied from the store)                  |
+| `bin/`, `lib/`, `share/`       | relative symlinks into `nix/store/` (from `links` + expanded `farmDirs`) |
+| `sbin`                         | symlink to `bin`                                                         |
+| `lib/systemd/system/*.service` | unit files (from `composerOutput.units`)                                 |
+| `lib/sysusers.d/golconda.conf` | sysusers lines                                                           |
+| `lib/tmpfiles.d/golconda.conf` | tmpfiles lines                                                           |
+| `lib/os-release`               | rendered from `image/os-release.nix` with the version                    |
+| other `lib/`, `share/`         | files from `composerOutput.files` (paths under `/usr/`)                  |
+
+### Verification (build-time)
+
+1. **No absolute symlink targets.** Every symlink must use a relative path.
+1. **dlopen sonames resolve.** Each soname declared in `dlopen` must have a working symlink in
+   `lib/`.
+1. **No setuid/setgid bits.** The tree must contain no executables with special permission bits.
+1. **Allowed directories only.** Top-level directories are limited to `bin`, `lib`, `share`, `nix`,
+   `libexec`, plus the `sbin` symlink.
+
+### Reproducibility
+
+All file and directory mtimes are set to a timestamp derived from the image version (`YYYYMMDD.N` →
+epoch seconds). This ensures `ConditionNeedsUpdate=` fires exactly once per version.
 
 ## Build requirements
 

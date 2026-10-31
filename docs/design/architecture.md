@@ -44,17 +44,18 @@ flowchart LR
 
 ## Components
 
-| component                      | role                                        | where                            |
-| ------------------------------ | ------------------------------------------- | -------------------------------- |
-| npins                          | pins repkgs, adios, flake-incompat, iets    | `npins/`                         |
-| flake-incompat                 | output schema, per-system arguments         | `default.nix`, `nix/default.nix` |
-| platform record                | repkgs' record, every tool reads it         | `nix/packages.nix`               |
-| repkgs                         | packages, toolchain, relocatable outputs    | `nix/packages.nix`, `packages/`  |
-| adios                          | typed module tree, fragments, the composer  | `modules/`                       |
-| iets                           | evaluation and lints                        | `iets.toml`, `scripts/lint`      |
-| systemd-repart                 | partition images, verity, signing           | image builder                    |
-| ukify, systemd-measure         | the unified kernel image and its PCR policy | image builder                    |
-| systemd-boot, stub, bless-boot | boot, counting, measurement                 | ESP                              |
-| systemd-sysupdate              | A/B updates                                 | `/usr/lib/sysupdate.d`           |
+| component                      | role                                          | where                            |
+| ------------------------------ | --------------------------------------------- | -------------------------------- |
+| npins                          | pins repkgs, adios, flake-incompat, iets      | `npins/`                         |
+| flake-incompat                 | output schema, per-system arguments           | `default.nix`, `nix/default.nix` |
+| platform record                | repkgs' record, every tool reads it           | `nix/packages.nix`               |
+| repkgs                         | packages, toolchain, relocatable outputs      | `nix/packages.nix`, `packages/`  |
+| adios                          | typed module tree, fragments, the composer    | `modules/`                       |
+| iets                           | evaluation and lints                          | `iets.toml`, `scripts/lint`      |
+| usr tree                       | closure + farm + config → directory for erofs | `lib/usr-tree.nix`               |
+| systemd-repart                 | partition images, verity, signing             | image builder *(planned)*        |
+| ukify, systemd-measure         | the unified kernel image and its PCR policy   | image builder *(planned)*        |
+| systemd-boot, stub, bless-boot | boot, counting, measurement                   | ESP                              |
+| systemd-sysupdate              | A/B updates                                   | `/usr/lib/sysupdate.d`           |
 
 See [Layout](layout.md) for the on-disk result and [Boot](boot.md) for the sequence.

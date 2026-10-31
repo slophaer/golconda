@@ -31,6 +31,7 @@ let
     tree = f.modules { };
     inherit (f) modules;
   };
+  usrTreeLib = import ../lib/usr-tree.nix { };
   inherit (import ./packages.nix { inherit sources platform; }) pkgs;
 
   # OpenSSH is not in repkgs yet; any derivation stands in for the type check
@@ -1025,6 +1026,48 @@ let
       builtins.any (
         l: l.path == "/usr/lib/systemd/system/multi-user.target.wants/golconda-var-sshd-hostkey.service"
       ) system.links
+    ))
+
+    # 8. usr-tree library: pure helpers
+    (check "usr-tree: stripUsrPrefix strips /usr/ prefix" (
+      usrTreeLib.stripUsrPrefix "/usr/lib/foo" == "lib/foo"
+      && usrTreeLib.stripUsrPrefix "/usr/bin/jq" == "bin/jq"
+    ))
+    (check "usr-tree: stripUsrPrefix returns null for non-/usr paths" (
+      usrTreeLib.stripUsrPrefix "/etc/foo" == null && usrTreeLib.stripUsrPrefix "/var/lib/x" == null
+    ))
+    (check "usr-tree: versionToEpoch parses date versions" (
+      let
+        e1 = usrTreeLib.versionToEpoch "20261031.1";
+        e2 = usrTreeLib.versionToEpoch "20261031.2";
+      in
+      e2 > e1 # revision 2 is later than revision 1
+    ))
+    (check "usr-tree: versionToEpoch handles fallback" (
+      let
+        e = usrTreeLib.versionToEpoch "1";
+      in
+      e == 1609459201 # base epoch + 1
+    ))
+    (check "usr-tree: makeRelative creates correct relative paths" (
+      usrTreeLib.makeRelative "/usr/bin/jq" "/nix/store/abc-jq/bin/jq" == "../nix/store/abc-jq/bin/jq"
+      &&
+        usrTreeLib.makeRelative "/usr/lib/systemd/system/foo.service" "/nix/store/xyz/lib/systemd/system/foo.service"
+        == "../../../nix/store/xyz/lib/systemd/system/foo.service"
+    ))
+    (check "usr-tree: makeRelative preserves relative targets" (
+      usrTreeLib.makeRelative "/usr/lib/systemd/system/multi-user.target.wants/sshd.service" "../sshd.service"
+      == "../sshd.service"
+    ))
+    (check "usr-tree: allowedDirs includes expected directories" (
+      builtins.elem "bin" usrTreeLib.allowedDirs
+      && builtins.elem "lib" usrTreeLib.allowedDirs
+      && builtins.elem "share" usrTreeLib.allowedDirs
+      && builtins.elem "nix" usrTreeLib.allowedDirs
+    ))
+    (check "usr-tree: renderOsRelease includes version" (
+      hasInfix "VERSION_ID=20261031.1" (usrTreeLib.renderOsRelease "20261031.1")
+      && hasInfix "IMAGE_VERSION=20261031.1" (usrTreeLib.renderOsRelease "20261031.1")
     ))
   ];
 in
