@@ -26,25 +26,13 @@ in
   packages =
     {
       pkgs,
-      set,
       platform,
       system,
+      ...
     }:
     {
       # the patched Nix daemon repkgs needs (CA + dynamic derivations); builders run it
       inherit (pkgs) nix;
-
-      # Smoke test for /wrap: jq with --version prepended to its arguments; the
-      # set enters the tree through /pkgs and the module calls wrap itself
-      wrap-smoke =
-        (tree {
-          options."/pkgs".set = set;
-          options."/wrap" = {
-            package = pkgs.jq;
-            argv = [ "--version" ];
-          };
-        }).modules.wrap
-          { };
 
       # Smoke test for the /usr tree builder: a minimal system with jq
       usr-tree-smoke =

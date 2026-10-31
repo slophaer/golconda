@@ -19,8 +19,8 @@ flake-incompat.mkFlake {
     "aarch64-linux"
   ];
   # Per-system arguments, from the repkgs set for the platform (nix/packages.nix): `pkgs`,
-  # `platform` (repkgs' record, nix/platforms.nix), and `set` (the full repkgs set with wrap,
-  # closure, etc.). No nixpkgs here.
+  # `platform` (repkgs' record, nix/platforms.nix), and `set` (the full repkgs set, for
+  # options."/pkgs".set). No nixpkgs here.
   #
   # The build host (`system`) is the flake system; the target (`platform`) defaults to the
   # same. Cross-compilation: nix/default.nix builds packages for other targets under the
