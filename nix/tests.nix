@@ -2710,6 +2710,16 @@ let
       && skips "systemd-networkd.socket"
       && skips "systemd-timesyncd.service"
     ))
+    (check "base: the gettys skip without agetty (no local login)" (
+      let
+        fs = (compose [ ]).files;
+      in
+      hasInfix "ConditionPathExists=/usr/bin/agetty"
+        fs."/usr/lib/systemd/system/getty@.service.d/golconda.conf".text
+      &&
+        hasInfix "ConditionPathExists=/usr/bin/agetty"
+          fs."/usr/lib/systemd/system/serial-getty@.service.d/golconda.conf".text
+    ))
     (check "base: no unit is masked by a link (the systemd farm owns those paths)" (
       !(builtins.any (l: l.target == "/dev/null") (builtins.attrValues (compose [ ]).links))
     ))
