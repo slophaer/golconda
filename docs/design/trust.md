@@ -107,8 +107,21 @@ identity). Both are designed, not built.
 
 ## TPM2 credential decryption *(planned)*
 
-UKIs are signed with `ukify --phases=enter-initrd:leave-initrd:sysinit:ready`. This lets TPM2-sealed
-credentials unseal both in the initrd (for a LUKS unlock, later) and at service time.
+A phase path is the colon-separated chain of words systemd has measured into PCR 11 up to one boot
+state (`systemd-pcrphase.service(8)`); `systemd-measure --phase=` signs exactly one path, and
+`ukify --phases=` takes a list. The UKI signs the four paths of systemd's default set, each as its
+own signature in the `.pcrsig` section (`image/uki.nix`): `enter-initrd`,
+`enter-initrd:leave-initrd`, `enter-initrd:leave-initrd:sysinit`, and
+`enter-initrd:leave-initrd:sysinit:ready`. These are four signed states, not one. A single
+`enter-initrd:leave-initrd:sysinit:ready` argument would permit unsealing only at `ready`, after
+sshd has already tried to load its host key.
+
+This lets TPM2-sealed credentials unseal both in the initrd (for a LUKS unlock, later) and at
+service time. `sshd.service` is ordered after `systemd-pcrphase-sysinit.service`, so its host key is
+unsealed when PCR 11 is at `enter-initrd:leave-initrd:sysinit` or, after a restart, at `...:ready`;
+both are signed. `lib/image/uki.nu` recomputes each path's PCR 11 policy digest with
+`systemd-measure policy-digest` from the built image's own sections and compares it with the
+`.pcrsig` section; the build fails if a path is missing.
 
 ### Rollback weakness
 
