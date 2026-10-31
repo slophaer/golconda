@@ -182,15 +182,17 @@ let
 
   sortStrings = sort (a: b: a < b);
 
-  # Build without wrap: config files go to /usr/lib/<name>/, argv is on ExecStart.
-  buildUnwrapped =
-    svc:
+  # The unit text and the parts both renderers share. `argv` is the complete
+  # ExecStart= list after the executable; `envLines` is Environment= or
+  # nothing, by whether the launch record carries the environment.
+  buildUnit =
+    {
+      svc,
+      argv,
+      envLines,
+    }:
     let
-      filesDir = "/usr/lib/${svc.name}";
-      expandFiles = replaceStrings [ filesPlaceholder ] [ filesDir ];
-      extraArgv = svc.extraArgv or [ ];
       credentials = svc.credentials or { };
-      files = svc.app.files or { };
 
       # a credential ref must name a declared credential, or the unit cannot start
       checkedRef =
@@ -200,11 +202,11 @@ let
         else
           throw "golconda: service ${svc.name} references credential '${r.credential}' but declares only [${concatStringsSep ", " (attrNames credentials)}]";
 
-      argv = [
+      execStart = [
         (exe svc.app)
       ]
-      ++ map (a: arg (expandFiles a)) (svc.app.argv or [ ])
-      ++ map (a: if isCredentialRef a then checkedRef a else arg a) extraArgv;
+      ++ argv
+      ++ map (a: if isCredentialRef a then checkedRef a else arg a) (svc.extraArgv or [ ]);
 
       userLines =
         if svc.user == "dynamic" then
@@ -223,9 +225,9 @@ let
 
       serviceSection = [
         "[Service]"
-        "ExecStart=${concatStringsSep " " argv}"
+        "ExecStart=${concatStringsSep " " execStart}"
       ]
-      ++ envLines (svc.app.env or { })
+      ++ envLines
       ++ map (n: "LoadCredentialEncrypted=${n}:${credentials.${n}}") (sortStrings (attrNames credentials))
       ++ map (d: "StateDirectory=${d}") (svc.state or [ ])
       ++ userLines
@@ -255,86 +257,49 @@ let
       }) wantedByTargets;
     in
     {
-      units."${svc.name}.service" = text + "\n";
+      units.${unitFileName} = text + "\n";
+      sysusers = if isSysusersLine svc.user then [ svc.user ] else [ ];
+      links = wantsLinks;
+    };
+
+  # Build without wrap: config files go to /usr/lib/<name>/, argv is on ExecStart.
+  buildUnwrapped =
+    svc:
+    let
+      filesDir = "/usr/lib/${svc.name}";
+      expandFiles = replaceStrings [ filesPlaceholder ] [ filesDir ];
+      files = svc.app.files or { };
+    in
+    buildUnit {
+      inherit svc;
+      argv = map (a: arg (expandFiles a)) (svc.app.argv or [ ]);
+      envLines = envLines (svc.app.env or { });
+    }
+    // {
       files = builtins.listToAttrs (
         map (f: {
           name = "${filesDir}/${f}";
           value = files.${f};
         }) (attrNames files)
       );
-      sysusers = if isSysusersLine svc.user then [ svc.user ] else [ ];
       # StateDirectory= creates and owns the state; no tmpfiles lines needed
       packages = [ svc.app.package ];
-      links = wantsLinks;
     };
 
-  # Build with wrap: config files are in the wrapped output; argv is in the
-  # launch record; only extraArgv (credential refs) stays on ExecStart.
+  # Build with wrap: config files are in the wrapped output; argv and env are
+  # in the launch record; only extraArgv (credential refs) stays on ExecStart.
   buildWrapped =
     wrap: svc:
-    let
-      wrapped = wrapApp wrap svc.app;
-      extraArgv = svc.extraArgv or [ ];
-      credentials = svc.credentials or { };
-
-      checkedRef =
-        r:
-        if credentials ? ${r.credential} then
-          "${r.prefix or ""}%d/${r.credential}"
-        else
-          throw "golconda: service ${svc.name} references credential '${r.credential}' but declares only [${concatStringsSep ", " (attrNames credentials)}]";
-
-      # Only the wrapped binary and extraArgv; argv/env/files are in the launch record
-      argv = [
-        (exe svc.app)
-      ]
-      ++ map (a: if isCredentialRef a then checkedRef a else arg a) extraArgv;
-
-      userLines =
-        if svc.user == "dynamic" then
-          [ "DynamicUser=yes" ]
-        else if svc.user == "root" then
-          [ "User=root" ]
-        else
-          [ "User=${sysusersName svc.user}" ];
-
-      unitSection = [
-        "[Unit]"
-        "Description=${svc.name}"
-      ]
-      ++ map (u: "After=${u}") (svc.after or [ ])
-      ++ map (u: "Wants=${u}") (svc.wants or [ ]);
-
-      # No Environment= lines: the launch record carries env
-      serviceSection = [
-        "[Service]"
-        "ExecStart=${concatStringsSep " " argv}"
-      ]
-      ++ map (n: "LoadCredentialEncrypted=${n}:${credentials.${n}}") (sortStrings (attrNames credentials))
-      ++ map (d: "StateDirectory=${d}") (svc.state or [ ])
-      ++ userLines
-      ++ sandboxLines.${svc.sandbox};
-
-      installSection = [
-        "[Install]"
-        "WantedBy=multi-user.target"
-      ];
-
-      text = concatStringsSep "\n" (concatLists [
-        unitSection
-        [ "" ]
-        serviceSection
-        [ "" ]
-        installSection
-      ]);
-    in
-    {
-      units."${svc.name}.service" = text + "\n";
+    buildUnit {
+      inherit svc;
+      argv = [ ];
+      envLines = [ ];
+    }
+    // {
       # No files: they are in the wrapped output's share/wrap/<pkgname>/
       files = { };
-      sysusers = if isSysusersLine svc.user then [ svc.user ] else [ ];
       # The wrapped derivation goes into the farm, not the original package
-      packages = [ wrapped ];
+      packages = [ (wrapApp wrap svc.app) ];
     };
 
   # service -> fragment; type-checks first, so a bad value throws with the
