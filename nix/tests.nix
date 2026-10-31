@@ -2537,6 +2537,18 @@ let
       in
       hasInfix "ID=server\n" os && hasInfix "IMAGE_ID=server\n" os
     ))
+    (check "image: loader.conf turns the editor off and does not wait" (
+      let
+        conf = imageLib.loaderConf;
+        settings = filter (l: l != "" && !(hasPrefix "#" l)) (filter isString (split "\n" conf));
+      in
+      # loader.conf(5), systemd v262.1: `editor` takes a boolean; the UKI under EFI/Linux is
+      # found without an entry line
+      settings == [
+        "timeout 0"
+        "editor no"
+      ]
+    ))
     (check "image: the cmdline template has usrhash and no rw or volatile" (
       let
         t = (import ../image).uki.cmdlineTemplate;
