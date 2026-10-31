@@ -21,7 +21,7 @@ Plain files that modules import. The directory has no `default.nix`, so adios do
 | `fragment.nix`     | `fragment`: `{ units; files; sysusers; tmpfiles; packages }`, every field optional; `file`, `mode`                                    |
 | `merge.nix`        | `merge [ fragment… ] → fragment`: unions attrs, concatenates lists; a duplicate key throws; every file comes out as `{ text; mode; }` |
 | `app.nix`          | `app`, `argv`, `envOp`, `credentialRef`, `isCredentialRef`, `file`, `filesPlaceholder`, `exe`                                         |
-| `service.nix`      | `service`, `render`, `sandbox`, `sandboxLines`, `credential`                                                                          |
+| `service.nix`      | `service`, `render`, `sandbox`, `sandboxLines`, `credential`, `credentialArg`                                                         |
 | `var.nix`          | `var`, `render`, `unitName`, `credentialId`, `stateDir`                                                                               |
 | `golconda-var-run` | POSIX sh runner for var units                                                                                                         |
 
@@ -58,19 +58,22 @@ A `{ credential = "n"; }` value in `argv` is a type error: an app runs outside s
 
 A service is an `app` plus what only a unit has. `render service` returns a fragment.
 
-| field         | type                                                     | rendered as                                                            |
-| ------------- | -------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `name`        | unit name stem                                           | `units."<name>.service"`, `/usr/lib/<name>/` for files                 |
-| `app`         | `app`                                                    | `ExecStart=`, `Environment=`, `files`, `packages`                      |
-| `extraArgv`   | list of string or `{ credential = "n"; }`, default `[ ]` | after `app.argv`; a ref renders as `%d/n` and must be in `credentials` |
-| `credentials` | attrs name → credstore id, default `{ }`                 | `LoadCredentialEncrypted=name:id`                                      |
-| `state`       | list of string, default `[ ]`                            | `StateDirectory=`                                                      |
-| `user`        | `"dynamic"`, `"root"` or a sysusers line                 | `DynamicUser=yes`, `User=root`, or `User=` plus sysusers               |
-| `sandbox`     | `"strict"`, `"default"` or `"trusted"`                   | hardening directives from `sandboxLines`                               |
-| `after`       | list of unit names, default `[ ]`                        | `After=`                                                               |
-| `wants`       | list of unit names, default `[ ]`                        | `Wants=`                                                               |
+| field         | type                                                                  | rendered as                                                                    |
+| ------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `name`        | unit name stem                                                        | `units."<name>.service"`, `/usr/lib/<name>/` for files                         |
+| `app`         | `app`                                                                 | `ExecStart=`, `Environment=`, `files`, `packages`                              |
+| `extraArgv`   | list of string or `{ credential = "n"; prefix ? ""; }`, default `[ ]` | after `app.argv`; a ref renders as `<prefix>%d/n` and must be in `credentials` |
+| `credentials` | attrs name → credstore id, default `{ }`                              | `LoadCredentialEncrypted=name:id`                                              |
+| `state`       | list of string, default `[ ]`                                         | `StateDirectory=`                                                              |
+| `user`        | `"dynamic"`, `"root"` or a sysusers line                              | `DynamicUser=yes`, `User=root`, or `User=` plus sysusers                       |
+| `sandbox`     | `"strict"`, `"default"` or `"trusted"`                                | hardening directives from `sandboxLines`                                       |
+| `after`       | list of unit names, default `[ ]`                                     | `After=`                                                                       |
+| `wants`       | list of unit names, default `[ ]`                                     | `Wants=`                                                                       |
 
 Arguments are escaped (`%` → `%%`, `$` → `$$`). The unit ends with `WantedBy=multi-user.target`.
+`credential "n"` builds a plain ref; `credentialArg "RevokedKeys=" "n"` builds one with a prefix,
+for programs that take a path as `-o Option=<path>`. A prefix is one word of letters, digits and
+`_ = : / . , + -`.
 
 ### `merge`
 

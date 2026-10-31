@@ -97,6 +97,31 @@ let
       { };
   unit = system.units."sshd.service";
   varUnit = system.units."golconda-var-sshd-hostkey.service";
+  sshdConfig = system.files."/usr/lib/sshd/sshd_config".text;
+
+  # 1a. sshd with certificates: a user CA, principals, a KRL and a host certificate
+  certTree = f.modules {
+    options."/services/sshd" = {
+      package = standIn;
+      trustedUserCAKeys = [ "ssh-ed25519 AAAA user-ca" ];
+      principals.root = [ "alice@example.com" ];
+      revokedKeys = "sshd-revoked-keys";
+      hostCertificate = true;
+    };
+  };
+  certSshd = compose [ (certTree.modules.services.modules.sshd { }) ];
+  certUnit = certSshd.units."sshd.service";
+  certConfig = certSshd.files."/usr/lib/sshd/sshd_config".text;
+  sshdOptions = attrNames (import ../modules/services/sshd/default.nix { inherit types; }).options;
+  sshdTree =
+    opts:
+    f.modules {
+      options."/services/sshd" = {
+        package = standIn;
+      }
+      // opts;
+    };
+  sshdThrows = opts: throws (compose [ ((sshdTree opts).modules.services.modules.sshd { }) ]);
 
   tests = [
     (check "sshd: LoadCredentialEncrypted" (
@@ -119,6 +144,64 @@ let
       && system.files ? "/usr/lib/golconda/vars.d/sshd-hostkey.sh"
     ))
     (check "vars: runner installed once" (system.files ? "/usr/lib/golconda/golconda-var-run"))
+
+    # 1a. keys and certificates only: the fixed lines, and no option can undo them
+    (check "sshd: no password path" (
+      all (l: hasInfix "\n${l}\n" sshdConfig) [
+        "PasswordAuthentication no"
+        "KbdInteractiveAuthentication no"
+        "ChallengeResponseAuthentication no"
+        "PermitRootLogin prohibit-password"
+        "UsePAM yes"
+        "LogLevel VERBOSE"
+      ]
+    ))
+    (check "sshd: the option set has no auth switch" (
+      sshdOptions == [
+        "authorizedKeys"
+        "hostCertificate"
+        "package"
+        "port"
+        "principals"
+        "revokedKeys"
+        "trustedUserCAKeys"
+      ]
+    ))
+    (check "sshd: without a CA no certificate lines" (
+      !hasInfix "TrustedUserCAKeys" sshdConfig
+      && !hasInfix "AuthorizedPrincipalsFile" sshdConfig
+      && !hasInfix "HostCertificate" unit
+      && !hasInfix "RevokedKeys" unit
+    ))
+    (check "sshd: user CA keys file" (
+      certSshd.files."/usr/lib/sshd/trusted_user_ca_keys".text == "ssh-ed25519 AAAA user-ca\n"
+      && hasInfix "\nTrustedUserCAKeys /usr/lib/sshd/trusted_user_ca_keys\n" certConfig
+    ))
+    (check "sshd: principals file and AuthorizedPrincipalsFile" (
+      certSshd.files."/usr/lib/sshd/principals.root".text == "alice@example.com\n"
+      && hasInfix "\nAuthorizedPrincipalsFile /usr/lib/sshd/principals.%u\n" certConfig
+    ))
+    (check "sshd: host certificate credential and option" (
+      hasInfix "LoadCredentialEncrypted=hostcert:sshd-host-cert" certUnit
+      && hasInfix " -o HostCertificate=%d/hostcert" certUnit
+    ))
+    (check "sshd: revoked keys credential and option" (
+      hasInfix "LoadCredentialEncrypted=sshd-revoked-keys:sshd-revoked-keys" certUnit
+      && hasInfix " -o RevokedKeys=%d/sshd-revoked-keys" certUnit
+    ))
+    (check "sshd: the fixed lines survive the certificate options" (
+      hasInfix "\nPasswordAuthentication no\n" certConfig
+      && hasInfix "\nKbdInteractiveAuthentication no\n" certConfig
+    ))
+    (check "sshd: revokedKeys is one credential name" (sshdThrows {
+      revokedKeys = "../x";
+    }))
+    (check "sshd: hostCertificate is a bool" (sshdThrows {
+      hostCertificate = "yes";
+    }))
+    (check "sshd: principals are lists of strings" (sshdThrows {
+      principals.root = "alice";
+    }))
     (check "vars: runner is executable" (
       system.files."/usr/lib/golconda/golconda-var-run".mode == "0755"
     ))
@@ -251,6 +334,32 @@ let
           name = "x";
           app.package = standIn;
           extraArgv = [ (s.credential "k") ];
+          credentials.k = "x.k";
+          user = "dynamic";
+          sandbox = "strict";
+        }
+      )
+    ))
+    (check "extraArgv renders a prefixed credential ref" (
+      hasInfix " -o RevokedKeys=%d/k\n"
+        (s.render {
+          name = "x";
+          app.package = standIn;
+          extraArgv = [
+            "-o"
+            (s.credentialArg "RevokedKeys=" "k")
+          ];
+          credentials.k = "x.k";
+          user = "dynamic";
+          sandbox = "strict";
+        }).units."x.service"
+    ))
+    (check "a credential prefix is one plain word" (
+      throws (
+        s.render {
+          name = "x";
+          app.package = standIn;
+          extraArgv = [ (s.credentialArg "Revoked Keys=" "k") ];
           credentials.k = "x.k";
           user = "dynamic";
           sandbox = "strict";

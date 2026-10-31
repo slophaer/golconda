@@ -26,12 +26,30 @@ let
     length
     ;
 
-  # A credential reference, { credential = "name"; }. It renders as %d/name,
-  # which exists only inside a systemd unit, so only `service.extraArgv`
-  # accepts it; `app.argv` refuses it below.
-  credentialRef = (struct "credentialRef" { credential = string; }).override { unknown = false; };
-  isCredentialRef = v: credentialRef.verify v == null;
   inherit (builtins) isString match;
+
+  # A credential reference, { credential = "name"; prefix ? ""; }. It renders
+  # as <prefix>%d/name, which exists only inside a systemd unit, so only
+  # `service.extraArgv` accepts it; `app.argv` refuses it below. The prefix
+  # is for programs that take a path as `-o Option=<path>`: it is glued to
+  # the path, so it is one shell word of plain characters.
+  credentialRef =
+    (struct "credentialRef" {
+      credential = string;
+      prefix = optionalAttr (
+        typedef' "credentialPrefix" (
+          v:
+          if !isString v then
+            "Expected a string"
+          else if match "[A-Za-z0-9_=:/.,+-]*" v == null then
+            "'${v}' is not a credential prefix: letters, digits and _ = : / . , + -"
+          else
+            null
+        )
+      );
+    }).override
+      { unknown = false; };
+  isCredentialRef = v: credentialRef.verify v == null;
 
   # argv of an app: strings only, with a clear message for the one mistake the
   # type exists to catch.
