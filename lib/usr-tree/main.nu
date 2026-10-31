@@ -194,6 +194,12 @@ export def build [] {
   | to json
   | save -f $"($out)/lib/golconda/packages.json"
 
+  # Step 10b: Copy SBOM if one was provided
+  if $attrs.sbomPath != null {
+    log "copying sbom.json"
+    ^cp $attrs.sbomPath $"($out)/lib/golconda/sbom.json"
+  }
+
   # mtimes are not set here: Nix normalises every store path to mtime 1. The version-derived
   # timestamp (epoch) is applied by mkfs.erofs -T when the image is made (image/erofs.nix).
 
