@@ -1,12 +1,20 @@
 # wrap module: wraps a package with argv, env, and files.
-# Calls repkgs' wrap function; requires repkgs pin with wrap support.
+# Returns an app record (modules/lib/app.nix) that can be passed to `wrapApp`
+# from app.nix or directly to `repkgs.wrap`.
+#
 # Example use:
-#   modules.wrap {
+#   let wrapped = wrapApp set.wrap (modules.wrap {
 #     options.package = pkgs.ripgrep;
-#     options.argv = [ "--config-path" "{root}/share/wrap/ripgreprc" ];
-#     options.files."ripgreprc" = "--smart-case\n";
-#   }
+#     options.argv = [ "--config-path" (file "ripgreprc") ];
+#     options.files.ripgreprc = "--smart-case\n";
+#   });
+#
+# For services, pass the app record to service.app and use renderWrapped:
+#   s.renderWrapped set.wrap { name = "rg"; app = modules.wrap {...}; ... }
 { types, ... }:
+let
+  appLib = import ../lib/app.nix { inherit types; };
+in
 {
   name = "wrap";
 
@@ -16,30 +24,27 @@
       description = "The package to wrap. Every executable in its bin/ gets a launch record.";
     };
     argv = {
-      type = types.listOf types.string;
+      type = appLib.argv;
       default = [ ];
-      description = "Arguments to prepend before the user's. `{root}` is the wrapper's own output, `{store}` the store.";
+      description = ''Arguments to prepend before the user's. Use `file "name"` from app.nix for config files; it expands to {root}/share/wrap/<pkgname>/name in the wrapped output.'';
     };
     env = {
-      type = types.attrsOf types.attrs;
+      type = types.attrsOf appLib.envOp;
       default = { };
-      description = "Environment operations: { VAR = { op = value; }; }.";
+      description = "Environment operations: { VAR = { set = value; }; }. One of set, default, prepend, append, unset.";
     };
     files = {
-      type = types.attrsOf types.string;
+      type = appLib.files;
       default = { };
-      description = "Files to write, name to text. They land in `{root}/share/wrap/<pkgname>/<name>`, where <pkgname> is the wrapped package's pname; reference them from argv or env.";
+      description = "Files to write, name to text. They land in share/wrap/<pkgname>/<name>; reference them with `file \"name\"` in argv.";
     };
   };
 
-  # The impl returns a derivation by calling repkgs' wrap function.
-  # This requires the repkgs set to be passed as an input.
-  # Since adios modules don't have direct access to inputs, this is called
-  # from the package expression that uses this module's output.
+  # The impl returns an app record that the caller passes to wrapApp or repkgs.wrap.
+  # Since adios modules don't have direct access to the repkgs set, the wrapping
+  # happens outside the module (e.g. in packages.nix or via service.renderWrapped).
   impl =
     { options }:
-    # The module returns the options as-is; the caller (e.g. packages.nix)
-    # passes these to repkgs.wrap. This keeps the module pure and typed.
     {
       inherit (options)
         package
