@@ -2307,6 +2307,15 @@ let
       result.files ? "/usr/lib/systemd/system/dbus.socket"
       && hasInfix "[Socket]" result.files."/usr/lib/systemd/system/dbus.socket".text
     ))
+    (check "base: the bus config names the activation directory (timedated and the other on-demand services)" (
+      let
+        result = compose [ ];
+        conf = result.files."/usr/share/dbus-1/system.conf".text;
+      in
+      hasInfix "<servicedir>/usr/share/dbus-1/system-services</servicedir>" conf
+      # the directory it names is the farm link to systemd's own activation files
+      && result.links."/usr/share/dbus-1/system-services".kind == "farm"
+    ))
     (check "base: dbus-broker.service and dbus.service alias are links" (
       let
         result = compose [ ];
