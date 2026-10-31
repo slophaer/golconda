@@ -37,7 +37,6 @@ let
     elem
     filter
     foldl'
-    mapAttrs
     readFile
     ;
 
@@ -72,14 +71,6 @@ let
       # Find invalid table names
       invalidTables = filter (t: !isValidPath t) tables;
 
-      # Build the options attrset
-      options = mapAttrs (
-        tableName: tableValue:
-        if isValidPath tableName then
-          tableValue
-        else
-          throw "golconda: unknown module path '${tableName}' in config; valid paths: ${concatStringsSep ", " validPaths}"
-      ) toml;
     in
     if toml ? "/pkgs" then
       throw "golconda: /pkgs is not configuration: the repkgs set comes from nix (nix/default.nix), not from the document"
@@ -87,7 +78,7 @@ let
       throw "golconda: unknown module path(s) in config: ${concatStringsSep ", " invalidTables}; valid paths: ${concatStringsSep ", " validPaths}"
     else
       {
-        options = options // (if pkgsSet == null then { } else { "/pkgs".target = pkgsSet; });
+        options = toml // (if pkgsSet == null then { } else { "/pkgs".target = pkgsSet; });
       };
 
   # Load and validate a TOML configuration file.
@@ -105,15 +96,6 @@ let
     else
       throw "loadAndApply requires the modules function; pass it to config.nix";
 
-  # Validate a TOML config against the schema without applying it.
-  # Returns null if valid, or an error message.
-  validateConfig =
-    path:
-    let
-      result = builtins.tryEval (loadConfig path);
-    in
-    if result.success then null else result.value;
-
   # The same loader with the repkgs set bound: its options carry "/pkgs".target.
   withPkgs =
     set:
@@ -127,7 +109,6 @@ in
     loadConfig
     loadConfigText
     loadAndApply
-    validateConfig
     validPaths
     withPkgs
     ;

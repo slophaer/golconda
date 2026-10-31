@@ -1032,6 +1032,35 @@ let
         }
       )
     ))
+    (check "env: unset is true-only and renders UnsetEnvironment=" (
+      let
+        unit =
+          env:
+          (s.render {
+            name = "x";
+            app = {
+              package = standIn;
+              inherit env;
+            };
+            user = "root";
+            sandbox = "strict";
+          }).units."x.service";
+      in
+      hasInfix "\nUnsetEnvironment=OLD\n" (unit {
+        OLD.unset = true;
+      })
+      && throws (
+        s.render {
+          name = "x";
+          app = {
+            package = standIn;
+            env.OLD.unset = false;
+          };
+          user = "root";
+          sandbox = "strict";
+        }
+      )
+    ))
     (check "var: an admin var is a manifest entry and nothing else" (
       let
         frag = v.admin {
