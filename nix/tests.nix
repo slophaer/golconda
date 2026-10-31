@@ -3191,6 +3191,74 @@ let
       && !(accepted (base // { "/network".netwroks = { }; }))
     ))
 
+    # review 13: a typed scalar that lands in unit text cannot add a directive
+    (check "unit: a line break in a typed scalar cannot add a directive" (
+      let
+        unitThrows =
+          extra:
+          !(tryEval (
+            deepSeq (s.render (
+              {
+                name = "x";
+                app = {
+                  package = standIn;
+                };
+                user = "root";
+                sandbox = "default";
+              }
+              // extra
+            )) true
+          )).success;
+      in
+      # the probe: an env value that ends Environment= and starts ExecStartPre=
+      unitThrows {
+        app = {
+          package = standIn;
+          env.X.set = "a\nExecStartPre=/usr/bin/false";
+        };
+      }
+      && unitThrows {
+        app = {
+          package = standIn;
+          env."A B" = {
+            set = "x";
+          };
+        };
+      }
+      && unitThrows { state = [ "a b" ]; }
+      && unitThrows { state = [ "../etc" ]; }
+      && unitThrows {
+        credentials = {
+          a = "../x";
+        };
+      }
+      && unitThrows { after = [ "network.target\nRequires=evil.service" ]; }
+      && unitThrows { wants = [ "not-a-unit" ]; }
+      # positive: the same fields with plain values render
+      && !(unitThrows { state = [ "foo" ]; })
+    ))
+    (check "unit: Environment= doubles % (a specifier) and keeps $ (literal)" (
+      let
+        u =
+          (s.render {
+            name = "x";
+            app = {
+              package = standIn;
+              env = {
+                HOME.set = "%h";
+                VAR.set = "$HOME";
+                PATH.prepend = [ "/usr/lib/foo/bin" ];
+              };
+            };
+            user = "root";
+            sandbox = "default";
+          }).units."x.service";
+      in
+      hasInfix "\nEnvironment=HOME=%%h\n" u
+      && hasInfix "\nEnvironment=VAR=$HOME\n" u
+      && hasInfix "\nEnvironment=PATH=/usr/lib/foo/bin\n" u
+    ))
+
   ];
 in
 assert all (t: t) tests;
