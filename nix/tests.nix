@@ -2382,6 +2382,9 @@ let
       in
       hasInfix "\nCONFIG_DMI_SYSFS=y\n" conf && hasInfix "\nCONFIG_FW_CFG_SYSFS=y\n" conf
     ))
+    (check "linux-pam: pam_unix reads shadow itself (the set has no unix_chkpwd helper)" (
+      pkgs.linux-pam.drvAttrs.spec.meson.defs."pam_unix-try-getspnam" == true
+    ))
     (check "kernel: the override reaches the derivation (kbuild.configFragments holds the file)" (
       let
         fragments = pkgs.linux-kernel.drvAttrs.spec.kbuild.configFragments;
