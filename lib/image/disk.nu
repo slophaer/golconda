@@ -2,7 +2,7 @@
 #
 # Structured attrs: definitions (name -> INI text with {esp} {usr} {verity} {sig} {usrUuid}
 # {verityUuid}), usr, verity, sig, roothash, uki, ukiName, systemdBoot, bootEntry,
-# architecture, seed, epoch, loaderConf, sbKey, sbCert.
+# architecture, seed, epoch, loaderConf, sbKey, sbCert, release (usr verity sig uki -> file name, `@u` where the UUID goes).
 
 use common.nu *
 
@@ -54,4 +54,25 @@ export def build [] {
   ^systemd-repart --empty=create --size=auto --offline=yes --dry-run=no --architecture $a.architecture --sector-size 512 --seed $a.seed --definitions $defs --json=pretty $disk
     | save -f $"($out)/disk.json"
   log $"disk.raw: (ls $disk | get size.0) \((^du -k $disk | split row "\t" | first) KiB allocated\)"
+
+  # the release under the names the sysupdate sources match: the data and hash files carry the
+  # UUIDs above, which sysupdate gives the slot it writes, so the new UKI's usrhash= finds it
+  let release = $"($out)/release"
+  mkdir $release
+  let files = [
+    [name source];
+    [($a.release.usr | str replace "@u" $usr_uuid) $a.usr]
+    [($a.release.verity | str replace "@u" $verity_uuid) $a.verity]
+    [$a.release.sig $a.sig]
+    [$a.release.uki $a.uki]
+  ]
+  for f in $files {
+    ^ln -s $f.source $"($release)/($f.name)"
+  }
+  $files
+    | each {|f| $"(open --raw $f.source | hash sha256)  ($f.name)" }
+    | str join "\n"
+    | $"($in)\n"
+    | save -f $"($release)/SHA256SUMS"
+  log $"release: (ls $release | get name | path basename | str join ' ')"
 }
