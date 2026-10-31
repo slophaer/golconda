@@ -96,7 +96,15 @@ in
               cmdlineExtra = "LD_LIBRARY_PATH={dlopenPath} rw";
             }
           );
-          disk = imageLib.disk (args // { inherit erofs verity uki; });
+          disk = imageLib.disk (
+            args
+            // {
+              inherit erofs verity uki;
+              # the loader is signed with the UKI's key: one firmware entry point, one signer
+              sbKey = "${keys}/secureboot/db.key";
+              sbCert = "${keys}/secureboot/db.crt";
+            }
+          );
           smoke = imageLib.smoke (
             args
             // {
@@ -189,6 +197,8 @@ in
               erofs = testErofs;
               verity = testVerity;
               uki = testUki;
+              sbKey = "${testKeys}/secureboot/db.key";
+              sbCert = "${testKeys}/secureboot/db.crt";
             }
           );
         in

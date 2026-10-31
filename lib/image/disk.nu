@@ -2,7 +2,7 @@
 #
 # Structured attrs: definitions (name -> INI text with {esp} {usr} {verity} {sig} {usrUuid}
 # {verityUuid}), usr, verity, sig, roothash, uki, ukiName, systemdBoot, bootEntry,
-# architecture, seed, epoch, loaderConf.
+# architecture, seed, epoch, loaderConf, sbKey, sbCert.
 
 use common.nu *
 
@@ -18,14 +18,16 @@ export def build [] {
   $env.LD_LIBRARY_PATH = $a.LD_LIBRARY_PATH
   mkdir $out
 
-  # the ESP's content: systemd-boot on the removable-media path, its policy, the UKI where it
-  # looks
+  # the ESP's content: the signed systemd-boot on the removable-media path, its policy, the UKI
+  # where it looks
   let esp = $"($env.NIX_BUILD_TOP)/esp"
   mkdir $"($esp)/($a.bootEntry | path dirname)" $"($esp)/EFI/Linux" $"($esp)/EFI/loader"
-  ^cp $a.systemdBoot $"($esp)/($a.bootEntry)"
+  # Secure Boot: the same db key and certificate as the UKI (lib/image/uki.nix); enforcing
+  # firmware starts only a signed loader. A signing failure fails the build.
+  ^systemd-sbsign sign $a.systemdBoot --private-key $a.sbKey --certificate $a.sbCert --output $"($esp)/($a.bootEntry)"
   $a.loaderConf | save -f $"($esp)/EFI/loader/loader.conf"
   ^cp $a.uki $"($esp)/EFI/Linux/($a.ukiName)"
-  log $"loader.conf: (($a.loaderConf | lines | where {|l| not ($l | str starts-with '#') and ($l | str trim) != ''}) | str join ', ')"
+  log $"loader: ($a.bootEntry) signed with ($a.sbCert | path basename), loader.conf: (($a.loaderConf | lines | where {|l| not ($l | str starts-with '#') and ($l | str trim) != ''}) | str join ', ')"
 
   # the two partition UUIDs systemd derives from the root hash
   let roothash = (open --raw $a.roothash | str trim)
