@@ -27,6 +27,7 @@
 # With --ssh-test: logs in with tests/fixtures/snakeoil-ssh and checks
 #   ssh-login, hostname (must be "boot-test", the SMBIOS credential),
 #   systemctl --failed (no failed units), varlinkctl list-interfaces.
+# With --secure-boot: boots OVMFFull and checks that the firmware enforces Secure Boot.
 # With --ssh-test --tpm: also checks that the host key is sealed with the TPM
 #   (credential header), reboots the guest in the same QEMU (swtpm keeps its
 #   state) and checks the second boot: a new boot id, sshd active, the same
@@ -141,12 +142,12 @@ VARS="$WORKDIR/vars.fd"
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 DEV_PIN=$(nix-instantiate --eval -E "(import $REPO_DIR/nix/sources.nix).nixpkgs-dev-only" 2>/dev/null | tr -d '"')
-# --tpm needs a firmware that measures the boot into the TPM (nixpkgs OVMF has no
-# tpmSupport; OVMFFull has, and it is built with SMM, so QEMU gets smm=on below):
-# without the measurement systemd-stub does not pass the UKI's PCR public key on, and
-# credentials are sealed without the signed PCR 11 policy
+# OVMF.fd has neither Secure Boot nor TPM support. OVMFFull.fd has both, and it is
+# built with SMM, so QEMU gets smm=on below. --tpm needs the TPM measurement, or
+# systemd-stub does not pass the UKI's PCR public key on and credentials are sealed
+# without the signed PCR 11 policy. --secure-boot needs a firmware that enforces.
 OVMF_ATTR=OVMF.fd
-if [ "$TPM" = 1 ]; then
+if [ "$TPM" = 1 ] || [ "$SECURE_BOOT" = 1 ]; then
   OVMF_ATTR=OVMFFull.fd
 fi
 OVMF_DIR=$(nix-build -I "nixpkgs=$DEV_PIN" '<nixpkgs>' -A "$OVMF_ATTR" --no-out-link 2>/dev/null)/FV
@@ -168,12 +169,15 @@ enroll_keys() {
   fi
   
   echo "Enrolling Secure Boot keys..."
+  # virt-fw-vars 25.12 wants an owner GUID with every entry; one fixed GUID is fine
+  # for a throwaway test key (the GUID names the entry, it does not verify anything)
+  GUID=11111111-2222-3333-4444-555555555555
   virt-fw-vars \
     --input "$VARS" \
     --output "$VARS.new" \
-    --set-pk "$DB_CERT" \
-    --add-kek "$DB_CERT" \
-    --add-db "$DB_CERT" \
+    --set-pk "$GUID" "$DB_CERT" \
+    --add-kek "$GUID" "$DB_CERT" \
+    --add-db "$GUID" "$DB_CERT" \
     --secure-boot
   mv "$VARS.new" "$VARS"
   echo "Secure Boot keys enrolled"
@@ -249,7 +253,7 @@ start_qemu() {
     -netdev user,id=net0,hostfwd=tcp::$SSH_PORT-:22 \
     -device virtio-net-pci,netdev=net0"
   
-  if [ "$TPM" = 1 ]; then
+  if [ "$TPM" = 1 ] || [ "$SECURE_BOOT" = 1 ]; then
     QEMU_ARGS="$QEMU_ARGS \
       -machine smm=on -global driver=cfi.pflash01,property=secure,value=on \
       -chardev socket,id=chrtpm,path=$WORKDIR/tpm/swtpm-sock \
@@ -426,6 +430,15 @@ test_ssh() {
   echo ""
   echo "=== bootctl list ==="
   guest bootctl list --no-pager 2>&1 || true
+
+  if [ "$SECURE_BOOT" = 1 ]; then
+    echo ""
+    echo "=== secure boot state ==="
+    SB=$(guest bootctl status 2>&1) || true
+    echo "$SB" | grep -i "secure boot" || true
+    RC=0; echo "$SB" | grep -qi "Secure Boot: enabled" || RC=1
+    verdict "secure-boot-enabled (firmware is enforcing)" $RC
+  fi
 
   if [ "$TPM" = 1 ]; then
     echo ""
