@@ -2,24 +2,22 @@
 #!
 #! The configuration passes the set of its platform as `options."/pkgs".set`
 #! (`nix/default.nix` takes it from `nix/packages.nix`). A module that needs a
-#! package declares `inputs.pkgs.path = "/pkgs"` and reads `results.pkgs.pkgs.<name>`
-#! or `results.pkgs.wrap`; an option that holds a package defaults from there
+#! package declares `inputs.pkgs.path = "/pkgs"` and reads `results.pkgs.pkgs.<name>`;
+#! an option that holds a package defaults from there
 #! (`defaultFunc = { results }: results.pkgs.pkgs.openssh`). No module imports
 #! repkgs, and a configuration document cannot name a package.
 { types, ... }:
 let
-  inherit (builtins) isAttrs isFunction typeOf;
+  inherit (builtins) isAttrs typeOf;
 
-  # The set nix/packages.nix returns: at least `pkgs` and `wrap`. The tests
-  # pass a stub with the same shape.
+  # The set nix/packages.nix returns: at least `pkgs`. The tests pass a stub
+  # with the same shape.
   repkgsSet = types.typedef' "repkgsSet" (
     v:
     if !isAttrs v then
       "Expected the repkgs set (nix/packages.nix), got ${typeOf v}"
     else if !(v ? pkgs && isAttrs v.pkgs) then
       "the repkgs set has `pkgs`, an attribute set of packages"
-    else if !(v ? wrap && isFunction v.wrap) then
-      "the repkgs set has `wrap`, the function that builds a launcher"
     else
       null
   );
@@ -41,6 +39,6 @@ in
     else
       {
         inherit (options) set;
-        inherit (options.set) pkgs wrap;
+        inherit (options.set) pkgs;
       };
 }

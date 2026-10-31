@@ -45,19 +45,13 @@ let
   # repkgs packages carry `bin`, their executable names, at evaluation time.
   pkgName = p: p.name or "${p.pname}-${p.version}";
 
-  # A package's identity for the duplicate check: its store path, so two
-  # wrappers of one package with different arguments differ; a stand-in
+  # A package's identity for the duplicate check: its store path; a stand-in
   # without one goes by name.
   pkgId = p: p.outPath or (pkgName p);
 
   # Build /usr/bin links from packages' bin lists. Two packages with the same
-  # bin name is an error with both package names. The same package listed
-  # twice is not a clash (same identity); we emit one link. One exception: a
-  # wrapped output (app.nix `wrapApp`, `wraps` = the package) stands in for
-  # the program of its own package, so /usr/bin/<program> is the launcher
-  # and the plain package's link gives way. Two wrappers of one program, or a
-  # wrapper of another package, still clash.
-  standsInFor = wrapper: p: wrapper ? wraps && pkgId wrapper.wraps == pkgId p;
+  # bin name is an error with both package names, no exceptions. The same
+  # package listed twice is not a clash (same identity); we emit one link.
   binLinks =
     packages:
     foldl'
@@ -88,10 +82,8 @@ let
           in
           if prior == null then
             take
-          else if pkgId prior.package == pkgId p || standsInFor prior.package p then
+          else if pkgId prior.package == pkgId p then
             acc
-          else if standsInFor p prior.package then
-            take
           else
             throw "golconda: ${path} defined twice: ${prior.source}, ${source}"
         ) acc (p.bin or [ ])
