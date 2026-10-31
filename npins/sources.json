@@ -59,11 +59,11 @@
         "owner": "yolobox",
         "repo": "repkgs"
       },
-      "branch": "golconda",
+      "branch": "reloc-boot",
       "submodules": false,
-      "revision": "22a045309fb6f48aa1f9604b2559091d14b7097f",
-      "url": "https://code.in.a.flawed.cloud/yolobox/repkgs/archive/22a045309fb6f48aa1f9604b2559091d14b7097f.tar.gz",
-      "hash": "sha256-qKz85iZYinfBLw4IqLKyUrUGvymIoqSxW3595ZmwdRU="
+      "revision": "d1c9a34159d30b8b9f894d1a1f3e35073043c43d",
+      "url": "https://code.in.a.flawed.cloud/yolobox/repkgs/archive/d1c9a34159d30b8b9f894d1a1f3e35073043c43d.tar.gz",
+      "hash": "sha256-mL3w3WPMKzOvc4GaHqCu5AkgaX+U2B+NNnZ8TcxkcLE="
     }
   },
   "version": 7

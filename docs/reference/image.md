@@ -117,12 +117,8 @@ throwaway ones in the store (`throwawayKeys`); a release signs with the deployme
 (`image/default.nix` `keys`), which never enter the store. Not yet: the verity certificate in the
 kernel keyring, a TPM.
 
-Stand-ins the smoke carries on its cmdline, outside `image/uki.nix`: `LD_LIBRARY_PATH=` with the
-store directories of the libraries systemd dlopens (the fork's RUNPATH does not name them), and `rw`
-(gpt-auto-generator exits 1 in the host, so the remount drop-in it would write is missing). Every
-image, not only the smoke, sets the same `LD_LIBRARY_PATH` for services in
-`system.conf.d/golconda-dlopen.conf` (`/base`). All three leave with the fork fixes
-([Boot: Kernel command line](../design/boot.md#kernel-command-line)).
+The smoke's cmdline is `image/uki.nix`'s template plus `rdinit=/init`; its `cmdlineExtra` is for
+debug flags only ([Boot: Kernel command line](../design/boot.md#kernel-command-line)).
 
 ## Builder constraints
 

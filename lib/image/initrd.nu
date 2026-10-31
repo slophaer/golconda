@@ -1,12 +1,12 @@
 # initrd.nu: the zstd cpio around the initrd's /usr tree (lib/image/initrd.nix).
 #
-# Structured attrs: usrTree, dmRules, systemd.
+# Structured attrs: usrTree, dmRules.
 
 use common.nu *
 
-# The path rdinit= names: systemd inside the initrd's /usr/nix/store (initrd.nix says why)
-export def rdinit [systemd: string]: nothing -> string {
-  $"/usr/nix/store/($systemd | path basename)/lib/systemd/systemd"
+# The path rdinit= names: /init, the link to systemd (initrd.nix says why it can be a link)
+export def rdinit []: nothing -> string {
+  "/init"
 }
 
 export def build [] {
@@ -41,9 +41,9 @@ export def build [] {
     log $"dm rule ($f | path basename)"
   }
 
-  # what the kernel execs (rdinit=) must be a real file in the cpio
-  let init = (rdinit $a.systemd)
-  if ($"($root)($init)" | path type) != file { error make {msg: $"($init) is not a file in the initrd"} }
+  # what the kernel execs (rdinit=) must lead to a real file in the cpio, through its links
+  let init = (rdinit)
+  if ($"($root)($init)" | path expand | path type) != file { error make {msg: $"($init) does not lead to a file in the initrd"} }
   for p in [/usr/lib/systemd/systemd /usr/lib/systemd/systemd-executor /usr/lib/systemd/systemd-udevd /usr/lib/systemd/systemd-veritysetup /usr/lib/systemd/system-generators/systemd-veritysetup-generator /usr/lib/systemd/system-generators/systemd-gpt-auto-generator /usr/bin/dmsetup /usr/bin/systemctl] {
     if not ($"($root)($p)" | path exists) { error make {msg: $"($p) missing from the initrd"} }
   }

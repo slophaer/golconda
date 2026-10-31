@@ -39,8 +39,7 @@ rec {
       sbCert,
       pcrKey,
       pcrPublicKey,
-      cmdlineExtra ? "", # appended to the template; the smoke's stand-ins go here, not in image/
-      # ({dlopenPath} in it becomes the store lib directories of the tree's dlopen links)
+      cmdlineExtra ? "", # appended to the template: the smoke's debug flags go here, not in image/
       ...
     }:
     let
@@ -67,7 +66,6 @@ rec {
         initrd = "${initrd}/initrd.cpio.zst";
         roothash = "${verity}/roothash";
         osRelease = "${usrTree}/lib/os-release";
-        inherit usrTree; # for {dlopenPath} (uki.nu)
         cmdlineTemplate = "${ukiConfig.cmdlineTemplate} ${cmdlineExtra}";
         phases = ukiConfig.pcrPhases;
         inherit

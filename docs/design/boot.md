@@ -37,11 +37,10 @@ links `/bin` `/sbin` `/lib`, and the empty mount points. There is no machine-id,
 getty, no static init. It needs no root partition to find `/usr`: `usrhash=` on the cmdline names
 the verity root hash, the generators derive the two DPS partition UUIDs from it, veritysetup
 attaches `/dev/mapper/usr`, and repart makes the root partition from
-`/usr/lib/repart.d/30-root.conf` on first boot. The cmdline also carries
-`rdinit=/usr/nix/store/<systemd>/lib/systemd/systemd`: a repkgs binary maps its dynamic linker
-relative to its own path, which before `/proc` exists is the path the kernel execs, so the kernel
-must be told the real file, not the `/init` link. The kernel's configuration is in
-[Kernel](kernel.md).
+`/usr/lib/repart.d/30-root.conf` on first boot. The cmdline also carries `rdinit=/init`: a repkgs
+binary maps its dynamic linker relative to its own path, which before `/proc` exists is the path the
+kernel execs; the fork's crt-interp and glibc follow the `/init` link to the real file without
+`/proc`. The kernel's configuration is in [Kernel](kernel.md).
 
 ## Boot counting and A/B
 
@@ -93,7 +92,7 @@ finds its own slot and the old UKI still finds the old one. The UKI goes to `EFI
 
 The cmdline is fixed in the UKI and measured with it:
 `usrhash=<hash> lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=0 console=tty0 console=ttyS0,115200`
-(`image/uki.nix`), plus `rdinit=<systemd>` from the builder. The LSM parameters are described in
+(`image/uki.nix`), plus `rdinit=/init` from the builder. The LSM parameters are described in
 [Kernel](kernel.md). No administrator edits: the ESP carries `EFI/loader/loader.conf` with
 `editor no` (the editor would let anyone at the console change the cmdline) and `timeout 0` (the
 menu does not wait). The UKI under `EFI/Linux` needs no entry line. This is menu policy, not
@@ -102,14 +101,14 @@ decided cmdline has neither `ro` nor `rw` and no `systemd.volatile=` (`/` is the
 which gpt-auto mounts writable when nothing says `ro`; `/usr` is verity). A debug image with other
 parameters is a separate build *(after v1)*.
 
-Stand-ins today. The image smoke also appends `rw`: the host's gpt-auto-generator exits 1, so the
-remount-rw drop-in it would write is missing, and without `rw` sysusers, vars and state directories
-fail. It also appends `LD_LIBRARY_PATH=…` for PID 1, and every image sets the same for services in
-`system.conf.d/golconda-dlopen.conf` (`/base`): both stand in for a fork fix, RUNPATH entries for
-the sonames in `.note.dlopen`. `rdinit=/usr/nix/store/<systemd>/lib/systemd/systemd` stands in until
-the fork resolves `AT_EXECFN` symlinks; then `/init` suffices. Each leaves with its fix.
-`ipe.enforce=0` means IPE enforces nothing yet: it becomes `1` once the verity certificate is in a
-kernel keyring.
+The smoke image adds `rw` on its cmdline: gpt-auto's remount-rw drop-in takes effect only after the
+first units have run, so the ssh host key var unit would seal its key on a read-only root. The
+decided image does not add it; ordering that unit after the remount is a follow-up. Libraries need
+no such flag: the fork's RUNPATH reaches every dlopen soname.
+
+gpt-auto-generator mounts the root partition (writable), the ESP and `/usr` by `usrhash=`. systemd
+finds the libraries it dlopens through the RUNPATH the fork gives it. `ipe.enforce=0` means IPE
+enforces nothing yet: it becomes `1` once the verity certificate is in a kernel keyring.
 
 ## Serial console
 

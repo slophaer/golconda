@@ -84,16 +84,8 @@ in
               sbCert = "${keys}/secureboot/db.crt";
               pcrKey = "${keys}/pcr/pcr.key";
               pcrPublicKey = "${keys}/pcr/pcr.pub";
-              # Stand-ins, both for the smoke only (image/uki.nix stays the decided cmdline):
-              # LD_LIBRARY_PATH until the fork's RUNPATH reaches what systemd dlopens (libmount
-              # in PID 1, libcryptsetup for /usr, the journal's compression): the store
-              # directories behind /base's dlopen links, as the kernel hands them to PID 1
-              # (services get them from /base's system.conf.d). rw until gpt-auto-generator
-              # succeeds in the host (it exits 1 there today) and writes the remount-rw drop-in
-              # itself; without it the root partition stays read-only and sysusers, vars and
-              # state directories fail. To watch a boot add systemd.log_level=debug
-              # systemd.log_target=console systemd.journald.forward_to_console=1.
-              cmdlineExtra = "LD_LIBRARY_PATH={dlopenPath} rw";
+              # To watch a boot: cmdlineExtra = "systemd.log_level=debug
+              # systemd.log_target=console systemd.journald.forward_to_console=1";
             }
           );
           disk = imageLib.disk (
@@ -188,7 +180,7 @@ in
               sbCert = "${testKeys}/secureboot/db.crt";
               pcrKey = "${testKeys}/pcr/pcr.key";
               pcrPublicKey = "${testKeys}/pcr/pcr.pub";
-              cmdlineExtra = "LD_LIBRARY_PATH={dlopenPath} rw";
+              cmdlineExtra = "";
             }
           );
           testDisk = imageLib.disk (

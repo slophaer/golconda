@@ -125,7 +125,10 @@ let
       pname = "openssh";
     };
   # base packages for /base module
-  stubSystemd = withBin "systemd-262" [ "systemctl" ];
+  stubSystemd = withBin "systemd-262" [
+    "systemctl"
+    "systemd-tmpfiles"
+  ];
   stubDbusBroker = withBin "dbus-broker-42" [ "dbus-broker" ];
   stubDash = withBin "dash-0.5.13.5" [ "dash" ];
   stubUutils = withBin "uutils-coreutils-0.0.25" [
@@ -2338,9 +2341,9 @@ let
       && result.links."/usr/lib/systemd".kind == "farm"
       && result.links ? "/usr/lib/udev"
       && result.links."/usr/lib/udev".kind == "farm"
-      # mount units and fsck exec these by bare name
+      # mount units and fsck exec these by bare name; systemd-tmpfiles from the bin list of the fork's systemd
       && result.links."/usr/bin/mount".kind == "explicit"
-      && result.links."/usr/bin/systemd-tmpfiles".kind == "explicit"
+      && result.links."/usr/bin/systemd-tmpfiles".kind == "package"
     ))
     (check "base: dlopen link for libsystemd.so.0" (
       let
