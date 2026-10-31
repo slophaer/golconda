@@ -4,12 +4,14 @@
 let
   dev = import ./dev { inherit sources; };
   adios = import sources.adios;
+  # The adios module tree (modules/); `tree { options = {...}; }` evaluates it.
+  # Nothing per-system: a configuration passes its repkgs set as options."/pkgs".set.
+  tree = import ../modules { inherit (adios) adios; };
   docsFromSchema =
     let
       schemaLib = import ../lib/schema.nix { };
       moduleDocs = import ../lib/module-docs.nix { };
       docComments = import ../lib/doc-comments.nix { };
-      tree = import ../modules { inherit (adios) adios; };
       modulePaths = moduleDocs.discoverModulePaths ../modules;
     in
     moduleDocs.toMarkdown {
@@ -32,17 +34,22 @@ in
       # the patched Nix daemon repkgs needs (CA + dynamic derivations); builders run it
       inherit (pkgs) nix;
 
-      # Smoke test for /wrap: jq with --version prepended to its arguments
-      wrap-smoke = set.wrap {
-        package = pkgs.jq;
-        argv = [ "--version" ];
-      };
+      # Smoke test for /wrap: jq with --version prepended to its arguments; the
+      # set enters the tree through /pkgs and the module calls wrap itself
+      wrap-smoke =
+        (tree {
+          options."/pkgs".set = set;
+          options."/wrap" = {
+            package = pkgs.jq;
+            argv = [ "--version" ];
+          };
+        }).modules.wrap
+          { };
 
       # Smoke test for the /usr tree builder: a minimal system with jq
       usr-tree-smoke =
         let
           # Create a minimal composer output
-          tree = import ../modules { inherit (adios) adios; };
           composed = tree {
             options."/system" = {
               name = "smoke";
@@ -120,17 +127,12 @@ in
     };
 
   # The adios module tree (modules/). `modules { options = {...}; }` evaluates it.
-  modules = import ../modules { inherit (adios) adios; };
+  modules = tree;
 
   # JSON Schema 2020-12 export of the module tree. Not per-system: the schema
   # depends only on the module definitions, not on any packages.
   #   iets eval --json -E '(import ./default.nix).schema'
-  schema =
-    let
-      schemaLib = import ../lib/schema.nix { };
-      tree = import ../modules { inherit (adios) adios; };
-    in
-    schemaLib.toJsonSchema (tree { });
+  schema = (import ../lib/schema.nix { }).toJsonSchema (tree { });
 
   # Markdown reference pages generated from the schema (lib/module-docs.nix).
   #   iets eval --raw -E '(import ./default.nix).docs-modules."/system"'
@@ -145,16 +147,13 @@ in
   # Module paths discovered from modules/ directory.
   docs-module-paths = docsFromSchema.modulePaths;
 
-  # TOML configuration loader. Returns { loadConfig; loadAndApply; validPaths; }.
+  # TOML configuration loader. Returns { loadConfig; loadAndApply; validPaths; withPkgs; }.
   #   (import ./default.nix).configLib.loadConfig ./config.toml
-  configLib =
-    let
-      mods = import ../modules { inherit (adios) adios; };
-    in
-    import ../lib/config.nix {
-      tree = mods { };
-      modules = mods;
-    };
+  #   ((import ./default.nix).configLib.withPkgs set).loadAndApply ./config.toml
+  configLib = import ../lib/config.nix {
+    tree = tree { };
+    modules = tree;
+  };
 
   # The platforms table (repkgs nix/platforms.nix), for callers that need all target names.
   # Not per-system: the same table on every build host.

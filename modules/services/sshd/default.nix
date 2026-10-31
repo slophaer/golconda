@@ -29,14 +29,13 @@ in
 {
   name = "sshd";
 
+  inputs.pkgs.path = "/pkgs";
+
   options = {
     package = {
       type = types.derivation;
-      description = "OpenSSH; the configuration provides it (repkgs `openssh`, whose `bin` lists `sshd`).";
-    };
-    wrap = {
-      type = types.function;
-      description = "repkgs' `wrap` (`set.wrap`), passed by the configuration like `package`; it builds the sshd launcher that carries the configuration.";
+      defaultFunc = { results }: results.pkgs.pkgs.openssh;
+      description = "OpenSSH; default repkgs `openssh` from `/pkgs` (its `bin` lists `sshd`).";
     };
     port = {
       type = types.int;
@@ -71,7 +70,7 @@ in
   };
 
   impl =
-    { options }:
+    { options, results }:
     let
       inherit (builtins)
         attrNames
@@ -112,7 +111,7 @@ in
         "PidFile none"
       ];
 
-      service = s.renderWrapped options.wrap {
+      service = s.renderWrapped results.pkgs.wrap {
         name = "sshd";
         app = {
           inherit (options) package;
