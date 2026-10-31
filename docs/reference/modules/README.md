@@ -26,7 +26,7 @@ this shape: [design/modules](../../design/modules.md).
 | field            | shape                                                                            | installed as                                                                                    |
 | ---------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `units`          | `{ unitName = text; }`                                                           | `/usr/lib/systemd/system/<name>`; user units are `files`                                        |
-| `files`          | `{ path = { text; mode; }; }`                                                    | the path, under `/usr`                                                                          |
+| `files`          | `{ path = { text; mode; }; }`                                                    | the path, under `/usr`                                                        |
 | `sysusers`       | `[ line ]`                                                                       | `/usr/lib/sysusers.d/golconda.conf`                                                             |
 | `tmpfiles`       | `[ line ]`                                                                       | `/usr/lib/tmpfiles.d/golconda.conf`                                                             |
 | `packages`       | `[ drv ]`                                                                        | the closure in `/usr/nix/store`, each package once                                              |
@@ -38,15 +38,15 @@ this shape: [design/modules](../../design/modules.md).
 
 Plain files that modules import. The directory has no `default.nix`, so adios does not load it.
 
-| file               | exports                                                                                                                                                                                                       |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| file               | exports                                                                                                                                                                                                                     |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `fragment.nix`     | `fragment`: `{ name; units; files; sysusers; tmpfiles; packages; links }`, every field optional, no other field; `units`, `unitName`, `unitText`, `unitSuffixes`, `file`, `mode`, `links`, `link`, `linkKind` |
-| `merge.nix`        | `merge [ fragment… ]` → the output above without `name`/`version`; `linkSources`, `duplicateLink` expose the link check; `pkgKey` the package key                                                             |
-| `app.nix`          | `app`, `argv`, `files`, `perMachineMarkers`, `envOp`, `credentialRef`, `isCredentialRef`, `binName`, `exe`                                                                                                    |
-| `service.nix`      | `service`, `render`, `filesDir`, `sandbox`, `sandboxLines`, `killMode`, `scope`, `credential`, `credentialArg`                                                                                                |
-| `var.nix`          | `var`, `render`, `adminVar`, `admin`, `unitName`, `credentialId`, `stateDir`                                                                                                                                  |
-| `ini.nix`          | `render`: an attribute set of sections to INI text (sysupdate definitions)                                                                                                                                    |
-| `golconda-var-run` | POSIX sh runner for var units                                                                                                                                                                                 |
+| `merge.nix`        | `merge [ fragment… ]` → the output above without `name`/`version`; `linkSources`, `duplicateLink` expose the link check; `pkgKey` the package key                            |
+| `app.nix`          | `app`, `argv`, `files`, `perMachineMarkers`, `envOp`, `credentialRef`, `isCredentialRef`, `binName`, `exe`                                                                    |
+| `service.nix`      | `service`, `render`, `filesDir`, `sandbox`, `sandboxLines`, `killMode`, `scope`, `credential`, `credentialArg`                                                                            |
+| `var.nix`          | `var`, `render`, `adminVar`, `admin`, `unitName`, `credentialId`, `stateDir`                                                                                                                                                |
+| `ini.nix`          | `render`: an attribute set of sections to INI text                                                                       |
+| `golconda-var-run` | POSIX sh runner for var units                                                                                                                                                                                               |
 
 ### `fragment`
 
@@ -56,7 +56,7 @@ The return type of every module.
 | ---------- | -------------------------------------------- | ----------------------------------------------------------------------------- |
 | `name`     | string                                       | nowhere: the origin label in `packageOrigins` (a module sets its path)        |
 | `units`    | attrs `unitName` → `unitText`                | `/usr/lib/systemd/system/<name>`                                              |
-| `files`    | attrs path → file                            | the path (must start with `/usr`)                                             |
+| `files`    | attrs path → file                            | the path (must start with `/usr`)                                            |
 | `sysusers` | list of string                               | `/usr/lib/sysusers.d/` lines                                                  |
 | `tmpfiles` | list of string                               | `/usr/lib/tmpfiles.d/` lines                                                  |
 | `packages` | list of derivation                           | `/usr/nix/store` closure; every name in `bin` becomes `/usr/bin/<name>`       |

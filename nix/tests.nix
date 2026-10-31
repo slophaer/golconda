@@ -3019,6 +3019,69 @@ let
       # no signed phase to match
       hasInfix "\nAfter=systemd-pcrphase-sysinit.service\n" unit
     ))
+
+    # review 10: a path in the /usr tree is canonical, and the check runs
+    # before any duplicate check, so a typo cannot alias another file or leave
+    # /usr. These four spell /usr/lib/x and /usr/etc/x differently.
+    (check "paths: a non-canonical file path is refused" (
+      filesThrow [ { files."/usr/../etc/x" = "x"; } ]
+      && filesThrow [ { files."/usr/lib/../x" = "x"; } ]
+      && filesThrow [ { files."/usr//x" = "x"; } ]
+      && filesThrow [ { files."/usr/lib/x/" = "x"; } ]
+      && filesThrow [ { files."/usr/lib/x\ny" = "x"; } ]
+      # positive: the canonical spelling of the same paths is accepted
+      && !(filesThrow [ { files."/usr/lib/x" = "x"; } ])
+    ))
+    (check "paths: a non-canonical link path is refused, a canonical one kept" (
+      let
+        linksThrow =
+          p:
+          !(tryEval (
+            deepSeq
+              (compose [
+                {
+                  links.${p} = {
+                    target = "../x";
+                    kind = "explicit";
+                  };
+                }
+              ]).links
+              true
+          )).success;
+      in
+      linksThrow "/usr/../etc/x"
+      && linksThrow "/usr/lib//x"
+      && linksThrow "/usr/lib/a/../x"
+      && !(linksThrow "/usr/lib/x")
+    ))
+    (check "paths: an app file name cannot leave /usr/lib/<service>" (
+      let
+        renderThrows =
+          app:
+          !(tryEval (
+            s.render {
+              name = "x";
+              inherit app;
+              user = "root";
+              sandbox = "default";
+            }
+          )).success;
+      in
+      renderThrows {
+        package = standIn;
+        files."../x" = "y";
+      }
+      && renderThrows {
+        package = standIn;
+        files."/etc/x" = "y";
+      }
+      # positive: a name may hold a directory below the service's own
+      && !(renderThrows {
+        package = standIn;
+        files."principals/root" = "y";
+      })
+    ))
+
   ];
 in
 assert all (t: t) tests;

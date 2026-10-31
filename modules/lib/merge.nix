@@ -43,6 +43,7 @@ let
     attrNames
     concatLists
     concatMap
+    concatStringsSep
     deepSeq
     elem
     filter
@@ -51,6 +52,8 @@ let
     listToAttrs
     mapAttrs
     ;
+
+  path = import ./path.nix;
 
   normalizeFile =
     _: v:
@@ -211,16 +214,22 @@ let
 
   concat = field: fragments: concatLists (map (f: f.${field} or [ ]) fragments);
 
-  # Check that all file paths start with /usr/. Files under /etc must go through
-  # the factory module; the image holds no per-machine values (docs/design/config.md).
+  # Check that every file path is a canonical path under /usr/ (path.nix): the
+  # composer compares claims by string, so a synonym such as /usr/lib/../x
+  # must not reach the duplicate check. Files under /etc must go through the
+  # factory module; the image holds no per-machine values (docs/design/config.md).
   checkFilePaths =
     files:
     let
-      hasPrefix = p: s: builtins.substring 0 (builtins.stringLength p) s == p;
-      badPaths = filter (p: !(hasPrefix "/usr/" p)) (attrNames files);
+      bad = filter (p: path.usrError p != null) (attrNames files);
+      outside = filter (p: !(path.hasPrefix "/usr/" p)) bad;
     in
-    if badPaths != [ ] then
-      throw "golconda: files must be under /usr/; paths outside it: ${toString badPaths}; /etc files go through the /factory module"
+    if bad != [ ] then
+      throw (
+        "golconda: files must be canonical paths under /usr/: "
+        + concatStringsSep "; " (map (p: path.usrError p) bad)
+        + (if outside == [ ] then "" else "; /etc files go through the /factory module")
+      )
     else
       files;
 

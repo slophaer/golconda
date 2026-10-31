@@ -283,8 +283,12 @@ let
     };
 
     appFiles = {
-      description = "File name -> text, installed to `/usr/lib/<service>/<name>`; no per-machine values.";
+      description = "File name -> text, installed to `/usr/lib/<service>/<name>`; the name is relative (it cannot leave that directory), and a file holds no per-machine value.";
       type = "object";
+      propertyNames = {
+        type = "string";
+        pattern = "^[A-Za-z0-9_+.-]+(/[A-Za-z0-9_+.-]+)*$";
+      };
       additionalProperties = {
         type = "string";
       };

@@ -28,6 +28,8 @@ let
 
   inherit (builtins) isString match;
 
+  path = import ./path.nix;
+
   # A credential reference, { credential = "name"; prefix ? ""; }. The
   # renderer writes it as <prefix>%d/name and checks that the service
   # declares the credential. The prefix is for programs that take a path as
@@ -114,6 +116,8 @@ let
         err: name:
         if err != null then
           err
+        else if path.relativeError name != null then
+          "app file: ${path.relativeError name}"
         else if !isString v.${name} then
           "app file '${name}' must be text"
         else
