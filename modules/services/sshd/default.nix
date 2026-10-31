@@ -3,7 +3,7 @@
 #! Returns one fragment: the host-key generator unit, `sshd.service`
 #! (`ExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config …`), the
 #! files under `/usr/lib/sshd/`, the privilege-separation user `sshd` and its
-#! directory `/var/empty`. Only credentials go on the command line; every
+#! directory `/var/empty`, and the helpers sshd execs at `/usr/lib/ssh/`. Only credentials go on the command line; every
 #! fixed path (`TrustedUserCAKeys`, `AuthorizedPrincipalsFile`) is a line in
 #! `sshd_config`. `/etc/pam.d/sshd` is in `/factory`, because `/etc` content
 #! lives there: add `/factory` once.
@@ -191,6 +191,12 @@ in
         {
           sysusers = [ "u sshd - \"SSH privilege separation\" /var/empty" ];
           tmpfiles = [ "d /var/empty 0755 root root -" ];
+          # sshd execs sshd-session, sshd-auth and sftp-server by the compiled-in
+          # path /usr/lib/ssh (repkgs openssh: --libexecdir=/usr/lib/ssh)
+          links."/usr/lib/ssh" = {
+            target = "${options.package}/lib/ssh";
+            kind = "farm";
+          };
         }
       ]
       ++ optional hasKRL [ revokedKeysVar ]
