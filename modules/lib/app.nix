@@ -92,6 +92,7 @@ let
   perMachineMarkers = [
     "%d/"
     "$CREDENTIALS_DIRECTORY"
+    "/etc/credstore"
     "-----BEGIN"
     "PRIVATE KEY"
   ];

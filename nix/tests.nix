@@ -565,6 +565,7 @@ let
         a.perMachineMarkers == [
           "%d/"
           "$CREDENTIALS_DIRECTORY"
+          "/etc/credstore"
           "-----BEGIN"
           "PRIVATE KEY"
         ]
@@ -1613,6 +1614,57 @@ let
       # instantiate without ca-derivations; check the platform record instead)
       && x86Set.platform.names.uefi == "x64"
       && armSet.platform.names.uefi == "aa64"
+    ))
+
+    # 10. Boundary tests: config-in-store boundary enforcement
+    # (docs/design/config.md, docs/design/modules.md)
+
+    # 10a. Positive: wrapped output's config file has no credential paths
+    (check "boundary: wrapped config file has no %d or credential paths" (
+      # sshdConfig is the config file text in the wrapper, not the unit
+      !hasInfix "%d/" sshdConfig
+      && !hasInfix "$CREDENTIALS_DIRECTORY" sshdConfig
+      && !hasInfix "/etc/credstore" sshdConfig
+      # credential refs are only in the unit's ExecStart (extraArgv)
+      && hasInfix "%d/hostkey" unit
+    ))
+
+    # 10b. Negative: app.files refuses /etc/credstore absolute path
+    (check "boundary: app.files refuses /etc/credstore path" (
+      a.files.verify { "conf" = "Secret=/etc/credstore/key\n"; } != null
+      && hasInfix "/etc/credstore" (a.files.verify { "conf" = "Secret=/etc/credstore/key\n"; })
+    ))
+
+    # 10c. Negative: a file path under /etc outside the factory module throws
+    (check "boundary: files under /etc outside factory throw" (
+      # The composer only accepts files under /usr; /etc files must go through /factory
+      filesThrow [ { files."/etc/motd" = "hello"; } ]
+      && filesThrow [ { files."/etc/ssh/sshd_config" = "Port 22"; } ]
+    ))
+
+    # 10d. Negative: TOML config with derivation-valued option (we check the type system rejects it)
+    (check "boundary: config rejects non-data values" (
+      # The configLib validates against the schema; a derivation or function would fail type checks.
+      # Test that loadConfig throws on invalid paths (the type system handles value validation)
+      !(tryEval (configLib.loadConfig ../examples/bad.toml)).success
+      # Valid paths exist
+      && elem "/services/sshd" configLib.validPaths
+      && elem "/system" configLib.validPaths
+    ))
+
+    # 10e. Positive: factory extraFile with plain text passes
+    (check "boundary: factory extraFile with plain text passes" (
+      let
+        r = factoryOf { extraFiles."motd" = "Welcome to Golconda\n"; };
+      in
+      r.files."${factoryDir}/motd" == "Welcome to Golconda\n"
+    ))
+
+    # 10f. Negative: the composer refuses files outside /usr
+    (check "boundary: composer refuses files outside /usr" (
+      filesThrow [ { files."/var/lib/app/data" = "x"; } ]
+      && filesThrow [ { files."/run/lock" = "x"; } ]
+      && filesThrow [ { files."/tmp/test" = "x"; } ]
     ))
   ];
 in
