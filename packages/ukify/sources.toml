@@ -1,0 +1,14 @@
+# systemd's source tree: ukify is src/ukify/ukify.py, not built by the systemd package
+# (ukify=disabled there: a build-time tool, never in the image). Same pin as the fork's systemd.
+[upstream]
+url = "https://github.com/systemd/systemd"
+purl = "pkg:github/systemd/systemd"
+
+[[source]]
+key = "default"
+url = "https://github.com/systemd/systemd/archive/refs/tags/v{version}.tar.gz"
+hash = "sha256-BE94QT8jd0lTp8u/ZCi2KraeiuXJeJhnwgPhmFYKUew="
+
+[pin]
+version = "262.1"
+date = "2026-10-31"
