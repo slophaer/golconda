@@ -2874,7 +2874,7 @@ let
       in
       hasInfix "lsm=lockdown,yama,ipe,bpf" uki.cmdlineTemplate
       && hasInfix "lockdown=integrity" uki.cmdlineTemplate
-      && hasInfix "ipe.enforce=0" uki.cmdlineTemplate
+      && hasInfix "ipe.enforce=1" uki.cmdlineTemplate
     ))
 
     # kernel config: IPE and platform keyring options

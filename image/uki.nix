@@ -27,10 +27,12 @@
   # Security parameters (see docs/design/kernel.md):
   #   lsm=lockdown,yama,ipe,bpf   LSM stack order (capability is always first)
   #   lockdown=integrity          kernel lockdown level (blocks kexec, /dev/mem, etc.)
-  #   ipe.enforce=0               IPE in permissive mode (denials are audited) until the verity
-  #                               signing certificate is in a kernel keyring; then 1
+  #   ipe.enforce=1               IPE enforces the boot policy: execution only from the initramfs
+  #                               and from verity volumes whose signature the kernel verified.
+  #                               Needs the signer in the firmware db: without it /usr is unsigned
+  #                               and PID 1's switch-root re-exec is denied (docs/design/trust.md)
   # The builder appends rdinit= (lib/image/initrd.nix says why)
-  cmdlineTemplate = "usrhash={usrhash} systemd.verity_usr_options=root-hash-signature=base64:{usrhashSig} lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=0 console=tty0 console=ttyS0,115200";
+  cmdlineTemplate = "usrhash={usrhash} systemd.verity_usr_options=root-hash-signature=base64:{usrhashSig} lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=1 console=tty0 console=ttyS0,115200";
 
   # PCR policy signing (for measured boot and credential decryption): the phase paths to
   # sign. A phase path is the colon-separated chain of words systemd has measured into

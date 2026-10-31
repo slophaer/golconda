@@ -63,16 +63,19 @@ Why the `db` key: the platform keyring holds the firmware `db` and nothing else,
 is needed, and a second key would add nothing: whoever holds the `db` key can already sign a UKI
 with any `usrhash=`. A rotated `db` key needs new images, as it does for the UKI.
 
-A signature that does not verify is not fatal by itself: `systemd-veritysetup` logs "Unable to
-activate verity device ... with root hash signature ..., retrying without" at info level and
-activates `/usr` unsigned. So `lib/image/uki.nu` checks the signature against the UKI's own signing
-certificate at build time and fails on a mismatch. On the machine, the firmware `db` must hold that
-certificate; the boot test enrols it only with `--secure-boot`.
+A signature that does not verify does not stop `systemd-veritysetup`: it logs "Unable to activate
+verity device ... with root hash signature ..., retrying without" at info level and activates `/usr`
+unsigned. The boot then stops at switch-root, where IPE denies PID 1's re-exec from `/usr`
+([Execution policy](#execution-policy)). So `lib/image/uki.nu` checks the signature against the
+UKI's own signing certificate at build time and fails on a mismatch. On the machine, the firmware
+`db` must hold that certificate; the boot test enrols it only with `--secure-boot`.
 
 **Status.** Proven by boot with `--secure-boot`: the kernel loads the `db` certificate into the
 platform keyring, and with `/sys/kernel/security/ipe/success_audit` on, IPE logs
-`rule="op=EXECUTE dmverity_signature=TRUE action=ALLOW"` for files on `/usr` (`dm-0`). The builder's
-own verity key pair (`lib/image/keys.nu`) is no longer used.
+`rule="op=EXECUTE dmverity_signature=TRUE action=ALLOW"` for files on `/usr` (`dm-0`). With
+`ipe.enforce=1` the boot passes every check and logs no IPE denial; the same image without the `db`
+enrolled stops at switch-root. The builder's own verity key pair (`lib/image/keys.nu`) is no longer
+used.
 
 ### 3. CA store *(planned)*
 
@@ -187,7 +190,10 @@ the credential ids) exists: [reference: /vars](../reference/modules/generated/va
 
 Phase 1 is IPE (execute only from dm-verity volumes with a signed root hash, not a particular one:
 the policy avoids per-image kernel rebuilds) with `lockdown=integrity` and Yama, all fixed in the
-kernel config and the UKI cmdline. IPE is permissive (`ipe.enforce=0`): denials are logged, not
-enforced. The kernel now verifies the `/usr` signature ([status](#2-verity-key)), and a boot logs no
-IPE denial. Phase 2 is the BPF LSM for `RestrictFileSystems=`; phase 3 AppArmor profiles generated
-from the typed service. SELinux is rejected.
+kernel config and the UKI cmdline. IPE enforces (`ipe.enforce=1`): the kernel verifies the `/usr`
+signature ([status](#2-verity-key)), so programs on `/usr` run, and a program copied to `/var` gets
+`Permission denied` with the audit record `rule="DEFAULT op=EXECUTE action=DENY"`. The firmware `db`
+must hold the signer: without it `/usr` is activated unsigned, and PID 1's re-exec after switch-root
+is denied, so the machine stops with "Failed to execute /sbin/init". The boot test therefore needs
+`--secure-boot`, which enrols the `db`. Phase 2 is the BPF LSM for `RestrictFileSystems=`; phase 3
+AppArmor profiles generated from the typed service. SELinux is rejected.
