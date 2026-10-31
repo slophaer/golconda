@@ -18,35 +18,36 @@ let
     string
     ;
 
-  lines = l: concatStringsSep "\n" l + "\n";
-
-  # Render an INI section from an attrset
-  section =
-    name: attrs:
-    let
-      render =
-        k: v:
-        if builtins.isList v then concatStringsSep "\n" (map (x: "${k}=${x}") v) else "${k}=${toString v}";
-    in
-    "[${name}]\n" + concatStringsSep "\n" (map (k: render k attrs.${k}) (attrNames attrs)) + "\n";
+  ini = import ../lib/ini.nix;
 
   # Network configuration: any attrset with at least a match field.
   # The structure check is done at render time, not at type check time,
   # because typedef' errors can be confusing with optionalAttr.
   networkConfig = types.attrs;
 
-  # Render a .network file
+  # Render a .network file: the Match section plus each of the others that cfg has (cfg key ->
+  # section name). Sections come out in ini.nix's order (sorted by name); systemd reads them in
+  # any order.
+  sectionNames = {
+    network = "Network";
+    link = "Link";
+    dhcpv4 = "DHCPv4";
+    address = "Address";
+    route = "Route";
+  };
   renderNetwork =
     _name: cfg:
-    let
-      matchSection = section "Match" cfg.match;
-      networkSection = if cfg ? network then section "Network" cfg.network else "";
-      linkSection = if cfg ? link then section "Link" cfg.link else "";
-      dhcpV4Section = if cfg ? dhcpv4 then section "DHCPv4" cfg.dhcpv4 else "";
-      addressSection = if cfg ? address then section "Address" cfg.address else "";
-      routeSection = if cfg ? route then section "Route" cfg.route else "";
-    in
-    matchSection + networkSection + linkSection + dhcpV4Section + addressSection + routeSection;
+    ini.render (
+      {
+        Match = cfg.match;
+      }
+      // builtins.listToAttrs (
+        map (k: {
+          name = sectionNames.${k};
+          value = cfg.${k};
+        }) (builtins.filter (k: cfg ? ${k}) (attrNames sectionNames))
+      )
+    );
 in
 {
   name = "network";
@@ -60,7 +61,7 @@ in
     dns = {
       type = option (listOf string);
       default = null;
-      description = "Fallback DNS servers. Written to resolved.conf.d/golconda.conf.";
+      description = "Fallback DNS servers. Written to resolved.conf.d/golconda-dns.conf.";
     };
     defaultDhcp = {
       type = types.bool;
@@ -102,10 +103,7 @@ in
         if options.dns != null then
           {
             "/usr/lib/systemd/resolved.conf.d/golconda-dns.conf" = {
-              text = lines [
-                "[Resolve]"
-                "DNS=${concatStringsSep " " options.dns}"
-              ];
+              text = ini.render { Resolve.DNS = concatStringsSep " " options.dns; };
               mode = "0644";
             };
           }
