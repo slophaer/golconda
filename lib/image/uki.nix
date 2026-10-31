@@ -43,7 +43,7 @@ rec {
       ...
     }:
     let
-      ukiConfig = image.uki { inherit imageId; };
+      ukiConfig = image.uki;
       uefi = platform.names.uefi;
     in
     common.nuDerivation {

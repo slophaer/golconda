@@ -1989,6 +1989,7 @@ let
     (check "usr-tree: renderOsRelease includes version and arch" (
       let
         osRel = usrTreeLib.renderOsRelease {
+          imageId = "t";
           version = "20261031.1";
           platform = {
             cpu = "x86_64";
@@ -2102,10 +2103,12 @@ let
           cpu = "aarch64";
         };
         osX86 = usrTreeLib.renderOsRelease {
+          imageId = "t";
           version = "20261031.1";
           platform = x86;
         };
         osArm = usrTreeLib.renderOsRelease {
+          imageId = "t";
           version = "20261031.1";
           platform = arm;
         };
@@ -2504,7 +2507,7 @@ let
     ))
     (check "image: the cmdline template has usrhash and no rw or volatile" (
       let
-        t = ((import ../image).uki { imageId = "golconda"; }).cmdlineTemplate;
+        t = (import ../image).uki.cmdlineTemplate;
       in
       hasInfix "usrhash={usrhash}" t && !hasInfix " rw" t && !hasInfix "volatile" t
     ))
@@ -2620,7 +2623,7 @@ let
     # UKI cmdline: LSM order and security parameters
     (check "uki: cmdline has lsm order and security parameters" (
       let
-        uki = import ../image/uki.nix { imageId = "test"; };
+        uki = import ../image/uki.nix;
       in
       hasInfix "lsm=lockdown,yama,ipe,bpf" uki.cmdlineTemplate
       && hasInfix "lockdown=integrity" uki.cmdlineTemplate
