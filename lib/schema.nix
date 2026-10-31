@@ -89,7 +89,7 @@ let
   typeRegistry = {
     # modules/lib/fragment.nix
     fragment = {
-      description = "A module fragment with units, files, sysusers, tmpfiles, packages, links, farm, and dlopen.";
+      description = "A module fragment with units, files, sysusers, tmpfiles, packages and links.";
       type = "object";
       properties = {
         units = {
@@ -132,34 +132,10 @@ let
             type = "string";
             "x-golconda" = "package";
           };
-          description = "Closure roots that go into /usr/nix/store and /usr/bin.";
+          description = "Closure roots that go into /usr/nix/store; their bin lists become /usr/bin links.";
         };
         links = {
-          type = "array";
-          items = {
-            "$ref" = "#/$defs/link";
-          };
-          description = "Symlinks in the /usr farm.";
-        };
-        farm = {
-          type = "object";
-          additionalProperties = {
-            type = "array";
-            items = {
-              type = "string";
-            };
-          };
-          description = "Package name -> subdirs to link file by file into /usr.";
-        };
-        dlopen = {
-          type = "object";
-          additionalProperties = {
-            type = "array";
-            items = {
-              type = "string";
-            };
-          };
-          description = "Package name -> sonames to link into /usr/lib for dlopen.";
+          "$ref" = "#/$defs/links";
         };
       };
     };
@@ -213,22 +189,43 @@ let
       };
     };
 
+    links = {
+      description = "Path under /usr -> link: the symlinks of the farm; the composer refuses a path with two sources, whatever their kinds.";
+      type = "object";
+      propertyNames = {
+        type = "string";
+        pattern = "^/usr/.+";
+      };
+      additionalProperties = {
+        "$ref" = "#/$defs/link";
+      };
+    };
+
     link = {
-      description = "A symlink: { path; target; }.";
+      description = "A symlink in the /usr farm: { target; kind; }; its path is the key in `links`.";
       type = "object";
       properties = {
-        path = {
-          type = "string";
-          description = "Absolute path under /usr.";
-        };
         target = {
           type = "string";
-          description = "Symlink target (absolute or relative).";
+          description = "Symlink target: a store path, or relative to the link (../sshd.service); for kind farm, a directory to link file by file.";
+        };
+        kind = {
+          "$ref" = "#/$defs/linkKind";
         };
       };
       required = [
-        "path"
         "target"
+        "kind"
+      ];
+    };
+
+    linkKind = {
+      description = "What a link is for: package (/usr/bin/<name> from a bin list, derived by the composer), farm (a directory the image builder expands file by file), dlopen (a soname the builder checks resolves) or explicit (.wants and the like).";
+      enum = [
+        "package"
+        "farm"
+        "dlopen"
+        "explicit"
       ];
     };
 

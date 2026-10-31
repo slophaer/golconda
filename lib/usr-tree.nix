@@ -3,7 +3,8 @@
 # usrTree { composerOutput; platform; version; buildSystem ? platform.name; } → derivation
 # whose output IS the /usr tree:
 #   nix/store/<hash>-* for the runtime closure of composerOutput.packages
-#   bin/, lib/, share/... = symlinks into nix/store (from composerOutput.links + expanded farmDirs)
+#   bin/, lib/, share/... = symlinks into nix/store (composerOutput.links; a link of kind
+#     "farm" names a directory, expanded file by file)
 #   sbin -> bin
 #   lib/systemd/system/<name> = units
 #   lib/sysusers.d/golconda.conf, lib/tmpfiles.d/golconda.conf
@@ -16,18 +17,16 @@
 #
 # The tree is reproducible. mtimes cannot live in a store path (Nix sets them to 1); the
 # version-derived timestamp is passed on for mkfs.erofs -T, see image/erofs.nix.
-# Build-time verification: no absolute symlinks, dlopen sonames resolve, no setuid/setgid.
+# Build-time verification: no absolute symlinks, dlopen links resolve, no setuid/setgid.
 #
 # See: docs/design/layout.md, docs/reference/image.md
 _:
 let
   inherit (builtins)
     attrNames
-    baseNameOf
     concatStringsSep
     dirOf
     filter
-    hasContext
     isString
     length
     map
@@ -196,19 +195,16 @@ in
 
       # Prepare data for the builder
       inherit (composerOutput)
-        links
-        farmDirs
         files
         units
         sysusers
         tmpfiles
         ;
-      dlopen = builtins.listToAttrs (
-        map (l: {
-          name = baseNameOf l.path;
-          value = l.target;
-        }) (filter (l: substring 0 9 l.path == "/usr/lib/" && !(hasContext l.path)) links)
-      );
+      # The links map as a list of { path; target; kind; }, in path order
+      links = map (path: {
+        inherit path;
+        inherit (composerOutput.links.${path}) target kind;
+      }) (attrNames composerOutput.links);
 
       epoch = versionToEpoch version;
       osRelease = renderOsRelease { inherit version platform; };
@@ -246,15 +242,8 @@ in
       # The target platform name, for verification logs
       targetPlatform = platform.name;
 
-      # Links as JSON-serializable records
-      links = map (l: {
-        inherit (l) path target;
-      }) links;
-
-      # Farm directories to expand
-      farmDirs = map (d: {
-        inherit (d) path target;
-      }) farmDirs;
+      # Links as JSON-serializable records; kind "farm" is a directory to expand
+      inherit links;
 
       # Files to write (path -> { text, mode })
       files = builtins.mapAttrs (path: v: {
@@ -267,9 +256,6 @@ in
 
       # Sysusers and tmpfiles lines
       inherit sysusers tmpfiles;
-
-      # dlopen sonames to verify
-      dlopenSonames = attrNames dlopen;
 
       # PATH for the builder
       PATH = concatStringsSep ":" (map (t: "${t}/bin") baseTools);

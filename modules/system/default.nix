@@ -4,11 +4,14 @@
 #! (see `docs/design/modules.md`). The union itself is `modules/lib/merge.nix`,
 #! so a module that returns several fragments applies the same rule.
 #!
-#! Output: `{ name; version; units; files; sysusers; tmpfiles; packages }`,
-#! every file as `{ text; mode; }`. `units` holds the system manager's units
-#! (typed names, `/usr/lib/systemd/system/<name>`); a user unit
-#! (`service.scope = "user"`) is a file under `/usr/lib/systemd/user/`, so one
-#! duplicate check covers both scopes, and its `.wants` links are explicit links.
+#! Output: `{ name; version; units; files; sysusers; tmpfiles; packages; links }`,
+#! every file as `{ text; mode; }` and `links` one map, path under `/usr` ->
+#! `{ target; kind; }`: the `/usr/bin` links of the packages' `bin` lists and
+#! the fragments' own links (`.wants`, directories to expand, dlopen sonames),
+#! with one duplicate check that names both sources of a path. `units` holds
+#! the system manager's units (typed names, `/usr/lib/systemd/system/<name>`);
+#! a user unit (`service.scope = "user"`) is a file under
+#! `/usr/lib/systemd/user/`, so one duplicate check covers both scopes.
 { types, ... }:
 let
   fragmentT = (import ../lib/fragment.nix { inherit types; }).fragment;

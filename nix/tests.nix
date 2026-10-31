@@ -27,6 +27,7 @@ let
   s = import ../modules/lib/service.nix { inherit types; };
   v = import ../modules/lib/var.nix { inherit types; };
   fr = import ../modules/lib/fragment.nix { inherit types; };
+  merge = import ../modules/lib/merge.nix;
   schemaLib = import ../lib/schema.nix { };
   moduleDocs = import ../lib/module-docs.nix { };
   docComments = import ../lib/doc-comments.nix { };
@@ -240,7 +241,11 @@ let
     (check "sshd: credential ref renders as %d" (hasInfix " -h %d/hostkey" unit))
     (check "sshd: ExecStart is the program from the farm with its config and credential" (
       hasInfix "\nExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config -h %d/hostkey\n" unit
-      && any (l: l.path == "/usr/bin/sshd" && l.target == "${openssh}/bin/sshd") system.links
+      &&
+        system.links."/usr/bin/sshd" == {
+          target = "${openssh}/bin/sshd";
+          kind = "package";
+        }
     ))
     (check "sshd: the configuration is under /usr/lib/sshd, mode 0644" (
       builtins.filter (hasPrefix "${sshdDir}/") (attrNames system.files) == [
@@ -256,8 +261,8 @@ let
       && !hasInfix "AuthorizedKeysFile" unit
     ))
     (check "sshd: the package's other tools are in the farm" (
-      any (l: l.path == "/usr/bin/ssh-keygen" && l.target == "${openssh}/bin/ssh-keygen") system.links
-      && any (l: l.path == "/usr/bin/ssh") system.links
+      system.links."/usr/bin/ssh-keygen".target == "${openssh}/bin/ssh-keygen"
+      && system.links ? "/usr/bin/ssh"
     ))
     (check "sshd: the program must be one of the package's executables" (sshdThrows {
       package = standIn;
@@ -775,15 +780,31 @@ let
         ]) true
       )).success
     ))
-    (check "farm accepts distinct names and the same package twice" (
+    (check "farm accepts distinct names; the same package twice is one package, one link" (
       let
         a = withBin "a-1" [ "x" ];
+        b = withBin "b-1" [ "y" ];
+        packages = [
+          a
+          b
+          a
+        ];
       in
-      builtins.length (farmOf [
+      farmOf packages == [
         a
-        (withBin "b-1" [ "y" ])
-        a
-      ]) == 3
+        b
+      ]
+      &&
+        (compose [ { inherit packages; } ]).links == {
+          "/usr/bin/x" = {
+            target = "${a}/bin/x";
+            kind = "package";
+          };
+          "/usr/bin/y" = {
+            target = "${b}/bin/y";
+            kind = "package";
+          };
+        }
     ))
 
     # 4. systemd escaping and the other type rules
@@ -1243,87 +1264,249 @@ let
           wantedBy = [ "sysinit.target" ];
         };
       in
-      frag.links == [
-        {
-          path = "/usr/lib/systemd/system/sysinit.target.wants/w.service";
+      frag.links == {
+        "/usr/lib/systemd/system/sysinit.target.wants/w.service" = {
           target = "../w.service";
-        }
-      ]
+          kind = "explicit";
+        };
+      }
       && hasInfix "[Install]\nWantedBy=sysinit.target\n" frag.units."w.service"
     ))
 
-    # 5. Farm specification: bin links, farm dirs, dlopen, collision checks
-    (check "farm: package with two bins emits two links" (
+    # 5. one links map: /usr/bin from packages, the fragments' farm, dlopen and
+    # explicit links, one duplicate check that names both sources
+    (check "links: a package with two bins is two package links" (
       let
-        result = compose [
+        tool = withBin "tool-1" [
+          "foo"
+          "bar"
+        ];
+        result = compose [ { packages = [ tool ]; } ];
+      in
+      result.links == {
+        "/usr/bin/foo" = {
+          target = "${tool}/bin/foo";
+          kind = "package";
+        };
+        "/usr/bin/bar" = {
+          target = "${tool}/bin/bar";
+          kind = "package";
+        };
+      }
+    ))
+    (check "links: farm, dlopen and explicit links pass through with their kinds" (
+      let
+        systemd = withBin "systemd-1" [ ];
+        tss = withBin "tpm2-tss-1" [ ];
+        frag = {
+          packages = [
+            systemd
+            tss
+          ];
+          links = {
+            "/usr/lib/udev/rules.d" = {
+              target = "${systemd}/lib/udev/rules.d";
+              kind = "farm";
+            };
+            "/usr/lib/libtss2-esys.so.0" = {
+              target = "${tss}/lib/libtss2-esys.so.0";
+              kind = "dlopen";
+            };
+            "/usr/lib/systemd/system/sysinit.target.wants/a.service" = {
+              target = "../a.service";
+              kind = "explicit";
+            };
+          };
+        };
+      in
+      (compose [ frag ]).links == frag.links
+    ))
+    (check "links: the target path, kind and shape are typed" (
+      let
+        bad = links: !(tryEval (deepSeq (compose [ { inherit links; } ]).links true)).success;
+        ok = links: (tryEval (deepSeq (compose [ { inherit links; } ]).links true)).success;
+      in
+      bad {
+        "/etc/motd" = {
+          target = "/usr/lib/motd";
+          kind = "explicit";
+        };
+      }
+      && bad {
+        "/usr/lib/x" = {
+          target = "/nix/store/x";
+          kind = "symlink";
+        };
+      }
+      && bad {
+        "/usr/lib/x" = {
+          target = "/nix/store/x";
+        };
+      }
+      && bad { "/usr/lib/x" = "/nix/store/x"; }
+      && bad {
+        "/usr/lib/x" = {
+          target = "/nix/store/x";
+          kind = "explicit";
+          path = "/usr/lib/x";
+        };
+      }
+      && bad [
+        {
+          path = "/usr/lib/x";
+          target = "/nix/store/x";
+        }
+      ]
+      && ok {
+        "/usr/lib/x" = {
+          target = "/nix/store/x";
+          kind = "explicit";
+        };
+      }
+      && hasInfix "'/etc/motd'" (
+        fr.links.verify {
+          "/etc/motd" = {
+            target = "x";
+            kind = "explicit";
+          };
+        }
+      )
+      && hasInfix "in link '/usr/lib/x'" (
+        fr.links.verify {
+          "/usr/lib/x" = {
+            target = "x";
+          };
+        }
+      )
+    ))
+    # the two bugs the review found: a package link and an explicit link at one
+    # path both survived; two explicit links at one path kept the first silently
+    (check "links: a package link and an explicit link at one path clash, both named" (
+      let
+        frags = [
+          { packages = [ standIn ]; }
           {
-            packages = [
-              (withBin "tool-1" [
-                "foo"
-                "bar"
-              ])
-            ];
+            links."/usr/bin/jq" = {
+              target = "/nix/store/other/bin/jq";
+              kind = "explicit";
+            };
           }
         ];
+        msg = merge.duplicateLink (merge.linkSources frags);
       in
-      builtins.length (builtins.filter (l: hasInfix "/usr/bin/" l.path) result.links) == 2
-      && builtins.any (l: l.path == "/usr/bin/foo") result.links
-      && builtins.any (l: l.path == "/usr/bin/bar") result.links
+      !(tryEval (deepSeq (compose frags).links true)).success
+      && !(tryEval (deepSeq (compose frags).packages true)).success
+      && hasInfix "/usr/bin/jq defined twice" msg
+      && hasInfix "package jq" msg
+      && hasInfix "explicit link to /nix/store/other/bin/jq" msg
     ))
-    (check "farm: farmDirs from farm declaration" (
+    (check "links: two explicit links at one path clash, both targets named" (
       let
-        pkg = withBin "systemd-1" [ ];
-        result = compose [
-          {
-            packages = [ pkg ];
-            farm."systemd-1" = [
-              "lib/udev/rules.d"
-              "lib/systemd/system"
-            ];
-          }
+        at = target: {
+          links."/usr/lib/x" = {
+            inherit target;
+            kind = "explicit";
+          };
+        };
+        frags = [
+          (at "a")
+          (at "b")
+        ];
+        msg = merge.duplicateLink (merge.linkSources frags);
+      in
+      !(tryEval (deepSeq (compose frags).links true)).success
+      && hasInfix "/usr/lib/x defined twice: explicit link to a, explicit link to b" msg
+      # the same target twice is still two sources
+      &&
+        merge.duplicateLink (
+          merge.linkSources [
+            (at "a")
+            (at "a")
+          ]
+        ) != null
+    ))
+    (check "links: a module's own merge is a fragment: its package links repeat without a clash" (
+      let
+        inner = merge [
+          { packages = [ standIn ]; }
+          { packages = [ openssh ]; }
+        ];
+        outer = compose [
+          inner
+          { packages = [ standIn ]; }
         ];
       in
-      builtins.length result.farmDirs == 2
-      && builtins.any (d: d.path == "/usr/lib/udev/rules.d") result.farmDirs
-      && builtins.any (d: d.path == "/usr/lib/systemd/system") result.farmDirs
-    ))
-    (check "farm: dlopen links" (
-      let
-        pkg = withBin "tpm2-tss-1" [ ];
-        result = compose [
-          {
-            packages = [ pkg ];
-            dlopen."tpm2-tss-1" = [
-              "libtss2-esys.so.0"
-              "libtss2-rc.so.0"
-            ];
-          }
-        ];
-      in
-      builtins.any (l: l.path == "/usr/lib/libtss2-esys.so.0") result.links
-      && builtins.any (l: l.path == "/usr/lib/libtss2-rc.so.0") result.links
-    ))
-    (check "farm: farm dir declared twice by two packages errors" (
-      let
-        pkgA = withBin "a-1" [ ];
-        pkgB = withBin "b-1" [ ];
-      in
-      !(tryEval (
+      inner.links."/usr/bin/jq".kind == "package"
+      && outer.links."/usr/bin/sshd".target == "${openssh}/bin/sshd"
+      &&
+        outer.packages == [
+          standIn
+          openssh
+        ]
+      # a package link to another target is still a clash
+      && !(tryEval (
         deepSeq
           (compose [
-            {
-              packages = [ pkgA ];
-              farm."a-1" = [ "lib/security" ];
-            }
-            {
-              packages = [ pkgB ];
-              farm."b-1" = [ "lib/security" ];
-            }
-          ]).farmDirs
+            inner
+            { packages = [ (withBin "jq-2" [ "jq" ]) ]; }
+          ]).links
           true
       )).success
     ))
-    (check "farm: file and farm link at same path errors" (
+    (check "links: a farm and a dlopen link at one path clash across kinds" (
+      let
+        pkgA = withBin "a-1" [ ];
+        pkgB = withBin "b-1" [ ];
+        frags = [
+          {
+            packages = [ pkgA ];
+            links."/usr/lib/security" = {
+              target = "${pkgA}/lib/security";
+              kind = "farm";
+            };
+          }
+          {
+            packages = [ pkgB ];
+            links."/usr/lib/security" = {
+              target = "${pkgB}/lib/security";
+              kind = "dlopen";
+            };
+          }
+        ];
+        msg = merge.duplicateLink (merge.linkSources frags);
+      in
+      !(tryEval (deepSeq (compose frags).links true)).success
+      && hasInfix "farm link to /nix/store/a-1/lib/security, dlopen link to /nix/store/b-1/lib/security" msg
+    ))
+    (check "links: distinct paths from every kind are no duplicate" (
+      let
+        tool = withBin "tool-1" [ "foo" ];
+        frags = [
+          {
+            packages = [ tool ];
+            links = {
+              "/usr/lib/udev/rules.d" = {
+                target = "${tool}/lib/udev/rules.d";
+                kind = "farm";
+              };
+              "/usr/lib/libfoo.so.1" = {
+                target = "${tool}/lib/libfoo.so.1";
+                kind = "dlopen";
+              };
+            };
+          }
+          {
+            links."/usr/lib/systemd/system/multi-user.target.wants/foo.service" = {
+              target = "../foo.service";
+              kind = "explicit";
+            };
+          }
+        ];
+      in
+      merge.duplicateLink (merge.linkSources frags) == null
+      && builtins.length (attrNames (compose frags).links) == 4
+    ))
+    (check "links: a link and a file at one path is an error" (
       let
         pkg = withBin "tool-1" [ ];
       in
@@ -1332,21 +1515,20 @@ let
           (compose [
             {
               packages = [ pkg ];
-              dlopen."tool-1" = [ "libfoo.so.1" ];
+              links."/usr/lib/libfoo.so.1" = {
+                target = "${pkg}/lib/libfoo.so.1";
+                kind = "dlopen";
+              };
             }
             { files."/usr/lib/libfoo.so.1" = "conflict"; }
           ]).links
           true
       )).success
     ))
-    (check "farm: farm declaration for unknown package errors" (
-      !(tryEval (
-        deepSeq
-          (compose [
-            { farm."nonexistent-1" = [ "lib" ]; }
-          ]).farmDirs
-          true
-      )).success
+    (check "links: farm and dlopen are no longer fragment fields" (
+      !(tryEval (deepSeq (compose [ { farm."systemd-1" = [ "lib/udev/rules.d" ]; } ]).links true)).success
+      && !(tryEval (deepSeq (compose [ { dlopen."tpm2-tss-1" = [ "libtss2-esys.so.0" ]; } ]).links true))
+      .success
     ))
 
     # 6. Unit enablement: wantedBy renders .wants links and [Install] text
@@ -1359,11 +1541,8 @@ let
           sandbox = "strict";
         };
       in
-      builtins.any (
-        l:
-        l.path == "/usr/lib/systemd/system/multi-user.target.wants/test-svc.service"
-        && l.target == "../test-svc.service"
-      ) svc.links
+      svc.links."/usr/lib/systemd/system/multi-user.target.wants/test-svc.service".target
+      == "../test-svc.service"
     ))
     (check "wantedBy: [Install] section has WantedBy line" (
       let
@@ -1389,12 +1568,8 @@ let
           ];
         };
       in
-      builtins.any (
-        l: l.path == "/usr/lib/systemd/system/sysinit.target.wants/early-svc.service"
-      ) svc.links
-      && builtins.any (
-        l: l.path == "/usr/lib/systemd/system/basic.target.wants/early-svc.service"
-      ) svc.links
+      svc.links ? "/usr/lib/systemd/system/sysinit.target.wants/early-svc.service"
+      && svc.links ? "/usr/lib/systemd/system/basic.target.wants/early-svc.service"
       && hasInfix "WantedBy=sysinit.target" svc.units."early-svc.service"
       && hasInfix "WantedBy=basic.target" svc.units."early-svc.service"
     ))
@@ -1406,11 +1581,10 @@ let
           script = "echo";
         };
       in
-      builtins.any (
-        l:
-        l.path == "/usr/lib/systemd/system/multi-user.target.wants/golconda-var-test-var.service"
-        && l.target == "../golconda-var-test-var.service"
-      ) varFrag.links
+      varFrag.links."/usr/lib/systemd/system/multi-user.target.wants/golconda-var-test-var.service" == {
+        target = "../golconda-var-test-var.service";
+        kind = "explicit";
+      }
     ))
     (check "wantedBy: var unit [Install] section" (
       let
@@ -1455,15 +1629,15 @@ let
       && !hasInfix "User=" text
       && hasInfix "[Install]\nWantedBy=default.target\n" text
       &&
-        frag.links == [
-          {
-            path = "/usr/lib/systemd/user/default.target.wants/agent.service";
+        frag.links == {
+          "/usr/lib/systemd/user/default.target.wants/agent.service" = {
             target = "../agent.service";
-          }
-        ]
+            kind = "explicit";
+          };
+        }
       && composed.files.${path}.mode == "0644"
       && composed.units == { }
-      && any (l: l.path == "/usr/lib/systemd/user/default.target.wants/agent.service") composed.links
+      && composed.links ? "/usr/lib/systemd/user/default.target.wants/agent.service"
     ))
     (check "user service: files beside the unit and explicit wantedBy" (
       let
@@ -1482,7 +1656,7 @@ let
       && frag.files."/usr/lib/agent/agent.conf" == "x"
       && frag.packages == [ standIn ]
       &&
-        map (l: l.path) frag.links == [
+        attrNames frag.links == [
           "/usr/lib/systemd/user/graphical-session.target.wants/agent.service"
         ]
     ))
@@ -1566,14 +1740,10 @@ let
 
     # 7. Composer output includes links from services and vars
     (check "composer: merges links from services" (
-      builtins.any (
-        l: l.path == "/usr/lib/systemd/system/multi-user.target.wants/sshd.service"
-      ) system.links
+      system.links ? "/usr/lib/systemd/system/multi-user.target.wants/sshd.service"
     ))
     (check "composer: merges links from vars" (
-      builtins.any (
-        l: l.path == "/usr/lib/systemd/system/multi-user.target.wants/golconda-var-sshd-hostkey.service"
-      ) system.links
+      system.links ? "/usr/lib/systemd/system/multi-user.target.wants/golconda-var-sshd-hostkey.service"
     ))
 
     # 8. usr-tree library: pure helpers
