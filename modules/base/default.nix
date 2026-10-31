@@ -65,7 +65,7 @@ in
   impl =
     { options, results }:
     let
-      set = results.pkgs.set;
+      set = results.pkgs.target;
       p = set.pkgs;
 
       # timesyncd drop-in

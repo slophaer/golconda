@@ -128,12 +128,16 @@ Error message examples:
 
 ### `/pkgs`
 
-One option, `set`: the repkgs set of the platform (`nix/packages.nix`), which `nix/default.nix`
-passes as `options."/pkgs".set`. The module returns `{ set; pkgs; }`. A module that needs a package
-declares `inputs.pkgs.path = "/pkgs"` and reads `results.pkgs.pkgs.<name>`; a package option
-defaults with `defaultFunc = { results }: ...`. A tree without the set throws when a module first
-needs a package. `set` is the one option that is not configuration data: the TOML loader refuses a
-`/pkgs` table, and `configLib.withPkgs set` binds the set instead.
+Two options: `target`, the repkgs set of the platform (`nix/packages.nix`), which `nix/default.nix`
+passes as `options."/pkgs".target`; and `build`, the build host's set (default
+`{ pkgs = target.buildPkgs; }`, the same packages as `target` when not cross). The module returns
+`{ target; build; pkgs; }`, `pkgs` being `target.pkgs`. A module that needs a package declares
+`inputs.pkgs.path = "/pkgs"` and reads `results.pkgs.pkgs.<name>`; a package option defaults with
+`defaultFunc = { results }: ...`. A tree without `target` throws when a module first needs a
+package. A module never imports repkgs and never reads a set it did not declare; a second kind of
+set is a second module path, never a second argument. `target` is the one option that is not
+configuration data: the TOML loader refuses a `/pkgs` table, and `configLib.withPkgs set` binds the
+set instead.
 
 ### `/factory`
 

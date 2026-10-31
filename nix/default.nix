@@ -5,7 +5,7 @@ let
   dev = import ./dev { inherit sources; };
   adios = import sources.adios;
   # The adios module tree (modules/); `tree { options = {...}; }` evaluates it.
-  # Nothing per-system: a configuration passes its repkgs set as options."/pkgs".set.
+  # Nothing per-system: a configuration passes its repkgs set as options."/pkgs".target.
   tree = import ../modules { inherit (adios) adios; };
   docsFromSchema =
     let
@@ -44,7 +44,7 @@ in
           # Create a minimal composer output
           composed = tree {
             options = {
-              "/pkgs".set = set;
+              "/pkgs".target = set;
               "/system" = {
                 name = "smoke";
                 version = "20261031.1";
@@ -71,7 +71,7 @@ in
         let
           composed = tree {
             options = {
-              "/pkgs".set = set;
+              "/pkgs".target = set;
               "/system" = {
                 name = "base-smoke";
                 version = "20261031.1";
@@ -104,7 +104,7 @@ in
           crossTree = import ../modules { inherit (adios) adios; };
           composed = crossTree {
             options = {
-              "/pkgs".set = crossSet;
+              "/pkgs".target = crossSet;
               "/system" = {
                 name = "smoke-aarch64";
                 version = "20261031.1";

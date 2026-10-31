@@ -130,6 +130,7 @@ let
   stubLinuxKernel = withBin "linux-kernel-6.18.0" [ ];
   # the repkgs set as /pkgs sees it: the stand-ins above
   stubSet = {
+    buildPkgs = stubSet.pkgs;
     pkgs = {
       inherit openssh;
       jq = standIn;
@@ -145,7 +146,7 @@ let
     options:
     f.modules {
       options = options // {
-        "/pkgs".set = stubSet;
+        "/pkgs".target = stubSet;
       };
     };
   farmOf =
@@ -153,7 +154,7 @@ let
     (
       (f.modules {
         options = {
-          "/pkgs".set = stubSet;
+          "/pkgs".target = stubSet;
           "/system" = {
             name = "farm";
             version = "20261031.1";
@@ -168,7 +169,7 @@ let
     fragments:
     (f.modules {
       options = {
-        "/pkgs".set = stubSet;
+        "/pkgs".target = stubSet;
         "/system" = {
           name = "t";
           version = "20261031.1";
@@ -182,7 +183,7 @@ let
     extraOpts:
     (f.modules {
       options = {
-        "/pkgs".set = stubSet;
+        "/pkgs".target = stubSet;
         "/system" = {
           name = "t";
           version = "20261031.1";
@@ -226,7 +227,7 @@ let
   system =
     (f.modules {
       options = {
-        "/pkgs".set = stubSet;
+        "/pkgs".target = stubSet;
         "/system" = {
           name = "test";
           version = "20261031.1";
@@ -262,6 +263,21 @@ let
   # the set enters once: a tree without /pkgs cannot build what needs a package
   noSet = f.modules { options."/services/sshd" = { }; };
   pkgsResult = (withPkgs { }).modules.pkgs { };
+  # a cross set: the host's packages are other than the target's
+  crossBuildPkgs = {
+    host = true;
+  };
+  crossPkgs =
+    extra:
+    (f.modules {
+      options."/pkgs" = {
+        target = stubSet // {
+          buildPkgs = crossBuildPkgs;
+        };
+      }
+      // extra;
+    }).modules.pkgs
+      { };
 
   # 8. the factory: /etc seeds under /usr/share/factory/etc as symlinks
   factoryDir = "/usr/share/factory/etc";
@@ -314,12 +330,13 @@ let
       package = standIn;
     }))
     (check "pkgs: /pkgs returns the set and its pkgs, nothing else" (
-      pkgsResult.set.pkgs == stubSet.pkgs
+      pkgsResult.target.pkgs == stubSet.pkgs
       && pkgsResult.pkgs.openssh == openssh
       &&
         attrNames pkgsResult == [
+          "build"
           "pkgs"
-          "set"
+          "target"
         ]
     ))
     (check "pkgs: sshd takes openssh from the set" (
@@ -333,8 +350,9 @@ let
       let
         setThrows =
           set:
-          !(tryEval (builtins.seq ((f.modules { options."/pkgs".set = set; }).modules.pkgs { }).set true))
-          .success;
+          !(tryEval (
+            builtins.seq ((f.modules { options."/pkgs".target = set; }).modules.pkgs { }).target true
+          )).success;
       in
       setThrows { pkgs = [ ]; }
       && setThrows { wrap = _: null; }
@@ -800,7 +818,7 @@ let
         result =
           (f.modules {
             options = {
-              "/pkgs".set = stubSet;
+              "/pkgs".target = stubSet;
               "/system" = {
                 name = "cat";
                 version = "20261031.1";
@@ -1091,7 +1109,7 @@ let
           (tryEval (
             f.modules {
               options = {
-                "/pkgs".set = stubSet;
+                "/pkgs".target = stubSet;
                 "/system" = {
                   name = "t";
                   version = v;
@@ -1117,7 +1135,7 @@ let
             deepSeq
               (f.modules {
                 options = {
-                  "/pkgs".set = stubSet;
+                  "/pkgs".target = stubSet;
                   "/system" = {
                     name = "t";
                     version = v;
@@ -1144,7 +1162,7 @@ let
           (tryEval (
             f.modules {
               options = {
-                "/pkgs".set = stubSet;
+                "/pkgs".target = stubSet;
                 "/system" = {
                   name = "t";
                   version = v;
@@ -1170,7 +1188,7 @@ let
             deepSeq
               (f.modules {
                 options = {
-                  "/pkgs".set = stubSet;
+                  "/pkgs".target = stubSet;
                   "/system" = {
                     name = "t";
                     version = v;
@@ -1290,14 +1308,15 @@ let
       && !hasInfix "`wrap`" docs.pages."/services/sshd"
       && hasInfix "| `package` | package | none |" docs.pages."/services/sshd"
     ))
-    (check "schema: sshd has no wrap option and /pkgs.set is the set" (
+    (check "schema: sshd has no wrap option and /pkgs.target is the set" (
       let
         schema = schemaLib.toJsonSchema (f.modules { });
       in
       !(schema.properties."/services/sshd".properties ? wrap)
       && schema.properties."/services/sshd".properties.package."x-golconda" == "package"
-      && schema.properties."/pkgs".properties.set."x-golconda" == "set"
-      && hasInfix "| `set` | set | none |" docs.pages."/pkgs"
+      && schema.properties."/pkgs".properties.target."x-golconda" == "set"
+      && schema.properties."/pkgs".properties.build."x-golconda" == "set"
+      && hasInfix "| `target` | set | none |" docs.pages."/pkgs"
     ))
 
     # New tests for module doc comments and types
@@ -1398,7 +1417,7 @@ let
         appliedTree = (configLib.withPkgs stubSet).loadAndApply ../examples/server.toml;
         frag = compose [ (appliedTree.modules.services.modules.sshd { }) ];
       in
-      ((configLib.withPkgs stubSet).loadConfig ../examples/server.toml).options."/pkgs".set.pkgs
+      ((configLib.withPkgs stubSet).loadConfig ../examples/server.toml).options."/pkgs".target.pkgs
       == stubSet.pkgs
       &&
         hasInfix "ExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config -h %d/hostkey\n"
@@ -2186,7 +2205,7 @@ let
         result =
           (f.modules {
             options = {
-              "/pkgs".set = stubSet;
+              "/pkgs".target = stubSet;
               "/system" = {
                 name = "empty";
                 version = "20261031.1";
@@ -2349,6 +2368,46 @@ let
         fragments = pkgs.linux-kernel.drvAttrs.spec.kbuild.configFragments;
       in
       length fragments == 1 && match ".*/golconda\\.config" (toString (elemAt fragments 0)) != null
+    ))
+
+    # /pkgs: target and build sets
+    (check "pkgs: build is the target's buildPkgs; equal to target when not cross" (
+      pkgsResult.build.pkgs == pkgsResult.target.pkgs
+      && pkgsResult.pkgs == pkgsResult.target.pkgs
+      && (crossPkgs { }).build.pkgs == crossBuildPkgs
+      && (crossPkgs { }).pkgs == stubSet.pkgs
+    ))
+    (check "pkgs: an explicit build set wins over the default" (
+      (crossPkgs {
+        build = {
+          pkgs = { };
+        };
+      }).build.pkgs == { }
+    ))
+    (check "pkgs: the stale option `set` is no target: /pkgs throws" (
+      !(tryEval (
+        deepSeq (
+          (f.modules {
+            options."/pkgs".set = stubSet;
+          }).modules.pkgs
+            { }
+        ) true
+      )).success
+    ))
+    (check "pkgs: a module that declares no input has no results.pkgs" (
+      let
+        probeTree = adios.adios {
+          name = "probe";
+          modules = adios.adios.lib.importModules ../modules // {
+            probe = {
+              name = "probe";
+              impl = { results }: results;
+            };
+          };
+        };
+        probe = (probeTree { options."/pkgs".target = stubSet; }).modules.probe { };
+      in
+      !(probe ? pkgs) && !(probe ? target)
     ))
   ];
 in

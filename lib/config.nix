@@ -87,7 +87,7 @@ let
       throw "golconda: unknown module path(s) in config: ${concatStringsSep ", " invalidTables}; valid paths: ${concatStringsSep ", " validPaths}"
     else
       {
-        options = options // (if pkgsSet == null then { } else { "/pkgs".set = pkgsSet; });
+        options = options // (if pkgsSet == null then { } else { "/pkgs".target = pkgsSet; });
       };
 
   # Load and validate a TOML configuration file.
@@ -114,7 +114,7 @@ let
     in
     if result.success then null else result.value;
 
-  # The same loader with the repkgs set bound: its options carry "/pkgs".set.
+  # The same loader with the repkgs set bound: its options carry "/pkgs".target.
   withPkgs =
     set:
     import ./config.nix {

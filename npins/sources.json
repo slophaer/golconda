@@ -61,9 +61,9 @@
       },
       "branch": "golconda",
       "submodules": false,
-      "revision": "02783fa6c3a47d2c45ba4acdce265d51f09e5777",
-      "url": "https://code.in.a.flawed.cloud/yolobox/repkgs/archive/02783fa6c3a47d2c45ba4acdce265d51f09e5777.tar.gz",
-      "hash": "sha256-7yH5AP0IC8xuF6dhhcG8t68GJbgjBNV2/A/HMFB79NY="
+      "revision": "22a045309fb6f48aa1f9604b2559091d14b7097f",
+      "url": "https://code.in.a.flawed.cloud/yolobox/repkgs/archive/22a045309fb6f48aa1f9604b2559091d14b7097f.tar.gz",
+      "hash": "sha256-qKz85iZYinfBLw4IqLKyUrUGvymIoqSxW3595ZmwdRU="
     }
   },
   "version": 7

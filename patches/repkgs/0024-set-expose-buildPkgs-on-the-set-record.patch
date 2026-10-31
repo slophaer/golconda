@@ -1,0 +1,38 @@
+From 22a045309fb6f48aa1f9604b2559091d14b7097f Mon Sep 17 00:00:00 2001
+From: yolobox <yolobox@phaer.org>
+Date: Sat, 31 Oct 2026 12:26:49 +0000
+Subject: [PATCH] set: expose buildPkgs on the set record
+
+A consumer of the set (Golconda's /pkgs module) needs the build host's
+packages next to the target's. buildPkgs was only in scope for the
+packages; it is the host set's pkgs when platform.cross and pkgs itself
+otherwise.
+
+Signed-off-by: yolobox <yolobox@phaer.org>
+---
+ nix/set.nix | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/nix/set.nix b/nix/set.nix
+index 43d774e..de3e70f 100644
+--- a/nix/set.nix
++++ b/nix/set.nix
+@@ -1,5 +1,5 @@
+ # The package set for one platform and what it is made from:
+-# { pkgs, platform, bootstrap, buildSystems }.
++# { pkgs, platform, buildPkgs, bootstrap, buildSystems }.
+ # default.nix is `pkgs` alone; nix/checks.nix reads the rest.
+ {
+   system ? builtins.currentSystem,
+@@ -254,6 +254,8 @@ in
+   # the elaborated platform record every package receives
+   platform = plat;
+   inherit bootstrap buildSystems toolchain;
++  # the build host's set: `pkgs` itself when not cross, the host-platform set when cross
++  inherit buildPkgs;
+   bundle = import ./bundle.nix {
+     nu = bootstrap.seed;
+     tools = [ buildPkgs.formatelf ] ++ baseTools.bootstrap;
+-- 
+2.55.0
+
