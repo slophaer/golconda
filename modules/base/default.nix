@@ -7,8 +7,8 @@
 #! Packages: systemd, dbus-broker, dash (linked as /usr/bin/sh; the image
 #! has no bash), uutils-coreutils, tpm2-tss (only systemd's dlopen reaches
 #! it), e2fsprogs (mkfs.ext4 and fsck.ext4 for the root partition systemd-repart
-#! makes at first boot) and the kernel (consumed later by the UKI builder).
-#! No GNU coreutils.
+#! makes at first boot), cacert (Mozilla's roots, one bundle) and the kernel
+#! (consumed later by the UKI builder). No GNU coreutils.
 #!
 #! Units enabled: dbus.socket (wanted by sockets.target), dbus-broker.service
 #! (as the dbus.service alias), systemd-networkd, systemd-resolved,
@@ -28,11 +28,18 @@
 #! - `/usr/bin` links for the util-linux and e2fsprogs executables that mount
 #!   units, systemd-fsck and udev rules exec (the whole packages would bring
 #!   100 more tools).
+#! - `/usr/share/ca-certificates/ca-bundle.crt`: cacert's Mozilla bundle, the
+#!   one CA file of the image.
 #!
 #! Files: the timesyncd and journald drop-ins, and
 #! `/usr/lib/repart.d/30-root.conf` (the root partition systemd-repart makes
 #! at first boot, rendered from `image/repart.nix`). Tmpfiles lines: `L /bin`, `L /sbin` and `L /lib`, the
 #! merged-`/usr` links on the root partition.
+#! `L /etc/ssl/cert.pem` and `L /etc/ssl/certs/ca-certificates.crt`, the
+#! paths OpenSSL and curl read by default: `openssl version -d` says
+#! OPENSSLDIR=/etc/ssl, so OpenSSL reads /etc/ssl/cert.pem, and curl is built
+#! with CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt. Both link the one
+#! bundle in /usr, so an update carries it and /etc holds no copy.
 #!
 #! Unit drop-ins (a link to /dev/null cannot mask a unit the systemd farm
 #! already ships): systemd-firstboot.service runs without prompts (no local
@@ -350,6 +357,24 @@ in
             "systemd-coredump-register.service"
           ];
 
+      # The one CA file of the image: cacert's Mozilla bundle. /etc carries only
+      # symlinks to it, made at boot by the tmpfiles lines below: OpenSSL's
+      # OPENSSLDIR is /etc/ssl, so its default cert file is /etc/ssl/cert.pem, and
+      # libcurl is built with CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt.
+      # The file stays in /usr, so an image update replaces it; a later p11-kit
+      # trust extract may replace the links, but not this file.
+      caBundleLinks = [
+        {
+          path = "/usr/share/ca-certificates/ca-bundle.crt";
+          target = "${p.cacert}/etc/ssl/certs/ca-bundle.crt";
+          kind = "explicit";
+        }
+      ];
+      caBundleTmpfiles = [
+        "L /etc/ssl/cert.pem - - - - /usr/share/ca-certificates/ca-bundle.crt"
+        "L /etc/ssl/certs/ca-certificates.crt - - - - /usr/share/ca-certificates/ca-bundle.crt"
+      ];
+
       # PAM modules: Linux-PAM loads a relative module name from /usr/lib/security/, and the
       # factory's stacks name <package>/<module>. Each package's module directory is one
       # directory link: repkgs writes DT_NEEDED as $ORIGIN/../../../<dep>/lib/..., $ORIGIN is
@@ -492,6 +517,7 @@ in
         p.uutils-coreutils
         p.tpm2-tss # dlopen only (see dlopenSonames): nothing else brings it into the closure
         p.e2fsprogs # mkfs.ext4 and fsck.ext4: repart makes the root partition at first boot
+        p.cacert # the one CA bundle: /usr/share/ca-certificates/ca-bundle.crt
         p.linux-kernel # kernel; UKI builder consumes it
       ];
 
@@ -519,6 +545,7 @@ in
         ++ farmLinks
         ++ dlopenLinks
         ++ pamLinks
+        ++ caBundleLinks
       );
 
       # The dbus user, if dbus-broker needs it. dbus-broker runs as root by
@@ -528,11 +555,13 @@ in
 
       # merged /usr on the root partition: #!/bin/sh and friends (repart makes the directories,
       # image/repart.nix; the root is read-only until systemd-remount-fs, so switch-root could
-      # not make these itself)
+      # not make these itself). Plus the CA links: /etc is created by tmpfiles at boot, and an
+      # admin file at either path wins (L, not L+).
       tmpfiles = [
         "L /bin - - - - usr/bin"
         "L /sbin - - - - usr/bin"
         "L /lib - - - - usr/lib"
-      ];
+      ]
+      ++ caBundleTmpfiles;
     };
 }
