@@ -30,6 +30,12 @@ flowchart TD
   sysusers = [ "u sshd - \"SSH daemon\"" ];
   tmpfiles = [ "d /var/lib/sshd 0700 root root -" ];
   packages = [ pkgs.openssh ];
+  links = [                               # symlinks in /usr, including .wants
+    { path = "/usr/lib/systemd/system/multi-user.target.wants/sshd.service";
+      target = "../sshd.service"; }
+  ];
+  farm."systemd" = [ "lib/udev/rules.d" ];  # subdirs linked file by file
+  dlopen."tpm2-tss" = [ "libtss2-esys.so.0" ];  # sonames for /usr/lib
 }
 ```
 
@@ -71,8 +77,23 @@ between modules. Types and renderers: [reference/modules](../reference/modules/R
 `/system` takes `name`, `version` and `fragments`. Attribute-set fields are unioned and a key that
 appears twice throws with the key's name; list fields are concatenated. Every file comes out as
 `{ text; mode; }`, so the image builder reads one shape. The result is the only thing the image
-builder reads. The `packages` list is checked too: two packages that install the same `/usr/bin`
-name throw, because the image builder links them into one directory.
+builder reads.
+
+The composer output:
+
+| field      | shape                         | description                            |
+| ---------- | ----------------------------- | -------------------------------------- |
+| `units`    | `{ name = text; }`            | `/usr/lib/systemd/system/<name>`       |
+| `files`    | `{ path = { text; mode; }; }` | Files under `/usr`                     |
+| `sysusers` | `[ line ]`                    | Concatenated to one `.conf`            |
+| `tmpfiles` | `[ line ]`                    | Concatenated to one `.conf`            |
+| `packages` | `[ drv ]`                     | Closures for `/usr/nix/store`          |
+| `links`    | `[ { path; target; } ]`       | Symlinks: `/usr/bin`, dlopen, `.wants` |
+| `farmDirs` | `[ { path; target; } ]`       | Directories to expand file by file     |
+
+The `packages` list is checked: two packages that install the same `/usr/bin` name throw, because
+the image builder links them into one directory. A link path and a file at the same path is also an
+error.
 
 ## Why not the NixOS module system
 

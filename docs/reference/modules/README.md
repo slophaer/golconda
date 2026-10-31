@@ -5,37 +5,40 @@ This page documents every module and the shared types in `modules/lib/`.
 
 ## Modules
 
-| path             | role                                                                                            |
-| ---------------- | ----------------------------------------------------------------------------------------------- |
-| `/system`        | the composer: `name`, `version`, `fragments` → `{ units; files; sysusers; tmpfiles; packages }` |
-| `/vars`          | installs `/usr/lib/golconda/golconda-var-run` (mode `0755`); add once when any var is used      |
-| `/wrap`          | typed options for repkgs' `wrap`: `package`, `argv`, `env`, `files`; the caller uses `set.wrap` |
-| `/services/sshd` | OpenSSH as a service with an ed25519 host key var; keys and certificates only (options below)   |
+| path             | role                                                                                                             |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `/system`        | the composer: `name`, `version`, `fragments` → `{ units; files; sysusers; tmpfiles; packages; links; farmDirs }` |
+| `/vars`          | installs `/usr/lib/golconda/golconda-var-run` (mode `0755`); add once when any var is used                       |
+| `/wrap`          | typed options for repkgs' `wrap`: `package`, `argv`, `env`, `files`; the caller uses `set.wrap`                  |
+| `/services/sshd` | OpenSSH as a service with an ed25519 host key var; keys and certificates only (options below)                    |
 
 ## Shared types (`modules/lib/`)
 
 Plain files that modules import. The directory has no `default.nix`, so adios does not load it.
 
-| file               | exports                                                                                                                                                   |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fragment.nix`     | `fragment`: `{ units; files; sysusers; tmpfiles; packages }`, every field optional; `file`, `mode`                                                        |
-| `merge.nix`        | `merge [ fragment… ] → fragment`: unions attrs, concatenates lists; a duplicate key throws; every file comes out as `{ text; mode; }`                     |
-| `app.nix`          | `app`, `argv`, `files`, `perMachineMarkers`, `envOp`, `credentialRef`, `isCredentialRef`, `file`, `filesPlaceholder`, `wrapApp`, `wrappedFilesDir`, `exe` |
-| `service.nix`      | `service`, `render`, `renderWrapped`, `wrapApp`, `sandbox`, `sandboxLines`, `credential`, `credentialArg`                                                 |
-| `var.nix`          | `var`, `render`, `unitName`, `credentialId`, `stateDir`                                                                                                   |
-| `golconda-var-run` | POSIX sh runner for var units                                                                                                                             |
+| file               | exports                                                                                                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fragment.nix`     | `fragment`: `{ units; files; sysusers; tmpfiles; packages; links; farm; dlopen }`, every field optional; `file`, `mode`, `link`                               |
+| `merge.nix`        | `merge [ fragment… ] → { ...; links; farmDirs }`: unions attrs, concatenates lists; a duplicate key or path throws; every file comes out as `{ text; mode; }` |
+| `app.nix`          | `app`, `argv`, `files`, `perMachineMarkers`, `envOp`, `credentialRef`, `isCredentialRef`, `file`, `filesPlaceholder`, `exe`                                   |
+| `service.nix`      | `service`, `render`, `renderWrapped`, `wrapApp`, `sandbox`, `sandboxLines`, `credential`, `credentialArg`                                                     |
+| `var.nix`          | `var`, `render`, `unitName`, `credentialId`, `stateDir`                                                                                                       |
+| `golconda-var-run` | POSIX sh runner for var units                                                                                                                                 |
 
 ### `fragment`
 
 The return type of every module.
 
-| field      | type               | installed to                         |
-| ---------- | ------------------ | ------------------------------------ |
-| `units`    | attrs name → text  | `/usr/lib/systemd/system/<name>`     |
-| `files`    | attrs path → file  | the path (must start with `/usr`)    |
-| `sysusers` | list of string     | `/usr/lib/sysusers.d/` lines         |
-| `tmpfiles` | list of string     | `/usr/lib/tmpfiles.d/` lines         |
-| `packages` | list of derivation | `/usr/nix/store` closure, `/usr/bin` |
+| field      | type                       | installed to                                           |
+| ---------- | -------------------------- | ------------------------------------------------------ |
+| `units`    | attrs name → text          | `/usr/lib/systemd/system/<name>`                       |
+| `files`    | attrs path → file          | the path (must start with `/usr`)                      |
+| `sysusers` | list of string             | `/usr/lib/sysusers.d/` lines                           |
+| `tmpfiles` | list of string             | `/usr/lib/tmpfiles.d/` lines                           |
+| `packages` | list of derivation         | `/usr/nix/store` closure, `/usr/bin`                   |
+| `links`    | list of `{ path; target }` | symlinks under `/usr` (including `.wants`)             |
+| `farm`     | attrs pkgName → [ subdir ] | subdirs linked file by file (e.g., `lib/udev/rules.d`) |
+| `dlopen`   | attrs pkgName → [ soname ] | sonames linked into `/usr/lib` for dlopen              |
 
 A `file` is either the text (installed with mode `0644`) or `{ text; mode ? "0644"; }`, where `mode`
 is four octal digits (`"0755"` for an executable). The composer's output always has the record
@@ -71,11 +74,11 @@ A service is an `app` plus what only a unit has. `render service` returns a frag
 | `sandbox`     | `"strict"`, `"default"` or `"trusted"`                                | hardening directives from `sandboxLines`                                       |
 | `after`       | list of unit names, default `[ ]`                                     | `After=`                                                                       |
 | `wants`       | list of unit names, default `[ ]`                                     | `Wants=`                                                                       |
+| `wantedBy`    | list of target names, default `[ "multi-user.target" ]`               | `[Install] WantedBy=` and static `.wants` links                                |
 
-Arguments are escaped (`%` → `%%`, `$` → `$$`). The unit ends with `WantedBy=multi-user.target`.
-`credential "n"` builds a plain ref; `credentialArg "RevokedKeys=" "n"` builds one with a prefix,
-for programs that take a path as `-o Option=<path>`. A prefix is one word of letters, digits and
-`_ = : / . , + -`.
+Arguments are escaped (`%` → `%%`, `$` → `$$`). `credential "n"` builds a plain ref;
+`credentialArg "RevokedKeys=" "n"` builds one with a prefix, for programs that take a path as
+`-o Option=<path>`. A prefix is one word of letters, digits and `_ = : / . , + -`.
 
 ### `wrapApp` and `renderWrapped`
 
@@ -110,9 +113,18 @@ place: the wrapped output when using `renderWrapped`, or `/usr/lib/<name>/` when
 
 `merge [ fragmentA fragmentB ]` unions `units` and `files` (a repeated key throws, whichever shape
 the two values have), normalises every file to `{ text; mode; }`, concatenates `sysusers` and
-`tmpfiles`, and checks `packages`: two packages with the same `/usr/bin` name throw.
+`tmpfiles`, and checks `packages`: two packages with the same `/usr/bin` name throw. The output
+adds:
 
-Error message example: `golconda: /usr/bin name defined twice: jq (jq-1.7, jq-wrap-1.7)`.
+| field      | from                                                                             |
+| ---------- | -------------------------------------------------------------------------------- |
+| `links`    | `/usr/bin/<name>` from packages, `/usr/lib/<soname>` from dlopen, explicit links |
+| `farmDirs` | `farm` declarations expanded to `{ path; target }` for the image builder         |
+
+A link path that collides with a file path is an error. Two sources for the same link path is an
+error naming both sources.
+
+Error message example: `golconda: /usr/bin/jq defined twice: package jq-1.7, package jq-wrap-1.7`.
 
 ### `/wrap`
 

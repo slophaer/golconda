@@ -16,12 +16,13 @@ The exact on-disk layout. Type GUIDs are the Discoverable Partitions Specificati
 
 ## Paths
 
-| path                                 | kind           | owner                                                     |
-| ------------------------------------ | -------------- | --------------------------------------------------------- |
-| `/usr/nix/store`                     | image          | repkgs closure                                            |
-| `/usr/bin`, `/usr/lib`, `/usr/share` | image          | symlink farm, composer files                              |
-| `/usr/lib/os-release`                | image          | composer: `ID`, `VERSION_ID`, `IMAGE_ID`, `IMAGE_VERSION` |
-| `/usr/share/factory/etc`             | image          | composer                                                  |
-| `/etc`                               | root partition | factory copy, admin                                       |
-| `/var`                               | root partition | services                                                  |
-| `/efi`                               | ESP            | systemd-boot, UKIs, sysupdate                             |
+| path                                      | kind           | owner                                                     |
+| ----------------------------------------- | -------------- | --------------------------------------------------------- |
+| `/usr/nix/store`                          | image          | repkgs closure                                            |
+| `/usr/bin`, `/usr/lib`, `/usr/share`      | image          | symlink farm (composer `links` + `farmDirs`), files       |
+| `/usr/lib/systemd/system/<target>.wants/` | image          | static enablement symlinks (composer `links`)             |
+| `/usr/lib/os-release`                     | image          | composer: `ID`, `VERSION_ID`, `IMAGE_ID`, `IMAGE_VERSION` |
+| `/usr/share/factory/etc`                  | image          | composer                                                  |
+| `/etc`                                    | root partition | factory copy, admin                                       |
+| `/var`                                    | root partition | services                                                  |
+| `/efi`                                    | ESP            | systemd-boot, UKIs, sysupdate                             |
