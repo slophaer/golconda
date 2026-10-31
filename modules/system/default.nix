@@ -18,6 +18,32 @@
 #! `/usr/lib/systemd/user/`, so one duplicate check covers both scopes.
 { types, ... }:
 let
+  ini = import ../lib/ini.nix;
+  # /system.updateSource -> /usr/lib/sysupdate.d/*.conf (image/sysupdate.nix)
+  sysupdateFragment =
+    options:
+    if options.updateSource == null then
+      [ ]
+    else
+      let
+        defs = import ../../image/sysupdate.nix {
+          imageId = options.name;
+          inherit (options) updateSource;
+        };
+      in
+      [
+        {
+          files = builtins.listToAttrs (
+            map (n: {
+              name = "/usr/lib/sysupdate.d/${n}.conf";
+              value = {
+                text = ini.render defs.${n};
+                mode = "0644";
+              };
+            }) (builtins.attrNames defs)
+          );
+        }
+      ];
   inherit (builtins) isString match;
   fragmentT = (import ../lib/fragment.nix { inherit types; }).fragment;
   merge = import ../lib/merge.nix;
@@ -77,6 +103,7 @@ in
         results.network
       ]
       ++ options.fragments
+      ++ sysupdateFragment options
     )
     // {
       inherit (options) name version updateSource;

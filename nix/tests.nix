@@ -1119,6 +1119,44 @@ let
       in
       !any tryVersion invalidVersions
     ))
+
+    # 7b. /system.updateSource renders sysupdate.d
+    (check "system: updateSource renders /usr/lib/sysupdate.d with Path=" (
+      let
+        result = composeWith {
+          "/system" = {
+            name = "t";
+            version = "20261031.1";
+            fragments = [ ];
+            updateSource = "https://updates.example/t/";
+          };
+        };
+        usr = result.files."/usr/lib/sysupdate.d/10-usr.conf".text;
+      in
+      hasInfix "[Source]" usr
+      && hasInfix "Path=https://updates.example/t/" usr
+      && hasInfix "MatchPattern=t_@v.usr.raw" usr
+      && hasInfix "ProtectVersion=%A" usr
+      && result.files ? "/usr/lib/sysupdate.d/40-uki.conf"
+    ))
+    (check "system: no updateSource, no sysupdate.d" (
+      let
+        result = composeWith { };
+      in
+      !(builtins.any (n: hasPrefix "/usr/lib/sysupdate.d/" n) (builtins.attrNames result.files))
+    ))
+    (check "ini: lists repeat the key, booleans are yes/no, null drops" (
+      (import ../modules/lib/ini.nix).render {
+        A = {
+          k = [
+            "x"
+            "y"
+          ];
+          b = true;
+          n = null;
+        };
+      } == "[A]\nb=yes\nk=x\nk=y\n"
+    ))
     (check "module-docs: sshd page has the principals row and its default" (
       hasInfix "| `principals` | object of array of string | `{}` |" docs.pages."/services/sshd"
     ))
