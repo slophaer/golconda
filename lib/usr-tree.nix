@@ -108,7 +108,7 @@ let
     {
       version,
       platform,
-      imageId ? "golconda",
+      imageId,
     }:
     let
       arch = platform.cpu;

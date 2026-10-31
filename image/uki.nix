@@ -1,6 +1,7 @@
 # UKI (Unified Kernel Image) configuration
 #
-# Parameters for ukify build. The builder substitutes values at build time.
+# Parameters for ukify build: the cmdline template and the PCR phases. The builder
+# (lib/image/uki.nix) names the file, and the keys come from its arguments.
 #
 # The UKI contains:
 #   - EFI stub (linuxx64.efi.stub)
@@ -12,7 +13,6 @@
 #   - PCR measurements (.pcrsig, signed by PCR key)
 #
 # See docs/design/boot.md for the boot process.
-{ imageId }:
 {
   # Kernel command line template
   # {usrhash} is substituted with the verity root hash at build time
@@ -28,23 +28,8 @@
   # The builder appends rdinit= (lib/image/initrd.nix says why)
   cmdlineTemplate = "usrhash={usrhash} lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=0 console=tty0 console=ttyS0,115200";
 
-  # EFI output naming
-  # {version} is the IMAGE_VERSION
-  outputPattern = "${imageId}_{version}+3-0.efi";
-  sourcePattern = "${imageId}_{version}.efi"; # For sysupdate (no boot count)
-
-  # Secure Boot signing
-  signWithSecureBoot = true;
-  secureBootKeyPath = "db.key";
-  secureBootCertPath = "db.crt";
-
-  # PCR policy signing (for measured boot and credential decryption)
-  # PCR 11 is measured by systemd-stub at each phase transition
-  signWithPcr = true;
-  pcrKeyPath = "pcr.key";
-  pcrCertPath = "pcr.crt";
-
-  # Phases to sign, as colon-separated string for ukify --phases
+  # PCR policy signing (for measured boot and credential decryption). Phases to sign, as
+  # colon-separated string for ukify --phases
   # This covers the full boot path for LoadCredentialEncrypted= in services:
   #   enter-initrd  - measured when systemd-stub starts
   #   leave-initrd  - measured before pivot_root to real root

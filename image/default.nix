@@ -7,9 +7,6 @@
 # See docs/design/updates.md for the sysupdate mechanism.
 # See docs/reference/image.md for artifact naming.
 {
-  # Image identity
-  imageId = "golconda";
-
   # Partitions and their repart.d definitions
   repart = import ./repart.nix;
 
