@@ -207,7 +207,7 @@ Built-in seeds: `shells` (`/usr/bin/sh`, `/usr/bin/dash`), `pam.d/other` (every 
 `pam.d/sshd` (`account pam_unix`; `session pam_systemd` optional, `session pam_unix`; no `auth`
 line, so an auth request falls through to `other`), `ssl/anchors/.keep`, `ssl/blocklist/.keep`,
 `pkcs11/.keep`. Never seeded: `passwd`, `group`, `shadow` (systemd-sysusers writes them on first
-boot), `machine-id` (PID 1) and `hostname` (systemd-firstboot from the bootstrap credential).
+boot), `machine-id` (PID 1) and `hostname` (PID 1 sets it from the bootstrap credential).
 
 tmpfiles: one `L /etc/<path> - - - - /usr/share/factory/etc/<path>` line per factory file (`L`, not
 `L+`: a regular file an admin put at that path wins and stays), `localtime` and `os-release` →
