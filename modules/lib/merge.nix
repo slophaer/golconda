@@ -5,6 +5,9 @@
 # The packages are checked as well: the image builder links them into one
 # /usr/bin, so two packages with the same executable name throw.
 #
+# Every value of `files` comes out as { text; mode; }: a plain string is a
+# file with mode "0644" (fragment.nix). The image builder reads one shape.
+#
 #   merge [ fragmentA fragmentB ] -> fragment
 let
   inherit (builtins)
@@ -13,7 +16,22 @@ let
     deepSeq
     filter
     foldl'
+    isString
+    mapAttrs
     ;
+
+  normalizeFile =
+    _: v:
+    if isString v then
+      {
+        text = v;
+        mode = "0644";
+      }
+    else
+      {
+        inherit (v) text;
+        mode = v.mode or "0644";
+      };
 
   # repkgs packages carry `bin`, their executable names, at evaluation time.
   # A package listed by two fragments is one package (same name), not a clash.
@@ -51,7 +69,7 @@ let
 in
 fragments: {
   units = unionNoDup "units" fragments;
-  files = unionNoDup "files" fragments;
+  files = mapAttrs normalizeFile (unionNoDup "files" fragments);
   sysusers = concat "sysusers" fragments;
   tmpfiles = concat "tmpfiles" fragments;
   packages = farm (concat "packages" fragments);

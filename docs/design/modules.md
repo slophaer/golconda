@@ -25,7 +25,8 @@ flowchart TD
 ```nix
 {
   units."sshd.service" = "...";          # /usr/lib/systemd/system
-  files."/usr/lib/sysusers.d/sshd.conf" = "u sshd - ...";
+  files."/usr/lib/sysusers.d/sshd.conf" = "u sshd - ...";   # text: mode 0644
+  files."/usr/lib/golconda/run" = { text = "#!/bin/sh ..."; mode = "0755"; };
   sysusers = [ "u sshd - \"SSH daemon\"" ];
   tmpfiles = [ "d /var/lib/sshd 0700 root root -" ];
   packages = [ pkgs.openssh ];
@@ -62,9 +63,10 @@ between modules. Types and renderers: [reference/modules](../reference/modules/R
 ## The composer
 
 `/system` takes `name`, `version` and `fragments`. Attribute-set fields are unioned and a key that
-appears twice throws with the key's name; list fields are concatenated. The result is the only thing
-the image builder reads. The `packages` list is checked too: two packages that install the same
-`/usr/bin` name throw, because the image builder links them into one directory.
+appears twice throws with the key's name; list fields are concatenated. Every file comes out as
+`{ text; mode; }`, so the image builder reads one shape. The result is the only thing the image
+builder reads. The `packages` list is checked too: two packages that install the same `/usr/bin`
+name throw, because the image builder links them into one directory.
 
 ## Why not the NixOS module system
 

@@ -5,6 +5,9 @@ _: {
   name = "vars";
 
   impl = _: {
-    files."/usr/lib/golconda/golconda-var-run" = builtins.readFile ../lib/golconda-var-run;
+    files."/usr/lib/golconda/golconda-var-run" = {
+      text = builtins.readFile ../lib/golconda-var-run;
+      mode = "0755";
+    };
   };
 }

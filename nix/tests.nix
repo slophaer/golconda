@@ -43,6 +43,25 @@ let
         { }
     ).packages;
 
+  compose =
+    fragments:
+    (f.modules {
+      options."/system" = {
+        name = "t";
+        version = "0";
+        inherit fragments;
+      };
+    }).modules.system
+      { };
+  # the composer's files, forced: a type error in a file fires here
+  filesOf =
+    fragments:
+    let
+      r = (compose fragments).files;
+    in
+    deepSeq r r;
+  filesThrow = fragments: !(tryEval (filesOf fragments)).success;
+
   check = name: cond: if cond then true else throw "golconda tests: ${name} failed";
   # forcing the units is enough: a type error fires before any field; the
   # package derivations stay unevaluated (repkgs needs ca-derivations to instantiate)
@@ -93,13 +112,95 @@ let
       hasInfix "ConditionPathExists=!/var/lib/golconda/vars/sshd-hostkey/done" varUnit
     ))
     (check "var: runner arguments" (
-      hasInfix "golconda-var-run sshd-hostkey \"key\" \"key.pub\"" varUnit
+      hasInfix "ExecStart=/usr/lib/golconda/golconda-var-run sshd-hostkey \"key\" \"key.pub\"" varUnit
     ))
     (check "var: manifest and script" (
       system.files ? "/usr/lib/golconda/vars.d/sshd-hostkey.json"
       && system.files ? "/usr/lib/golconda/vars.d/sshd-hostkey.sh"
     ))
     (check "vars: runner installed once" (system.files ? "/usr/lib/golconda/golconda-var-run"))
+    (check "vars: runner is executable" (
+      system.files."/usr/lib/golconda/golconda-var-run".mode == "0755"
+    ))
+
+    # 1b. a file is text (mode 0644) or { text; mode; }; the composer emits one shape
+    (check "files: a string is a file with mode 0644" (
+      (filesOf [ { files."/usr/lib/a/conf" = "x"; } ])."/usr/lib/a/conf" == {
+        text = "x";
+        mode = "0644";
+      }
+    ))
+    (check "files: a record keeps its mode" (
+      (filesOf [
+        {
+          files."/usr/lib/a/run" = {
+            text = "#!/bin/sh\n";
+            mode = "0755";
+          };
+        }
+      ])."/usr/lib/a/run".mode == "0755"
+    ))
+    (check "files: a record without mode is 0644" (
+      (filesOf [
+        {
+          files."/usr/lib/a/conf" = {
+            text = "x";
+          };
+        }
+      ])."/usr/lib/a/conf".mode == "0644"
+    ))
+    (check "files: a bad mode is a type error" (
+      filesThrow [
+        {
+          files."/usr/lib/a/run" = {
+            text = "x";
+            mode = "rwxr-xr-x";
+          };
+        }
+      ]
+      && filesThrow [
+        {
+          files."/usr/lib/a/run" = {
+            text = "x";
+            mode = "755";
+          };
+        }
+      ]
+      && filesThrow [
+        {
+          files."/usr/lib/a/run" = {
+            text = "x";
+            mode = 493;
+          };
+        }
+      ]
+    ))
+    (check "files: a record needs text and nothing else" (
+      filesThrow [
+        {
+          files."/usr/lib/a/run" = {
+            mode = "0755";
+          };
+        }
+      ]
+      && filesThrow [
+        {
+          files."/usr/lib/a/run" = {
+            text = "x";
+            source = ./tests.nix;
+          };
+        }
+      ]
+    ))
+    (check "files: a string and a record for one path are a duplicate" (filesThrow [
+      { files."/usr/lib/a/conf" = "x"; }
+      {
+        files."/usr/lib/a/conf" = {
+          text = "x";
+          mode = "0755";
+        };
+      }
+    ]))
 
     # 2. a credential ref inside app.argv is a type error; in extraArgv it is not
     (check "app.argv refuses a credential ref" (
@@ -184,25 +285,10 @@ let
           { }
       )
     ))
-    (check "composer refuses a duplicate file" (
-      !(tryEval (
-        deepSeq
-          (
-            (f.modules {
-              options."/system" = {
-                name = "dup";
-                version = "0";
-                fragments = [
-                  { files."/usr/lib/foo/config" = "a"; }
-                  { files."/usr/lib/foo/config" = "b"; }
-                ];
-              };
-            }).modules.system
-              { }
-          ).files
-          true
-      )).success
-    ))
+    (check "composer refuses a duplicate file" (filesThrow [
+      { files."/usr/lib/foo/config" = "a"; }
+      { files."/usr/lib/foo/config" = "b"; }
+    ]))
     (check "composer concatenates lists" (
       (
         (f.modules {

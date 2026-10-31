@@ -1,10 +1,11 @@
 # The composer: takes fragments, returns one system. Union with an error on a
 # duplicate key; there is no priority system (docs/design/modules.md). The
 # union itself is modules/lib/merge.nix, so a module that returns several
-# fragments applies the same rule.
+# fragments applies the same rule. Output: { name; version; units; files;
+# sysusers; tmpfiles; packages }, every file as { text; mode; }.
 { types, ... }:
 let
-  fragmentT = import ../lib/fragment.nix { inherit types; };
+  fragmentT = (import ../lib/fragment.nix { inherit types; }).fragment;
   merge = import ../lib/merge.nix;
 in
 {

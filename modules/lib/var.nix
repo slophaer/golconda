@@ -16,7 +16,7 @@
 #
 # The runner /usr/lib/golconda/golconda-var-run (modules/lib/golconda-var-run)
 # is one file for all vars, so the /vars module installs it: add `/vars` to
-# the fragments once. The runner needs /usr/bin/sh, coreutils and
+# the fragments once (mode 0755). The runner needs /bin/sh, coreutils and
 # systemd-creds in the image.
 { types }:
 let
@@ -94,7 +94,7 @@ let
           "RuntimeDirectoryMode=0700"
           "StateDirectory=golconda/vars/${v.name}"
           "StateDirectoryMode=0700"
-          "ExecStart=/usr/bin/sh /usr/lib/golconda/golconda-var-run ${v.name} \"${concatStringsSep " " v.secrets}\" \"${concatStringsSep " " publics}\""
+          "ExecStart=/usr/lib/golconda/golconda-var-run ${v.name} \"${concatStringsSep " " v.secrets}\" \"${concatStringsSep " " publics}\""
           ""
         ]
       );
