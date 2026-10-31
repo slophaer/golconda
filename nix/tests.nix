@@ -2651,6 +2651,48 @@ let
       && hasInfix "dmverity_signature=TRUE action=ALLOW" policyContent
       && hasInfix "DEFAULT op=EXECUTE action=DENY" policyContent
     ))
+
+    # /network renders through modules/lib/ini.nix
+    (check "network: files are ini.nix output (sections sorted, lists repeat, booleans yes/no)" (
+      let
+        result = composeWith {
+          "/network" = {
+            defaultDhcp = false;
+            dns = [
+              "1.1.1.1"
+              "8.8.8.8"
+            ];
+            networks.static = {
+              match.Name = "eth0";
+              network = {
+                Address = [
+                  "10.0.0.1/24"
+                  "10.0.1.1/24"
+                ];
+                IPv6AcceptRA = false;
+              };
+              route.Gateway = "10.0.0.254";
+            };
+          };
+        };
+      in
+      result.files."/usr/lib/systemd/network/static.network".text
+      == "[Match]\nName=eth0\n\n[Network]\nAddress=10.0.0.1/24\nAddress=10.0.1.1/24\nIPv6AcceptRA=no\n\n[Route]\nGateway=10.0.0.254\n"
+      &&
+        result.files."/usr/lib/systemd/resolved.conf.d/golconda-dns.conf".text
+        == "[Resolve]\nDNS=1.1.1.1 8.8.8.8\n"
+    ))
+    (check "network: a section the config lacks is not rendered" (
+      let
+        result = composeWith {
+          "/network" = {
+            defaultDhcp = false;
+            networks.bare.match.Name = "lo";
+          };
+        };
+      in
+      result.files."/usr/lib/systemd/network/bare.network".text == "[Match]\nName=lo\n"
+    ))
   ];
 in
 assert all (t: t) tests;
