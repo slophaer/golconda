@@ -115,6 +115,35 @@ let
         }
       )
     ))
+    (check "app.argv refuses an argument with a newline" (
+      throws (
+        s.render {
+          name = "x";
+          app = {
+            package = standIn;
+            argv = [ "a\nb" ];
+          };
+          user = "dynamic";
+          sandbox = "strict";
+        }
+      )
+    ))
+    (check "app.argv accepts spaces and quotes (escaped by the renderer)" (
+      !throws (
+        s.render {
+          name = "x";
+          app = {
+            package = standIn;
+            argv = [
+              "a b"
+              "c\"d"
+            ];
+          };
+          user = "dynamic";
+          sandbox = "strict";
+        }
+      )
+    ))
     (check "extraArgv accepts a declared credential ref" (
       !throws (
         s.render {
