@@ -7,9 +7,17 @@ let
   docsFromSchema =
     let
       schemaLib = import ../lib/schema.nix { };
+      moduleDocs = import ../lib/module-docs.nix { };
+      docComments = import ../lib/doc-comments.nix { };
       tree = import ../modules { inherit (adios) adios; };
+      modulePaths = moduleDocs.discoverModulePaths ../modules;
     in
-    (import ../lib/module-docs.nix { }).toMarkdown (schemaLib.toJsonSchema (tree { }));
+    moduleDocs.toMarkdown {
+      schema = schemaLib.toJsonSchema (tree { });
+      inherit modulePaths docComments;
+      inherit (schemaLib) typeRegistry;
+      tree = tree { };
+    };
   usrTreeLib = import ../lib/usr-tree.nix { };
 in
 {
@@ -88,8 +96,14 @@ in
   #   iets eval --raw -E '(import ./default.nix).docs-modules."/system"'
   docs-modules = docsFromSchema.pages;
 
-  # The same pages by file name (services-sshd.md, index.md); scripts/docs writes these.
+  # The same pages by file name (services-sshd.md, index.md, types.md); scripts/docs writes these.
   docs-pages = docsFromSchema.files;
+
+  # Generated SUMMARY.md content.
+  docs-summary = docsFromSchema.summary;
+
+  # Module paths discovered from modules/ directory.
+  docs-module-paths = docsFromSchema.modulePaths;
 
   # TOML configuration loader. Returns { loadConfig; loadAndApply; validPaths; }.
   #   (import ./default.nix).configLib.loadConfig ./config.toml

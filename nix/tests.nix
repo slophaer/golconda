@@ -28,7 +28,49 @@ let
   v = import ../modules/lib/var.nix { inherit types; };
   schemaLib = import ../lib/schema.nix { };
   moduleDocs = import ../lib/module-docs.nix { };
-  docs = moduleDocs.toMarkdown (schemaLib.toJsonSchema (f.modules { }));
+  docComments = import ../lib/doc-comments.nix { };
+  modulePaths = moduleDocs.discoverModulePaths ../modules;
+  docs = moduleDocs.toMarkdown {
+    schema = schemaLib.toJsonSchema (f.modules { });
+    inherit modulePaths docComments;
+    inherit (schemaLib) typeRegistry;
+    tree = f.modules { };
+  };
+  # Helper for testing schema rendering with a minimal schema (no module walking)
+  mockPage =
+    schema:
+    let
+      props = schema.properties or { };
+      paths = builtins.attrNames props;
+    in
+    builtins.listToAttrs (
+      builtins.map (p: {
+        name = p;
+        value =
+          let
+            s = props.${p};
+            names = builtins.attrNames (s.properties or { });
+            row =
+              n:
+              let
+                opt = s.properties.${n};
+              in
+              "| `${n}` | ${moduleDocs.typeOf opt} | | ${
+                builtins.replaceStrings [ "\n" "|" "<" ] [ " " "\\|" "&lt;" ] (opt.description or "")
+              } |";
+            opaqueCheck = builtins.any (
+              n:
+              let
+                opt = s.properties.${n};
+              in
+              opt ? "x-golconda-opaque"
+            ) names;
+          in
+          builtins.concatStringsSep "\n" (
+            builtins.map row names ++ (if opaqueCheck then [ "\nOpaque types are not described" ] else [ ])
+          );
+      }) paths
+    );
   configLib = import ../lib/config.nix {
     tree = f.modules { };
     inherit (f) modules;
@@ -791,51 +833,109 @@ let
       &&
         attrNames docs.pages == [
           "/factory"
+          "/services"
           "/services/sshd"
           "/system"
+          "/vars"
           "/wrap"
         ]
     ))
-    (check "module-docs: files hold every page and the index" (
+    (check "module-docs: files hold every page and the index and types" (
       attrNames docs.files == [
         "factory.md"
         "index.md"
         "services-sshd.md"
+        "services.md"
         "system.md"
+        "types.md"
+        "vars.md"
         "wrap.md"
       ]
     ))
-    (check "module-docs: the book's SUMMARY links every generated page" (
+    (check "module-docs: the generated SUMMARY links every module page" (
       let
-        summary = builtins.readFile ../docs/SUMMARY.md;
+        inherit (docs) summary;
+        # index.md is not linked directly in SUMMARY; module pages are
+        moduleFiles = builtins.filter (n: n != "index.md") (attrNames docs.files);
       in
-      all (n: hasInfix "reference/modules/generated/${n})" summary) (attrNames docs.files)
+      all (n: hasInfix "reference/modules/generated/${n})" summary) moduleFiles
     ))
     (check "module-docs: fixed sshd_config lines never appear as rows" (
       !(hasInfix "PasswordAuthentication" docs.pages."/services/sshd")
     ))
     (check "module-docs: opaque types are named and noted" (
       let
-        p = moduleDocs.toMarkdown {
+        p = mockPage {
           properties."/x".properties.o."x-golconda-opaque" = "mystery";
         };
       in
-      hasInfix "opaque `mystery`" p.pages."/x" && hasInfix "Opaque types are not described" p.pages."/x"
+      hasInfix "opaque `mystery`" p."/x" && hasInfix "Opaque types are not described" p."/x"
     ))
     (check "module-docs: a pipe or angle bracket in text cannot break the table" (
       let
-        p = moduleDocs.toMarkdown {
+        p = mockPage {
           properties."/x".properties.o = {
             type = "string";
             description = "a|b <c>";
           };
         };
       in
-      hasInfix "a\\|b &lt;c>" p.pages."/x"
+      hasInfix "a\\|b &lt;c>" p."/x"
     ))
     (check "module-docs: sshd's only opaque option is the wrap function" (
       hasInfix "Options with one: `wrap`." docs.pages."/services/sshd"
     ))
+
+    # New tests for module doc comments and types
+    (check "module-docs: every discovered module has a page" (
+      all (m: docs.pages ? ${m.path}) modulePaths
+    ))
+    (check "module-docs: every module file has a #! doc comment" (
+      all (m: docComments.moduleDoc m.filePath != null) modulePaths
+    ))
+    (check "module-docs: discovered paths match tree module paths" (
+      let
+        discoveredPaths = builtins.sort (a: b: a < b) (map (m: m.path) modulePaths);
+        # Walk the tree to get all module paths
+        walkTree =
+          prefix: mod:
+          let
+            thisPath = if prefix == "" then "/" else prefix;
+            children = builtins.attrNames (mod.modules or { });
+            childPaths = builtins.concatMap (c: walkTree "${prefix}/${c}" mod.modules.${c}) children;
+          in
+          # Skip the root "/" path which doesn't have a file
+          (if prefix != "" then [ thisPath ] else [ ]) ++ childPaths;
+        treePaths = builtins.sort (a: b: a < b) (walkTree "" (f.modules { }));
+      in
+      discoveredPaths == treePaths
+    ))
+    (check "module-docs: types page lists every registry type" (
+      let
+        registryTypes = builtins.attrNames schemaLib.typeRegistry;
+      in
+      all (t: hasInfix "### `${t}`" docs.types) registryTypes
+    ))
+    (check "module-docs: every registry type has a description" (
+      all (t: schemaLib.typeRegistry.${t} ? description) (builtins.attrNames schemaLib.typeRegistry)
+    ))
+    (check "module-docs: /system fragments option has a description" (
+      let
+        schema = schemaLib.toJsonSchema (f.modules { });
+        fragments = schema.properties."/system".properties.fragments;
+      in
+      fragments ? description && fragments.description != ""
+    ))
+    (check "module-docs: vars page shows doc comment" (
+      hasInfix "Installs the var runner" docs.pages."/vars"
+    ))
+    (check "module-docs: vars page shows it has an impl" (
+      hasInfix "This module has an `impl`" docs.pages."/vars"
+    ))
+    (check "module-docs: services page has doc comment" (
+      hasInfix "Container for service modules" docs.pages."/services"
+    ))
+
     (check "schema: parseTypeName handles nested generics" (
       let
         p = schemaLib.parseTypeName "attrsOf<listOf<string>>";

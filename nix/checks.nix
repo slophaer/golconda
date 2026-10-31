@@ -16,9 +16,18 @@ let
   # the generated module pages (lib/module-docs.nix), by file name
   moduleDocs =
     let
-      tree = import ../modules { inherit (import sources.adios) adios; };
+      adiosPin = import sources.adios;
+      tree = import ../modules { inherit (adiosPin) adios; };
       schemaLib = import ../lib/schema.nix { };
-      md = (import ../lib/module-docs.nix { }).toMarkdown (schemaLib.toJsonSchema (tree { }));
+      moduleDocs' = import ../lib/module-docs.nix { };
+      docComments = import ../lib/doc-comments.nix { };
+      modulePaths = moduleDocs'.discoverModulePaths ../modules;
+      md = moduleDocs'.toMarkdown {
+        schema = schemaLib.toJsonSchema (tree { });
+        inherit modulePaths docComments;
+        inherit (schemaLib) typeRegistry;
+        tree = tree { };
+      };
     in
     pkgs.linkFarm "module-docs" (
       pkgs.lib.mapAttrsToList (name: text: {
@@ -26,6 +35,24 @@ let
         path = pkgs.writeText name text;
       }) md.files
     );
+
+  # Generated SUMMARY.md
+  generatedSummary =
+    let
+      adiosPin = import sources.adios;
+      tree = import ../modules { inherit (adiosPin) adios; };
+      schemaLib = import ../lib/schema.nix { };
+      moduleDocs' = import ../lib/module-docs.nix { };
+      docComments = import ../lib/doc-comments.nix { };
+      modulePaths = moduleDocs'.discoverModulePaths ../modules;
+      md = moduleDocs'.toMarkdown {
+        schema = schemaLib.toJsonSchema (tree { });
+        inherit modulePaths docComments;
+        inherit (schemaLib) typeRegistry;
+        tree = tree { };
+      };
+    in
+    pkgs.writeText "SUMMARY.md" md.summary;
 in
 {
   # formatting and Nix lints, as treefmt sees them
@@ -50,6 +77,8 @@ in
         # the reference pages that are generated, not committed
         mkdir -p reference/modules/generated
         cp -L ${moduleDocs}/*.md reference/modules/generated/
+        # SUMMARY.md is generated, not committed
+        cp ${generatedSummary} SUMMARY.md
         mdbook build -d $out
       '';
 
