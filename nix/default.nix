@@ -180,7 +180,11 @@ in
               sbCert = "${testKeys}/secureboot/db.crt";
               pcrKey = "${testKeys}/pcr/pcr.key";
               pcrPublicKey = "${testKeys}/pcr/pcr.pub";
-              cmdlineExtra = "";
+              # Stand-in, for the smoke only: gpt-auto-generator writes the remount-rw drop-in
+              # for systemd-remount-fs.service late, and the ssh host key var unit starts before
+              # the root partition is writable, so its sealing fails and sshd has no host key.
+              # The decided image cmdline (image/uki.nix) stays `ro`-less; see docs/design/boot.md.
+              cmdlineExtra = "rw";
             }
           );
           testDisk = imageLib.disk (
