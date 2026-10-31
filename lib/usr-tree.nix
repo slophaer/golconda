@@ -10,7 +10,9 @@
 #   lib/sysusers.d/golconda.conf, lib/tmpfiles.d/golconda.conf
 #   lib/os-release
 #   lib/golconda/packages.json: [{ name, version?, path, origins }], one entry per package
-#     of composerOutput.packages, origins from composerOutput.packageOrigins
+#     of composerOutput.packages, origins from composerOutput.origins.packages
+#   lib/golconda/attribution.json: composerOutput.origins without packages (files, links,
+#     units, sysusers, tmpfiles: key -> the origins that emitted it), for the UI's Files view
 #   files from composerOutput.files (paths are /usr/...; the /usr prefix is stripped)
 #
 # Cross-compilation: `buildSystem` is where the derivation runs (the build host);
@@ -207,11 +209,18 @@ in
 
       # Prepare data for the builder
       inherit (composerOutput)
-        files
         units
         sysusers
         tmpfiles
         ;
+      # The files, and attribution.json: which fragment emitted each file, link, unit and line
+      files = composerOutput.files // {
+        "/usr/lib/golconda/attribution.json" = {
+          text = builtins.toJSON (builtins.removeAttrs (composerOutput.origins or { }) [ "packages" ]);
+          mode = "0644";
+        };
+      };
+
       # The links map as a list of { path; target; kind; }, in path order
       links = map (path: {
         inherit path;
@@ -224,7 +233,7 @@ in
         name = p.pname or (p.name or "unknown");
         version = p.version or null;
         path = p.outPath;
-        origins = composerOutput.packageOrigins.${merge.pkgKey p} or [ ];
+        origins = composerOutput.origins.packages.${merge.pkgKey p} or [ ];
       }) roots;
 
       epoch = versionToEpoch version;
