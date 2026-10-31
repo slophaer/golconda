@@ -25,6 +25,8 @@ let
   s = import ../modules/lib/service.nix { inherit types; };
   v = import ../modules/lib/var.nix { inherit types; };
   schemaLib = import ../lib/schema.nix { };
+  moduleDocs = import ../lib/module-docs.nix { };
+  docs = moduleDocs.toMarkdown (schemaLib.toJsonSchema (f.modules { }));
   configLib = import ../lib/config.nix {
     tree = f.modules { };
     inherit (f) modules;
@@ -615,6 +617,54 @@ let
       && schema.properties."/system".properties ? name
       && schema.properties."/system".properties ? version
       && schema.properties."/system".properties ? fragments
+    ))
+    (check "module-docs: sshd page has the principals row and its default" (
+      hasInfix "| `principals` | object of array of string | `{}` |" docs.pages."/services/sshd"
+    ))
+    (check "module-docs: sshd page has the port row with default 22" (
+      hasInfix "| `port` | integer | `22` |" docs.pages."/services/sshd"
+    ))
+    (check "module-docs: index lists every module path" (
+      all (p: hasInfix "[`${p}`](${docs.fileName.${p}})" docs.index) (attrNames docs.pages)
+      &&
+        attrNames docs.pages == [
+          "/services/sshd"
+          "/system"
+          "/wrap"
+        ]
+    ))
+    (check "module-docs: files hold every page and the index" (
+      attrNames docs.files == [
+        "index.md"
+        "services-sshd.md"
+        "system.md"
+        "wrap.md"
+      ]
+    ))
+    (check "module-docs: fixed sshd_config lines never appear as rows" (
+      !(hasInfix "PasswordAuthentication" docs.pages."/services/sshd")
+    ))
+    (check "module-docs: opaque types are named and noted" (
+      let
+        p = moduleDocs.toMarkdown {
+          properties."/x".properties.o."x-golconda-opaque" = "mystery";
+        };
+      in
+      hasInfix "opaque `mystery`" p.pages."/x" && hasInfix "Opaque types are not described" p.pages."/x"
+    ))
+    (check "module-docs: a pipe or angle bracket in text cannot break the table" (
+      let
+        p = moduleDocs.toMarkdown {
+          properties."/x".properties.o = {
+            type = "string";
+            description = "a|b <c>";
+          };
+        };
+      in
+      hasInfix "a\\|b &lt;c>" p.pages."/x"
+    ))
+    (check "module-docs: no opaque note for a fully described module" (
+      !(hasInfix "Opaque types" docs.pages."/services/sshd")
     ))
     (check "schema: parseTypeName handles nested generics" (
       let
