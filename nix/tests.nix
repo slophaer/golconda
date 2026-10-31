@@ -1123,6 +1123,59 @@ let
       !any tryVersion invalidVersions
     ))
 
+    # 7. Version format: YYYYMMDD.N
+    (check "version format: YYYYMMDD.N accepted" (
+      let
+        validVersions = [
+          "20261031.1"
+          "20260101.0"
+          "20301231.99"
+        ];
+        tryVersion =
+          v:
+          (tryEval (
+            f.modules {
+              options = {
+                "/pkgs".set = stubSet;
+                "/system" = {
+                  name = "t";
+                  version = v;
+                };
+              };
+            }
+          )).success;
+      in
+      all tryVersion validVersions
+    ))
+    (check "version format: invalid versions rejected" (
+      let
+        invalidVersions = [
+          "0"
+          "2026.10.31"
+          "2026-10-31.1"
+          "20261031"
+          "v1.0.0"
+        ];
+        tryVersion =
+          v:
+          (tryEval (
+            deepSeq
+              (f.modules {
+                options = {
+                  "/pkgs".set = stubSet;
+                  "/system" = {
+                    name = "t";
+                    version = v;
+                  };
+                };
+              }).modules.system
+              { }
+              true
+          )).success;
+      in
+      !any tryVersion invalidVersions
+    ))
+
     # 7b. /system.updateSource renders sysupdate.d
     (check "system: updateSource renders /usr/lib/sysupdate.d with Path=" (
       let

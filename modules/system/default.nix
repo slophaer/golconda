@@ -18,8 +18,22 @@
 #! `/usr/lib/systemd/user/`, so one duplicate check covers both scopes.
 { types, ... }:
 let
+  inherit (builtins) isString match;
   fragmentT = (import ../lib/fragment.nix { inherit types; }).fragment;
   merge = import ../lib/merge.nix;
+
+  # Version format: YYYYMMDD.N (date plus revision within the day).
+  # strverscmp orders these correctly; versionToEpoch in lib/usr-tree.nix
+  # derives the erofs timestamp from this format.
+  version = types.typedef' "version" (
+    v:
+    if !isString v then
+      "Expected a string"
+    else if match "[0-9]{8}\\.[0-9]+" v == null then
+      "'${v}' is not a version: YYYYMMDD.N, such as 20261031.1"
+    else
+      null
+  );
 in
 {
   name = "system";
@@ -37,8 +51,13 @@ in
       description = "Image id, the ID= of os-release and the UKI file name stem.";
     };
     version = {
-      type = types.string;
-      description = "Image version; must sort higher than the previous one (systemd-sysupdate compares versions).";
+      type = version;
+      description = "Image version (YYYYMMDD.N). Each release must sort higher than the previous; systemd-sysupdate compares with strverscmp.";
+    };
+    updateSource = {
+      type = types.option types.string;
+      default = null;
+      description = "URL of the update server. Rendered into /usr/lib/sysupdate.d/. When null (default), no sysupdate transfer is configured.";
     };
     fragments = {
       type = types.listOf fragmentT;
@@ -52,6 +71,6 @@ in
     # /base fragment first, then the declared fragments
     merge ([ results.base ] ++ options.fragments)
     // {
-      inherit (options) name version;
+      inherit (options) name version updateSource;
     };
 }
