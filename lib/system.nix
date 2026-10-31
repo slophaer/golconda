@@ -36,7 +36,13 @@ let
     filter
     isAttrs
     isPath
+    isString
+    length
     mapAttrs
+    match
+    split
+    stringLength
+    substring
     ;
 
   adios = import sources.adios;
@@ -139,8 +145,20 @@ let
   # The system options from the config (name, version, fragments, updateSource).
   systemOptions = mergedOptions."/system" or { };
 
+  # The image id becomes os-release ID=, the artifact file name stem and the
+  # sysupdate MatchPattern (review finding 14): one grammar that is safe in all
+  # three, checked before anything renders it.
+  checkImageName =
+    name:
+    if name == null then
+      true
+    else if match "[A-Za-z0-9][A-Za-z0-9._-]*" name != null then
+      true
+    else
+      throw "golconda: /system.name '${name}' is not an image id: use letters, digits and _ . - and start with a letter or digit (the id is os-release ID=, the artifact file name stem and the sysupdate match pattern)";
+
   # The composed system: /system with all fragments.
-  composed =
+  composedRaw =
     (tree {
       options = mergedOptions // {
         "/system" = systemOptions // {
@@ -155,6 +173,25 @@ let
       };
     }).modules.system
       { };
+
+  # updateSource is the Path= of every sysupdate transfer: one URL or absolute
+  # path, never several lines (review finding 14).
+  hasPrefix = p: s: substring 0 (stringLength p) s == p;
+  checkUpdateSource =
+    source:
+    if !isString source then
+      true # the option type reports a non-string
+    else if length (split "[[:space:][:cntrl:]]" source) > 1 then
+      throw "golconda: /system.updateSource '${source}' must not contain whitespace or a line break: it is the Path= of every sysupdate transfer, and a line break would add an INI directive"
+    else if hasPrefix "/" source || match ".*://.*" source != null then
+      true
+    else
+      throw "golconda: /system.updateSource '${source}' is neither a URL (https://…) nor an absolute path";
+
+  # Forcing composed (any field, including name) runs the name and source checks.
+  composed = builtins.seq (checkImageName (systemOptions.name or null)) (
+    builtins.seq (checkUpdateSource (systemOptions.updateSource or null)) composedRaw
+  );
 
   # The schema for this tree.
   schemaLib = import ./schema.nix { };

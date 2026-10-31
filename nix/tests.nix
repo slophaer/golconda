@@ -3259,6 +3259,103 @@ let
       && hasInfix "\nEnvironment=PATH=/usr/lib/foo/bin\n" u
     ))
 
+    # review 14: the image id has one grammar, safe in os-release, the artifact
+    # file name and the sysupdate match pattern
+    (check "config: the image id grammar is checked before it renders" (
+      let
+        mkSystem =
+          args:
+          import ../lib/system.nix (
+            args
+            // {
+              inherit sources platform;
+              system = platform;
+            }
+          );
+        named =
+          name:
+          (tryEval (
+            deepSeq
+              (mkSystem {
+                config = {
+                  "/system" = {
+                    inherit name;
+                    version = "20261031.1";
+                  };
+                };
+              }).name
+              true
+          )).success;
+      in
+      !(named "a/../b c") && !(named "a\nb") && !(named "hôte") && named "my-host_2.1"
+    ))
+    # review 14: an INI scalar cannot change the file's structure
+    (check "ini: a line break in a value, a key or a section is refused" (
+      let
+        ini = import ../modules/lib/ini.nix;
+        iniThrows = sections: !(tryEval (deepSeq (ini.render sections) true)).success;
+      in
+      iniThrows {
+        Source = {
+          Path = "https://x/\n[Evil]";
+        };
+      }
+      && iniThrows {
+        Source = {
+          "Path\nType" = "x";
+        };
+      }
+      && iniThrows {
+        "Source]\n[Evil" = {
+          Path = "x";
+        };
+      }
+      && iniThrows {
+        Source = {
+          MatchPattern = [ "a\nb" ];
+        };
+      }
+      # positive: the shapes the image renders pass, lists included
+      && !(iniThrows {
+        Source = {
+          Type = "url-file";
+          Path = "https://example.com/";
+          MatchPattern = [
+            "a_@v.raw"
+            "b_@v.raw"
+          ];
+        };
+      })
+    ))
+    (check "config: a line break in updateSource cannot add an INI section" (
+      let
+        mkSystem =
+          args:
+          import ../lib/system.nix (
+            args
+            // {
+              inherit sources platform;
+              system = platform;
+            }
+          );
+        withSource =
+          updateSource:
+          (tryEval (
+            deepSeq
+              (mkSystem {
+                config = {
+                  "/system" = {
+                    name = "t";
+                    version = "20261031.1";
+                    inherit updateSource;
+                  };
+                };
+              }).name
+              true
+          )).success;
+      in
+      !(withSource "https://example.com/\n[Evil]") && withSource "https://example.com/releases/"
+    ))
   ];
 in
 assert all (t: t) tests;
