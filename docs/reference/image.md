@@ -78,7 +78,7 @@ writes `proof.txt` (sizes, `veritysetup verify`, the cpio listing, `ukify inspec
 | verity | `verity { erofs; key; cert; … }`          | `<id>_<version>.usr-verity.raw`, `roothash`, `<id>_<version>.usr-verity-sig.raw`                                                                |
 | initrd | `initrdTree { … }`, `initrd { usrTree; }` | `initrd.cpio.zst`, `rdinit` ([Boot: the initrd](../design/boot.md#the-initrd))                                                                  |
 | uki    | `uki { initrd; verity; usrTree; keys… }`  | `<id>_<version>+3-0.efi` (`ukiName`), `cmdline`                                                                                                 |
-| disk   | `disk { erofs; verity; uki; … }`          | `disk.raw` (sparse, fully allotted: ESP, A and B slots, no room for `root`), `disk.json`                                                        |
+| disk   | `disk { erofs; verity; uki; keys… }`      | `disk.raw` (sparse, fully allotted: ESP with the signed loader and `loader.conf`, A and B slots, no room for `root`), `disk.json`               |
 
 The verity step: `veritysetup format` with a salt and superblock UUID from the version; the
 signature is `openssl smime -sign -nocerts -noattr -binary` over the hex root hash, as
@@ -91,12 +91,15 @@ Boot signing by `systemd-sbsign` and the PCR 11 policy by `systemd-measure`. The
 `image/repart.nix` rendered to `.conf` files (`repartDefinitions`, `modules/lib/ini.nix`) with the
 builder's fields added: the ESP's `CopyFiles=` (systemd-boot as `EFI/BOOT/BOOT<ARCH>.EFI`, the UKI
 in `EFI/Linux/`), slot A's `CopyBlocks=` and the two UUIDs systemd derives from the root hash (usr:
-its first 128 bits, verity: its last). The B slots are empty, root is made on the machine
-(`/usr/lib/repart.d/30-root.conf`, written by `/base`). The ESP is filled offline with mtools
-(`packages/mtools`). Keys are paths: the smoke makes throwaway ones in the store (`throwawayKeys`);
-a release signs with the deployment's keys (`image/default.nix` `keys`), which never enter the
-store. Not yet: the UKI under its sysupdate name (`<id>_<version>.efi`), a release directory, the
-verity certificate in the kernel keyring, Secure Boot enforcement, a TPM.
+its first 128 bits, verity: its last). Before repart copies the ESP tree, `systemd-sbsign` signs
+systemd-boot with the same db key and certificate as the UKI, and `EFI/loader/loader.conf` is
+written from `lib/image/disk.nix`'s `loaderConf` (`timeout 0`, `editor no`). The B slots are empty,
+root is made on the machine (`/usr/lib/repart.d/30-root.conf`, written by `/base`). The ESP is
+filled offline with mtools (`packages/mtools`). Keys are paths: the smoke makes throwaway ones in
+the store (`throwawayKeys`); a release signs with the deployment's keys (`image/default.nix`
+`keys`), which never enter the store. Not yet: the UKI under its sysupdate name
+(`<id>_<version>.efi`), a release directory, the verity certificate in the kernel keyring, an
+enforcing-Secure-Boot run of this repository's `scripts/boot-test`, a TPM.
 
 Stand-ins the smoke carries on its cmdline, outside `image/uki.nix`: `LD_LIBRARY_PATH=` with the
 store directories of the libraries systemd dlopens (the fork's RUNPATH does not name them), and `rw`
@@ -128,7 +131,7 @@ nix-build -A packages.x86_64-linux.image-smoke-test
 # Run the boot test (basic markers)
 scripts/boot-test result/disk/disk.raw --keys result/keys --timeout 120
 
-# With Secure Boot (enrols the smoke's throwaway keys)
+# With Secure Boot (enrols the smoke's throwaway keys; see the note below)
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot
 
 # With TPM (starts swtpm)
@@ -137,6 +140,11 @@ scripts/boot-test result/disk/disk.raw --keys result/keys --tpm
 # With SSH login test (needs image-smoke-test, not image-smoke)
 scripts/boot-test result/disk/disk.raw --keys result/keys --ssh-test
 ```
+
+`--secure-boot` enrolls the throwaway db key with `virt-fw-vars` (one fixed owner GUID) and boots
+`OVMFFull.fd` with `-machine smm=on`: plain `OVMF.fd` has no Secure Boot support. The guest must
+report `Secure Boot: enabled` (the `secure-boot-enabled` marker); the same disk with an unsigned
+loader on the ESP is refused by firmware, which is the negative control for this check.
 
 The script creates a 40 GiB qcow2 overlay (room for the root partition), copies OVMF vars, passes
 the hostname `boot-test` as a credential (`-smbios type=11,...`), and logs the serial console.
