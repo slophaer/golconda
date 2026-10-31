@@ -199,11 +199,15 @@ opens at run time; `timesyncd.conf.d/golconda.conf` from `ntp`, `journald.conf.d
 `/usr/lib/systemd/system.conf.d/golconda-dlopen.conf` (`DefaultEnvironment=LD_LIBRARY_PATH`, a
 stand-in until the fork's RUNPATH reaches the dlopen libraries), `/usr/lib/repart.d/30-root.conf`
 (the root partition repart makes at first boot, from `image/repart.nix`); the tmpfiles lines
-`L /bin`, `L /sbin` and `L /lib` (merged `/usr` on the root partition); and the `messagebus` user.
-`/security` returns `/usr/lib/sysctl.d/50-golconda.conf`. `/network` returns one `.network` file per
-entry of `networks` under `/usr/lib/systemd/network/`, with `default-dhcp` (`Match Type=ether`,
-`DHCP=yes`, `IPv6AcceptRA=yes`) unless `defaultDhcp = false`, and
-`resolved.conf.d/golconda-dns.conf` when `dns` is set.
+`L /bin`, `L /sbin` and `L /lib` (merged `/usr` on the root partition); the `messagebus` user; and
+the boot health unit `golconda-health-network.service`, which fails unless
+`systemd-networkd-wait-online --any --operational-state=routable` succeeds. It is pulled in by a
+`boot-complete.target.requires/` link and is `Before=boot-complete.target`, so a candidate without a
+routable link is not blessed ([design/boot](../../design/boot.md#boot-health)). `/security` returns
+`/usr/lib/sysctl.d/50-golconda.conf`. `/network` returns one `.network` file per entry of `networks`
+under `/usr/lib/systemd/network/`, with `default-dhcp` (`Match Type=ether`, `DHCP=yes`,
+`IPv6AcceptRA=yes`) unless `defaultDhcp = false`, and `resolved.conf.d/golconda-dns.conf` when `dns`
+is set.
 
 ### `/factory`
 
@@ -243,7 +247,11 @@ on the command line; every fixed path is a line in `sshd_config`. The generated 
 `PasswordAuthentication no`, `KbdInteractiveAuthentication no`,
 `ChallengeResponseAuthentication no`, `PermitRootLogin prohibit-password`, `UsePAM yes`,
 `LogLevel VERBOSE`, `PidFile none` and `Subsystem sftp internal-sftp`; no option changes them
-([design/trust](../../design/trust.md#identity)). `/etc/pam.d/sshd` comes from `/factory`.
+([design/trust](../../design/trust.md#identity)). `/etc/pam.d/sshd` comes from `/factory`. The
+fragment also brings the boot health unit `golconda-health-sshd.service`:
+`systemctl is-active sshd.service`, pulled in by a `boot-complete.target.requires/` link and
+`Before=boot-complete.target`, so a candidate without a running sshd is not blessed
+([design/boot](../../design/boot.md#boot-health)).
 
 | option              | type                                       | rendered as                                                                                                               |
 | ------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
