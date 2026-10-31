@@ -190,17 +190,14 @@ them. `/base` returns the packages systemd, dbus-broker, dash, uutils-coreutils,
 systemd's dlopen reaches it), e2fsprogs (`mkfs.ext4` for the root partition) and linux-kernel; the
 `dbus.socket` unit, written as a file because dbus-broker does not ship it, and the `dbus.service`
 alias; the `.wants` links for `dbus.socket`, `systemd-networkd` (service and socket),
-`systemd-resolved` and `systemd-timesyncd`; `/usr/bin/sh` → dash; `/usr/bin` links for systemd and
-util-linux executables listed by hand, because the fork's packages do not declare them in their
-`bin` lists (a stand-in); the `farm` links for systemd's own directories (`/usr/lib/systemd`,
-`/usr/lib/udev`, `/usr/lib/sysusers.d`, `/usr/lib/tmpfiles.d`); one `dlopen` link per soname systemd
-opens at run time; `timesyncd.conf.d/golconda.conf` from `ntp`, `journald.conf.d/golconda.conf` from
-`journalMaxUse`, `/usr/lib/locale.conf` (`LANG=C.UTF-8`),
-`/usr/lib/systemd/system.conf.d/golconda-dlopen.conf` (`DefaultEnvironment=LD_LIBRARY_PATH`, a
-stand-in until the fork's RUNPATH reaches the dlopen libraries), `/usr/lib/repart.d/30-root.conf`
-(the root partition repart makes at first boot, from `image/repart.nix`); the tmpfiles lines
-`L /bin`, `L /sbin` and `L /lib` (merged `/usr` on the root partition); the `messagebus` user; and
-the boot health unit `golconda-health-network.service`, which fails unless
+`systemd-resolved` and `systemd-timesyncd`; `/usr/bin/sh` → dash; `/usr/bin` links for the
+util-linux and e2fsprogs executables that mount units, fsck and udev rules exec; the `farm` links
+for systemd's own directories (`/usr/lib/systemd`, `/usr/lib/udev`, `/usr/lib/sysusers.d`,
+`/usr/lib/tmpfiles.d`); one `dlopen` link per soname systemd opens at run time;
+`timesyncd.conf.d/golconda.conf` from `ntp`, `journald.conf.d/golconda.conf` from `journalMaxUse`,
+`/usr/lib/locale.conf` (`LANG=C.UTF-8`), `/usr/lib/repart.d/30-root.conf` (the root partition repart
+makes at first boot, from `image/repart.nix`); the tmpfiles lines `L /bin`, `L /sbin` and `L /lib`
+(merged `/usr` on the root partition); and the `messagebus` user; the boot health unit `golconda-health-network.service`, which fails unless
 `systemd-networkd-wait-online --any --operational-state=routable` succeeds. It is pulled in by a
 `boot-complete.target.requires/` link and is `Before=boot-complete.target`, so a candidate without a
 routable link is not blessed ([design/boot](../../design/boot.md#boot-health)). `/security` returns

@@ -16,11 +16,10 @@
 # static /init: systemd itself is PID 1 and finds the /usr partition by usrhash= (its
 # veritysetup and gpt-auto generators).
 #
-# The cmdline (uki.nix) names systemd by its store path as rdinit=: repkgs binaries map ld.so
+# The cmdline (uki.nix) names /init as rdinit=. repkgs binaries find ld.so and their libraries
 # relative to their own path, and before /proc is mounted that path is AT_EXECFN as the kernel
-# spelled it; /init is a symlink, so the kernel must be told the real file. The /init link stays
-# for anything that looks for it. The path is /usr/nix/store/<systemd>/lib/systemd/systemd; the
-# builders spell it at build time (a content-addressed output has no name at evaluation time).
+# spelled it: the fork's crt-interp and glibc resolve its symlinks (/init -> usr/lib/systemd/
+# systemd -> the store) without /proc.
 _:
 let
   inherit (builtins) filter;
@@ -90,8 +89,6 @@ in
       attrs = {
         inherit usrTree;
         dmRules = "${pkgs.lvm2}/lib/udev/rules.d";
-        # PID 1: checked to exist in the cpio under the path rdinit= names
-        inherit (pkgs) systemd;
       };
     };
 }

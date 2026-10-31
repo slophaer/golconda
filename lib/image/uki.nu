@@ -19,16 +19,8 @@ export def build [] {
   let uname = ($moddir | path basename)
   let linux = $"($moddir)/vmlinuz"
   let roothash = (open --raw $a.roothash | str trim)
-  # {dlopenPath}: the store directories behind the tree's /usr/lib/<soname> links that PID 1
-  # itself opens, by their real paths (a library opened through a symlink gets the symlink's
-  # $ORIGIN and loses its own dependencies). The smoke's cmdlineExtra puts this in
-  # LD_LIBRARY_PATH until the fork's RUNPATH names the dlopen directories; services get theirs
-  # from /base's system.conf.d. The cmdline is limited to about 1 KiB, so PID 1's set only.
-  let pid1_sonames = [libmount.so.1 libblkid.so.1 libseccomp.so.2 libacl.so.1 libpam.so.0 libcrypto.so.3 libtss2-esys.so.0]
-  let dlopen_path = (ls -l $"($a.usrTree)/lib" | where type == symlink and ($it.name | path basename) in $pid1_sonames | get target
-    | each {|t| $"/usr/($t | str replace -r '^\.\./' '')" | path dirname } | uniq | sort | str join ":")
-  let cmdline = ($"($a.cmdlineTemplate) rdinit=(rdinit $a.systemd)"
-    | str replace "{usrhash}" $roothash | str replace -a "{dlopenPath}" $dlopen_path | str replace -ra ' +' ' ')
+  let cmdline = ($"($a.cmdlineTemplate) rdinit=(rdinit)"
+    | str replace "{usrhash}" $roothash | str replace -ra ' +' ' ')
   $cmdline | save -f $"($out)/cmdline"
   log $"kernel ($uname), cmdline: ($cmdline)"
 
