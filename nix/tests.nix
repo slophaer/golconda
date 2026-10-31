@@ -1202,6 +1202,18 @@ let
       in
       files."$ref" == "#/$defs/file" && any (b: b.type or null == "string") file.anyOf
     ))
+    (check "schema: the environment operations are set and unset only" (
+      let
+        schema = schemaLib.toJsonSchema (f.modules { });
+        op = schema."$defs".envOp;
+        keys = map (b: attrNames b.properties) op.oneOf;
+      in
+      keys == [
+        [ "set" ]
+        [ "unset" ]
+      ]
+      && (elemAt op.oneOf 1).properties.unset.const == true
+    ))
     (check "schema: a module table refuses an unknown option" (
       let
         schema = schemaLib.toJsonSchema (f.modules { });
