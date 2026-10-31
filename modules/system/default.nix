@@ -40,6 +40,8 @@ in
 
   # /base is implicit: every system has it, merged first.
   inputs.base.path = "/base";
+  # /network is implicit: its files are always merged.
+  inputs.network.path = "/network";
 
   types = {
     fragment = fragmentT;
@@ -68,8 +70,14 @@ in
 
   impl =
     { options, results }:
-    # /base fragment first, then the declared fragments
-    merge ([ results.base ] ++ options.fragments)
+    # /base and /network fragments first, then the declared fragments
+    merge (
+      [
+        results.base
+        results.network
+      ]
+      ++ options.fragments
+    )
     // {
       inherit (options) name version updateSource;
     };
