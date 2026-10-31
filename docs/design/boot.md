@@ -128,7 +128,8 @@ enforces nothing yet: it becomes `1` once the verity certificate is in a kernel 
 `console=ttyS0` gives output on the serial line, `console=tty0` on the local display. No getty runs
 on either: there is no local login path in v1 ([Trust: Identity](trust.md#identity)). Recovery from
 a machine that no longer answers over ssh is the other slot (boot counting, or a manual choice in
-the systemd-boot menu) or a reflash.
+the systemd-boot menu) or a reflash; [Recovery](recovery.md) states what each path can and cannot
+do.
 
 ## Bootstrap credentials
 
