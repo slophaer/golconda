@@ -158,13 +158,13 @@ in
           };
         }).usrTree;
 
-      # Cross-compiled usr-tree for aarch64: proves the platform argument flows through.
-      # Built on x86_64, runs on aarch64. The jq binary in the output is an aarch64 ELF.
-      # Visible only in packages.x86_64-linux (cross builds from x86_64 to aarch64).
     }
     // (
       if system == "x86_64-linux" then
         {
+          # Cross-compiled usr-tree for aarch64: proves the platform argument flows through.
+          # Built on x86_64, runs on aarch64. The jq binary in the output is an aarch64 ELF.
+          # Visible only in packages.x86_64-linux (cross builds from x86_64 to aarch64).
           usr-tree-smoke-aarch64 =
             (mkSystem {
               inherit system;

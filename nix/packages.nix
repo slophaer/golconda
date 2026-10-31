@@ -7,7 +7,7 @@
 # - `platform`: the elaborated platform record (cpu, os, name, march,
 #   names.{kernel,systemd,uefi,...}; see repkgs nix/platforms.nix)
 # - `platforms`: the full platforms table, for callers that build for several targets
-# - `set`: the full repkgs set (with wrap, closure, etc.)
+# - `set`: the full repkgs set (all packages, as repkgs defines it)
 #
 # Cross-compilation: `system` is the build host (builtins.currentSystem by default),
 # `platform` is the target (defaults to the build host). When they differ, repkgs

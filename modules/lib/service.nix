@@ -167,7 +167,7 @@ let
       wantedBy = optionalAttr (listOf targetName);
     }).override
       {
-        # no unknown field: a stale or misspelt one (`extraArgv`) is an error
+        # no unknown field: a stale or misspelt one is an error
         unknown = false;
         verify =
           svc:
