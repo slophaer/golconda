@@ -18,6 +18,7 @@ schema is the flake one, produced by flake-incompat.
 | `schema`                                       | no          | JSON Schema 2020-12 of the module tree (see below)                                |
 | `configLib`                                    | no          | TOML configuration loader (see below)                                             |
 | `platforms`                                    | no          | the platforms table (repkgs `nix/platforms.nix`)                                  |
+| `lib.mkSystem`                                 | no          | entry point: TOML config → composed system and `/usr` tree (see below)            |
 
 ## Inputs
 
@@ -66,3 +67,32 @@ f.modules cfg
 - `withPkgs set`: the same loader with the repkgs set bound, so its options carry `"/pkgs".target`
   and a module that needs a package evaluates:
   `(f.configLib.withPkgs set).loadAndApply ./server.toml`.
+
+## `lib.mkSystem`
+
+The entry point for a complete Golconda system. Takes a config and returns everything needed for the
+image builder.
+
+```nix
+let
+  f = import ./default.nix;
+  sys = f.lib.mkSystem { config = ./examples/server.toml; };
+in
+sys.usrTree
+```
+
+`mkSystem { config; platform?; sources?; extra?; }` returns:
+
+| field      | type       | description                                         |
+| ---------- | ---------- | --------------------------------------------------- |
+| `composed` | attrset    | the composer output (units, files, links, packages) |
+| `usrTree`  | derivation | the `/usr` tree with image artifacts                |
+| `config`   | attrset    | the normalized configuration, no derivations        |
+| `platform` | attrset    | the elaborated platform record                      |
+| `version`  | string     | YYYYMMDD.N from `/system`                           |
+| `name`     | string     | image id from `/system`                             |
+| `pkgs`     | attrset    | the packages for this platform                      |
+
+- `config`: a path to a TOML file or an attrset already loaded.
+- `platform`: defaults to the build host's (`builtins.currentSystem`).
+- `extra`: Nix-only options, merged into the TOML (package overrides, custom fragments).
