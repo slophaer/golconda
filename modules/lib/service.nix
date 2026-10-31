@@ -16,6 +16,7 @@ let
     exe
     filesPlaceholder
     isCredentialRef
+    wrapApp
     ;
   inherit (types)
     attrsOf
@@ -167,7 +168,8 @@ let
 
   sortStrings = sort (a: b: a < b);
 
-  build =
+  # Build without wrap: config files go to /usr/lib/<name>/, argv is on ExecStart.
+  buildUnwrapped =
     svc:
     let
       filesDir = "/usr/lib/${svc.name}";
@@ -241,9 +243,81 @@ let
       packages = [ svc.app.package ];
     };
 
+  # Build with wrap: config files are in the wrapped output; argv is in the
+  # launch record; only extraArgv (credential refs) stays on ExecStart.
+  buildWrapped =
+    wrap: svc:
+    let
+      wrapped = wrapApp wrap svc.app;
+      extraArgv = svc.extraArgv or [ ];
+      credentials = svc.credentials or { };
+
+      checkedRef =
+        r:
+        if credentials ? ${r.credential} then
+          "${r.prefix or ""}%d/${r.credential}"
+        else
+          throw "golconda: service ${svc.name} references credential '${r.credential}' but declares only [${concatStringsSep ", " (attrNames credentials)}]";
+
+      # Only the wrapped binary and extraArgv; argv/env/files are in the launch record
+      argv = [
+        (exe svc.app)
+      ]
+      ++ map (a: if isCredentialRef a then checkedRef a else arg a) extraArgv;
+
+      userLines =
+        if svc.user == "dynamic" then
+          [ "DynamicUser=yes" ]
+        else if svc.user == "root" then
+          [ "User=root" ]
+        else
+          [ "User=${sysusersName svc.user}" ];
+
+      unitSection = [
+        "[Unit]"
+        "Description=${svc.name}"
+      ]
+      ++ map (u: "After=${u}") (svc.after or [ ])
+      ++ map (u: "Wants=${u}") (svc.wants or [ ]);
+
+      # No Environment= lines: the launch record carries env
+      serviceSection = [
+        "[Service]"
+        "ExecStart=${concatStringsSep " " argv}"
+      ]
+      ++ map (n: "LoadCredentialEncrypted=${n}:${credentials.${n}}") (sortStrings (attrNames credentials))
+      ++ map (d: "StateDirectory=${d}") (svc.state or [ ])
+      ++ userLines
+      ++ sandboxLines.${svc.sandbox};
+
+      installSection = [
+        "[Install]"
+        "WantedBy=multi-user.target"
+      ];
+
+      text = concatStringsSep "\n" (concatLists [
+        unitSection
+        [ "" ]
+        serviceSection
+        [ "" ]
+        installSection
+      ]);
+    in
+    {
+      units."${svc.name}.service" = text + "\n";
+      # No files: they are in the wrapped output's share/wrap/<pkgname>/
+      files = { };
+      sysusers = if isSysusersLine svc.user then [ svc.user ] else [ ];
+      # The wrapped derivation goes into the farm, not the original package
+      packages = [ wrapped ];
+    };
+
   # service -> fragment; type-checks first, so a bad value throws with the
   # korora message instead of failing somewhere inside the text.
-  render = svc: service.check svc (build svc);
+  # When `wrap` is provided (repkgs' set.wrap), the wrapped binary carries
+  # argv, env and files; only extraArgv stays on ExecStart.
+  render = svc: service.check svc (buildUnwrapped svc);
+  renderWrapped = wrap: svc: service.check svc (buildWrapped wrap svc);
 in
 {
   inherit
@@ -254,8 +328,14 @@ in
     sandboxLines
     escape
     render
+    renderWrapped
     ;
-  inherit (appLib) app credentialRef file;
+  inherit (appLib)
+    app
+    credentialRef
+    file
+    wrapApp
+    ;
   credential = n: { credential = n; };
   # `-o RevokedKeys=%d/krl` style: credentialArg "RevokedKeys=" "krl"
   credentialArg = prefix: n: {

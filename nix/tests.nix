@@ -559,6 +559,121 @@ let
         }
       )
     ))
+
+    # 5. wrapApp and renderWrapped
+    # A stub wrap function that records what it was called with
+    (check "wrapApp calls wrap with the right record" (
+      let
+        # Stub wrap: returns a derivation-like record with the arguments it received
+        stubWrap =
+          args:
+          standIn
+          // {
+            _wrapArgs = args;
+          };
+        wrapped = a.wrapApp stubWrap {
+          package = standIn;
+          argv = [
+            "-f"
+            "{files}/config"
+          ];
+          env.HOME = {
+            set = "/var/lib/test";
+          };
+          files.config = "x";
+        };
+      in
+      wrapped._wrapArgs.package == standIn
+      &&
+        wrapped._wrapArgs.argv == [
+          "-f"
+          "{root}/share/wrap/jq/config"
+        ]
+      && wrapped._wrapArgs.env.HOME.set == "/var/lib/test"
+      && wrapped._wrapArgs.files.config == "x"
+    ))
+    (check "renderWrapped: ExecStart has only extraArgv" (
+      let
+        stubWrap = args: standIn // { _wrapArgs = args; };
+        frag = s.renderWrapped stubWrap {
+          name = "test";
+          app = {
+            package = standIn;
+            argv = [
+              "-D"
+              "-f"
+              "{files}/config"
+            ];
+            files.config = "Port 22\n";
+          };
+          extraArgv = [
+            "-h"
+            (s.credential "hostkey")
+          ];
+          credentials.hostkey = "test-key";
+          user = "root";
+          sandbox = "trusted";
+        };
+        unit = frag.units."test.service";
+      in
+      # ExecStart has only the binary and extraArgv, not argv
+      hasInfix "ExecStart=/usr/bin/jq -h %d/hostkey\n" unit
+      # No -D or -f in ExecStart (they're in the launch record)
+      && !hasInfix "-D" unit
+      && !hasInfix "-f" unit
+    ))
+    (check "renderWrapped: no files in fragment" (
+      let
+        stubWrap = args: standIn // { _wrapArgs = args; };
+        frag = s.renderWrapped stubWrap {
+          name = "test";
+          app = {
+            package = standIn;
+            files.config = "x";
+          };
+          user = "dynamic";
+          sandbox = "strict";
+        };
+      in
+      frag.files == { }
+    ))
+    (check "renderWrapped: packages has the wrapped derivation" (
+      let
+        stubWrap =
+          args:
+          standIn
+          // {
+            _wrapArgs = args;
+            _isWrapped = true;
+          };
+        frag = s.renderWrapped stubWrap {
+          name = "test";
+          app.package = standIn;
+          user = "dynamic";
+          sandbox = "strict";
+        };
+      in
+      (builtins.head frag.packages)._isWrapped or false == true
+    ))
+    (check "renderWrapped: no env lines in unit" (
+      let
+        stubWrap = _args: standIn;
+        frag = s.renderWrapped stubWrap {
+          name = "test";
+          app = {
+            package = standIn;
+            env.HOME = {
+              set = "/var/lib/test";
+            };
+          };
+          user = "dynamic";
+          sandbox = "strict";
+        };
+        unit = frag.units."test.service";
+      in
+      # Environment= lines are not in the unit (they're in the launch record)
+      !hasInfix "Environment=" unit
+    ))
   ];
 in
 assert all (t: t) tests;
