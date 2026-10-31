@@ -2013,6 +2013,16 @@ let
       && !hasInfix "\nauth " pamSshd
       && !hasInfix "\npassword " pamSshd
     ))
+    (check "factory: pam.d/systemd-user is systemd's stack with <package>/<module> names" (
+      let
+        t = factory.files."${factoryDir}/pam.d/systemd-user";
+      in
+      hasInfix "\naccount required linux-pam/pam_unix.so no_pass_expiry\n" t
+      && hasInfix "\nauth required linux-pam/pam_rootok.so\n" t
+      && hasInfix "\nsession required linux-pam/pam_loginuid.so\n" t
+      && hasInfix "\nsession optional systemd/pam_systemd.so\n" t
+      && !hasInfix "pam_namespace" t
+    ))
     (check "factory: pam.d/other denies everything" (
       all
         (t: hasInfix "\n${t} required linux-pam/pam_deny.so\n" factory.files."${factoryDir}/pam.d/other")
