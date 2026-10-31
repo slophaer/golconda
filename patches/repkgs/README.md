@@ -7,7 +7,8 @@ under `pkgs/`, which are not mirrored. The patches fix two relocation bugs (the 
 and RUNPATH, `$ORIGIN` without `/proc`) and the glibc regression that followed (libunwind must sit
 next to libc), make aclocal see macros from build tools, and add the systemd and UEFI platform
 names, the `wrap` and `closure` package shapes, the `bin` list of executables, transitive
-`propagate` for launcher env, and the `kbuild` build system. The issue drafts
+`propagate` for launcher env, the `kbuild` build system with config fragments, the `prefix` field
+for packages compiled for `/usr`, jig's passthrough mode, and the `sbom` function. The issue drafts
 `0001-interp-via-sysroot.md` and `0002-origin-without-proc.md` describe the two original bugs for
 upstream.
 
@@ -22,7 +23,7 @@ $ cd repkgs
 $ git remote add upstream https://github.com/Mic92/repkgs
 $ git fetch upstream
 $ rm -f ../golconda/patches/repkgs/*.patch
-$ i=1; for c in $(git rev-list --reverse upstream/main..golconda -- nix builder bootstrap pkgs/gl/glibc pkgs/ll/llvm pkgs/au/autoconf pkgs/la/launch tests/builder); do git format-patch -1 --start-number $i -o ../golconda/patches/repkgs $c; i=$((i+1)); done
+$ i=1; for c in $(git rev-list --reverse upstream/main..golconda -- nix builder bootstrap pkgs/gl/glibc pkgs/ll/llvm pkgs/au/autoconf pkgs/la/launch pkgs/ji tests/builder); do git format-patch -1 --start-number $i -o ../golconda/patches/repkgs $c; i=$((i+1)); done
 ```
 
 Then update the pin (`revision`, `url`, and `hash` = `nix hash convert --to sri` of

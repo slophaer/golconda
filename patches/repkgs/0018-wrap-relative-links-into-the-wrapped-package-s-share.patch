@@ -1,0 +1,30 @@
+From 16928d4494c7266329d935627ef25e126a4482c3 Mon Sep 17 00:00:00 2001
+From: yolobox <yolobox@phaer.org>
+Date: Sat, 31 Oct 2026 07:41:03 +0000
+Subject: [PATCH] wrap: relative links into the wrapped package's share tree
+
+ln -s wrote absolute /nix/store targets for share/<entry>, which breaks
+relocation and trips the usr tree's absolute-symlink check. ln -sr
+computes the relative path.
+
+Signed-off-by: yolobox <yolobox@phaer.org>
+---
+ nix/wrap.nix | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/nix/wrap.nix b/nix/wrap.nix
+index 5f5482b..d5ecb8f 100644
+--- a/nix/wrap.nix
++++ b/nix/wrap.nix
+@@ -52,7 +52,7 @@ let
+           mkdir $share_dir
+           for e in (ls $target) {
+             let name = ($e.name | path basename)
+-            ^ln -s $e.name $"($share_dir)/($name)"
++            ^ln -sr $e.name $"($share_dir)/($name)"
+           }
+         } else if not ($share_dir | path exists) {
+           mkdir $share_dir
+-- 
+2.55.0
+
