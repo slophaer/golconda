@@ -22,9 +22,9 @@ export def build [] {
   ^openssl pkey -in $"($out)/pcr/pcr.key" -pubout -out $"($out)/pcr/pcr.pub"
   log "pcr/pcr.key, .pub"
 
-  # SSH user CA for boot testing: the test signs user certificates with this key,
-  # and the test image trusts ca.pub as TrustedUserCAKeys.
-  mkdir $"($out)/ssh-ca"
-  ^ssh-keygen -q -t ed25519 -N '' -f $"($out)/ssh-ca/ca" -C "golconda-test-ca"
-  log "ssh-ca/ca, .pub"
+  # SSH test key for boot testing: the test uses this key to log in.
+  # The image trusts ssh-test/key.pub as an authorizedKey.
+  mkdir $"($out)/ssh-test"
+  ^ssh-keygen -q -t ed25519 -N '' -f $"($out)/ssh-test/key" -C "golconda-boot-test"
+  log "ssh-test/key, .pub"
 }

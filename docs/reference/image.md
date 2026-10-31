@@ -122,20 +122,20 @@ The boot test runs the image in QEMU and checks that it reaches `multi-user.targ
 inside the Nix sandbox (no KVM), so it is a script, not a derivation. Usage:
 
 ```sh
-# Build the test image (with SSH CA for login tests)
+# Build the test image
 nix-build -A packages.x86_64-linux.image-smoke-test
 
 # Run the boot test (basic markers)
-scripts/boot-test result/disk/disk.raw --smoke-dir result --timeout 120
+scripts/boot-test result/disk/disk.raw --keys result/keys --timeout 120
 
 # With Secure Boot (enrols the smoke's throwaway keys)
-scripts/boot-test result/disk/disk.raw --smoke-dir result --secure-boot
+scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot
 
 # With TPM (starts swtpm)
-scripts/boot-test result/disk/disk.raw --smoke-dir result --tpm
+scripts/boot-test result/disk/disk.raw --keys result/keys --tpm
 
 # With SSH login test (needs image-smoke-test, not image-smoke)
-scripts/boot-test result/disk/disk.raw --smoke-dir result --ssh-test
+scripts/boot-test result/disk/disk.raw --keys result/keys --ssh-test
 ```
 
 The script creates a 40 GiB qcow2 overlay (room for the root partition), copies OVMF vars, passes
@@ -152,14 +152,15 @@ Markers checked (each prints PASS/FAIL):
 | hostname-set        | the credential was read (log says `boot-test`) |
 | boot-complete       | boot-complete.target reached                   |
 
-With `--ssh-test`, the script also generates a test CA and user certificate, then:
+With `--ssh-test`, the script uses the test SSH key from `examples/test-ssh` to log in, then:
 
 | marker            | what it proves                                              |
 | ----------------- | ----------------------------------------------------------- |
-| ssh-login         | an ssh login with a certificate principal works             |
+| ssh-login         | an ssh login with authorized keys works                     |
 | varlink-available | `varlinkctl list-interfaces` shows io.systemd.\* interfaces |
 | bootctl-list      | `bootctl list` shows the boot entry                         |
 | bless-boot        | the entry is marked good (no +N-M counter)                  |
 
-The test CA is in `examples/test-boot/ca` (the private key) and `examples/test-boot/ca.pub`;
-`examples/test-boot/config.toml` trusts that CA. `image-smoke-test` builds from that config.
+The test SSH keypair is a committed test fixture (`examples/test-ssh*`). The `image-smoke-test`
+reads the public key and adds it to `authorizedKeys`. The test script uses the private key to
+authenticate. See `examples/test-ssh.README` for why both keys are committed.

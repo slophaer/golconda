@@ -1,0 +1,18 @@
+# Test SSH Key Pair for Boot Tests
+
+This key pair is a TEST FIXTURE, not a secret. It is used by scripts/boot-test
+to authenticate SSH connections during testing. The image trusts the public key
+via authorizedKeys.
+
+Files:
+- test-ssh.pub: Public key (trusted by the image, committed)
+- test-ssh: Private key (used by test script, committed)
+
+These keys are intentionally committed because:
+1. They are test-only fixtures, not production secrets
+2. Both keys must be available: public at build time, private at test time
+3. The keys have no value outside this test harness
+
+To regenerate (if needed):
+  ssh-keygen -t ed25519 -N '' -f test-ssh -C "golconda-boot-test"
+  Then update nix/default.nix to read the new public key.
