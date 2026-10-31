@@ -139,8 +139,9 @@ let
     "rm"
   ];
   stubLinuxKernel = withBin "linux-kernel-6.18.0" [ ];
-  # cacert ships one file, no bin list
+  # cacert ships one file, tzdata one directory: neither has a bin list
   stubCacert = withBin "cacert-2026.1" [ ];
+  stubTzdata = withBin "tzdata-2026a" [ ];
   # the repkgs set as /pkgs sees it: the stand-ins above
   stubSet = {
     buildPkgs = stubSet.pkgs;
@@ -153,6 +154,7 @@ let
       dash = stubDash;
       uutils-coreutils = stubUutils;
       cacert = stubCacert;
+      tzdata = stubTzdata;
       linux-kernel = stubLinuxKernel;
     }
     # the libraries /base links for systemd's dlopen (dlopenSonames): no bin, name only
@@ -2310,15 +2312,18 @@ let
       result.files ? "/usr/lib/systemd/system/dbus.socket"
       && hasInfix "[Socket]" result.files."/usr/lib/systemd/system/dbus.socket".text
     ))
-    (check "base: the bus config names the activation directory (timedated and the other on-demand services)" (
-      let
-        result = compose [ ];
-        conf = result.files."/usr/share/dbus-1/system.conf".text;
-      in
-      hasInfix "<servicedir>/usr/share/dbus-1/system-services</servicedir>" conf
-      # the directory it names is the farm link to systemd's own activation files
-      && result.links."/usr/share/dbus-1/system-services".kind == "farm"
-    ))
+    (check
+      "base: the bus config names the activation directory (timedated and the other on-demand services)"
+      (
+        let
+          result = compose [ ];
+          conf = result.files."/usr/share/dbus-1/system.conf".text;
+        in
+        hasInfix "<servicedir>/usr/share/dbus-1/system-services</servicedir>" conf
+        # the directory it names is the farm link to systemd's own activation files
+        && result.links."/usr/share/dbus-1/system-services".kind == "farm"
+      )
+    )
     (check "base: dbus-broker.service and dbus.service alias are links" (
       let
         result = compose [ ];
@@ -2370,14 +2375,30 @@ let
         bundle = "/usr/share/ca-certificates/ca-bundle.crt";
       in
       any (p: p.name == "cacert-2026.1") result.packages
-      && result.links."${bundle}" == {
-        target = "${stubCacert}/etc/ssl/certs/ca-bundle.crt";
-        kind = "explicit";
-      }
+      &&
+        result.links."${bundle}" == {
+          target = "${stubCacert}/etc/ssl/certs/ca-bundle.crt";
+          kind = "explicit";
+        }
       # OPENSSLDIR=/etc/ssl (openssl version -d): the default cert file
       && elem "L /etc/ssl/cert.pem - - - - ${bundle}" result.tmpfiles
       # curl's compiled-in CURL_CA_BUNDLE
       && elem "L /etc/ssl/certs/ca-certificates.crt - - - - ${bundle}" result.tmpfiles
+    ))
+    (check "base: tzdata, /usr/share/zoneinfo, and /etc/localtime at UTC" (
+      let
+        # /factory is implicit in mkSystem (lib/system.nix), not in the composer's
+        # own argument; pass it, so this is the list the image's tmpfiles.d has
+        result = compose [ factory ];
+      in
+      any (p: p.name == "tzdata-2026a") result.packages
+      &&
+        result.links."/usr/share/zoneinfo" == {
+          target = "${stubTzdata}/share/zoneinfo";
+          kind = "explicit";
+        }
+      # the factory's line: the zone name is its `timezone` option (UTC by default)
+      && elem "L /etc/localtime - - - - /usr/share/zoneinfo/UTC" result.tmpfiles
     ))
 
     # 12. /network: networkd configuration
