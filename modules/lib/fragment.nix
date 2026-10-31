@@ -56,6 +56,13 @@ let
       null
   );
 
+  # A symlink in the /usr farm: { path = "/usr/bin/jq"; target = "<store>/bin/jq"; }
+  # or a .wants link: { path = "/usr/.../multi-user.target.wants/sshd.service"; target = "../sshd.service"; }
+  link = struct "link" {
+    path = string;
+    target = string;
+  };
+
   fragment = struct "fragment" {
     # unit file name -> unit file text, installed to /usr/lib/systemd/system
     units = optionalAttr (attrsOf string);
@@ -67,8 +74,19 @@ let
     tmpfiles = optionalAttr (listOf string);
     # closure roots that go into /usr/nix/store and the /usr/bin farm
     packages = optionalAttr (listOf derivation);
+    # symlinks in the /usr farm; the composer merges and checks for duplicates
+    links = optionalAttr (listOf link);
+    # package name -> subdirs to link file by file into /usr ("lib/security", "lib/udev/rules.d", ...)
+    farm = optionalAttr (attrsOf (listOf string));
+    # package name -> sonames to link into /usr/lib for dlopen ("libtss2-esys.so.0", ...)
+    dlopen = optionalAttr (attrsOf (listOf string));
   };
 in
 {
-  inherit fragment file mode;
+  inherit
+    fragment
+    file
+    mode
+    link
+    ;
 }

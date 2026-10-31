@@ -776,6 +776,104 @@ let
       # Environment= lines are not in the unit (they're in the launch record)
       !hasInfix "Environment=" unit
     ))
+
+    # 5. Farm specification: bin links, farm dirs, dlopen, collision checks
+    (check "farm: package with two bins emits two links" (
+      let
+        result = compose [
+          {
+            packages = [
+              (withBin "tool-1" [
+                "foo"
+                "bar"
+              ])
+            ];
+          }
+        ];
+      in
+      builtins.length (builtins.filter (l: hasInfix "/usr/bin/" l.path) result.links) == 2
+      && builtins.any (l: l.path == "/usr/bin/foo") result.links
+      && builtins.any (l: l.path == "/usr/bin/bar") result.links
+    ))
+    (check "farm: farmDirs from farm declaration" (
+      let
+        pkg = withBin "systemd-1" [ ];
+        result = compose [
+          {
+            packages = [ pkg ];
+            farm."systemd-1" = [
+              "lib/udev/rules.d"
+              "lib/systemd/system"
+            ];
+          }
+        ];
+      in
+      builtins.length result.farmDirs == 2
+      && builtins.any (d: d.path == "/usr/lib/udev/rules.d") result.farmDirs
+      && builtins.any (d: d.path == "/usr/lib/systemd/system") result.farmDirs
+    ))
+    (check "farm: dlopen links" (
+      let
+        pkg = withBin "tpm2-tss-1" [ ];
+        result = compose [
+          {
+            packages = [ pkg ];
+            dlopen."tpm2-tss-1" = [
+              "libtss2-esys.so.0"
+              "libtss2-rc.so.0"
+            ];
+          }
+        ];
+      in
+      builtins.any (l: l.path == "/usr/lib/libtss2-esys.so.0") result.links
+      && builtins.any (l: l.path == "/usr/lib/libtss2-rc.so.0") result.links
+    ))
+    (check "farm: farm dir declared twice by two packages errors" (
+      let
+        pkgA = withBin "a-1" [ ];
+        pkgB = withBin "b-1" [ ];
+      in
+      !(tryEval (
+        deepSeq
+          (compose [
+            {
+              packages = [ pkgA ];
+              farm."a-1" = [ "lib/security" ];
+            }
+            {
+              packages = [ pkgB ];
+              farm."b-1" = [ "lib/security" ];
+            }
+          ]).farmDirs
+          true
+      )).success
+    ))
+    (check "farm: file and farm link at same path errors" (
+      let
+        pkg = withBin "tool-1" [ ];
+      in
+      !(tryEval (
+        deepSeq
+          (compose [
+            {
+              packages = [ pkg ];
+              dlopen."tool-1" = [ "libfoo.so.1" ];
+            }
+            { files."/usr/lib/libfoo.so.1" = "conflict"; }
+          ]).links
+          true
+      )).success
+    ))
+    (check "farm: farm declaration for unknown package errors" (
+      !(tryEval (
+        deepSeq
+          (compose [
+            { farm."nonexistent-1" = [ "lib" ]; }
+          ]).farmDirs
+          true
+      )).success
+    ))
+
   ];
 in
 assert all (t: t) tests;
