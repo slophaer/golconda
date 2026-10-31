@@ -28,6 +28,7 @@ in
       pkgs,
       platform,
       system,
+      set,
       ...
     }:
     {
@@ -39,15 +40,18 @@ in
         let
           # Create a minimal composer output
           composed = tree {
-            options."/system" = {
-              name = "smoke";
-              version = "20261031.1";
-              fragments = [
-                {
-                  packages = [ pkgs.jq ];
-                  # jq has bin = [ "jq" ] in repkgs
-                }
-              ];
+            options = {
+              "/pkgs".set = set;
+              "/system" = {
+                name = "smoke";
+                version = "20261031.1";
+                fragments = [
+                  {
+                    packages = [ pkgs.jq ];
+                    # jq has bin = [ "jq" ] in repkgs
+                  }
+                ];
+              };
             };
           };
           sys = composed.modules.system { };
@@ -71,16 +75,19 @@ in
             inherit system;
             platform = "aarch64-linux";
           };
-          tree = import ../modules { inherit (adios) adios; };
-          composed = tree {
-            options."/system" = {
-              name = "smoke-aarch64";
-              version = "20261031.1";
-              fragments = [
-                {
-                  packages = [ crossSet.pkgs.jq ];
-                }
-              ];
+          crossTree = import ../modules { inherit (adios) adios; };
+          composed = crossTree {
+            options = {
+              "/pkgs".set = crossSet;
+              "/system" = {
+                name = "smoke-aarch64";
+                version = "20261031.1";
+                fragments = [
+                  {
+                    packages = [ crossSet.pkgs.jq ];
+                  }
+                ];
+              };
             };
           };
           sys = composed.modules.system { };
