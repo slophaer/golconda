@@ -2742,11 +2742,13 @@ let
       # builder (disk.nu runs systemd-sbsign); a call without them does not type-check
       args ? sbKey && args ? sbCert && args ? pkgs && args ? uki
     ))
-    (check "image: the cmdline template has usrhash and no rw or volatile" (
+    (check "image: the cmdline template has usrhash and rw, and no ro or volatile" (
       let
         t = (import ../image).uki.cmdlineTemplate;
       in
-      hasInfix "usrhash={usrhash}" t && !hasInfix " rw" t && !hasInfix "volatile" t
+      # rw: the initrd mounts the root partition read-only without it, and the ssh host key
+      # var unit runs before systemd-remount-fs (docs/design/boot.md)
+      hasInfix "usrhash={usrhash}" t && hasInfix " rw " t && !hasInfix " ro " t && !hasInfix "volatile" t
     ))
     # without the option, veritysetup activates /usr unsigned and IPE's dmverity_signature is
     # false for every /usr file (docs/design/trust.md)

@@ -21,9 +21,12 @@
   #   against the platform keyring (the firmware db); IPE's dmverity_signature is true only for
   #   a volume the kernel verified. Without it /usr activates unsigned, silently.
   # console=tty0,ttyS0: the local console and the serial line, output only (no getty)
-  # neither ro nor rw: gpt-auto mounts the root partition read-write only with no `ro`, and
-  # /usr is read-only by dm-verity whatever is said; nothing about volatility either (/var is
-  # on the root partition, systemd's default)
+  # rw: the root partition carries the state (/var, /etc), and the initrd mounts it read-only
+  # unless the cmdline says rw; gpt-auto's remount-rw drop-in reaches systemd-remount-fs.service
+  # only late in boot, after the ssh host key var unit has tried to seal its key on a read-only
+  # root and failed. `rw` is an ordinary kernel parameter (gpt-auto passes it to the root mount),
+  # not a workaround. /usr stays read-only by dm-verity whatever is said. Nothing about
+  # volatility either (/var is on the root partition, systemd's default).
   # Security parameters (see docs/design/kernel.md):
   #   lsm=lockdown,yama,ipe,bpf   LSM stack order (capability is always first)
   #   lockdown=integrity          kernel lockdown level (blocks kexec, /dev/mem, etc.)
@@ -32,7 +35,7 @@
   #                               Needs the signer in the firmware db: without it /usr is unsigned
   #                               and PID 1's switch-root re-exec is denied (docs/design/trust.md)
   # The builder appends rdinit= (lib/image/initrd.nix says why)
-  cmdlineTemplate = "usrhash={usrhash} systemd.verity_usr_options=root-hash-signature=base64:{usrhashSig} lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=1 console=tty0 console=ttyS0,115200";
+  cmdlineTemplate = "usrhash={usrhash} systemd.verity_usr_options=root-hash-signature=base64:{usrhashSig} rw lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=1 console=tty0 console=ttyS0,115200";
 
   # PCR policy signing (for measured boot and credential decryption): the phase paths to
   # sign. A phase path is the colon-separated chain of words systemd has measured into
