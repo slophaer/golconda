@@ -2515,6 +2515,10 @@ let
       # the B slots are the same size as A and get nothing
       && hasInfix "SizeMinBytes=10G" defs."20-usr-b.conf"
       && !hasInfix "CopyBlocks" defs."20-usr-b.conf"
+      # …and carry the empty-slot label: without it dissection fails and gpt-auto mounts nothing
+      && hasInfix "Label=_empty" defs."20-usr-b.conf"
+      && hasInfix "Label=_empty" defs."21-usr-b-verity.conf"
+      && hasInfix "Label=_empty" defs."22-usr-b-verity-sig.conf"
       # image/repart.nix's own fields render as INI (ini.nix: booleans are yes/no)
       && hasInfix "[Partition]\n" defs."10-usr-a.conf"
       && hasInfix "ReadOnly=yes" defs."10-usr-a.conf"
