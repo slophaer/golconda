@@ -1,7 +1,8 @@
 # keys.nu: throwaway key pairs for the smoke (lib/image/default.nix throwawayKeys).
 #
 # Output, after image/default.nix keys: secureboot/db.{key,crt}, verity/verity.{key,crt},
-# pcr/pcr.key and pcr/pcr.pub (the public key ukify embeds as .pcrpkey).
+# pcr/pcr.key and pcr/pcr.pub (the public key ukify embeds as .pcrpkey), and
+# ssh-ca/ca and ssh-ca/ca.pub (SSH user CA for the boot test).
 
 use common.nu *
 
@@ -20,4 +21,10 @@ export def build [] {
   ^openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out $"($out)/pcr/pcr.key" e> /dev/null
   ^openssl pkey -in $"($out)/pcr/pcr.key" -pubout -out $"($out)/pcr/pcr.pub"
   log "pcr/pcr.key, .pub"
+
+  # SSH user CA for boot testing: the test signs user certificates with this key,
+  # and the test image trusts ca.pub as TrustedUserCAKeys.
+  mkdir $"($out)/ssh-ca"
+  ^ssh-keygen -q -t ed25519 -N '' -f $"($out)/ssh-ca/ca" -C "golconda-test-ca"
+  log "ssh-ca/ca, .pub"
 }

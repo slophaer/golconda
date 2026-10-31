@@ -115,3 +115,51 @@ image, not only the smoke, sets the same `LD_LIBRARY_PATH` for services in
   way. The disk file is written straight into the output: it is sparse (two 10 GiB slots), and it
   has no free space for the `root` partition: boot it through a larger overlay (see
   [the walkthrough](walkthrough.md#6-first-boot)), or `truncate` a copy.
+
+## Boot test (`scripts/boot-test`)
+
+The boot test runs the image in QEMU and checks that it reaches `multi-user.target`. It cannot run
+inside the Nix sandbox (no KVM), so it is a script, not a derivation. Usage:
+
+```sh
+# Build the test image (with SSH CA for login tests)
+nix-build -A packages.x86_64-linux.image-smoke-test
+
+# Run the boot test (basic markers)
+scripts/boot-test result/disk/disk.raw --smoke-dir result --timeout 120
+
+# With Secure Boot (enrols the smoke's throwaway keys)
+scripts/boot-test result/disk/disk.raw --smoke-dir result --secure-boot
+
+# With TPM (starts swtpm)
+scripts/boot-test result/disk/disk.raw --smoke-dir result --tpm
+
+# With SSH login test (needs image-smoke-test, not image-smoke)
+scripts/boot-test result/disk/disk.raw --smoke-dir result --ssh-test
+```
+
+The script creates a 40 GiB qcow2 overlay (room for the root partition), copies OVMF vars, passes
+the hostname `boot-test` as a credential (`-smbios type=11,...`), and logs the serial console.
+Markers checked (each prints PASS/FAIL):
+
+| marker              | what it proves                                 |
+| ------------------- | ---------------------------------------------- |
+| no-firstboot-prompt | systemd-firstboot did not prompt (masked)      |
+| ldconfig-masked     | ldconfig.service did not run                   |
+| modprobe-masked     | modprobe@.service did not run                  |
+| multi-user-reached  | multi-user.target reached                      |
+| sshd-active         | sshd.service started                           |
+| hostname-set        | the credential was read (log says `boot-test`) |
+| boot-complete       | boot-complete.target reached                   |
+
+With `--ssh-test`, the script also generates a test CA and user certificate, then:
+
+| marker            | what it proves                                              |
+| ----------------- | ----------------------------------------------------------- |
+| ssh-login         | an ssh login with a certificate principal works             |
+| varlink-available | `varlinkctl list-interfaces` shows io.systemd.\* interfaces |
+| bootctl-list      | `bootctl list` shows the boot entry                         |
+| bless-boot        | the entry is marked good (no +N-M counter)                  |
+
+The test CA is in `examples/test-boot/ca` (the private key) and `examples/test-boot/ca.pub`;
+`examples/test-boot/config.toml` trusts that CA. `image-smoke-test` builds from that config.

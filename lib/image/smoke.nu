@@ -1,7 +1,7 @@
 # smoke.nu: collect the chain's outputs and write what the tools say about them
 # (lib/image/smoke.nix).
 #
-# Structured attrs: erofs, verity, initrd, uki, disk, stem.
+# Structured attrs: erofs, verity, initrd, uki, disk, keys, stem.
 
 use common.nu *
 
@@ -11,7 +11,7 @@ export def build [] {
   $env.PATH = $a.PATH
   $env.LD_LIBRARY_PATH = $a.LD_LIBRARY_PATH
   mkdir $out
-  for s in [erofs verity initrd uki disk] { ^ln -s ($a | get $s) $"($out)/($s)" }
+  for s in [erofs verity initrd uki disk keys] { ^ln -s ($a | get $s) $"($out)/($s)" }
 
   let usr = $"($a.erofs)/($a.stem).usr.raw"
   let hash = $"($a.verity)/($a.stem).usr-verity.raw"
