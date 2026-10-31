@@ -1,3 +1,4 @@
-disabled = []
+# Disable W19 (if-to-or): the type mapping chains are clearer as explicit if-else
+disabled = ['bool_simplification']
 nix_version = '2.4'
 ignore = ['npins']
