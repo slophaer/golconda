@@ -113,9 +113,12 @@
       GrowFileSystem = true;
       FactoryReset = true;
       # Future: Encrypt = "tpm2"; for TPM2-bound LUKS
-      # The mount points: /usr for the verity slot, the API file systems for switch-root. The
-      # initrd mounts root read-only (gpt-auto's default without rw=), so nothing could create
-      # them later; /bin /sbin /lib are tmpfiles links (/base).
+      # The mount points, each needed before anything can create it: the initrd mounts root
+      # read-only (gpt-auto's default without rw=). /usr is the verity slot's. /dev /proc /sys
+      # /run: switch-root chases them in the new root without creating them
+      # (systemd src/shared/switch-root.c, chase() without CHASE_NONEXISTENT). /tmp: tmp.mount
+      # makes its mount point with mkdir, which a read-only root refuses. There is no /srv:
+      # service state lives in /var/lib. /bin /sbin /lib are tmpfiles links (/base).
       MakeDirectories = "/usr /etc /var /home /root /tmp /run /dev /proc /sys";
     };
   };
