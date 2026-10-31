@@ -4,3 +4,4 @@ docs/book/
 npins/default.nix
 docs/reference/modules/generated/
 docs/SUMMARY.md
+.review/
