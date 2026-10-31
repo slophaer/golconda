@@ -28,6 +28,7 @@ in
       pkgs,
       platform,
       system,
+      set,
       ...
     }:
     {
@@ -39,15 +40,40 @@ in
         let
           # Create a minimal composer output
           composed = tree {
-            options."/system" = {
-              name = "smoke";
-              version = "20261031.1";
-              fragments = [
-                {
-                  packages = [ pkgs.jq ];
-                  # jq has bin = [ "jq" ] in repkgs
-                }
-              ];
+            options = {
+              "/pkgs".set = set;
+              "/system" = {
+                name = "smoke";
+                version = "20261031.1";
+                fragments = [
+                  {
+                    packages = [ pkgs.jq ];
+                    # jq has bin = [ "jq" ] in repkgs
+                  }
+                ];
+              };
+            };
+          };
+          sys = composed.modules.system { };
+        in
+        usrTreeLib.usrTree {
+          composerOutput = sys;
+          inherit platform;
+          version = "20261031.1";
+        };
+
+      # Smoke test for /base alone: no extra fragments, just the base packages.
+      # Verifies: no absolute symlinks, no GNU coreutils, base packages only.
+      usr-tree-base-smoke =
+        let
+          composed = tree {
+            options = {
+              "/pkgs".set = set;
+              "/system" = {
+                name = "base-smoke";
+                version = "20261031.1";
+                fragments = [ ]; # no extra packages
+              };
             };
           };
           sys = composed.modules.system { };
@@ -71,16 +97,19 @@ in
             inherit system;
             platform = "aarch64-linux";
           };
-          tree = import ../modules { inherit (adios) adios; };
-          composed = tree {
-            options."/system" = {
-              name = "smoke-aarch64";
-              version = "20261031.1";
-              fragments = [
-                {
-                  packages = [ crossSet.pkgs.jq ];
-                }
-              ];
+          crossTree = import ../modules { inherit (adios) adios; };
+          composed = crossTree {
+            options = {
+              "/pkgs".set = crossSet;
+              "/system" = {
+                name = "smoke-aarch64";
+                version = "20261031.1";
+                fragments = [
+                  {
+                    packages = [ crossSet.pkgs.jq ];
+                  }
+                ];
+              };
             };
           };
           sys = composed.modules.system { };

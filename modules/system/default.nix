@@ -4,6 +4,10 @@
 #! (see `docs/design/modules.md`). The union itself is `modules/lib/merge.nix`,
 #! so a module that returns several fragments applies the same rule.
 #!
+#! The `/base` module is always included first, before any fragment the
+#! configuration declares. A system with no fragments still has systemd,
+#! dbus-broker, dash, coreutils and the kernel.
+#!
 #! Output: `{ name; version; units; files; sysusers; tmpfiles; packages; links }`,
 #! every file as `{ text; mode; }` and `links` one map, path under `/usr` ->
 #! `{ target; kind; }`: the `/usr/bin` links of the packages' `bin` lists and
@@ -19,6 +23,9 @@ let
 in
 {
   name = "system";
+
+  # /base is implicit: every system has it, merged first.
+  inputs.base.path = "/base";
 
   types = {
     fragment = fragmentT;
@@ -41,8 +48,9 @@ in
   };
 
   impl =
-    { options }:
-    merge options.fragments
+    { options, results }:
+    # /base fragment first, then the declared fragments
+    merge ([ results.base ] ++ options.fragments)
     // {
       inherit (options) name version;
     };
