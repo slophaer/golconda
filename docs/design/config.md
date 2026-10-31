@@ -1,8 +1,7 @@
 # Configuration as data
 
 Configuration is a TOML document validated by a JSON Schema exported from the adios module tree. The
-image carries artifacts that make diffing and auditing possible without Nix. *(Image artifacts,
-diffing, SBOM and the entrypoint are planned.)*
+image carries artifacts that make diffing and auditing possible without Nix.
 
 ## The model
 
@@ -75,16 +74,19 @@ in
 f.modules cfg
 ```
 
-## Image artifacts *(planned)*
+## Image artifacts
 
 Every image carries `/usr/lib/golconda/`:
 
-| file           | content                                                |
-| -------------- | ------------------------------------------------------ |
-| `config.json`  | the resolved options, with an `explicit` flag per path |
-| `schema.json`  | JSON Schema 2020-12 exported from the module tree      |
-| `sbom.json`    | CycloneDX SBOM from the closure's `sources.toml` purls |
-| `etc.manifest` | type, mode, owner, sha256 for each factory file        |
+| file          | content                                                |
+| ------------- | ------------------------------------------------------ |
+| `config.json` | the resolved options, keyed by module path             |
+| `schema.json` | JSON Schema 2020-12 exported from the module tree      |
+| `sbom.json`   | CycloneDX SBOM from the closure's `sources.toml` purls |
+
+`config.json` holds the options the TOML said after type-checking, with derivations replaced by
+their names. The schema and SBOM are the same data the build used. `etc.manifest` is planned for
+factory file sync.
 
 ## Diffing *(planned)*
 
@@ -100,11 +102,19 @@ set/delete list:
 
 This doubles as the edit log and the patch format.
 
-## Entrypoint *(planned)*
+## Entrypoint
 
-`golconda.nix` is the NixOS `system.nix` analogue: a function that takes a config and returns the
-image derivation. Today the module tree is `modules/`; the entrypoint and image builder are not
-implemented.
+`lib/system.nix` is the NixOS `system.nix` analogue. `mkSystem { config; platform?; extra?; }` takes
+a TOML path or an attrset and returns the composed system and its `/usr` tree:
+
+```nix
+let sys = import ./lib/system.nix { config = ./server.toml; };
+in sys.usrTree
+```
+
+`golconda.nix` at the repository root is the template a user copies next to their configuration.
+Nix-only values (a package override, a fragment written in Nix) come through `extra`, so a
+configuration can be pure TOML or TOML + Nix. See `docs/reference/config.md`.
 
 ## Upstream asks
 
