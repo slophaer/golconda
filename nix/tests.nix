@@ -20,6 +20,7 @@ let
 
   f = import ../default.nix;
   types = (import sources.adios).adios.types;
+  a = import ../modules/lib/app.nix { inherit types; };
   s = import ../modules/lib/service.nix { inherit types; };
   v = import ../modules/lib/var.nix { inherit types; };
   inherit (import ./packages.nix { inherit sources platform; }) pkgs;
@@ -377,6 +378,62 @@ let
         }
       )
     ))
+
+    # 2b. an app file holds no per-machine value: a credential path or a key is refused,
+    # and the message names the file (a.files.verify is null or the message)
+    (check "app.files accepts a plain config" (
+      a.files.verify {
+        "sshd_config" =
+          "Port 22\nAuthorizedKeysFile .ssh/authorized_keys /usr/lib/sshd/authorized_keys.%u\n";
+        "motd" = "welcome";
+      } == null
+    ))
+    (check "app.files refuses each per-machine marker and names the file" (
+      all (
+        m:
+        let
+          err = a.files.verify {
+            ok = "Port 22\n";
+            "bad.conf" = "Key ${m}x\n";
+          };
+        in
+        err != null && hasInfix "'bad.conf'" err && hasInfix m err
+      ) a.perMachineMarkers
+      &&
+        a.perMachineMarkers == [
+          "%d/"
+          "$CREDENTIALS_DIRECTORY"
+          "-----BEGIN"
+          "PRIVATE KEY"
+        ]
+    ))
+    (check "render refuses an app file with a credential path" (
+      throws (
+        s.render {
+          name = "x";
+          app = {
+            package = standIn;
+            files."x.conf" = "RevokedKeys %d/krl\n";
+          };
+          user = "dynamic";
+          sandbox = "strict";
+        }
+      )
+    ))
+    (check "render refuses an app file with a private key" (
+      throws (
+        s.render {
+          name = "x";
+          app = {
+            package = standIn;
+            files."key" = "-----BEGIN OPENSSH PRIVATE KEY-----\n";
+          };
+          user = "dynamic";
+          sandbox = "strict";
+        }
+      )
+    ))
+    (check "app.files must be text" (a.files.verify { x = 1; } != null))
 
     # 3. a duplicate unit or file across two fragments is a composer error
     (check "composer refuses a duplicate unit" (

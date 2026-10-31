@@ -20,7 +20,7 @@ Plain files that modules import. The directory has no `default.nix`, so adios do
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `fragment.nix`     | `fragment`: `{ units; files; sysusers; tmpfiles; packages }`, every field optional; `file`, `mode`                                    |
 | `merge.nix`        | `merge [ fragment… ] → fragment`: unions attrs, concatenates lists; a duplicate key throws; every file comes out as `{ text; mode; }` |
-| `app.nix`          | `app`, `argv`, `envOp`, `credentialRef`, `isCredentialRef`, `file`, `filesPlaceholder`, `exe`                                         |
+| `app.nix`          | `app`, `argv`, `files`, `perMachineMarkers`, `envOp`, `credentialRef`, `isCredentialRef`, `file`, `filesPlaceholder`, `exe`           |
 | `service.nix`      | `service`, `render`, `sandbox`, `sandboxLines`, `credential`, `credentialArg`                                                         |
 | `var.nix`          | `var`, `render`, `unitName`, `credentialId`, `stateDir`                                                                               |
 | `golconda-var-run` | POSIX sh runner for var units                                                                                                         |
@@ -52,7 +52,9 @@ What a program needs to run, with nothing systemd-specific. Embedded in `service
 | `env`     | attrs of one-key `{ set \| default \| prepend \| append \| unset }` | environment operations                                           |
 | `files`   | attrs name → text, default `{ }`                                    | files installed to `/usr/lib/<service>/<name>`                   |
 
-A `{ credential = "n"; }` value in `argv` is a type error: an app runs outside systemd.
+A `{ credential = "n"; }` value in `argv` is a type error: an app runs outside systemd. A file text
+that contains `%d/`, `$CREDENTIALS_DIRECTORY`, `-----BEGIN` or `PRIVATE KEY` is a type error that
+names the file: an app file holds no per-machine value (`perMachineMarkers` in `app.nix`).
 
 ### `service`
 
