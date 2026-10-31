@@ -8,8 +8,9 @@
 #! Hostname is not in the factory: it comes from the bootstrap credential
 #! `system.hostname` (systemd-firstboot, see docs/design/boot.md).
 #!
-#! The sshd privilege-separation user and `/var/empty` are ambient like
-#! `/etc/pam.d`: add `/factory` once when using `/services/sshd`.
+#! The factory knows no service: a service owns its user and directories in
+#! its own fragment. Only `/etc` content is here, so `pam.d/sshd` is a
+#! built-in seed; a configuration with `/services/sshd` adds `/factory` once.
 { types, ... }:
 let
   inherit (builtins)
@@ -159,9 +160,7 @@ in
         # Symlinks to paths outside the factory (os-release, timezone)
         ++ map (p: "L ${p} - - - - ${links.${p}}") (attrNames links)
         # Directories (pam.d parent is implicit; ssh needs .keep or explicit)
-        ++ map (d: "d ${d} 0755 root root -") dirs
-        # sshd privsep: /var/empty must exist
-        ++ [ "d /var/empty 0755 root root -" ];
+        ++ map (d: "d ${d} 0755 root root -") dirs;
     in
     {
       files = listToAttrs (
@@ -171,6 +170,5 @@ in
         }) paths
       );
       tmpfiles = tmpfilesLines;
-      sysusers = [ "u sshd - \"SSH privilege separation\" /var/empty" ];
     };
 }

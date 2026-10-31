@@ -368,7 +368,11 @@ let
     (check "sshd: sftp is a subsystem in sshd_config, not a unit field" (
       hasInfix "\nSubsystem sftp internal-sftp\n" sshdConfig && !hasInfix "Subsystem" unit
     ))
-    (check "sshd: privsep user" (any (hasInfix "u sshd ") system.sysusers))
+    (check "sshd: owns its privsep user and /var/empty" (
+      elem "u sshd - \"SSH privilege separation\" /var/empty" sshd.sysusers
+      && elem "d /var/empty 0755 root root -" sshd.tmpfiles
+      && any (hasInfix "u sshd ") system.sysusers
+    ))
     (check "var: runs once" (
       hasInfix "ConditionPathExists=!/var/lib/golconda/vars/sshd-hostkey/done" varUnit
     ))
@@ -405,27 +409,29 @@ let
     ))
     (check "sshd: without a CA no certificate lines" (
       !hasInfix "TrustedUserCAKeys" unit
+      && !hasInfix "TrustedUserCAKeys" sshdConfig
       && !hasInfix "AuthorizedPrincipalsFile" unit
+      && !hasInfix "AuthorizedPrincipalsFile" sshdConfig
       && !hasInfix "HostCertificate" unit
       && !hasInfix "RevokedKeys" unit
       && !(system.files ? "${sshdDir}/ca.pub")
     ))
-    (check "sshd: the whole certificate ExecStart, in order" (
+    (check "sshd: the whole certificate ExecStart, in order: only credentials on the command line" (
       hasInfix (
         "\nExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config -h %d/hostkey"
-        + " -o HostCertificate=%d/hostcert -o RevokedKeys=%d/krl"
-        + " -o TrustedUserCAKeys=/usr/lib/sshd/ca.pub -o AuthorizedPrincipalsFile=/usr/lib/sshd/principals/%%u\n"
+        + " -o HostCertificate=%d/hostcert -o RevokedKeys=%d/krl\n"
       ) certUnit
+      && !hasInfix "TrustedUserCAKeys" certUnit
+      && !hasInfix "AuthorizedPrincipalsFile" certUnit
     ))
-    (check "sshd: user CA keys file" (
+    (check "sshd: user CA keys file and the TrustedUserCAKeys line in sshd_config" (
       certSshd.files."${sshdDir}/ca.pub".text == "ssh-ed25519 AAAA user-ca\n"
-      && hasInfix " -o TrustedUserCAKeys=/usr/lib/sshd/ca.pub" certUnit
-      && !hasInfix "TrustedUserCAKeys" certConfig
+      && hasInfix "\nTrustedUserCAKeys /usr/lib/sshd/ca.pub\n" certConfig
     ))
-    (check "sshd: principals file and AuthorizedPrincipalsFile" (
+    (check "sshd: principals file and the AuthorizedPrincipalsFile line in sshd_config" (
       certSshd.files."${sshdDir}/principals/root".text == "alice@example.com\n"
-      # %u reaches sshd as a literal: the renderer writes %%u in the unit
-      && hasInfix " -o AuthorizedPrincipalsFile=/usr/lib/sshd/principals/%%u" certUnit
+      # %u reaches sshd as a literal: a file needs no escaping
+      && hasInfix "\nAuthorizedPrincipalsFile /usr/lib/sshd/principals/%u\n" certConfig
     ))
     (check "sshd: host certificate credential and option" (
       hasInfix "LoadCredentialEncrypted=hostcert:sshd-host-cert.cert\n" certUnit
@@ -2047,13 +2053,16 @@ let
     (check "factory: extraFiles refuse the names sysusers and PID 1 and bootstrap own" (
       all (n: factoryThrows { extraFiles.${n} = "x"; }) neverSeeded
     ))
-    (check "factory: the L lines, the static links and the sshd user" (
+    (check "factory: the L lines and the static links" (
       elem "L /etc/localtime - - - - /usr/share/zoneinfo/UTC" factory.tmpfiles
       && elem "L /etc/os-release - - - - ../usr/lib/os-release" factory.tmpfiles
       && elem "d /etc/ssh 0755 root root -" factory.tmpfiles
-      && elem "d /var/empty 0755 root root -" factory.tmpfiles
       && !any (hasInfix "machine-id") factory.tmpfiles
-      && any (hasInfix "u sshd ") factory.sysusers
+    ))
+    (check "factory: knows no service (no sshd user, no /var/empty)" (
+      !(factory ? sysusers)
+      && !any (hasInfix "/var/empty") factory.tmpfiles
+      && factory.files ? "${factoryDir}/pam.d/sshd"
     ))
     (check "factory: shells are dash and sh" (
       factory.files."${factoryDir}/shells" == "/usr/bin/sh\n/usr/bin/dash\n"

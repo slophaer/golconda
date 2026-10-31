@@ -67,7 +67,7 @@ After=golconda-var-sshd-hostkey.service
 Wants=golconda-var-sshd-hostkey.service
 
 [Service]
-ExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config -h %d/hostkey -o TrustedUserCAKeys=/usr/lib/sshd/ca.pub -o AuthorizedPrincipalsFile=/usr/lib/sshd/principals/%%u
+ExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config -h %d/hostkey
 LoadCredentialEncrypted=hostkey:sshd-hostkey.key
 KillMode=process
 User=root
@@ -76,7 +76,9 @@ User=root
 WantedBy=multi-user.target
 ```
 
-Nothing in it is per-machine: the host key is `%d/hostkey`, a credential the machine makes.
+Nothing in it is per-machine: the host key is `%d/hostkey`, a credential the machine makes. The CA
+key and the principals file are lines in `/usr/lib/sshd/sshd_config`
+(`TrustedUserCAKeys /usr/lib/sshd/ca.pub`, `AuthorizedPrincipalsFile /usr/lib/sshd/principals/%u`).
 
 ## 4. The `/usr` tree
 
