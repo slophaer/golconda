@@ -2670,6 +2670,12 @@ let
         }
       && !(l ? "/usr/lib/security/pam_unix.so")
     ))
+    (check "base: systemd's NvPCR definitions are in the farm (/usr/lib/nvpcr)" (
+      (compose [ ]).links."/usr/lib/nvpcr" == {
+        target = "${stubSet.pkgs.systemd}/lib/nvpcr";
+        kind = "farm";
+      }
+    ))
     (check "base: networkd and timesyncd skip the initrd (no sysusers there: 217/USER)" (
       let
         fs = (compose [ ]).files;

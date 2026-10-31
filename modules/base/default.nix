@@ -329,6 +329,13 @@ in
           target = "${p.systemd}/lib/tmpfiles.d";
           kind = "farm";
         }
+        # NvPCR definitions: systemd-pcrextend (pcrproduct, pcrlogin@) and cryptsetup look
+        # them up in /usr/lib/nvpcr
+        {
+          path = "/usr/lib/nvpcr";
+          target = "${p.systemd}/lib/nvpcr";
+          kind = "farm";
+        }
         # D-Bus: systemd's bus policies (system.conf includes system.d) and the activation
         # files that map a bus name to its unit (SystemdService=)
         {
