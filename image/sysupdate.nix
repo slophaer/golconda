@@ -1,6 +1,6 @@
 # systemd-sysupdate transfer definitions
 #
-# Rendered to /usr/lib/sysupdate.d/*.conf on the image.
+# Rendered to /usr/lib/sysupdate.d/*.transfer on the image (modules/system).
 # Defines how updates are fetched and applied.
 #
 # All transfers use InstancesMax=2 to keep exactly two versions (A/B).
