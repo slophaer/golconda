@@ -1,6 +1,6 @@
 # lib/usr-tree.nix: assemble the complete /usr tree from the composer output.
 #
-# usrTree { composerOutput; platform; version; buildSystem ? platform.name; } → derivation
+# usrTree { composerOutput; platform; version; buildSystem?; sbomDrv?; } → derivation
 # whose output IS the /usr tree:
 #   nix/store/<hash>-* for the runtime closure of composerOutput.packages
 #   bin/, lib/, share/... = symlinks into nix/store (composerOutput.links; a link of kind
@@ -172,6 +172,7 @@ in
       platform, # The target platform record
       version, # Image version string
       buildSystem ? platform.name, # The build host; defaults to the target (native build)
+      sbomDrv ? null, # Optional SBOM derivation; its sbom.json is copied into the tree
     }:
     let
       # Get nushell from the bootstrap seed for the BUILD host
@@ -270,6 +271,9 @@ in
 
       # Sysusers and tmpfiles lines
       inherit sysusers tmpfiles;
+
+      # SBOM: the path to sbom.json if one was given, else null
+      sbomPath = if sbomDrv != null then "${sbomDrv}/sbom.json" else null;
 
       # PATH for the builder
       PATH = concatStringsSep ":" (map (t: "${t}/bin") baseTools);
