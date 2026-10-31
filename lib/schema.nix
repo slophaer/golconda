@@ -179,7 +179,7 @@ let
     };
 
     units = {
-      description = "Unit name -> unit file text, installed to /usr/lib/systemd/system/<name>; a user unit is a file under /usr/lib/systemd/user instead.";
+      description = "Unit name -> unit file text, installed to `/usr/lib/systemd/system/<name>`; a user unit is a file under /usr/lib/systemd/user instead.";
       type = "object";
       propertyNames = {
         "$ref" = "#/$defs/unitName";
@@ -464,14 +464,14 @@ let
           items = {
             "$ref" = "#/$defs/word";
           };
-          description = "Files sealed as credentials <name>.<file>.";
+          description = "Files sealed as credentials `<name>.<file>`.";
         };
         publics = {
           type = "array";
           items = {
             "$ref" = "#/$defs/word";
           };
-          description = "Files kept readable in /var/lib/golconda/vars/<name>/pub/.";
+          description = "Files kept readable in `/var/lib/golconda/vars/<name>/pub/`.";
         };
         after = {
           type = "array";
