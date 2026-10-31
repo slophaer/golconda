@@ -13,6 +13,19 @@ let
     name = "golconda-src";
     filter = p: _: baseNameOf p != ".git" && !(pkgs.lib.hasPrefix "result" (baseNameOf p));
   };
+  # the generated module pages (lib/module-docs.nix), by file name
+  moduleDocs =
+    let
+      tree = import ../modules { inherit (import sources.adios) adios; };
+      schemaLib = import ../lib/schema.nix { };
+      md = (import ../lib/module-docs.nix { }).toMarkdown (schemaLib.toJsonSchema (tree { }));
+    in
+    pkgs.linkFarm "module-docs" (
+      pkgs.lib.mapAttrsToList (name: text: {
+        inherit name;
+        path = pkgs.writeText name text;
+      }) md.files
+    );
 in
 {
   # formatting and Nix lints, as treefmt sees them
@@ -34,8 +47,14 @@ in
       ''
         # the book's first page includes ../README.md
         cp -r ${src}/docs docs && cp ${src}/README.md README.md && chmod -R u+w docs && cd docs
+        # the reference pages that are generated, not committed
+        mkdir -p reference/modules/generated
+        cp -L ${moduleDocs}/*.md reference/modules/generated/
         mdbook build -d $out
       '';
+
+  # the generated module pages alone: `nix-build -A checks.x86_64-linux.module-docs`
+  module-docs = moduleDocs;
 
   # nixpkgs is dev tooling only: the dev pin is referenced nowhere but nix/dev and nix/checks.nix
   boundary = pkgs.runCommand "check-boundary" { } ''

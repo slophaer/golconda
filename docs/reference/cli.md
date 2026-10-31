@@ -8,5 +8,5 @@ The commands a developer and a release run. All are `iets` invocations or script
 | `iets build -A checks.<system>`          | the sandboxed checks: treefmt, docs, boundary             |
 | `./scripts/lint`                         | strict iets lint of the whole evaluation, then the checks |
 | `treefmt`                                | format in place                                           |
-| `mdbook serve docs`                      | the documentation                                         |
+| `scripts/docs serve`                     | the documentation                                         |
 | `npins update`                           | bump the pins                                             |

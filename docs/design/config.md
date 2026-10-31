@@ -17,6 +17,9 @@ covers the common path.
 
 ### JSON Schema export
 
+The module reference pages (`docs/reference/modules/generated/`) are generated from this schema by
+`lib/module-docs.nix`; they are not committed.
+
 `lib/schema.nix` exports JSON Schema 2020-12 from the module tree:
 
 ```sh

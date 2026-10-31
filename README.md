@@ -59,7 +59,7 @@ runs systemd and nothing that duplicates it.
 nix-shell                      # or: direnv allow
 iets build -A packages.x86_64-linux.nix
 ./scripts/lint                 # iets lint + treefmt + docs + boundary checks
-mdbook serve docs              # the book
+scripts/docs serve              # the book (generates the module pages first)
 ```
 
 Documentation: [docs/](docs/SUMMARY.md). Design pages say why; reference pages say what.

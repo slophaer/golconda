@@ -641,6 +641,12 @@ let
         "wrap.md"
       ]
     ))
+    (check "module-docs: the book's SUMMARY links every generated page" (
+      let
+        summary = builtins.readFile ../docs/SUMMARY.md;
+      in
+      all (n: hasInfix "reference/modules/generated/${n})" summary) (attrNames docs.files)
+    ))
     (check "module-docs: fixed sshd_config lines never appear as rows" (
       !(hasInfix "PasswordAuthentication" docs.pages."/services/sshd")
     ))
