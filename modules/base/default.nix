@@ -274,7 +274,17 @@ in
             "systemd-networkd.service"
             "systemd-networkd.socket"
             "systemd-timesyncd.service"
-          ];
+          ]
+      # systemd's preset enables the sysupdate timers; without a transfer definition (no
+      # /system.updateSource) the services fail with "No transfer definitions found"
+      //
+        unitConditions
+          [
+            "ConditionDirectoryNotEmpty=|/usr/lib/sysupdate.d"
+            "ConditionDirectoryNotEmpty=|/etc/sysupdate.d"
+            "ConditionDirectoryNotEmpty=|/run/sysupdate.d"
+          ]
+          [ "systemd-sysupdate.service" "systemd-sysupdate-reboot.service" ];
 
       # PAM modules: Linux-PAM loads a relative module name from /usr/lib/security/, and the
       # factory's stacks name <package>/<module>. Each package's module directory is one
