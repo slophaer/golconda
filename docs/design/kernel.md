@@ -1,8 +1,8 @@
 # Kernel
 
 The kernel ships with Linux Security Modules (LSMs) enabled and configured for a signed, immutable
-system. Status today: lockdown and Yama are on; IPE is in the kernel and on the cmdline but enforces
-nothing yet ([Trust: Verity key](trust.md#2-verity-key)). The configuration is in
+system. Status today: lockdown, Yama and IPE are on, and IPE enforces its boot policy
+([Trust: Execution policy](trust.md#execution-policy)). The configuration is in
 `packages/kernel/golconda.config`; the UKI cmdline activates the LSMs.
 
 ## LSM stack
@@ -29,8 +29,10 @@ IPE decides which files may execute based on immutable properties of their origi
 This policy is compiled into the kernel (`CONFIG_IPE_BOOT_POLICY`). It denies execution from any
 other source, including `/var`, `/tmp`, and unsigned verity volumes.
 
-The cmdline sets `ipe.enforce=0` (permissive: denials are audited to the journal) until the verity
-signing certificate is in a kernel keyring; then it becomes `1`. The key and its status are in
+The cmdline sets `ipe.enforce=1`. Every denial is an audit record (`type=1420`) in the kernel log,
+with `rule="DEFAULT op=EXECUTE action=DENY"`; `/sys/kernel/security/ipe/success_audit` logs the
+allowed ones too, with the rule that matched. The firmware `db` must hold the key that signed the
+root hash, or `/usr` is unsigned and nothing on it runs: see
 [Trust: Verity key](trust.md#2-verity-key).
 
 ### Verity signature trust
