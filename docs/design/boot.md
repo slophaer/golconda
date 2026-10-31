@@ -49,6 +49,11 @@ each attempt; `systemd-bless-boot` renames it to good when `boot-complete.target
 three failures systemd-boot falls back to the other entry, which is the other `/usr` slot. See
 [Updates](updates.md).
 
+systemd-sysupdate tells the slots apart by GPT label: an installed slot carries its version
+(`usr_20261031.1`, `usr-verity_…`, `usr-verity-sig_…`), a free one `_empty`, which gpt-auto also
+skips. The builder labels slot A this way and leaves B `_empty`; an update relabels the slot it
+writes ([Image artifacts](../reference/image.md#a-release)).
+
 ## Kernel command line
 
 The cmdline is fixed in the UKI and measured with it:

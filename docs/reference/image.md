@@ -17,6 +17,14 @@ Names carry the image id and the version; the version sorts with `strverscmp`
 | UKI              | `<id>_<version>.efi` → installed as `<id>_<version>+3-0.efi` | `Type=regular-file`, path `/EFI/Linux`     |
 | manifest         | `SHA256SUMS` *(after v1; `Verify=no` in v1)*                 | —                                          |
 
+Each partition transfer finds its slots by GPT label (`image/sysupdate.nix` `slots`, the target
+`MatchPattern=`): an installed slot is `usr_<version>`, `usr-verity_<version>` or
+`usr-verity-sig_<version>`, a free slot is `_empty`. The disk builder labels slot A from the same
+patterns (`slotLabel`, `lib/image/disk.nix`) and the B slots `_empty` (`image/repart.nix`);
+sysupdate writes the formatted pattern as the label of the slot it fills. The partition type tells
+the three transfers apart, so the label carries no image id: GPT allows 36 characters, the longest
+prefix (`usr-verity-sig_`) leaves 21 for the version, and a longer label fails the build.
+
 All transfers use `InstancesMax=2` and `ProtectVersion=%A`. The installed UKI name carries the boot
 counter (`+3-0`: three tries left, none done); `systemd-bless-boot` removes the suffix after
 `boot-complete.target`.
@@ -90,16 +98,15 @@ Boot signing by `systemd-sbsign` and the PCR 11 policy by `systemd-measure`. The
 `systemd-repart --empty=create --size=auto --offline=yes --seed=<from the version>` over
 `image/repart.nix` rendered to `.conf` files (`repartDefinitions`, `modules/lib/ini.nix`) with the
 builder's fields added: the ESP's `CopyFiles=` (systemd-boot as `EFI/BOOT/BOOT<ARCH>.EFI`, the UKI
-in `EFI/Linux/`), slot A's `CopyBlocks=` and the two UUIDs systemd derives from the root hash (usr:
-its first 128 bits, verity: its last). Before repart copies the ESP tree, `systemd-sbsign` signs
-systemd-boot with the same db key and certificate as the UKI, and `EFI/loader/loader.conf` is
-written from `lib/image/disk.nix`'s `loaderConf` (`timeout 0`, `editor no`). The B slots are empty,
-root is made on the machine (`/usr/lib/repart.d/30-root.conf`, written by `/base`). The ESP is
-filled offline with mtools (`packages/mtools`). Keys are paths: the smoke makes throwaway ones in
-the store (`throwawayKeys`); a release signs with the deployment's keys (`image/default.nix`
-`keys`), which never enter the store. Not yet: the UKI under its sysupdate name
-(`<id>_<version>.efi`), a release directory, the verity certificate in the kernel keyring, an
-enforcing-Secure-Boot run of this repository's `scripts/boot-test`, a TPM.
+in `EFI/Linux/`), slot A's labels (`slotLabel`), `CopyBlocks=` and the two UUIDs systemd derives
+from the root hash (usr: its first 128 bits, verity: its last). Before repart copies the ESP tree,
+`systemd-sbsign` signs systemd-boot with the same db key and certificate as the UKI, and
+`EFI/loader/loader.conf` is written from `lib/image/disk.nix`'s `loaderConf` (`timeout 0`,
+`editor no`). The B slots are empty, root is made on the machine (`/usr/lib/repart.d/30-root.conf`,
+written by `/base`). The ESP is filled offline with mtools (`packages/mtools`). Keys are paths: the
+smoke makes throwaway ones in the store (`throwawayKeys`); a release signs with the deployment's
+keys (`image/default.nix` `keys`), which never enter the store. Not yet: the verity certificate in
+the kernel keyring, a TPM.
 
 Stand-ins the smoke carries on its cmdline, outside `image/uki.nix`: `LD_LIBRARY_PATH=` with the
 store directories of the libraries systemd dlopens (the fork's RUNPATH does not name them), and `rw`
