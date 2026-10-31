@@ -2039,16 +2039,8 @@ let
     (check "image: versionToEpoch throws on a bad format too" (
       !(tryEval (imageLib.versionToEpoch "1")).success
     ))
-    (check "usr-tree: makeRelative creates correct relative paths" (
-      usrTreeLib.makeRelative "/usr/bin/jq" "/nix/store/abc-jq/bin/jq" == "../nix/store/abc-jq/bin/jq"
-      &&
-        usrTreeLib.makeRelative "/usr/lib/systemd/system/foo.service" "/nix/store/xyz/lib/systemd/system/foo.service"
-        == "../../../nix/store/xyz/lib/systemd/system/foo.service"
-    ))
-    (check "usr-tree: makeRelative preserves relative targets" (
-      usrTreeLib.makeRelative "/usr/lib/systemd/system/multi-user.target.wants/sshd.service" "../sshd.service"
-      == "../sshd.service"
-    ))
+    # make-relative is tested in lib/usr-tree/test.nu, against the function the
+    # builder runs; lib/usr-tree.nix has no second copy.
     (check "usr-tree: allowedDirs includes expected directories" (
       builtins.elem "bin" usrTreeLib.allowedDirs
       && builtins.elem "lib" usrTreeLib.allowedDirs

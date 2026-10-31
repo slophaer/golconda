@@ -24,23 +24,43 @@ def log [msg: string] {
   print -e $"usr-tree: ($msg)"
 }
 
-# Convert store path target to relative symlink from link location
-def make-relative [link_path: string, target: string]: nothing -> string {
-  if ($target | str starts-with "/") {
-    # Absolute path: convert to relative
-    let link_dir = ($link_path | path dirname)
-    # Count depth from /usr: /usr/bin = 1, /usr/lib/systemd = 2
-    # From a file in /usr/bin/, one .. reaches /usr/
-    let stripped = ($link_dir | str replace "/usr/" "")
-    let parts = ($stripped | split row "/" | where { $in != "" })
-    let depth = ($parts | length)
-    let ups = (0..($depth - 1) | each { ".." } | str join "/")
-    # Target /nix/store/... -> nix/store/...
+# Split an absolute path into its components: /usr/lib/a -> [usr lib a]
+def path-components [p: string]: nothing -> list<string> {
+  $p | split row "/" | where {|c| $c != "" }
+}
+
+# Convert a link target to one relative to the link's directory in the image's
+# /usr. Three kinds are supported:
+#   a path under /usr/: relative to the link's directory within /usr
+#     (/usr/lib/a -> /usr/lib/b is "b", not "../usr/lib/b")
+#   a store path: relative to the image's /usr, so /usr/bin needs one ".."
+#     (/usr/bin/jq -> ../nix/store/<hash>-jq/bin/jq)
+#   a relative target: unchanged
+# Any other absolute target is an error: it would point outside the image.
+export def make-relative [link_path: string, target: string]: nothing -> string {
+  if not ($target | str starts-with "/") {
+    return $target
+  }
+  let link_dir = ($link_path | path dirname)
+  if not (($link_dir == "/usr") or ($link_dir | str starts-with "/usr/")) {
+    error make {msg: $"link ($link_path) is not under /usr/"}
+  }
+  # Components below /usr: /usr/lib/systemd -> [lib systemd]
+  let link_parts = ((path-components $link_dir) | skip 1)
+  if ($target | str starts-with "/usr/") {
+    let target_parts = ((path-components $target) | skip 1)
+    let depth = ([($link_parts | length) ($target_parts | length)] | math min)
+    let diffs = (0..<$depth | where {|i| ($link_parts | get $i) != ($target_parts | get $i) } | length)
+    let shared = ($depth - $diffs)
+    let ups = (0..<(($link_parts | length) - $shared) | each { ".." } | str join "/")
+    let down = ($target_parts | skip $shared | str join "/")
+    if $ups == "" { $down } else if $down == "" { $ups } else { $"($ups)/($down)" }
+  } else if ($target | str starts-with "/nix/store/") { # store-path-ok
+    let ups = (0..<($link_parts | length) | each { ".." } | str join "/")
     let target_rel = ($target | str replace -r "^/" "")
-    $"($ups)/($target_rel)"
+    if $ups == "" { $target_rel } else { $"($ups)/($target_rel)" }
   } else {
-    # Already relative
-    $target
+    error make {msg: $"link ($link_path): unsupported absolute target ($target): expected a path under /usr/, a store path, or a relative target"}
   }
 }
 
@@ -102,6 +122,19 @@ export def build [] {
 
     # Create symlink
     ^ln -sf $rel_target $dest
+
+    # A target under /usr/ must resolve to that path in the image's /usr. The
+    # old conversion of /usr/lib/a -> /usr/lib/b gave ../usr/lib/b, which
+    # resolves to /usr/usr/lib/b; compare the created link's resolved path
+    # with the path the target names.
+    if ($target | str starts-with "/usr/") {
+      let want = ($"($out)/($target | str replace -r '^/usr/' '')" | path expand)
+      let link_text = (^readlink $dest | str trim)
+      let got = ($"($dest_dir)/($link_text)" | path expand)
+      if $got != $want {
+        error make {msg: $"link ($path) -> ($target) resolves to ($got), not ($want)"}
+      }
+    }
   }
 
   # Step 4: Expand farm directories file by file, subdirectories included: systemd's
