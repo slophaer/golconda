@@ -7,11 +7,12 @@ tool-independent definitions they render.
 ## A release
 
 Names carry the image id and the version; the version sorts with `strverscmp`
-([Updates: Versions](../design/updates.md#versions)). The data and hash files also carry the
-partition UUID systemd derives from the verity root hash (usr: its first 128 bits, usr-verity: its
-last); the source pattern reads it with `@u`, and sysupdate gives the slot it writes that UUID, so
-the new UKI's `usrhash=` finds the new slot. The disk step writes the release under these names
-(`release/`, `releaseNames` in `lib/image/disk.nix`).
+([Updates: Versions](../design/updates.md#versions)). The version is a real calendar date and a
+revision inside the day (0-86399); the whole contract is in [Releases](../design/releases.md). The
+data and hash files also carry the partition UUID systemd derives from the verity root hash (usr:
+its first 128 bits, usr-verity: its last); the source pattern reads it with `@u`, and sysupdate
+gives the slot it writes that UUID, so the new UKI's `usrhash=` finds the new slot. The disk step
+writes the release under these names (`release/`, `releaseNames` in `lib/image/disk.nix`).
 
 | artifact         | file name                                                    | sysupdate transfer                                                   |
 | ---------------- | ------------------------------------------------------------ | -------------------------------------------------------------------- |
@@ -121,10 +122,13 @@ from the root hash (usr: its first 128 bits, verity: its last). Before repart co
 `editor no`). The B slots are empty, root is made on the machine (`/usr/lib/repart.d/30-root.conf`,
 written by `/base`). `release/` holds symlinks to the step outputs under their release names (the
 UKI as `<id>_<version>.efi`) and `SHA256SUMS`: a directory an HTTP server can publish as the update
-source. The ESP is filled offline with mtools (`packages/mtools`). Keys are paths: the smoke makes
-throwaway ones in the store (`throwawayKeys`); a release signs with the deployment's keys
-(`image/default.nix` `keys`), which never enter the store. Not yet: the verity certificate in the
-kernel keyring, a TPM.
+source. `SHA256SUMS` has four lines in a fixed order (usr, verity, signature, UKI) and names the
+release files exactly; it does not list itself. The files in `release/` are store paths: Nix sets
+their mtimes to 1, so a file mtime is not the release date. The version epoch lives in the `/usr`
+erofs image (and in `disk.raw`'s internal files), not in the release directory's metadata. The ESP
+is filled offline with mtools (`packages/mtools`). Keys are paths: the smoke makes throwaway ones in
+the store (`throwawayKeys`); a release signs with the deployment's keys (`image/default.nix`
+`keys`), which never enter the store. Not yet: the verity certificate in the kernel keyring, a TPM.
 
 The smoke's cmdline is `image/uki.nix`'s template plus `rdinit=/init`; the test image and the
 production image boot the same cmdline, and any `cmdlineExtra` is for debug flags only
