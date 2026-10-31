@@ -26,7 +26,7 @@ this shape: [design/modules](../../design/modules.md).
 | field            | shape                                                                            | installed as                                                                                    |
 | ---------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `units`          | `{ unitName = text; }`                                                           | `/usr/lib/systemd/system/<name>`; user units are `files`                                        |
-| `files`          | `{ path = { text; mode; }; }`                                                    | the path, under `/usr`                                                        |
+| `files`          | `{ path = { text; mode; }; }`                                                    | the path, a canonical path under `/usr/`                                                        |
 | `sysusers`       | `[ line ]`                                                                       | `/usr/lib/sysusers.d/golconda.conf`                                                             |
 | `tmpfiles`       | `[ line ]`                                                                       | `/usr/lib/tmpfiles.d/golconda.conf`                                                             |
 | `packages`       | `[ drv ]`                                                                        | the closure in `/usr/nix/store`, each package once                                              |
@@ -34,14 +34,24 @@ this shape: [design/modules](../../design/modules.md).
 | `origins`        | `{ packages; files; links; units; sysusers; tmpfiles }`, each key → `[ origin ]` | `/usr/lib/golconda/attribution.json`; `packageOrigins` is `origins.packages`                    |
 | `links`          | `{ path = { target; kind; }; }`                                                  | every symlink of `/usr`: `/usr/bin`, expanded directories, dlopen sonames, `.wants`             |
 
+Units, files and links are installed into one `/usr` tree, so a path that two of them claim is an
+error that names both claims and both origins (a module's `name`, or `fragments[<i>]`): a unit is
+installed at `/usr/lib/systemd/system/<name>`, a file or link at its path. `/usr/lib/golconda/` is
+written by the composer and the builder (`config.json`, `schema.json`, `attribution.json`,
+`packages.json`), so a fragment cannot claim a path there. Every file and link path must be
+canonical: under `/usr/`, with no empty, `.` or `..` component, no repeated separator, and no
+control character. The check runs before the duplicate check, so `/usr/lib/../x` and `/usr/x` are
+one path, not two. `merge.installedPathError` gives the same message as a value.
+
 ## Shared types (`modules/lib/`)
 
 Plain files that modules import. The directory has no `default.nix`, so adios does not load it.
 
 | file               | exports                                                                                                                                                                                                                     |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fragment.nix`     | `fragment`: `{ name; units; files; sysusers; tmpfiles; packages; links }`, every field optional, no other field; `units`, `unitName`, `unitText`, `unitSuffixes`, `file`, `mode`, `links`, `link`, `linkKind` |
-| `merge.nix`        | `merge [ fragment… ]` → the output above without `name`/`version`; `linkSources`, `duplicateLink` expose the link check; `pkgKey` the package key                            |
+| `fragment.nix`     | `fragment`: `{ name; units; files; sysusers; tmpfiles; packages; links }`, every field optional, no other field; `units`, `unitName`, `unitText`, `unitSuffixes`, `file`, `mode`, `links`, `link`, `linkTarget`, `linkKind` |
+| `merge.nix`        | `merge [ fragment… ]` → the output above without `name`/`version`; `linkSources`, `duplicateLink` expose the link check, `installedPathError` the installed-path check; `pkgKey` the package key                            |
+| `path.nix`         | `usrError`, `relativeError`, `componentError`: the canonical-path checks (plain functions, no `types`)                                                                                                                      |
 | `app.nix`          | `app`, `argv`, `files`, `perMachineMarkers`, `envOp`, `credentialRef`, `isCredentialRef`, `binName`, `exe`                                                                    |
 | `service.nix`      | `service`, `render`, `filesDir`, `sandbox`, `sandboxLines`, `killMode`, `scope`, `credential`, `credentialArg`                                                                            |
 | `var.nix`          | `var`, `render`, `adminVar`, `admin`, `unitName`, `credentialId`, `stateDir`                                                                                                                                                |
@@ -56,7 +66,7 @@ The return type of every module.
 | ---------- | -------------------------------------------- | ----------------------------------------------------------------------------- |
 | `name`     | string                                       | nowhere: the origin label in `packageOrigins` (a module sets its path)        |
 | `units`    | attrs `unitName` → `unitText`                | `/usr/lib/systemd/system/<name>`                                              |
-| `files`    | attrs path → file                            | the path (must start with `/usr`)                                            |
+| `files`    | attrs path → file                            | the path: canonical, under `/usr/`                                            |
 | `sysusers` | list of string                               | `/usr/lib/sysusers.d/` lines                                                  |
 | `tmpfiles` | list of string                               | `/usr/lib/tmpfiles.d/` lines                                                  |
 | `packages` | list of derivation                           | `/usr/nix/store` closure; every name in `bin` becomes `/usr/bin/<name>`       |
@@ -68,6 +78,10 @@ a directory the builder links file by file: `lib/udev/rules.d` of a prefixed pac
 soname the builder checks resolves) or `explicit` (anything else; a `.wants` link has a relative
 target). A path outside `/usr/`, a missing `target` or `kind`, or an unknown kind is a type error
 that names the path. The fragment refuses any other field.
+
+A path outside `/usr/`, or a non-canonical one (`/usr/lib/../x`, `/usr//x`, a trailing `/`, a
+control character), is a type error that names the path. An `app` file name is relative and cannot
+leave `/usr/lib/<service>/`.
 
 A `file` is either the text (installed with mode `0644`) or `{ text; mode ? "0644"; }`, where `mode`
 is four octal digits (`"0755"` for an executable). The composer's output always has the record

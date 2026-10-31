@@ -233,30 +233,133 @@ let
     else
       files;
 
-  union =
+  # Every input gets a source label for an error message: a module sets
+  # `name`; a listed fragment without one is "fragments[<i>]".
+  labelFragments =
     fragments:
+    builtins.genList (i: {
+      origin = (builtins.elemAt fragments i).name or "fragments[${toString i}]";
+      fragment = builtins.elemAt fragments i;
+    }) (builtins.length fragments);
+
+  originText = origins: concatStringsSep ", " origins;
+
+  # The paths the composer and the builder write themselves. A fragment that
+  # claims one would be overwritten in silence, so it is an error.
+  reservedPaths = [
+    "/usr/lib/golconda/attribution.json"
+    "/usr/lib/golconda/config.json"
+    "/usr/lib/golconda/packages.json"
+    "/usr/lib/golconda/schema.json"
+  ];
+  checkReserved =
+    paths:
     let
-      files = checkFilePaths (mapAttrs normalizeFile (unionNoDup "files" fragments));
-      links = checkLinkFileCollision (linkMap (linkSources fragments)) files;
+      hits = filter (p: elem p reservedPaths) paths;
     in
-    {
+    if hits != [ ] then
+      throw "golconda: ${concatStringsSep ", " hits} written by the system, not by a fragment: the composer or the image builder owns /usr/lib/golconda/"
+    else
+      true;
+
+  # One installed path, one claim: a unit is installed at
+  # /usr/lib/systemd/system/<name>, a user unit and every other file at its
+  # path, a link at its path. The builder writes units, files and links into
+  # one /usr tree, so a path claimed twice is an error, whatever the kinds;
+  # the message names both claims and both origins.
+  claimList =
+    labelled:
+    let
+      origins = originsOf labelled;
+      # os: the origins that emitted the key, from originsOf
+      claim = kind: p: os: {
+        path = p;
+        inherit kind;
+        origins = os;
+      };
+    in
+    map (n: claim "unit '${n}'" "/usr/lib/systemd/system/${n}" origins.units.${n}) (
+      attrNames origins.units
+    )
+    ++ map (p: claim "file" p origins.files.${p}) (attrNames origins.files)
+    ++ map (p: claim "link" p origins.links.${p}) (attrNames origins.links);
+
+  installedPathErrorOf =
+    labelled:
+    (foldl'
+      (
+        acc: c:
+        if acc.err != null then
+          acc
+        else if acc.seen ? ${c.path} then
+          acc
+          // {
+            err = "golconda: ${c.path} installed twice: ${acc.seen.${c.path}.kind} from ${
+              originText acc.seen.${c.path}.origins
+            }, ${c.kind} from ${originText c.origins}";
+          }
+        else
+          acc
+          // {
+            seen = acc.seen // {
+              ${c.path} = c;
+            };
+          }
+      )
+      {
+        seen = { };
+        err = null;
+      }
+      (claimList labelled)
+    ).err;
+
+  # The same check over a plain fragment list, so a test can read its message.
+  installedPathError = fragments: installedPathErrorOf (labelFragments fragments);
+
+  unionOf =
+    labelled:
+    let
+      fragments = map (l: l.fragment) labelled;
+      files = checkFilePaths (mapAttrs normalizeFile (unionNoDup "files" fragments));
       units = unionNoDup "units" fragments;
-      inherit files links;
-      sysusers = concat "sysusers" fragments;
-      tmpfiles = concat "tmpfiles" fragments;
-      # each package once; the duplicate check runs before they are handed out
-      packages = deepSeq (attrNames links) (uniquePackages (concat "packages" fragments));
-    };
+      links = checkLinkFileCollision (linkMap (linkSources fragments)) files;
+      # link paths from the fragments' own maps: a package link is /usr/bin/<name>,
+      # never a reserved path, and its record's target is the package's path
+      reserved = checkReserved (attrNames files ++ concatMap (f: attrNames (f.links or { })) fragments);
+      claimErr = installedPathErrorOf labelled;
+      result = {
+        inherit units files links;
+        sysusers = concat "sysusers" fragments;
+        tmpfiles = concat "tmpfiles" fragments;
+        # each package once; the duplicate check runs before they are handed out
+        packages = deepSeq (attrNames links) (uniquePackages (concat "packages" fragments));
+      };
+    in
+    # Composition itself is the check: forcing the result (even one field)
+    # runs the path and claim checks, so a collision throws here and not in
+    # the builder. Link targets stay lazy: a package link's target is the
+    # package's path, which a caller need not instantiate to compose.
+    if claimErr != null then
+      throw claimErr
+    else
+      builtins.seq (attrNames units) (builtins.seq (attrNames files) (builtins.seq reserved result));
+
+  union = fragments: unionOf (labelFragments fragments);
 in
 {
-  inherit linkSources duplicateLink pkgKey;
+  inherit
+    linkSources
+    duplicateLink
+    installedPathError
+    pkgKey
+    ;
 
   withOrigins =
     labelled:
     let
       origins = originsOf labelled;
     in
-    union (map (l: l.fragment) labelled)
+    unionOf labelled
     // {
       inherit origins;
       packageOrigins = origins.packages;

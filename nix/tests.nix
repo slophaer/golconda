@@ -3082,6 +3082,78 @@ let
       })
     ))
 
+    # review 9: units, files and links go into one /usr tree; a path two kinds
+    # claim is an error that names both, not last-one-wins.
+    (check "composer: a unit and a file at one installed path name both" (
+      let
+        msg = merge.installedPathError [
+          {
+            name = "/services/a";
+            units."demo.service" = "[Unit]\n";
+            files."/usr/lib/systemd/system/demo.service" = "text";
+          }
+        ];
+      in
+      msg != null
+      && hasInfix "/usr/lib/systemd/system/demo.service installed twice" msg
+      && hasInfix "unit 'demo.service' from /services/a" msg
+      && hasInfix "file from /services/a" msg
+    ))
+    (check "composer: a unit and a link at one installed path name both" (
+      let
+        msg = merge.installedPathError [
+          {
+            units."demo.service" = "[Unit]\n";
+            links."/usr/lib/systemd/system/demo.service" = {
+              target = "../x.service";
+              kind = "explicit";
+            };
+          }
+        ];
+      in
+      msg != null
+      && hasInfix "unit 'demo.service' from fragments[0]" msg
+      && hasInfix "link from fragments[0]" msg
+    ))
+    (check "composer: a path two kinds claim throws when composed" (
+      filesThrow [
+        {
+          units."demo.service" = "[Unit]\n";
+          files."/usr/lib/systemd/system/demo.service" = "x";
+        }
+      ]
+      && filesThrow [
+        {
+          links."/usr/lib/x" = {
+            target = "../y";
+            kind = "explicit";
+          };
+          files."/usr/lib/x" = "x";
+        }
+      ]
+      # positive: one claim per path composes
+      && !(filesThrow [
+        {
+          units."demo.service" = "[Unit]\n";
+          files."/usr/lib/systemd/system/x.service" = "x";
+        }
+      ])
+    ))
+    (check "composer: the metadata the system writes is reserved" (
+      filesThrow [ { files."/usr/lib/golconda/config.json" = "{}"; } ]
+      && filesThrow [ { files."/usr/lib/golconda/schema.json" = "{}"; } ]
+      && filesThrow [ { files."/usr/lib/golconda/attribution.json" = "{}"; } ]
+      && filesThrow [ { files."/usr/lib/golconda/packages.json" = "[]"; } ]
+      && filesThrow [
+        {
+          links."/usr/lib/golconda/config.json" = {
+            target = "../x";
+            kind = "explicit";
+          };
+        }
+      ]
+    ))
+
   ];
 in
 assert all (t: t) tests;
