@@ -75,10 +75,15 @@ in
 {
   name = "system";
 
-  # /base is implicit: every system has it, merged first.
-  inputs.base.path = "/base";
-  # /network is implicit: its files are always merged.
-  inputs.network.path = "/network";
+  # Implicit modules: every system has them, merged first.
+  # /base: systemd, dbus-broker, dash, coreutils, kernel
+  # /network: networkd configuration
+  # /security: sysctl hardening (Yama, kptr_restrict, etc.)
+  inputs = {
+    base.path = "/base";
+    network.path = "/network";
+    security.path = "/security";
+  };
 
   types = {
     fragment = fragmentT;
@@ -107,7 +112,7 @@ in
 
   impl =
     { options, results }:
-    # /base and /network fragments first, then the declared fragments
+    # /base, /network and /security fragments first, then the declared fragments
     merge.withOrigins (
       [
         {
@@ -117,6 +122,10 @@ in
         {
           origin = "/network";
           fragment = results.network;
+        }
+        {
+          origin = "/security";
+          fragment = results.security;
         }
       ]
       ++ genList (i: {

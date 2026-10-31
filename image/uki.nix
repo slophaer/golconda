@@ -20,8 +20,13 @@
   # neither ro nor rw: gpt-auto mounts the root partition read-write only with no `ro`, and
   # /usr is read-only by dm-verity whatever is said; nothing about volatility either (/var is
   # on the root partition, systemd's default)
+  # Security parameters (see docs/design/kernel.md):
+  #   lsm=lockdown,yama,ipe,bpf   LSM stack order (capability is always first)
+  #   lockdown=integrity          kernel lockdown level (blocks kexec, /dev/mem, etc.)
+  #   ipe.enforce=0               IPE in permissive mode (denials are audited) until the verity
+  #                               signing certificate is in a kernel keyring; then 1
   # The builder appends rdinit= (lib/image/initrd.nix says why)
-  cmdlineTemplate = "usrhash={usrhash} console=tty0 console=ttyS0,115200";
+  cmdlineTemplate = "usrhash={usrhash} lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=0 console=tty0 console=ttyS0,115200";
 
   # EFI output naming
   # {version} is the IMAGE_VERSION

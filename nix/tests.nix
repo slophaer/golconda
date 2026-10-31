@@ -1289,6 +1289,7 @@ let
           "/factory"
           "/network"
           "/pkgs"
+          "/security"
           "/services"
           "/services/sshd"
           "/system"
@@ -1302,6 +1303,7 @@ let
         "index.md"
         "network.md"
         "pkgs.md"
+        "security.md"
         "services-sshd.md"
         "services.md"
         "system.md"
@@ -2409,7 +2411,8 @@ let
       let
         fragments = pkgs.linux-kernel.drvAttrs.spec.kbuild.configFragments;
       in
-      length fragments == 1 && match ".*/golconda\\.config" (toString (elemAt fragments 0)) != null
+      # builtins.toFile creates /nix/store/xxx-golconda.config (dash, not slash)
+      length fragments == 1 && match ".*golconda\\.config" (toString (elemAt fragments 0)) != null
     ))
 
     # /pkgs: target and build sets
@@ -2630,6 +2633,73 @@ let
         result = tryEval (deepSeq (mkSystem { config = badConfig; }).name true);
       in
       !result.success
+    ))
+
+    # security module: kernel hardening sysctl
+    (check "security: sysctl.d file exists with Yama and hardening" (
+      let
+        result = compose [ ];
+        sysctlFile = result.files."/usr/lib/sysctl.d/50-golconda.conf";
+      in
+      sysctlFile.mode == "0644"
+      && hasInfix "kernel.yama.ptrace_scope = 2" sysctlFile.text
+      && hasInfix "kernel.kptr_restrict = 2" sysctlFile.text
+      && hasInfix "kernel.dmesg_restrict = 1" sysctlFile.text
+      && hasInfix "kernel.unprivileged_bpf_disabled = 1" sysctlFile.text
+      && hasInfix "net.core.bpf_jit_harden = 2" sysctlFile.text
+      && hasInfix "kernel.kexec_load_disabled = 1" sysctlFile.text
+    ))
+    (check "security: is implicit (a system with no fragments has the sysctl file)" (
+      let
+        result =
+          (f.modules {
+            options = {
+              "/pkgs".target = stubSet;
+              "/system" = {
+                name = "empty";
+                version = "20261031.1";
+                fragments = [ ];
+              };
+            };
+          }).modules.system
+            { };
+      in
+      result.files ? "/usr/lib/sysctl.d/50-golconda.conf"
+    ))
+
+    # UKI cmdline: LSM order and security parameters
+    (check "uki: cmdline has lsm order and security parameters" (
+      let
+        uki = import ../image/uki.nix { imageId = "test"; };
+      in
+      hasInfix "lsm=lockdown,yama,ipe,bpf" uki.cmdlineTemplate
+      && hasInfix "lockdown=integrity" uki.cmdlineTemplate
+      && hasInfix "ipe.enforce=0" uki.cmdlineTemplate
+    ))
+
+    # kernel config: IPE and platform keyring options
+    (check "kernel: config has IPE, lockdown and platform keyring options" (
+      let
+        config = readFile ../packages/kernel/golconda.config;
+      in
+      hasInfix "CONFIG_SECURITY_IPE=y" config
+      && hasInfix "CONFIG_IPE_PROP_DM_VERITY=y" config
+      && hasInfix "CONFIG_IPE_PROP_DM_VERITY_SIGNATURE=y" config
+      && hasInfix "CONFIG_SECURITY_LOCKDOWN_LSM=y" config
+      && hasInfix "CONFIG_SECURITY_LOCKDOWN_LSM_EARLY=y" config
+      && hasInfix "CONFIG_SECURITY_YAMA=y" config
+      && hasInfix "CONFIG_INTEGRITY_PLATFORM_KEYRING=y" config
+      && hasInfix "CONFIG_LOAD_UEFI_KEYS=y" config
+      && hasInfix "CONFIG_DM_VERITY_VERIFY_ROOTHASH_SIG_PLATFORM_KEYRING=y" config
+    ))
+    (check "kernel: IPE boot policy allows initramfs and signed verity" (
+      let
+        policyContent = readFile ../packages/kernel/ipe-boot-policy;
+      in
+      hasInfix "policy_name=golconda" policyContent
+      && hasInfix "boot_verified=TRUE action=ALLOW" policyContent
+      && hasInfix "dmverity_signature=TRUE action=ALLOW" policyContent
+      && hasInfix "DEFAULT op=EXECUTE action=DENY" policyContent
     ))
   ];
 in
