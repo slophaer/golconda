@@ -1227,6 +1227,7 @@ let
       && hasInfix "Path=https://updates.example/t/" usr
       && hasInfix "MatchPattern=t_@v.usr.raw" usr
       && hasInfix "ProtectVersion=%A" usr
+      && hasInfix "Verify=no" usr
       && result.files ? "/usr/lib/sysupdate.d/40-uki.conf"
     ))
     (check "system: no updateSource, no sysupdate.d" (
