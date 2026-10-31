@@ -19,6 +19,11 @@
   fails otherwise. Packages come from the repkgs fork; Golconda-specific ones live in `packages/`.
 - **Typed, explicit modules.** A module returns a fragment; shared types live in `modules/lib/`.
   Duplicates are errors, never overrides. Credentials are references, never file contents.
+- **Module doc comments.** Every module's Nix file starts with `#! ` lines (hash-bang-space) that
+  document what the module does, in two to five lines of Markdown. These mirror Rust's `//!` module
+  docs. The test `module-docs: every module file has a #! doc comment` enforces this.
+- **Type descriptions.** Every type in the registry (`lib/schema.nix`) must have a `description`
+  field. The test `module-docs: every registry type has a description` enforces this.
 - **Docs split.** `docs/design/` says why, `docs/reference/` says what exists in code today. Mark
   what is designed but not built as *(planned)*. No planning or history pages.
 - **Pins.** `npins/sources.json` is the lock; `nix/sources.nix` reads it. The forge needs a sign-in,

@@ -1,23 +1,12 @@
-# sshd: the OpenSSH daemon as a service value, with its host key as a var.
-# Returns one fragment: the host-key generator unit, sshd.service and the
-# wrapped sshd, whose launch record carries the configuration. The
-# privilege-separation user, /var/empty and /etc/pam.d/sshd are ambient:
-# /factory provides them, so a configuration with sshd adds /factory once.
-#
-# Authentication is by public key or OpenSSH certificate only. The lines
-# that turn off every password path are fixed in the generated sshd_config;
-# no option can change them (docs/design/trust.md, "Identity"). PAM stays
-# on for account and session (pam_systemd), never for auth. Secrets that a
-# machine receives (host certificate, revocation list) are credentials and
-# reach sshd as `-o Option=%d/<name>` on the command line: sshd_config
-# cannot refer to the credentials directory, and the image carries no
-# per-machine value.
-#
-# The configuration lives in the wrapped output (modules/lib/app.nix,
-# `wrapApp`): sshd_config holds the path-free directives, and a directive
-# that names a sibling file (authorized keys, CA keys, principals) is a `-o`
-# argument with the `{files}` placeholder, because a file's text cannot
-# name the relocatable output it is in.
+#! OpenSSH daemon as a service, with its host key as a var.
+#!
+#! Returns one fragment: the host-key generator unit, `sshd.service`, and the
+#! wrapped sshd. The privilege-separation user, `/var/empty`, and `/etc/pam.d/sshd`
+#! are ambient: `/factory` provides them, so add `/factory` once.
+#!
+#! Authentication is by public key or OpenSSH certificate only. The lines
+#! that turn off every password path are fixed in the generated `sshd_config`;
+#! no option can change them (see `docs/design/trust.md`, "Identity").
 { types, ... }:
 let
   s = import ../../lib/service.nix { inherit types; };
