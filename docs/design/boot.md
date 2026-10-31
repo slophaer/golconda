@@ -54,10 +54,13 @@ three failures systemd-boot falls back to the other entry, which is the other `/
 The cmdline is fixed in the UKI and measured with it:
 `usrhash=<hash> lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=0 console=tty0 console=ttyS0,115200`
 (`image/uki.nix`), plus `rdinit=<systemd>` from the builder. The LSM parameters are described in
-[Kernel](kernel.md). No administrator edits: `loader.conf` edits are off. The decided cmdline has
-neither `ro` nor `rw` and no `systemd.volatile=` (`/` is the state partition, which gpt-auto mounts
-writable when nothing says `ro`; `/usr` is verity). A debug image with other parameters is a
-separate build *(after v1)*.
+[Kernel](kernel.md). No administrator edits: the ESP carries `EFI/loader/loader.conf` with
+`editor no` (the editor would let anyone at the console change the cmdline) and `timeout 0` (the
+menu does not wait). The UKI under `EFI/Linux` needs no entry line. This is menu policy, not
+protection: an offline disk writer can change the unsigned configuration ([Trust](trust.md)). The
+decided cmdline has neither `ro` nor `rw` and no `systemd.volatile=` (`/` is the state partition,
+which gpt-auto mounts writable when nothing says `ro`; `/usr` is verity). A debug image with other
+parameters is a separate build *(after v1)*.
 
 Stand-ins today. The image smoke also appends `rw`: the host's gpt-auto-generator exits 1, so the
 remount-rw drop-in it would write is missing, and without `rw` sysusers, vars and state directories
@@ -128,6 +131,13 @@ Firmware PCRs (0–7) are policy-locked with `systemd-pcrlock`.
 
 ## Secure Boot
 
-Keys are generated once per deployment with `ukify genkey`; UKIs and systemd-boot are signed at
-build time. Enrolment is systemd-boot's automatic enrolment from `loader/keys/auto` in setup mode,
-or `sbctl` where firmware needs it. Key hierarchy in [Trust](trust.md).
+Keys are generated once per deployment with `ukify genkey`. The UKI (`lib/image/uki.nu`) and
+systemd-boot (`lib/image/disk.nu`, `systemd-sbsign`) are signed at build time with the same db key
+and certificate, so one enrolled certificate covers the loader and the image it starts. Firmware
+starts nothing else: with OVMFFull and only this certificate enrolled, `bootctl status` in the guest
+says `Secure Boot: enabled (user)`, and the same disk with the unsigned loader on the ESP is refused
+(`Access Denied -- rejected probably by Secure Boot`).
+
+Enrolment is not part of the image yet: nothing writes `loader/keys/auto`, and a release step does
+not do it either. Until then, enrolment is manual on the variable store (`virt-fw-vars`) or with
+`sbctl` where firmware needs it. Key hierarchy in [Trust](trust.md).
