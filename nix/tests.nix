@@ -26,6 +26,7 @@ let
   a = import ../modules/lib/app.nix { inherit types; };
   s = import ../modules/lib/service.nix { inherit types; };
   v = import ../modules/lib/var.nix { inherit types; };
+  fr = import ../modules/lib/fragment.nix { inherit types; };
   schemaLib = import ../lib/schema.nix { };
   moduleDocs = import ../lib/module-docs.nix { };
   docComments = import ../lib/doc-comments.nix { };
@@ -681,13 +682,52 @@ let
             name = "dup";
             version = "0";
             fragments = [
-              { units."a.service" = "1"; }
-              { units."a.service" = "2"; }
+              { units."a.service" = "[Unit]\n"; }
+              { units."a.service" = "[Service]\n"; }
             ];
           };
         }).modules.system
           { }
       )
+    ))
+    # 3a. typed units: the name has a unit suffix, the text a section header
+    (check "units: every unit suffix is accepted, a template name too" (
+      let
+        r = compose [
+          {
+            units = builtins.listToAttrs (
+              map (sfx: {
+                name = "a.${sfx}";
+                value = "[Unit]\nDescription=a\n";
+              }) fr.unitSuffixes
+            );
+          }
+          { units."getty@.service" = "[Service]\nExecStart=/usr/bin/agetty %I\n"; }
+        ];
+      in
+      builtins.length (attrNames r.units) == 8
+      &&
+        fr.unitSuffixes == [
+          "service"
+          "target"
+          "socket"
+          "timer"
+          "path"
+          "mount"
+          "slice"
+        ]
+    ))
+    (check "units: a bad suffix is a type error that names it" (
+      throws (compose [ { units."a.conf" = "[Unit]\n"; } ])
+      && throws (compose [ { units."a.service.bak" = "[Unit]\n"; } ])
+      && throws (compose [ { units."a b.service" = "[Unit]\n"; } ])
+      && hasInfix "'a.conf'" (fr.units.verify { "a.conf" = "[Unit]\n"; })
+    ))
+    (check "units: empty text or text without a section header is a type error" (
+      throws (compose [ { units."a.service" = ""; } ])
+      && throws (compose [ { units."a.service" = "Description=a\nExecStart=/usr/bin/a\n"; } ])
+      && throws (compose [ { units."a.service" = 1; } ])
+      && hasInfix "in unit 'a.service'" (fr.units.verify { "a.service" = ""; })
     ))
     (check "composer refuses a duplicate file" (filesThrow [
       { files."/usr/lib/foo/config" = "a"; }
@@ -1551,6 +1591,132 @@ let
           wantedBy = [ "multi-user" ]; # missing .target
         }
       )
+    ))
+
+    # 6b. user scope: the unit is a file under /usr/lib/systemd/user
+    (check "user service: file under systemd/user, default.target wants, no User=" (
+      let
+        frag = s.render {
+          name = "agent";
+          scope = "user";
+          app.package = standIn;
+          sandbox = "default";
+          state = [ "agent" ];
+        };
+        path = "/usr/lib/systemd/user/agent.service";
+        text = frag.files.${path};
+        composed = compose [ frag ];
+      in
+      !(frag ? units)
+      && !(frag ? sysusers)
+      && hasInfix "\nExecStart=/usr/bin/jq\n" text
+      && hasInfix "\nStateDirectory=agent\n" text
+      && !hasInfix "User=" text
+      && hasInfix "[Install]\nWantedBy=default.target\n" text
+      &&
+        frag.links == [
+          {
+            path = "/usr/lib/systemd/user/default.target.wants/agent.service";
+            target = "../agent.service";
+          }
+        ]
+      && composed.files.${path}.mode == "0644"
+      && composed.units == { }
+      && any (l: l.path == "/usr/lib/systemd/user/default.target.wants/agent.service") composed.links
+    ))
+    (check "user service: renderWrapped and explicit wantedBy" (
+      let
+        frag = s.renderWrapped stubWrap {
+          name = "agent";
+          scope = "user";
+          app.package = standIn;
+          sandbox = "default";
+          wantedBy = [ "graphical-session.target" ];
+        };
+      in
+      hasInfix "WantedBy=graphical-session.target" frag.files."/usr/lib/systemd/user/agent.service"
+      && (builtins.head frag.packages).name == "jq-wrap"
+      &&
+        map (l: l.path) frag.links == [
+          "/usr/lib/systemd/user/graphical-session.target.wants/agent.service"
+        ]
+    ))
+    (check "user service: refuses user, credentials and a credential ref" (
+      let
+        base = {
+          name = "agent";
+          scope = "user";
+          app.package = standIn;
+          sandbox = "default";
+        };
+        verify = extra: s.service.verify (base // extra);
+        fails = extra: !(tryEval (deepSeq (s.render (base // extra)).files true)).success;
+      in
+      hasInfix "`user` is refused" (verify {
+        user = "root";
+      })
+      && fails { user = "root"; }
+      && fails { user = "dynamic"; }
+      && hasInfix "system manager" (verify {
+        credentials.k = "x.k";
+      })
+      && fails { credentials.k = "x.k"; }
+      && fails { extraArgv = [ (s.credential "k") ]; }
+      && verify { } == null
+    ))
+    (check "system service: user is required and scope is an enum" (
+      hasInfix "names its user" (
+        s.service.verify {
+          name = "x";
+          app.package = standIn;
+          sandbox = "strict";
+        }
+      )
+      && throws (
+        s.render {
+          name = "x";
+          app.package = standIn;
+          sandbox = "strict";
+        }
+      )
+      && throws (
+        s.render {
+          name = "x";
+          scope = "session";
+          app.package = standIn;
+          sandbox = "strict";
+        }
+      )
+      && (s.render {
+        name = "x";
+        scope = "system";
+        app.package = standIn;
+        user = "root";
+        sandbox = "strict";
+      }).units
+        ? "x.service"
+    ))
+    (check "user service: a second module at the same unit is a composer error" (
+      let
+        frag = s.render {
+          name = "agent";
+          scope = "user";
+          app.package = standIn;
+          sandbox = "default";
+        };
+      in
+      filesThrow [
+        frag
+        frag
+      ]
+      && !(tryEval (
+        deepSeq
+          (compose [
+            frag
+            frag
+          ]).links
+          true
+      )).success
     ))
 
     # 7. Composer output includes links from services and vars

@@ -27,7 +27,7 @@ flowchart TD
 
 ```nix
 {
-  units."sshd.service" = "...";          # /usr/lib/systemd/system
+  units."sshd.service" = "...";          # /usr/lib/systemd/system; typed name, text with a section
   files."/usr/lib/sysusers.d/sshd.conf" = "u sshd - ...";   # text: mode 0644
   files."/usr/lib/golconda/run" = { text = "#!/bin/sh ..."; mode = "0755"; };
   sysusers = [ "u sshd - \"SSH daemon\"" ];
@@ -43,7 +43,10 @@ flowchart TD
 ```
 
 Every field is optional and typed by `fragment` in `modules/lib/fragment.nix` (korora). A module's
-`impl` returns one.
+`impl` returns one. A unit is a typed name (a stem and one of `.service`, `.target`, `.socket`,
+`.timer`, `.path`, `.mount`, `.slice`) whose value is the rendered text; the text must carry a
+section header. The value stays text because the renderers produce text; a typed INI model is not
+wanted.
 
 ## How packages enter the tree
 
@@ -72,7 +75,15 @@ Renderers turn these values into fragments:
   output's `share/wrap/<pkgname>/`, and only `extraArgv` (credential refs) stays on ExecStart. The
   farm links `/usr/bin/<program>` to the launcher in place of the plain package's own; sshd is
   rendered this way.
-- **User unit.** The same, for `systemd --user`. *(planned)*
+- **User unit.** `service.scope = "user"` renders the same unit for `systemd --user`: the file goes
+  to `/usr/lib/systemd/user/<name>.service` (a `files` entry, so the composer's duplicate check
+  covers it), its `.wants` links under `/usr/lib/systemd/user/<target>.wants/`, and `wantedBy`
+  defaults to `default.target`. `user` is refused: the unit runs as whoever's manager starts it.
+  `credentials` are refused too: Golconda seals a credential for the system manager into
+  `/etc/credstore.encrypted`, and the per-user manager searches only the user's own credstore and
+  needs `systemd-creds encrypt --user` (systemd.exec(5), Credentials), so a reference could never
+  resolve. The sandbox profiles are the same text; which directives the user manager honours is
+  verified on a running system.
 
 Config goes to `/usr/lib/<name>/` or into the wrapper, never to `/etc`. The image holds no
 per-machine values. A program that insists on `/etc` gets a tmpfiles `L` symlink.
@@ -104,15 +115,15 @@ builder reads.
 
 The composer output:
 
-| field      | shape                         | description                            |
-| ---------- | ----------------------------- | -------------------------------------- |
-| `units`    | `{ name = text; }`            | `/usr/lib/systemd/system/<name>`       |
-| `files`    | `{ path = { text; mode; }; }` | Files under `/usr`                     |
-| `sysusers` | `[ line ]`                    | Concatenated to one `.conf`            |
-| `tmpfiles` | `[ line ]`                    | Concatenated to one `.conf`            |
-| `packages` | `[ drv ]`                     | Closures for `/usr/nix/store`          |
-| `links`    | `[ { path; target; } ]`       | Symlinks: `/usr/bin`, dlopen, `.wants` |
-| `farmDirs` | `[ { path; target; } ]`       | Directories to expand file by file     |
+| field      | shape                         | description                                              |
+| ---------- | ----------------------------- | -------------------------------------------------------- |
+| `units`    | `{ name = text; }`            | `/usr/lib/systemd/system/<name>`; user units are `files` |
+| `files`    | `{ path = { text; mode; }; }` | Files under `/usr`                                       |
+| `sysusers` | `[ line ]`                    | Concatenated to one `.conf`                              |
+| `tmpfiles` | `[ line ]`                    | Concatenated to one `.conf`                              |
+| `packages` | `[ drv ]`                     | Closures for `/usr/nix/store`                            |
+| `links`    | `[ { path; target; } ]`       | Symlinks: `/usr/bin`, dlopen, `.wants`                   |
+| `farmDirs` | `[ { path; target; } ]`       | Directories to expand file by file                       |
 
 The `packages` list is checked: two packages that install the same `/usr/bin` name throw, because
 the image builder links them into one directory. A link path and a file at the same path is also an
