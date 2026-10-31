@@ -31,6 +31,9 @@
 let
   inherit (builtins)
     attrNames
+    concatStringsSep
+    elem
+    filter
     isAttrs
     isPath
     mapAttrs
@@ -67,10 +70,43 @@ let
     builtins.mapAttrs (k: av: if b ? ${k} && isAttrs av && isAttrs b.${k} then av // b.${k} else av) a
     // builtins.removeAttrs b (attrNames a);
 
-  mergedOptions = mergeDeep loadedOptions extra // {
+  givenOptions = mergeDeep loadedOptions extra // {
     # /pkgs.target is always from the set, never from extra
     "/pkgs".target = setFull.set;
   };
+
+  # A table names a module, and an option name must be one the module
+  # declares: adios applies only declared options and ignores the rest, so a
+  # misspelt name would silently keep the default (review finding 11). One
+  # check covers every route into the tree: the TOML loader's tables (its
+  # path check is config.nix), an attrset config, and `extra`.
+  moduleAt =
+    p:
+    builtins.foldl' (mods: part: mods.modules.${part}) (tree { }) (
+      builtins.filter (s: builtins.isString s && s != "") (builtins.split "/" p)
+    );
+
+  checkOptionNames =
+    p: given:
+    if p != "/pkgs" && !(elem p configLib.validPaths) then
+      throw "golconda: unknown module path '${p}' in config; valid paths: ${concatStringsSep ", " configLib.validPaths}"
+    else
+      let
+        declared = attrNames ((moduleAt p).options or { });
+        unknown = filter (k: !(elem k declared)) (attrNames given);
+      in
+      if unknown != [ ] then
+        throw "golconda: ${p} has no option ${
+          concatStringsSep ", " (map (k: "'${k}'") unknown)
+        } (a misspelt option would silently keep the default); valid options: ${concatStringsSep ", " declared}"
+      else
+        true;
+
+  # deepSeq over a list of booleans: every module's option names are checked
+  # now, not when something later reads the table.
+  mergedOptions = builtins.deepSeq (map (p: checkOptionNames p givenOptions.${p}) (
+    attrNames givenOptions
+  )) givenOptions;
 
   # Evaluate the module tree with the merged options.
   evaluated = tree { options = mergedOptions; };

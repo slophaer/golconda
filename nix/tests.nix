@@ -3154,6 +3154,43 @@ let
       ]
     ))
 
+    # review 11: an option name no module declares is an error, not a silent
+    # default; every route into the tree is checked
+    (check "config: a misspelt option is refused, and a declared one accepted" (
+      let
+        mkSystem =
+          args:
+          import ../lib/system.nix (
+            args
+            // {
+              inherit sources platform;
+              system = platform;
+            }
+          );
+        base = {
+          "/system" = {
+            name = "t";
+            version = "20261031.1";
+          };
+        };
+        accepted = config: (tryEval (deepSeq (mkSystem { inherit config; }).name true)).success;
+      in
+      # sshd declares port, not prot (the probe: Port 22 was emitted for prot)
+      !(accepted (base // { "/services/sshd".prot = 2222; }))
+      # a declared option still passes
+      && accepted (
+        base
+        // {
+          "/services/sshd" = {
+            port = 2222;
+            authorizedKeys = [ "ssh-ed25519 AAAA t" ];
+          };
+        }
+      )
+      # extra is the Nix hook and is checked too
+      && !(accepted (base // { "/network".netwroks = { }; }))
+    ))
+
   ];
 in
 assert all (t: t) tests;
