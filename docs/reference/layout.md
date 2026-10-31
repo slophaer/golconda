@@ -9,15 +9,15 @@ The exact on-disk layout. Type GUIDs are the Discoverable Partitions Specificati
 | ------------------------------------------- | ---------------- | ---------- | --------------------- | --------------------------------------------------------------------------------- |
 | `esp`                                       | `esp`            | vfat       | —                     | 512 MiB                                                                           |
 | `usr-a`                                     | `usr`            | erofs      | read-only             | 10 GiB; the erofs image inside is much smaller                                    |
-| `usr-a-verity`                              | `usr-verity`     | —          | read-only             | ~1 % of usr                                                                       |
+| `usr-a-verity`                              | `usr-verity`     | —          | read-only             | 128 MiB                                                                           |
 | `usr-a-verity-sig`                          | `usr-verity-sig` | —          | read-only             | 16 KiB                                                                            |
 | `usr-b`, `usr-b-verity`, `usr-b-verity-sig` | as above         |            |                       | the same sizes as A, empty until the first update                                 |
 | `root`                                      | `root`           | ext4       | growfs, factory-reset | the rest of the disk, created on first boot (unencrypted in v1, LUKS2+TPM2 later) |
 
 The slots are fixed at 10 GiB so an update of a grown image always fits; both slots must hold any
-release. The image builder *(being built)* sets the verity partitions to one fixed size as well. The
-partition UUIDs of `usr-a` and `usr-a-verity` are derived from the verity root hash, which is how
-gpt-auto finds the pair the UKI's `usrhash=` names.
+release. The image builder sets the verity partitions to one fixed size as well (128 MiB,
+`image/repart.nix`). The partition UUIDs of `usr-a` and `usr-a-verity` are derived from the verity
+root hash, which is how gpt-auto finds the pair the UKI's `usrhash=` names.
 
 ## Paths
 
@@ -33,8 +33,8 @@ gpt-auto finds the pair the UKI's `usrhash=` names.
 | `/usr/lib/systemd/{timesyncd,journald}.conf.d/` | image | `/base`                                                                                                                                      |
 | `/usr/lib/locale.conf`                          | image | `/base` (`LANG=C.UTF-8`)                                                                                                                     |
 | `/usr/lib/sysupdate.d/*.conf`                   | image | `/system` from `updateSource` and `image/sysupdate.nix`                                                                                      |
-| `/usr/lib/repart.d/30-root.conf`                | image | the image builder *(being built)* from `image/repart.nix`                                                                                    |
-| `/usr/lib/os-release`                           | image | `lib/usr-tree.nix` from `image/os-release.nix`; `ID`/`IMAGE_ID` are the constant `golconda` today, `/system.name` reaches it *(being built)* |
+| `/usr/lib/repart.d/30-root.conf`                | image | `/base`, rendered from `image/repart.nix`                                                                                                    |
+| `/usr/lib/os-release`                           | image | `lib/usr-tree.nix` from `image/os-release.nix`; `ID`/`IMAGE_ID` are `/system.name`                                                           |
 | `/usr/lib/golconda/packages.json`               | image | `lib/usr-tree.nix` from the composer's `packageOrigins`                                                                                      |
 | `/usr/lib/golconda/vars.d/`, `golconda-var-run` | image | `/vars` and the var renderer                                                                                                                 |
 | `/usr/lib/<service>/`                           | image | the service renderer: the app's files                                                                                                        |

@@ -5,22 +5,25 @@ schema is the flake one, produced by flake-incompat.
 
 ## Outputs
 
-| attribute                                      | per system  | content                                                                                                                 |
-| ---------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `packages.<system>.nix`                        | yes         | the patched Nix daemon repkgs needs (CA + dynamic derivations)                                                          |
-| `packages.<system>.kernel`                     | yes         | the Linux kernel: the fork's bootable base plus `packages/kernel/golconda.config`                                       |
-| `packages.<system>.usr-tree-smoke`             | yes         | smoke test for the `/usr` tree builder: the base system plus jq                                                         |
-| `packages.<system>.usr-tree-base-smoke`        | yes         | the `/usr` tree of a system with no fragments: `/base` and `/network` alone                                             |
-| `packages.x86_64-linux.usr-tree-smoke-aarch64` | x86_64 only | cross-compiled `/usr` tree for aarch64                                                                                  |
-| `checks.<system>`                              | yes         | `treefmt`, `docs`, `module-docs`, `boundary`, `schema` (the sandboxed checks)                                           |
-| `formatter.<system>`                           | yes         | treefmt with pinned tools                                                                                               |
-| `devShells.<system>.default`                   | yes         | treefmt, mdbook, iets, npins                                                                                            |
-| `modules`                                      | no          | the adios tree; `modules { options = {...}; }` evaluates it                                                             |
-| `docs-pages`, `docs-summary`                   | no          | the generated reference pages and `SUMMARY.md` (`scripts/docs` writes them)                                             |
-| `schema`                                       | no          | JSON Schema 2020-12 of the module tree (see below)                                                                      |
-| `configLib`                                    | no          | TOML configuration loader (see below)                                                                                   |
-| `platforms`                                    | no          | the platforms table (repkgs `nix/platforms.nix`)                                                                        |
-| `lib.mkSystem`                                 | no          | the entry point: a TOML document → the composed system and its `/usr` tree ([Configuration](config.md#the-entry-point)) |
+| attribute                                                      | per system  | content                                                                                                                 |
+| -------------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `packages.<system>.nix`                                        | yes         | the patched Nix daemon repkgs needs (CA + dynamic derivations)                                                          |
+| `packages.<system>.kernel`                                     | yes         | the Linux kernel: the fork's bootable base plus `packages/kernel/golconda.config`                                       |
+| `packages.<system>.usr-tree-smoke`                             | yes         | smoke test for the `/usr` tree builder: the base system plus jq                                                         |
+| `packages.<system>.usr-tree-base-smoke`                        | yes         | the `/usr` tree of a system with no fragments: `/base`, `/network` and `/security` alone                                |
+| `packages.x86_64-linux.usr-tree-smoke-aarch64`                 | x86_64 only | cross-compiled `/usr` tree for aarch64                                                                                  |
+| `packages.<system>.image-smoke`                                | yes         | the image chain over `examples/server.toml`, with `proof.txt` ([Image artifacts](image.md))                             |
+| `packages.<system>.image-smoke-{erofs,verity,initrd,uki,disk}` | yes         | one step of the chain each                                                                                              |
+| `checks.<system>`                                              | yes         | `treefmt`, `docs`, `module-docs`, `boundary`, `schema` (the sandboxed checks)                                           |
+| `formatter.<system>`                                           | yes         | treefmt with pinned tools                                                                                               |
+| `devShells.<system>.default`                                   | yes         | treefmt, mdbook, iets, npins                                                                                            |
+| `modules`                                                      | no          | the adios tree; `modules { options = {...}; }` evaluates it                                                             |
+| `docs-pages`, `docs-summary`                                   | no          | the generated reference pages and `SUMMARY.md` (`scripts/docs` writes them)                                             |
+| `docs-modules`, `docs-module-paths`                            | no          | the same pages by module path, and the module paths discovered in `modules/`                                            |
+| `schema`                                                       | no          | JSON Schema 2020-12 of the module tree (see below)                                                                      |
+| `configLib`                                                    | no          | TOML configuration loader (see below)                                                                                   |
+| `platforms`                                                    | no          | the platforms table (repkgs `nix/platforms.nix`)                                                                        |
+| `lib.mkSystem`                                                 | no          | the entry point: a TOML document → the composed system and its `/usr` tree ([Configuration](config.md#the-entry-point)) |
 
 ## Inputs
 

@@ -73,7 +73,8 @@ let
 in
 golconda.lib.mkSystem {
   config = ./server.toml;
-  # platform = "x86_64-linux";  # default: the build host's
+  system = "x86_64-linux"; # the build host; left out, `iets eval` needs --impure
+  # platform = "aarch64-linux";  # default: the build host's
   # extra = {                   # Nix-only options, merged into the TOML
   #   "/services/sshd".package = myOpenSSH;
   # };
@@ -83,8 +84,8 @@ golconda.lib.mkSystem {
 | argument   | meaning                                                                                                            |
 | ---------- | ------------------------------------------------------------------------------------------------------------------ |
 | `config`   | a path to a TOML file, or an attribute set of options already loaded                                               |
-| `platform` | the target platform, default the build host's (`builtins.currentSystem`)                                           |
-| `system`   | the build host, default `builtins.currentSystem`                                                                   |
+| `platform` | the target platform, default `system`                                                                              |
+| `system`   | the build host, default `builtins.currentSystem`, which `iets eval` refuses unless `--impure`: pass it explicitly  |
 | `sources`  | the pins, default `nix/sources.nix`                                                                                |
 | `extra`    | Nix-only options merged into the TOML's, one module path at a time (a package override, a fragment written in Nix) |
 

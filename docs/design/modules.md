@@ -12,6 +12,7 @@ flowchart TD
     pkgs["/pkgs: the repkgs set"]
     base["/base: what every image contains (implicit)"]
     net["/network: networkd (implicit)"]
+    sec["/security: sysctl hardening (implicit)"]
     factory["/factory: the /etc seed"]
     vars["/vars: the var runner"]
     sshd["/services/sshd"]
@@ -21,6 +22,7 @@ flowchart TD
   pkgs -.->|input| sshd
   base -->|fragment| system
   net -->|fragment| system
+  sec -->|fragment| system
   factory -->|fragment| system
   vars -->|fragment| system
   sshd -->|fragment| system
@@ -60,18 +62,18 @@ is a second module path, never a second argument. No option takes a function, th
 platform-independent, and `/pkgs.target` is the one option that is not configuration data: the TOML
 loader refuses it.
 
-The composer records which fragment brought each package (`packageOrigins`: `/base`, `/network`, a
-fragment's own `name`, or its index), and the `/usr` tree writes it as
+The composer records which fragment brought each package (`packageOrigins`: `/base`, `/network`,
+`/security`, a fragment's own `name`, or its index), and the `/usr` tree writes it as
 `/usr/lib/golconda/packages.json`, so "why is this here" has an answer without a second declaration.
 
 ## The base system
 
-`/base` and `/network` are implicit: `/system` declares them as inputs and merges their fragments
-before the configured ones, so a system with no fragments still boots with systemd, D-Bus, a shell,
-coreutils, the kernel, DHCP on every wired link, time sync and a bounded journal
+`/base`, `/network` and `/security` are implicit: `/system` declares them as inputs and merges their
+fragments before the configured ones, so a system with no fragments still boots with systemd, D-Bus,
+a shell, coreutils, the kernel, DHCP on every wired link, time sync and a bounded journal
 ([Architecture: What every image contains](architecture.md#what-every-image-contains)). They have
 options (`/base.ntp`, `/base.journalMaxUse`, `/network.networks`, `/network.dns`,
-`/network.defaultDhcp`) but no switch: there is nothing to turn off.
+`/network.defaultDhcp`; `/security` has none) but no switch: there is nothing to turn off.
 
 ## `app` and `service`
 
@@ -128,14 +130,15 @@ names its credential id in `credentials` and orders itself after the var's unit.
 
 ## The composer
 
-`/system` takes `name`, `version`, `updateSource` and `fragments`. It merges `/base` and `/network`
-first, then the configured fragments, then the sysupdate definitions it renders from `updateSource`.
-Attribute-set fields are unioned and a key that appears twice throws with the key's name; list
-fields are concatenated; `packages` is one list with each package once, and `packageOrigins` says
-which fragments brought it; the symlinks of the packages' `bin` lists go into the same map as the
-fragments' own links, and one duplicate check covers the whole map. A module that returns several
-fragments unions them with the same `merge`, so a duplicate inside one module is the same error as
-one between modules. The output is the only thing the `/usr` tree builder reads.
+`/system` takes `name`, `version`, `updateSource` and `fragments`. It merges `/base`, `/network` and
+`/security` first, then the configured fragments, then the sysupdate definitions it renders from
+`updateSource`. Attribute-set fields are unioned and a key that appears twice throws with the key's
+name; list fields are concatenated; `packages` is one list with each package once, and
+`packageOrigins` says which fragments brought it; the symlinks of the packages' `bin` lists go into
+the same map as the fragments' own links, and one duplicate check covers the whole map. A module
+that returns several fragments unions them with the same `merge`, so a duplicate inside one module
+is the same error as one between modules. The output is the only thing the `/usr` tree builder
+reads.
 
 A service is on when its fragment is in `fragments`; there is no `enable` flag. How a TOML document
 puts a fragment there is in [Configuration](config.md#from-document-to-image).

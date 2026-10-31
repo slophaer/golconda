@@ -10,7 +10,7 @@ flowchart LR
     repkgs[repkgs packages] --> iets
     iets --> daemon[Nix daemon, CA + dynamic derivations]
     daemon --> usr["/usr tree: store + symlink farm + /usr/lib config"]
-    usr --> image["image builder: erofs, verity, initrd, UKI, GPT (being built)"]
+    usr --> image["image builder: erofs, verity, initrd, UKI, GPT"]
     image --> artifacts[versioned artifacts]
   end
   artifacts -->|systemd-sysupdate| machine
@@ -40,28 +40,28 @@ flowchart LR
 ## What every image contains
 
 The `/base` module is implicit: the composer merges it first, and a configuration cannot leave it
-out. It brings systemd, dbus-broker, dash (as `/usr/bin/sh`), uutils coreutils and the kernel; the
-units for networkd, resolved, timesyncd and the D-Bus socket; `C.UTF-8` as the only locale; the
-timesyncd pool and the journal size. `/network` is implicit too: DHCP on every wired link unless the
-document says otherwise. Everything else is a module the document names
-([Configuration](config.md)).
+out. It brings systemd, dbus-broker, dash (as `/usr/bin/sh`), uutils coreutils, tpm2-tss, e2fsprogs
+and the kernel; the units for networkd, resolved, timesyncd and the D-Bus socket; `C.UTF-8` as the
+only locale; the timesyncd pool and the journal size (the full list is in
+[Modules](../reference/modules/README.md#base-network-and-security)). `/network` is implicit too:
+DHCP on every wired link unless the document says otherwise. So is `/security`: the sysctl hardening
+file. Everything else is a module the document names ([Configuration](config.md)).
 
 ## Components
 
-| component                      | role                                                 | where                              |
-| ------------------------------ | ---------------------------------------------------- | ---------------------------------- |
-| npins                          | pins repkgs, adios, flake-incompat, iets, pele       | `npins/`                           |
-| flake-incompat                 | output schema, per-system arguments                  | `default.nix`, `nix/default.nix`   |
-| platform record                | repkgs' record, every tool reads it                  | `nix/packages.nix`                 |
-| repkgs                         | packages, toolchain, relocatable outputs             | `nix/packages.nix`, `packages/`    |
-| adios                          | typed module tree, fragments, the composer           | `modules/`                         |
-| iets                           | evaluation and lints                                 | `iets.toml`, `scripts/lint`        |
-| schema, TOML loader            | JSON Schema of the tree; document → options          | `lib/schema.nix`, `lib/config.nix` |
-| entry point                    | `mkSystem`: document → composed system → `/usr` tree | `lib/system.nix`, `golconda.nix`   |
-| usr tree                       | closure + symlinks + config → directory for erofs    | `lib/usr-tree.nix`                 |
-| image definitions              | repart, sysupdate, UKI, erofs, os-release as data    | `image/*.nix`                      |
-| image builder *(being built)*  | erofs, verity, initrd, UKI, GPT from the `/usr` tree | `lib/image/`                       |
-| systemd-boot, stub, bless-boot | boot, counting, measurement                          | ESP                                |
-| systemd-sysupdate              | A/B updates                                          | `/usr/lib/sysupdate.d`             |
+| component                      | role                                                                               | where                              |
+| ------------------------------ | ---------------------------------------------------------------------------------- | ---------------------------------- |
+| npins                          | pins repkgs, adios, flake-incompat, iets, pele                                     | `npins/`                           |
+| flake-incompat                 | output schema, per-system arguments                                                | `default.nix`, `nix/default.nix`   |
+| platform record                | repkgs' record, every tool reads it                                                | `nix/packages.nix`                 |
+| repkgs                         | packages, toolchain, relocatable outputs                                           | `nix/packages.nix`, `packages/`    |
+| adios                          | typed module tree, fragments, the composer                                         | `modules/`                         |
+| iets                           | evaluation and lints                                                               | `iets.toml`, `scripts/lint`        |
+| schema, TOML loader            | JSON Schema of the tree; document → options                                        | `lib/schema.nix`, `lib/config.nix` |
+| entry point                    | `mkSystem`: document → composed system → `/usr` tree                               | `lib/system.nix`, `golconda.nix`   |
+| usr tree                       | closure + symlinks + config → directory for erofs                                  | `lib/usr-tree.nix`                 |
+| image                          | definitions as data; builder: erofs, verity, initrd, UKI, GPT from the `/usr` tree | `image/*.nix`; `lib/image/`        |
+| systemd-boot, stub, bless-boot | boot, counting, measurement                                                        | ESP                                |
+| systemd-sysupdate              | A/B updates                                                                        | `/usr/lib/sysupdate.d`             |
 
 See [Layout](layout.md) for the on-disk result and [Boot](boot.md) for the sequence.

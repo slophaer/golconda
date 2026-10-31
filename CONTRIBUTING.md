@@ -28,7 +28,8 @@
   image's store is `/usr/nix/store`); paths come from derivations. `scripts/lint` fails on one; mark
   a legitimate mention `store-path-ok`.
 - **Docs split.** `docs/design/` says why, `docs/reference/` says what exists in code today. Mark
-  what is designed but not built as *(planned)*. No planning or history pages.
+  what is designed and not started as *(planned)*, and what is deferred past v1 as *(after v1)*. No
+  planning or history pages.
 - **Pins.** `npins/sources.json` is the lock; `nix/sources.nix` reads it. The forge needs a sign-in,
   so update the repkgs pin by hand (see [patches/repkgs](patches/repkgs/README.md)).
 - **Fork patches.** Changes to repkgs go to the fork branch `golconda` first; regenerate

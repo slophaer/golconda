@@ -7,15 +7,16 @@ this shape: [design/modules](../../design/modules.md).
 
 ## Modules
 
-| path             | role                                                                                                                                |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `/system`        | the composer: `name`, `version`, `updateSource`, `fragments` → the output below                                                     |
-| `/pkgs`          | the repkgs sets, passed once as `target` (and `build`); returns `{ target; build; pkgs }` to the modules that declare the input     |
-| `/base`          | implicit, merged first: systemd, dbus-broker, dash, uutils coreutils, the kernel, the base units, `C.UTF-8`, `ntp`, `journalMaxUse` |
-| `/network`       | implicit: networkd `.network` files (DHCP on every wired link by default) and resolved's fallback `dns`                             |
-| `/factory`       | the `/etc` seed under `/usr/share/factory/etc`, the tmpfiles `L` lines that link it, the sshd user (below)                          |
-| `/vars`          | installs `/usr/lib/golconda/golconda-var-run` (mode `0755`); add once when any var is used                                          |
-| `/services/sshd` | OpenSSH as a service with its configuration under `/usr/lib/sshd/` and an ed25519 host key var; keys and certificates only          |
+| path             | role                                                                                                                                                                     |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/system`        | the composer: `name`, `version`, `updateSource`, `fragments` → the output below                                                                                          |
+| `/pkgs`          | the repkgs sets, passed once as `target` (and `build`); returns `{ target; build; pkgs }` to the modules that declare the input                                          |
+| `/base`          | implicit, merged first: systemd, dbus-broker, dash, uutils coreutils, tpm2-tss, e2fsprogs, the kernel, the base units, `C.UTF-8`, `ntp`, `journalMaxUse` (details below) |
+| `/network`       | implicit: networkd `.network` files (DHCP on every wired link by default) and resolved's fallback `dns`                                                                  |
+| `/security`      | implicit: `/usr/lib/sysctl.d/50-golconda.conf`, the kernel hardening settings                                                                                            |
+| `/factory`       | the `/etc` seed under `/usr/share/factory/etc` and the tmpfiles `L` lines that link it                                                                                   |
+| `/vars`          | installs `/usr/lib/golconda/golconda-var-run` (mode `0755`); add once when any var is used                                                                               |
+| `/services/sshd` | OpenSSH as a service with its configuration under `/usr/lib/sshd/` and an ed25519 host key var; keys and certificates only                                               |
 
 ## The composer output
 
@@ -122,7 +123,7 @@ for programs that take a path as `-o Option=<path>`. A prefix is one word of let
 `_ = : / . , + -`. A ref that names a credential the service does not declare throws. A user
 service's unit is `files."/usr/lib/systemd/user/<name>.service"` with its `.wants` links beside it,
 no `User=` or `DynamicUser=` line and no sysusers entry; its files still go to `/usr/lib/<name>/`.
-An unknown field (`extraArgv`) is a type error.
+An unknown field is a type error.
 
 #### Sandbox tiers
 
@@ -167,19 +168,27 @@ set is a second module path, never a second argument. `target` is the one option
 configuration data: the TOML loader refuses a `/pkgs` table, and `configLib.withPkgs set` binds the
 set instead.
 
-### `/base` and `/network`
+### `/base`, `/network` and `/security`
 
-`/system` declares both as inputs and merges their fragments first; a configuration never lists
-them. `/base` returns the packages systemd, dbus-broker, dash, uutils-coreutils and linux-kernel;
-the `dbus.socket` unit and the `dbus.service` alias; the `.wants` links for `dbus.socket`,
-`systemd-networkd` (service and socket), `systemd-resolved` and `systemd-timesyncd`; `/usr/bin/sh` →
-dash; the `farm` links for systemd's unit, generator, preset, sysusers, tmpfiles and udev
-directories; the `dlopen` link `libsystemd.so.0`; `timesyncd.conf.d/golconda.conf` from `ntp`,
-`journald.conf.d/golconda.conf` from `journalMaxUse`, `/usr/lib/locale.conf` (`LANG=C.UTF-8`), and
-the `messagebus` user. `/network` returns one `.network` file per entry of `networks` under
-`/usr/lib/systemd/network/`, with `default-dhcp` (`Match Type=ether`, `DHCP=yes`,
-`IPv6AcceptRA=yes`) unless `defaultDhcp = false`, and `resolved.conf.d/golconda-dns.conf` when `dns`
-is set.
+`/system` declares all three as inputs and merges their fragments first; a configuration never lists
+them. `/base` returns the packages systemd, dbus-broker, dash, uutils-coreutils, tpm2-tss (only
+systemd's dlopen reaches it), e2fsprogs (`mkfs.ext4` for the root partition) and linux-kernel; the
+`dbus.socket` unit, written as a file because dbus-broker does not ship it, and the `dbus.service`
+alias; the `.wants` links for `dbus.socket`, `systemd-networkd` (service and socket),
+`systemd-resolved` and `systemd-timesyncd`; `/usr/bin/sh` → dash; `/usr/bin` links for systemd and
+util-linux executables listed by hand, because the fork's packages do not declare them in their
+`bin` lists (a stand-in); the `farm` links for systemd's own directories (`/usr/lib/systemd`,
+`/usr/lib/udev`, `/usr/lib/sysusers.d`, `/usr/lib/tmpfiles.d`); one `dlopen` link per soname systemd
+opens at run time; `timesyncd.conf.d/golconda.conf` from `ntp`, `journald.conf.d/golconda.conf` from
+`journalMaxUse`, `/usr/lib/locale.conf` (`LANG=C.UTF-8`),
+`/usr/lib/systemd/system.conf.d/golconda-dlopen.conf` (`DefaultEnvironment=LD_LIBRARY_PATH`, a
+stand-in until the fork's RUNPATH reaches the dlopen libraries), `/usr/lib/repart.d/30-root.conf`
+(the root partition repart makes at first boot, from `image/repart.nix`); the tmpfiles lines
+`L /bin`, `L /sbin` and `L /lib` (merged `/usr` on the root partition); and the `messagebus` user.
+`/security` returns `/usr/lib/sysctl.d/50-golconda.conf`. `/network` returns one `.network` file per
+entry of `networks` under `/usr/lib/systemd/network/`, with `default-dhcp` (`Match Type=ether`,
+`DHCP=yes`, `IPv6AcceptRA=yes`) unless `defaultDhcp = false`, and
+`resolved.conf.d/golconda-dns.conf` when `dns` is set.
 
 ### `/factory`
 

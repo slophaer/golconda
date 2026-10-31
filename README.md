@@ -27,9 +27,11 @@ by systemd-sysupdate. The machine runs systemd and nothing that duplicates it, a
 ## Status
 
 The module tree, the composer, the `/usr` tree builder, the schema, the TOML loader and the entry
-point (`golconda.nix`) exist and are tested. The image builder (erofs, verity, initrd, UKI, disk) is
-being built. Secure Boot, measured boot and TPM2-sealed credentials are designed and not yet proven
-on a machine. The docs mark each such thing *(planned)* or *(being built)*;
+point (`golconda.nix`) exist and are tested. The image chain (erofs, verity, initrd, UKI, disk)
+builds, and the disk boots in QEMU to `basic.target` with a stand-in or two (see
+[Boot](docs/design/boot.md#kernel-command-line)). Not proven on a machine: Secure Boot enforced, a
+TPM, the kernel checking the verity signature, `multi-user.target` and sshd, sysupdate, aarch64
+images. The docs mark each designed thing *(planned)*, and each deferred one *(after v1)*;
 [Scope](docs/design/scope.md) says what is v1, after v1 and out of scope, and
 [Comparison](docs/design/comparison.md) says what you give up against NixOS.
 

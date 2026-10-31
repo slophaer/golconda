@@ -4,9 +4,10 @@ Golconda keeps one of everything and makes the machine disposable: the image is 
 configuration, state is small and explicit. These rules decide what goes in; they are not
 preferences; [Scope](scope.md) says what they make v1, after v1 and out of scope. The pages that
 follow apply them in order: the pieces ([Architecture](architecture.md)), the disk
-([Layout](layout.md), [Boot](boot.md), [Updates](updates.md)), the keys ([Trust](trust.md)), how a
-system is described ([Modules](modules.md), [Configuration](config.md)), where the programs come
-from ([Packaging](packaging.md)), and what is lost ([Comparison](comparison.md)).
+([Layout](layout.md), [Boot](boot.md), [Updates](updates.md)), the keys ([Trust](trust.md)), the
+kernel ([Kernel](kernel.md)), how a system is described ([Modules](modules.md),
+[Configuration](config.md)), where the programs come from ([Packaging](packaging.md)), and what is
+lost ([Comparison](comparison.md)).
 
 ## Immutable by default
 
