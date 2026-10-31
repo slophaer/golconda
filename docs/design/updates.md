@@ -28,20 +28,30 @@ The definitions are generated from the image name and are listed in
 
 ## Versions
 
-sysupdate orders versions with `strverscmp`. A version is therefore a counter or a date, never a
-hash, and the composer refuses an image whose version does not sort above the one it replaces.
+Version format: `YYYYMMDD.N` (date plus a revision counter within the day). Examples: `20261031.1`,
+`20261101.2`. sysupdate orders versions with `strverscmp`; this format sorts correctly. The
+`/system.version` type enforces the regex.
 
-## `/etc` traps
-
-Two systemd features do not work as expected for `/etc` updates:
-
-- **`tmpfiles C+`** fills an existing directory but does not replace existing files. A changed
-  vendor file in `/usr/share/factory/etc` stays hidden by the old copy in `/etc`.
-- **`ConditionNeedsUpdate=/etc`** compares the `/usr` mtime with `/etc/.updated`. A naïve
-  reproducible build that uses a fixed timestamp stops the condition from firing.
-
-The image builder sets the erofs timestamp from the image version (`mkfs.erofs -T`), so
+The image builder derives a unique, increasing timestamp from the version (`mkfs.erofs -T`), so
 `ConditionNeedsUpdate=` fires exactly once per new image while the image stays reproducible.
 
-The planned `etc-sync` tool sidesteps the `C+` trap by using the `etc.manifest` hash and syncing
-changed vendor files into `/etc` when they were not modified by the admin.
+## Update source
+
+The `/system.updateSource` option (a URL string) is rendered into `/usr/lib/sysupdate.d/*.conf`.
+When `updateSource` is null (the default), sysupdate has no transfer definitions and no update runs.
+
+## Factory reset
+
+`systemd-repart` with `FactoryReset=yes` clears the root partition and regenerates it from the
+factory on the next boot. The data is gone; what stays is the ESP and the `/usr` slots.
+
+## Sizes
+
+| partition | min size  |
+| --------- | --------- |
+| ESP       | 512 MiB   |
+| usr-a/b   | 10 GiB    |
+| root      | 512 MiB + |
+
+The usr slots are sized large so an update of a grown image has room; the erofs image itself stays
+small.

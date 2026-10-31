@@ -45,7 +45,7 @@ flowchart LR
   bundle --> consumers["OpenSSL (OPENSSLDIR=/etc/ssl); Go, rustls, Python via SSL_CERT_FILE"]
 ```
 
-## One CA store
+## One CA store *(planned)*
 
 The source of truth is `/etc/ssl` as a p11-kit trust path: anchors in `/etc/ssl/anchors/*.pem` (the
 Mozilla roots from the image plus administrator anchors) and distrust entries in
@@ -80,6 +80,9 @@ revocation list, both admin-supplied vars (`sshd-host-cert`, `sshd-revoked-keys`
 from its credentials directory, never from the image. Options:
 [reference/modules](../reference/modules/README.md#servicessshd).
 
+No local login in v1: the serial console (`console=ttyS0`) is output only, with no getty. Recovery
+is the other slot or a reflash.
+
 ## Verity and the kernel keyring
 
 The `usr-verity-sig` partition holds a PKCS#7 signature of the root hash. systemd-veritysetup asks
@@ -110,18 +113,20 @@ Mitigations:
 Secrets never enter the image or the store. Services receive them with `LoadCredential=` and
 `LoadCredentialEncrypted=` (`systemd-creds`, TPM2-bound, sealed with the PCR 11 signing key).
 
-A **var** is a generator that produces credentials. The image declares vars; the machine or the
-deploy host generates them. Values are never read at evaluation time.
+A **var** is a value the image names but never contains. Two classes:
 
-Three classes:
+- **Machine-local (local).** Generated on the machine at first boot (ssh host keys, wireguard keys).
+  The generator runs in a oneshot unit, seals the result with `systemd-creds encrypt`, and exports
+  only the public half.
+- **Admin-supplied (admin).** Kept age-encrypted on the deploy host, pushed over ssh, sealed on the
+  machine. Covers root password hashes and admin credentials.
 
-- **Machine-local.** Generated on the machine at first boot (ssh host keys, wireguard keys). The
-  generator runs in a oneshot unit, seals the result with `systemd-creds encrypt`, and exports only
-  the public half.
-- **Admin-supplied.** Kept age-encrypted on the deploy host, pushed over ssh, sealed on the machine.
-  Covers root password hashes and admin credentials.
-- **Bootstrap.** A few ESP or SMBIOS credentials plus `systemd-firstboot` (`firstboot.hostname`,
-  `passwd.hashed-password.root`). Never put real secrets in a null-key credential: the ESP is not
-  encrypted.
+Bootstrap credentials (hostname, locale) are not a var class: they come from the ESP or SMBIOS,
+never from a generator or a push. See [Boot: Bootstrap credentials](boot.md#bootstrap-credentials).
+
+### Rotation
+
+To rotate an admin var: push a new value; the consumer service restarts and reads the new sealed
+credential. The deploy tool *(planned)* handles the seal step.
 
 See [reference/vars](../reference/modules/generated/vars.md) for the `var` helpers.
