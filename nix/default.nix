@@ -35,6 +35,9 @@ in
       # the patched Nix daemon repkgs needs (CA + dynamic derivations); builders run it
       inherit (pkgs) nix;
 
+      # the kernel: the fork's base with Golconda's config fragment (packages/kernel)
+      kernel = import ../packages/kernel { inherit pkgs; };
+
       # Smoke test for the /usr tree builder: a minimal system with jq
       usr-tree-smoke =
         let
