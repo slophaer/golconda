@@ -1,13 +1,18 @@
 # lib/usr-tree.nix: assemble the complete /usr tree from the composer output.
 #
-# usrTree { system; pkgs; platform; version; } → derivation whose output IS the /usr tree:
-#   nix/store/<hash>-* for the runtime closure of system.packages
-#   bin/, lib/, share/... = symlinks into nix/store (from system.links + expanded farmDirs)
+# usrTree { composerOutput; platform; version; buildSystem ? platform.name; } → derivation
+# whose output IS the /usr tree:
+#   nix/store/<hash>-* for the runtime closure of composerOutput.packages
+#   bin/, lib/, share/... = symlinks into nix/store (from composerOutput.links + expanded farmDirs)
 #   sbin -> bin
 #   lib/systemd/system/<name> = units
 #   lib/sysusers.d/golconda.conf, lib/tmpfiles.d/golconda.conf
 #   lib/os-release
-#   files from system.files (paths are /usr/...; the /usr prefix is stripped)
+#   files from composerOutput.files (paths are /usr/...; the /usr prefix is stripped)
+#
+# Cross-compilation: `buildSystem` is where the derivation runs (the build host);
+# `platform` is the target. os-release includes the architecture. The packages in
+# composerOutput.packages are already built for the target platform.
 #
 # The tree is reproducible. mtimes cannot live in a store path (Nix sets them to 1); the
 # version-derived timestamp is passed on for mkfs.erofs -T, see image/erofs.nix.
@@ -92,14 +97,29 @@ let
     else
       epoch;
 
-  # Render os-release from the template
+  # Render os-release from the template, with the target platform's architecture.
   osReleaseTemplate = import ../image/os-release.nix { imageId = "golconda"; };
   renderOsRelease =
-    version:
+    { version, platform }:
+    let
+      arch = platform.cpu;
+    in
     concatStringsSep "\n" (
-      map (k: "${k}=${replaceStrings [ "{version}" ] [ version ] osReleaseTemplate.${k}}") (
-        attrNames osReleaseTemplate
-      )
+      map (
+        k:
+        "${k}=${
+          replaceStrings
+            [
+              "{version}"
+              "{arch}"
+            ]
+            [
+              version
+              arch
+            ]
+            osReleaseTemplate.${k}
+        }"
+      ) (attrNames osReleaseTemplate)
     )
     + "\n";
 
@@ -146,16 +166,16 @@ in
   usrTree =
     {
       composerOutput, # The composer output (system.* attributes)
-      platform, # The platform record
+      platform, # The target platform record
       version, # Image version string
+      buildSystem ? platform.name, # The build host; defaults to the target (native build)
     }:
     let
-      inherit (platform) system;
-      # Get nushell from the bootstrap seed (same as repkgs uses for builds)
+      # Get nushell from the bootstrap seed for the BUILD host
       sources = import ../nix/sources.nix;
       bootstrap = import "${sources.repkgs}/bootstrap" {
         seed = null;
-        inherit system;
+        system = buildSystem;
       };
       nu = bootstrap.seed;
       baseTools = [
@@ -171,7 +191,7 @@ in
         "-c"
       ];
 
-      # The packages whose closure we need
+      # The packages whose closure we need (already built for the target platform)
       roots = composerOutput.packages;
 
       # Prepare data for the builder
@@ -191,7 +211,7 @@ in
       );
 
       epoch = versionToEpoch version;
-      osRelease = renderOsRelease version;
+      osRelease = renderOsRelease { inherit version platform; };
 
       script = ''
         use main.nu
@@ -201,7 +221,8 @@ in
     in
     derivation {
       name = "golconda-usr-${version}";
-      inherit system;
+      # The derivation runs on the build host, not the target
+      system = buildSystem;
       __structuredAttrs = true;
       __contentAddressed = true;
       outputHashMode = "recursive";
@@ -221,6 +242,9 @@ in
         version
         allowedDirs
         ;
+
+      # The target platform name, for verification logs
+      targetPlatform = platform.name;
 
       # Links as JSON-serializable records
       links = map (l: {

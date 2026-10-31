@@ -25,6 +25,14 @@ partition type names) and `names.uefi` (`BOOTX64.EFI`; null where there is no UE
 keeps no table of its own; a new spelling goes into repkgs. Only `systems` in `default.nix` lists
 what Golconda builds.
 
+## Cross-compilation
+
+The build host evaluates a set for the target platform; nothing in the module tree depends on the
+build host. `nix/packages.nix` takes `system` (the build host) and `platform` (the target, default:
+the build host). When they differ, repkgs cross-compiles packages that run on the target using the
+build host's toolchain. The `/usr` tree, os-release and every package output belong to the target;
+the derivation's `system` is the build host where the build runs.
+
 ## Set-wide features
 
 `nix/packages.nix` fixes `tls = "openssl"` for every package that declares the feature. A new

@@ -1,5 +1,5 @@
 # The flake-incompat expression. Each per-system field is a function of
-# { pkgs, platform, set } (default.nix argsFun); the rest is plain.
+# { pkgs, platform, set, system } (default.nix argsFun); the rest is plain.
 { sources, self }:
 let
   dev = import ./dev { inherit sources; };
@@ -26,6 +26,7 @@ in
       pkgs,
       set,
       platform,
+      system,
     }:
     {
       # the patched Nix daemon repkgs needs (CA + dynamic derivations); builders run it
@@ -54,14 +55,53 @@ in
               ];
             };
           };
-          system = composed.modules.system { };
+          sys = composed.modules.system { };
         in
         usrTreeLib.usrTree {
-          composerOutput = system;
+          composerOutput = sys;
           inherit platform;
           version = "20261031.1";
         };
-    };
+
+      # Cross-compiled usr-tree for aarch64: proves the platform argument flows through.
+      # Built on x86_64, runs on aarch64. The jq binary in the output is an aarch64 ELF.
+      # Visible only in packages.x86_64-linux (cross builds from x86_64 to aarch64).
+    }
+    // (
+      if system == "x86_64-linux" then
+        let
+          # Build for aarch64-linux from this x86_64-linux host
+          crossSet = import ./packages.nix {
+            inherit sources;
+            inherit system;
+            platform = "aarch64-linux";
+          };
+          tree = import ../modules { inherit (adios) adios; };
+          composed = tree {
+            options."/system" = {
+              name = "smoke-aarch64";
+              version = "20261031.1";
+              fragments = [
+                {
+                  packages = [ crossSet.pkgs.jq ];
+                }
+              ];
+            };
+          };
+          sys = composed.modules.system { };
+        in
+        {
+          usr-tree-smoke-aarch64 = usrTreeLib.usrTree {
+            composerOutput = sys;
+            inherit (crossSet) platform;
+            version = "20261031.1";
+            # Build on this host (x86_64), output for the target (aarch64)
+            buildSystem = system;
+          };
+        }
+      else
+        { }
+    );
 
   checks =
     { platform }:
@@ -115,4 +155,8 @@ in
       tree = mods { };
       modules = mods;
     };
+
+  # The platforms table (repkgs nix/platforms.nix), for callers that need all target names.
+  # Not per-system: the same table on every build host.
+  platforms = import "${sources.repkgs}/nix/platforms.nix";
 }
