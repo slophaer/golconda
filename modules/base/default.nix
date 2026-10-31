@@ -162,6 +162,11 @@ in
       # system.d allows it (systemd's, linked below, for network1, resolve1, login1, ...).
       # <user>, <listen> and <auth> are for dbus-daemon: dbus-broker takes its socket from
       # dbus.socket and ignores them.
+      # <servicedir> is required: dbus-broker compiles in no default, so without it an
+      # on-demand name (org.freedesktop.timedate1, for one) is "not activatable" and
+      # timedatectl fails. The directory is the farm link to systemd's
+      # share/dbus-1/system-services below; each file there names its unit
+      # (SystemdService=), and systemd starts it on the first call.
       dbusSystemConf = ''
         <!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
           "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
@@ -197,6 +202,7 @@ in
             <allow send_destination="org.freedesktop.DBus" send_interface="org.freedesktop.DBus.Debug.Stats"/>
           </policy>
 
+          <servicedir>/usr/share/dbus-1/system-services</servicedir>
           <includedir>system.d</includedir>
           <includedir>/etc/dbus-1/system.d</includedir>
           <include ignore_missing="yes">/etc/dbus-1/system-local.conf</include>
