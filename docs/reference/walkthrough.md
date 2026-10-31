@@ -53,7 +53,7 @@ so none is quoted here):
 
 - `units`: `sshd.service`, `golconda-var-sshd-hostkey.service`.
 - `files`: `/usr/lib/sshd/*` (the sshd configuration, the CA key, the principals);
-  `/usr/lib/sysupdate.d/*.conf` when `updateSource` is set; the network file; the timesyncd,
+  `/usr/lib/sysupdate.d/*.transfer` when `updateSource` is set; the network file; the timesyncd,
   journald and sysctl files; `/usr/lib/locale.conf`; `/usr/lib/repart.d/30-root.conf`;
   `/usr/lib/systemd/system.conf.d/golconda-dlopen.conf`; `dbus.socket`; the var script, its manifest
   and the runner; the factory files under `/usr/share/factory/etc`.
