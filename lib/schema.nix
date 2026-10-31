@@ -9,6 +9,15 @@
 # A local registry lets Golconda's own types register their schema explicitly.
 # Mark the gap with `x-golconda-opaque` for types that cannot be introspected.
 #
+# Provenance, for the UI: every option carries `x-golconda-declaredIn` ({ module;
+# file?; line? }: the module path that declares it, that module's file relative to
+# the repo, and the line of the option in it, when the evaluator reports a position: iets does, nix does not), and every module `x-golconda-inputs`,
+# the module paths it reads (its `inputs.<x>.path`, sorted): the edges of the module
+# graph. `toJsonSchemaWith { files; root; }` knows the files: `files` maps a module
+# path to its file path (module-docs.nix `discoverModulePaths`, as a list of
+# { path; filePath; }), `root` is the repo directory as a string; the files and lines
+# are left out without them.
+#
 # Usage:
 #   let schema = import ./lib/schema.nix { };
 #   in schema.toJsonSchema tree
@@ -16,6 +25,7 @@ _:
 let
   inherit (builtins)
     attrNames
+    attrValues
     filter
     foldl'
     head
@@ -29,6 +39,7 @@ let
     listToAttrs
     mapAttrs
     match
+    sort
     stringLength
     substring
     tail
@@ -637,35 +648,74 @@ let
       )
     );
 
-  # Convert one adios option to a JSON Schema property.
+  # Convert one adios option to a JSON Schema property. `declaredIn` is the
+  # x-golconda-declaredIn value, or null.
   optionToSchema =
-    opt:
+    opt: declaredIn:
     filterNulls (
       (typeToSchema opt.type)
       // {
+        "x-golconda-declaredIn" = declaredIn;
         description = opt.description or null;
         default = if opt ? default && isPlainData opt.default then opt.default else null;
         examples = if opt ? example && isPlainData opt.example then [ opt.example ] else null;
       }
     );
 
-  # Walk one module, returning { properties; } for its options.
+  # path string under root, or null when it is outside it
+  relativeTo =
+    root: p:
+    let
+      s = builtins.unsafeDiscardStringContext (toString p);
+      pre = "${root}/";
+    in
+    if root != null && substring 0 (stringLength pre) s == pre then
+      substring (stringLength pre) (stringLength s) s
+    else
+      null;
+
+  # Walk one module, returning { properties; } for its options. `ctx` is
+  # { path; file; root; } of the module (file and root may be null).
   moduleToSchema =
+    {
+      path ? null,
+      file ? null,
+      root ? null,
+    }:
     mod:
     let
       opts = mod.options or { };
-      props = mapAttrs (_: optionToSchema) opts;
+      relFile = if file == null then null else relativeTo root file;
+      declaredIn =
+        name:
+        if path == null then
+          null
+        else
+          let
+            pos = builtins.unsafeGetAttrPos name opts;
+            line = if pos != null && relativeTo root pos.file == relFile then pos.line else null;
+          in
+          filterNulls {
+            module = path;
+            file = relFile;
+            inherit line;
+          };
+      props = mapAttrs (n: o: optionToSchema o (declaredIn n)) opts;
+      inputs = sort (a: b: a < b) (
+        filter (p: p != null) (map (i: i.path or null) (attrValues (mod.inputs or { })))
+      );
     in
     filterNulls {
       type = "object";
       description = mod.name or null;
       properties = if props == { } then null else props;
+      "x-golconda-inputs" = if path == null then null else inputs;
     };
 
   # Walk the module tree recursively, building the properties object.
   # Path is the current module path (list of strings).
   walkModules =
-    path: mods:
+    ctx: path: mods:
     foldl' (
       acc: name:
       let
@@ -674,18 +724,41 @@ let
         pathStr = "/" + builtins.concatStringsSep "/" fullPath;
         # This module's schema (if it has options)
         thisSchema =
-          if mod ? options && mod.options != { } then { ${pathStr} = moduleToSchema mod; } else { };
+          if mod ? options && mod.options != { } then
+            {
+              ${pathStr} = moduleToSchema {
+                path = pathStr;
+                file = ctx.files.${pathStr} or null;
+                inherit (ctx) root;
+              } mod;
+            }
+          else
+            { };
         # Recurse into submodules
-        subSchemas = if mod ? modules && mod.modules != { } then walkModules fullPath mod.modules else { };
+        subSchemas =
+          if mod ? modules && mod.modules != { } then walkModules ctx fullPath mod.modules else { };
       in
       acc // thisSchema // subSchemas
     ) { } (attrNames mods);
 
   # The main export function.
-  toJsonSchema =
+  toJsonSchemaWith =
+    {
+      files ? [ ],
+      root ? null,
+    }:
     tree:
     let
-      allModules = walkModules [ ] tree.modules;
+      ctx = {
+        inherit root;
+        files = listToAttrs (
+          map (m: {
+            name = m.path;
+            value = m.filePath;
+          }) files
+        );
+      };
+      allModules = walkModules ctx [ ] tree.modules;
     in
     {
       "$schema" = "https://json-schema.org/draft/2020-12/schema";
@@ -695,9 +768,11 @@ let
       type = "object";
       properties = allModules;
     };
+  toJsonSchema = toJsonSchemaWith { };
 in
 {
   inherit
+    toJsonSchemaWith
     toJsonSchema
     typeToSchema
     typeToSchemaByName

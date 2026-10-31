@@ -21,8 +21,16 @@
 #   merge [ fragmentA fragmentB ] -> { units; files; sysusers; tmpfiles; packages; links; }
 #
 # Attribution: `merge.withOrigins [ { origin; fragment; } ... ]` is the same
-# union plus `packageOrigins`, package key -> the origins that brought it
-# (`merge.pkgKey`: name-version). The composer
+# union plus `origins`, one map per kind of thing a fragment emits, each key ->
+# the origins that emitted it (each once, in first-seen order):
+#   origins.packages   package key (`merge.pkgKey`: name-version)
+#   origins.files      path under /usr
+#   origins.links      path under /usr: the fragment's own links, and the
+#                      /usr/bin links of its packages' `bin` lists
+#   origins.units      unit name
+#   origins.sysusers   the line
+#   origins.tmpfiles   the line
+# `packageOrigins` stays as an alias of `origins.packages`. The composer
 # labels its inputs by module path ("/base") and a listed fragment by its
 # `name` or "fragments[<i>]". `packages` stays one deduped list.
 #
@@ -75,21 +83,33 @@ let
   # (a stand-in shares its parent's).
   pkgKey = pkgName;
 
-  # package key -> origins (each once, in first-seen order) from
-  # [ { origin; fragment; } ]
-  packageOrigins =
-    labelled:
+  # key -> origins (each once, in first-seen order) from [ { origin; fragment; } ],
+  # `keysOf fragment` being the keys one fragment emits
+  keyOrigins =
+    keysOf: labelled:
     foldl' (
       acc: l:
       foldl' (
-        acc': p:
+        acc': k:
         let
-          k = pkgKey p;
           seen = acc'.${k} or [ ];
         in
         acc' // { ${k} = if elem l.origin seen then seen else seen ++ [ l.origin ]; }
-      ) acc (l.fragment.packages or [ ])
+      ) acc (keysOf l.fragment)
     ) { } labelled;
+
+  originsOf = labelled: {
+    packages = keyOrigins (f: map pkgKey (f.packages or [ ])) labelled;
+    files = keyOrigins (f: attrNames (f.files or { })) labelled;
+    links = keyOrigins (
+      f:
+      concatMap (p: map (b: "/usr/bin/${b}") (p.bin or [ ])) (f.packages or [ ])
+      ++ attrNames (f.links or { })
+    ) labelled;
+    units = keyOrigins (f: attrNames (f.units or { })) labelled;
+    sysusers = keyOrigins (f: f.sysusers or [ ]) labelled;
+    tmpfiles = keyOrigins (f: f.tmpfiles or [ ]) labelled;
+  };
 
   # Every link with its source, as a list of { path; target; kind; source; }:
   # /usr/bin/<name> for the packages' bin lists, then the fragments' links.
@@ -224,9 +244,13 @@ in
 
   withOrigins =
     labelled:
+    let
+      origins = originsOf labelled;
+    in
     union (map (l: l.fragment) labelled)
     // {
-      packageOrigins = packageOrigins labelled;
+      inherit origins;
+      packageOrigins = origins.packages;
     };
 
   __functor = _: union;

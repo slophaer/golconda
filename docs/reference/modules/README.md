@@ -23,15 +23,16 @@ this shape: [design/modules](../../design/modules.md).
 `/system` returns
 `{ name; version; updateSource; units; files; sysusers; tmpfiles; packages; packageOrigins; links }`:
 
-| field            | shape                              | installed as                                                                                    |
-| ---------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `units`          | `{ unitName = text; }`             | `/usr/lib/systemd/system/<name>`; user units are `files`                                        |
-| `files`          | `{ path = { text; mode; }; }`      | the path, under `/usr`                                                                          |
-| `sysusers`       | `[ line ]`                         | `/usr/lib/sysusers.d/golconda.conf`                                                             |
-| `tmpfiles`       | `[ line ]`                         | `/usr/lib/tmpfiles.d/golconda.conf`                                                             |
-| `packages`       | `[ drv ]`                          | the closure in `/usr/nix/store`, each package once                                              |
-| `packageOrigins` | `{ "name-version" = [ origin ]; }` | `/usr/lib/golconda/packages.json`: `/base`, `/network`, a fragment's `name` or `fragments[<i>]` |
-| `links`          | `{ path = { target; kind; }; }`    | every symlink of `/usr`: `/usr/bin`, expanded directories, dlopen sonames, `.wants`             |
+| field            | shape                                                                            | installed as                                                                                    |
+| ---------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `units`          | `{ unitName = text; }`                                                           | `/usr/lib/systemd/system/<name>`; user units are `files`                                        |
+| `files`          | `{ path = { text; mode; }; }`                                                    | the path, under `/usr`                                                                          |
+| `sysusers`       | `[ line ]`                                                                       | `/usr/lib/sysusers.d/golconda.conf`                                                             |
+| `tmpfiles`       | `[ line ]`                                                                       | `/usr/lib/tmpfiles.d/golconda.conf`                                                             |
+| `packages`       | `[ drv ]`                                                                        | the closure in `/usr/nix/store`, each package once                                              |
+| `packageOrigins` | `{ "name-version" = [ origin ]; }`                                               | `/usr/lib/golconda/packages.json`: `/base`, `/network`, a fragment's `name` or `fragments[<i>]` |
+| `origins`        | `{ packages; files; links; units; sysusers; tmpfiles }`, each key → `[ origin ]` | `/usr/lib/golconda/attribution.json`; `packageOrigins` is `origins.packages`                    |
+| `links`          | `{ path = { target; kind; }; }`                                                  | every symlink of `/usr`: `/usr/bin`, expanded directories, dlopen sonames, `.wants`             |
 
 ## Shared types (`modules/lib/`)
 

@@ -8,7 +8,7 @@
 #! before any fragment the configuration declares. A system with no fragments
 #! still has systemd, dbus-broker, dash, coreutils and the kernel.
 #!
-#! Output: `{ name; version; units; files; sysusers; tmpfiles; packages; packageOrigins; links }`,
+#! Output: `{ name; version; units; files; sysusers; tmpfiles; packages; packageOrigins; origins; links }`,
 #! every file as `{ text; mode; }` and `links` one map, path under `/usr` ->
 #! `{ target; kind; }`: the `/usr/bin` links of the packages' `bin` lists and
 #! the fragments' own links (`.wants`, directories to expand, dlopen sonames),
@@ -21,6 +21,12 @@
 #! name-version) -> the origins that brought it, `"/base"`,
 #! `"/network"`, `"/security"`, a fragment's own `name` (a module sets its path), or
 #! `"fragments[<i>]"`. `packages` stays one deduped list.
+#!
+#! `origins` does the same for everything a fragment emits: `{ packages; files;
+#! links; units; sysusers; tmpfiles; }`, each a map from the key (package key,
+#! path under `/usr`, unit name, line) to the origins that emitted it.
+#! `packageOrigins` is an alias of `origins.packages`. `lib/usr-tree.nix`
+#! writes the maps to `/usr/lib/golconda/attribution.json`.
 { types, ... }:
 let
   ini = import ../lib/ini.nix;

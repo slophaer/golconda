@@ -3,7 +3,7 @@
 # mkSystem { config; platform?; sources?; extra?; } → {
 #   composed;   # the composer output (units, files, links, packages, …)
 #   usrTree;    # the /usr derivation
-#   config;     # the normalized configuration (options by module path)
+#   config;     # config.json: module path -> option -> { value?; explicit; }
 #   platform;   # the elaborated platform record
 #   version;    # YYYYMMDD.N from /system
 #   name;       # image id from /system
@@ -122,13 +122,18 @@ let
 
   # The schema for this tree.
   schemaLib = import ./schema.nix { };
-  schema = schemaLib.toJsonSchema (tree { });
+  moduleFiles = (import ./module-docs.nix { }).discoverModulePaths ../modules;
+  schema = schemaLib.toJsonSchemaWith {
+    files = moduleFiles;
+    root = toString ../.;
+  } (tree { });
 
-  # The normalized configuration: what the TOML said after type-checking, no derivations.
-  # One JSON object keyed by module path, for config.json.
+  # The normalized configuration: one row per option of every configured module,
+  # { value?; explicit; }, for config.json. `explicit` is true when the TOML (or `extra`)
+  # set the option, false when the default applies; an option with a computed default
+  # (defaultFunc) has no `value` then. Derivations render as their name, so the JSON is data.
   normalizedConfig =
     let
-      # Walk the evaluated tree and extract option values, stripping derivations.
       stripDerivations =
         v:
         if isAttrs v then
@@ -142,22 +147,43 @@ let
         else
           v;
 
-      # Extract the option values from each module path in the config.
-      extractModuleValues =
-        path: opts:
-        if path == "/pkgs" then
-          # Skip /pkgs: its set is not configuration data
-          null
-        else
-          stripDerivations opts;
+      moduleAt =
+        path:
+        builtins.foldl' (mods: part: mods.modules.${part}) (tree { }) (
+          builtins.filter (s: builtins.isString s && s != "") (builtins.split "/" path)
+        );
+
+      rows =
+        path: given:
+        let
+          declared = (moduleAt path).options or { };
+        in
+        mapAttrs (
+          n: _:
+          if given ? ${n} then
+            {
+              value = stripDerivations given.${n};
+              explicit = true;
+            }
+          else if declared.${n} ? default && schemaLib.isPlainData declared.${n}.default then
+            {
+              value = declared.${n}.default;
+              explicit = false;
+            }
+          else
+            { explicit = false; }
+        ) (declared // given);
     in
     builtins.listToAttrs (
-      builtins.filter (x: x.value != null) (
-        map (path: {
+      map
+        (path: {
           name = path;
-          value = extractModuleValues path (mergedOptions.${path} or { });
-        }) (attrNames mergedOptions)
-      )
+          value = rows path mergedOptions.${path};
+        })
+        (
+          # /pkgs: its set is not configuration data
+          builtins.filter (p: p != "/pkgs") (attrNames mergedOptions)
+        )
     );
 
   # usr-tree library for building the tree.
