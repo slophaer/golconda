@@ -1,0 +1,19 @@
+# Golconda boot policy: allow execution only from the initramfs and from dm-verity volumes with
+# a signed root hash. The signing certificate must be in the kernel's trusted keyring or the
+# platform keyring (Secure Boot db). This avoids per-image kernel rebuilds: the policy trusts
+# the signature, not a specific root hash.
+#
+# Evaluated by IPE (CONFIG_SECURITY_IPE) when ipe.enforce=1 is on the cmdline.
+# See docs/design/kernel.md and Documentation/admin-guide/LSM/ipe.rst.
+policy_name=golconda policy_version=1.0.0
+DEFAULT op=EXECUTE action=DENY
+DEFAULT op=FIRMWARE action=DENY
+DEFAULT op=KMODULE action=DENY
+DEFAULT op=KEXEC_IMAGE action=DENY
+DEFAULT op=KEXEC_INITRAMFS action=DENY
+DEFAULT op=POLICY action=DENY
+DEFAULT op=X509_CERT action=DENY
+# initramfs: files measured by systemd-stub into PCR 11, trusted until switch_root
+op=EXECUTE boot_verified=TRUE action=ALLOW
+# /usr: dm-verity volume whose root hash is signed by a trusted key
+op=EXECUTE dmverity_signature=TRUE action=ALLOW

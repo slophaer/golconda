@@ -21,11 +21,26 @@
 }:
 let
   platforms = import "${sources.repkgs}/nix/platforms.nix";
+
+  # Kernel config: the base config plus IPE boot policy path substitution.
+  # builtins.toFile embeds the policy's store path so the kernel build can read it.
+  # Use builtins.path for explicit store copy (satisfies iets path-copy lint).
+  ipePolicyFile = builtins.path {
+    path = ../packages/kernel/ipe-boot-policy;
+    name = "ipe-boot-policy";
+  };
+  baseKernelConfig = builtins.readFile ../packages/kernel/golconda.config;
+  fullKernelConfig = baseKernelConfig + ''
+    # --- IPE boot policy (path substituted at eval time) ---
+    CONFIG_IPE_BOOT_POLICY="${ipePolicyFile}"
+  '';
+  kernelConfigFragment = builtins.toFile "golconda.config" fullKernelConfig;
+
   set = import "${sources.repkgs}/nix/set.nix" {
     inherit system platform;
     packages = import ../packages;
-    # The kernel policy: Golconda's kconfig fragment on the fork's base (packages/kernel).
-    overrides.linux-kernel.kbuild.configFragments.append = [ ../packages/kernel/golconda.config ];
+    # The kernel policy: Golconda's kconfig fragment with the IPE boot policy path.
+    overrides.linux-kernel.kbuild.configFragments.append = [ kernelConfigFragment ];
     # Set-wide choices: one TLS stack, one of each (docs/design/principles.md).
     features = {
       tls = "openssl";

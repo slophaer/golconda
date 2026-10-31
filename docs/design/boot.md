@@ -51,11 +51,15 @@ three failures systemd-boot falls back to the other entry, which is the other `/
 
 ## Kernel command line
 
-The cmdline is fixed in the UKI and measured with it:
-`usrhash=<hash> console=tty0 console=ttyS0,115200 rdinit=<systemd>` (`image/uki.nix`, plus `rdinit=`
-from the builder). No administrator edits: `loader.conf` edits are off, and nothing adds `rw`, `ro`
-or `systemd.volatile=` (`/` is the state partition, which gpt-auto mounts writable when nothing says
-`ro`; `/usr` is verity). A debug image with more is a separate build *(after v1)*.
+# The cmdline is fixed in the UKI and measured with it: \<<\<<\<<< HEAD `usrhash=<hash> console=tty0 console=ttyS0,115200 rdinit=<systemd>` (`image/uki.nix`, plus `rdinit=` from the builder). No administrator edits: `loader.conf` edits are off, and nothing adds `rw`, `ro` or `systemd.volatile=` (`/` is the state partition, which gpt-auto mounts writable when nothing says `ro`; `/usr` is verity). A debug image with more is a separate build *(after v1)*. ||||||| parent of 697f012 (kernel: LSM phase 1 with IPE, lockdown and Yama) `usrhash=<hash> console=tty0 console=ttyS0,115200`. No administrator edits: `loader.conf` edits are off, and nothing adds `rw` or `systemd.volatile=` (`/` is the state partition, mounted writable by systemd; `/usr` is verity). The template in `image/uki.nix` still carries `ro systemd.volatile=no` until the image builder lands *(being built)*. A debug image with more is a separate build *(after v1)*.
+
+`usrhash=<hash> lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=0 console=tty0 console=ttyS0,115200`.
+The LSM parameters enable kernel-side trust enforcement; see [Kernel](kernel.md) for the policy. No
+administrator edits: `loader.conf` edits are off, and nothing adds `rw` or `systemd.volatile=` (`/`
+is the state partition, mounted writable by systemd; `/usr` is verity). A debug image with different
+parameters is a separate build *(after v1)*.
+
+> > > > > > > 697f012 (kernel: LSM phase 1 with IPE, lockdown and Yama)
 
 ## Serial console
 
