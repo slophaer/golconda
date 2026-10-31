@@ -7,6 +7,11 @@ let
   # The adios module tree (modules/); `tree { options = {...}; }` evaluates it.
   # Nothing per-system: a configuration passes its repkgs set as options."/pkgs".target.
   tree = import ../modules { inherit (adios) adios; };
+
+  # mkSystem: the entry point for a complete Golconda system.
+  # See lib/system.nix for the full interface.
+  mkSystem = args: import ../lib/system.nix (args // { inherit sources; });
+
   docsFromSchema =
     let
       schemaLib = import ../lib/schema.nix { };
@@ -20,15 +25,12 @@ let
       inherit (schemaLib) typeRegistry;
       tree = tree { };
     };
-  usrTreeLib = import ../lib/usr-tree.nix { };
 in
 {
   packages =
     {
       pkgs,
-      platform,
       system,
-      set,
       ...
     }:
     {
@@ -38,94 +40,69 @@ in
       # the kernel: the fork's base with Golconda's config fragment (packages/kernel)
       kernel = import ../packages/kernel { inherit pkgs; };
 
-      # Smoke test for the /usr tree builder: a minimal system with jq
+      # Smoke test for the /usr tree builder: base system + jq via mkSystem.
       usr-tree-smoke =
-        let
-          # Create a minimal composer output
-          composed = tree {
-            options = {
-              "/pkgs".target = set;
-              "/system" = {
-                name = "smoke";
-                version = "20261031.1";
-                fragments = [
-                  {
-                    packages = [ pkgs.jq ];
-                    # jq has bin = [ "jq" ] in repkgs
-                  }
-                ];
-              };
+        (mkSystem {
+          inherit system;
+          platform = system;
+          config = {
+            "/system" = {
+              name = "smoke";
+              version = "20261031.1";
             };
           };
-          sys = composed.modules.system { };
-        in
-        usrTreeLib.usrTree {
-          composerOutput = sys;
-          inherit platform;
-          version = "20261031.1";
-        };
+          extra = {
+            "/system".fragments = [ { packages = [ pkgs.jq ]; } ];
+          };
+        }).usrTree;
 
       # Smoke test for /base alone: no extra fragments, just the base packages.
       # Verifies: no absolute symlinks, no GNU coreutils, base packages only.
       usr-tree-base-smoke =
-        let
-          composed = tree {
-            options = {
-              "/pkgs".target = set;
-              "/system" = {
-                name = "base-smoke";
-                version = "20261031.1";
-                fragments = [ ]; # no extra packages
-              };
+        (mkSystem {
+          inherit system;
+          platform = system;
+          config = {
+            "/system" = {
+              name = "base-smoke";
+              version = "20261031.1";
             };
           };
-          sys = composed.modules.system { };
-        in
-        usrTreeLib.usrTree {
-          composerOutput = sys;
-          inherit platform;
-          version = "20261031.1";
-        };
+        }).usrTree;
 
       # Cross-compiled usr-tree for aarch64: proves the platform argument flows through.
-      # Built on x86_64, runs on aarch64. The jq binary in the output is an aarch64 ELF
-      # (proven 2026-10-31).
+      # Built on x86_64, runs on aarch64. The jq binary in the output is an aarch64 ELF.
       # Visible only in packages.x86_64-linux (cross builds from x86_64 to aarch64).
     }
     // (
       if system == "x86_64-linux" then
-        let
-          # Build for aarch64-linux from this x86_64-linux host
-          crossSet = import ./packages.nix {
-            inherit sources;
-            inherit system;
-            platform = "aarch64-linux";
-          };
-          crossTree = import ../modules { inherit (adios) adios; };
-          composed = crossTree {
-            options = {
-              "/pkgs".target = crossSet;
-              "/system" = {
-                name = "smoke-aarch64";
-                version = "20261031.1";
-                fragments = [
+        {
+          usr-tree-smoke-aarch64 =
+            (mkSystem {
+              inherit system;
+              platform = "aarch64-linux";
+              config = {
+                "/system" = {
+                  name = "smoke-aarch64";
+                  version = "20261031.1";
+                };
+              };
+              extra = {
+                "/system".fragments = [
                   {
-                    packages = [ crossSet.pkgs.jq ];
+                    packages =
+                      let
+                        crossSet = import ./packages.nix {
+                          inherit sources;
+                          inherit system;
+                          platform = "aarch64-linux";
+                        };
+                      in
+                      [ crossSet.pkgs.jq ];
                   }
                 ];
               };
-            };
-          };
-          sys = composed.modules.system { };
-        in
-        {
-          usr-tree-smoke-aarch64 = usrTreeLib.usrTree {
-            composerOutput = sys;
-            inherit (crossSet) platform;
-            version = "20261031.1";
-            # Build on this host (x86_64), output for the target (aarch64)
-            buildSystem = system;
-          };
+            }).usrTree;
         }
       else
         { }
@@ -179,4 +156,8 @@ in
   # The platforms table (repkgs nix/platforms.nix), for callers that need all target names.
   # Not per-system: the same table on every build host.
   platforms = import "${sources.repkgs}/nix/platforms.nix";
+
+  # lib: Nix library functions for building Golconda systems.
+  #   (import ./default.nix).lib.mkSystem { config = ./server.toml; }
+  lib = { inherit mkSystem; };
 }
