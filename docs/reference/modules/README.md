@@ -10,9 +10,10 @@ The [generated module pages](generated/index.md) cover each module's options and
 | path             | role                                                                                                             |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `/system`        | the composer: `name`, `version`, `fragments` → `{ units; files; sysusers; tmpfiles; packages; links; farmDirs }` |
+| `/pkgs`          | the repkgs set, passed once as `set`; returns `{ set; pkgs; wrap }` to the modules that declare it as an input   |
 | `/factory`       | the `/etc` seed under `/usr/share/factory/etc`, its manifest and first-boot stamp, the sshd user (below)         |
 | `/vars`          | installs `/usr/lib/golconda/golconda-var-run` (mode `0755`); add once when any var is used                       |
-| `/wrap`          | typed options for repkgs' `wrap`: `package`, `argv`, `env`, `files`; the caller uses `set.wrap`                  |
+| `/wrap`          | wraps a package from data: `package`, `argv`, `env`, `files` → the launcher derivation (`wrapApp` over `/pkgs`)  |
 | `/services/sshd` | OpenSSH as a wrapped service with an ed25519 host key var; keys and certificates only (options below)            |
 
 The option tables of each module are [generated from the schema](generated/index.md) and are not
@@ -141,20 +142,31 @@ one program, still clash.
 
 Error message example: `golconda: /usr/bin/jq defined twice: package jq-1.7, package jq-wrap-1.7`.
 
+### `/pkgs`
+
+One option, `set`: the repkgs set of the platform (`nix/packages.nix`), which `nix/default.nix`
+passes as `options."/pkgs".set`. The module returns `{ set; pkgs; wrap; }`. A module that needs a
+package declares `inputs.pkgs.path = "/pkgs"` and reads `results.pkgs.pkgs.<name>` or
+`results.pkgs.wrap`; a package option defaults with `defaultFunc = { results }: ...`. A tree without
+the set throws when a module first needs a package. `set` is the one option that is not
+configuration data: the TOML loader refuses a `/pkgs` table, and `configLib.withPkgs set` binds the
+set instead.
+
 ### `/wrap`
 
-The module declares the arguments of repkgs' `wrap` and returns them unchanged. A caller passes them
-to `set.wrap` in `nix/packages.nix`. `wrap` returns a package with launch records in
-`bin/.<x>.launch`.
+The module takes the arguments of an `app` and returns the wrapped derivation: `wrapApp` over
+`results.pkgs.wrap` from `/pkgs`. The output's `bin/<program>` is a launcher with launch records in
+`bin/.<x>.launch`; it declares `bin = [ program ]` and `wraps = package`, so in a fragment's
+`packages` it stands in for the program of the package it wraps.
 
-| option    | type                          | meaning                                                        |
-| --------- | ----------------------------- | -------------------------------------------------------------- |
-| `package` | derivation                    | the package to wrap                                            |
-| `argv`    | list of string, default `[ ]` | prepended arguments; `{root}` and `{store}` expand at run time |
-| `env`     | attrs, default `{ }`          | `{ VAR = { op = value; }; }`                                   |
-| `files`   | attrs name → text             | installed to `{root}/share/wrap/<pkgname>/<name>`              |
+| option    | type                          | meaning                                                                 |
+| --------- | ----------------------------- | ----------------------------------------------------------------------- |
+| `package` | derivation                    | the package to wrap; its first `bin` entry is the program               |
+| `argv`    | list of string, default `[ ]` | prepended arguments; `{files}` (via `file "name"`) expands to the files |
+| `env`     | attrs, default `{ }`          | `{ VAR = { op = value; }; }`                                            |
+| `files`   | attrs name → text             | installed to `{root}/share/wrap/<pkgname>/<name>`                       |
 
-`packages.<system>.wrap-smoke` wraps `jq` with `--version` as a build check.
+`packages.<system>.wrap-smoke` wraps `jq` with `--version` through this module as a build check.
 
 ### `/factory`
 
@@ -197,8 +209,7 @@ configuration in its `share/wrap/openssh/`), and, when their options are on, the
 
 | option              | type                                       | rendered as                                                                                                          |
 | ------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| `package`           | derivation                                 | repkgs `openssh`; `program = "sshd"`                                                                                 |
-| `wrap`              | function                                   | repkgs' `set.wrap`, from the configuration like `package`                                                            |
+| `package`           | derivation, default `pkgs.openssh`         | from `/pkgs`; `program = "sshd"`; the launcher comes from `results.pkgs.wrap`                                        |
 | `port`              | int, default `22`                          | `Port`                                                                                                               |
 | `authorizedKeys`    | list of string, default `[ ]`              | `authorized_keys.root` in the launcher; bootstrap only                                                               |
 | `trustedUserCAKeys` | list of string, default `[ ]`              | `trusted_user_ca_keys` and `-o TrustedUserCAKeys={files}/trusted_user_ca_keys`                                       |

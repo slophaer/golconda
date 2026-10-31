@@ -473,6 +473,12 @@ let
       type = "string";
       pattern = "^[A-Za-z0-9_.-]+$";
     };
+
+    # modules/pkgs/default.nix
+    repkgsSet = {
+      description = "The repkgs set of one platform (nix/packages.nix): `pkgs`, `wrap` and the rest. nix/default.nix passes it as options.\"/pkgs\".set; a configuration document cannot.";
+      "x-golconda" = "set";
+    };
   };
 
   # Check if a value is plain data (serialisable to JSON).

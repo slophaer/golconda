@@ -1,9 +1,13 @@
-#! Wraps a package with argv, env, and files.
+#! Wraps a package with argv, env, and files: a launcher from data.
 #!
-#! Returns an app record (`modules/lib/app.nix`) that can be passed to
-#! `wrapApp` from `app.nix` or directly to `repkgs.wrap`.
+#! Returns the wrapped derivation (`wrapApp` in `modules/lib/app.nix` over
+#! repkgs' `wrap` from `/pkgs`): a relocatable package whose `bin/<program>`
+#! runs the original binary with the arguments, environment and files baked
+#! in. Put it in a fragment's `packages`; it stands in for the program of the
+#! package it wraps in `/usr/bin`.
 #!
-#! For services, pass the app record to `service.app` and use `renderWrapped`.
+#! A service does not use this module: `service.app` carries the same record
+#! and `renderWrapped` wraps it.
 { types, ... }:
 let
   appLib = import ../lib/app.nix { inherit types; };
@@ -11,10 +15,12 @@ in
 {
   name = "wrap";
 
+  inputs.pkgs.path = "/pkgs";
+
   options = {
     package = {
       type = types.derivation;
-      description = "The package to wrap. Every executable in its bin/ gets a launch record.";
+      description = "The package to wrap; its first `bin` entry is the program the launcher stands in for.";
     };
     argv = {
       type = appLib.argv;
@@ -33,12 +39,9 @@ in
     };
   };
 
-  # The impl returns an app record that the caller passes to wrapApp or repkgs.wrap.
-  # Since adios modules don't have direct access to the repkgs set, the wrapping
-  # happens outside the module (e.g. in packages.nix or via service.renderWrapped).
   impl =
-    { options }:
-    {
+    { options, results }:
+    appLib.wrapApp results.pkgs.wrap {
       inherit (options)
         package
         argv

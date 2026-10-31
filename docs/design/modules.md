@@ -7,11 +7,14 @@ silent override.
 ```mermaid
 flowchart TD
   subgraph tree["/ (adios tree, modules/)"]
+    pkgs["/pkgs: the repkgs set"]
     system["/system: the composer"]
     svc1["/services/sshd"]
     svc2["/services/nginx"]
     net["/network"]
   end
+  pkgs -.->|input| svc1
+  pkgs -.->|input| svc2
   svc1 -->|fragment| system
   svc2 -->|fragment| system
   net -->|fragment| system
@@ -41,6 +44,18 @@ flowchart TD
 
 Every field is optional and typed by `fragment` in `modules/lib/fragment.nix` (korora). A module's
 `impl` returns one.
+
+## How packages enter the tree
+
+The repkgs set enters the tree once, as the option `set` of `/pkgs`: the configuration passes it
+(`tree { options."/pkgs".set = set; }`, which `nix/default.nix` does from `nix/packages.nix`), and
+`/pkgs` returns `{ set; pkgs; wrap; }`. A module that needs a package declares
+`inputs.pkgs.path = "/pkgs"` and reads `results.pkgs.pkgs.openssh` or `results.pkgs.wrap`; a
+package-valued option defaults from there with `defaultFunc = { results }: ...`, so a configuration
+can still replace the package but never has to pass one. This is adios' own mechanism (a module
+declares its inputs and receives their results), so no module imports repkgs, no option takes a
+function, and the schema stays platform-independent: `/pkgs.set` is the one option that is not
+configuration data, and the TOML loader refuses it.
 
 ## `app` and `service`
 

@@ -118,6 +118,21 @@ let
         builtins.hashString "sha256" (builtins.toJSON (removeAttrs args [ "package" ]))
       }";
     };
+  # the repkgs set as /pkgs sees it: the stand-ins above and the stub wrap
+  stubSet = {
+    pkgs = {
+      inherit openssh;
+      jq = standIn;
+    };
+    wrap = stubWrap;
+  };
+  withPkgs =
+    options:
+    f.modules {
+      options = options // {
+        "/pkgs".set = stubSet;
+      };
+    };
   farmOf =
     packages:
     (
@@ -164,10 +179,8 @@ let
   hasPrefix = p: s: substring 0 (stringLength p) s == p;
 
   # 1. sshd composes: the unit loads the host key credential and passes it
-  tree = f.modules {
-    options."/services/sshd" = {
-      package = openssh;
-      wrap = stubWrap;
+  tree = withPkgs {
+    "/services/sshd" = {
       authorizedKeys = [ "ssh-ed25519 AAAA test" ];
     };
   };
@@ -194,10 +207,8 @@ let
   sshdConfig = sshdWrapped._wrapArgs.files.sshd_config;
 
   # 1a. sshd with certificates: a user CA, principals, a KRL and a host certificate
-  certTree = f.modules {
-    options."/services/sshd" = {
-      package = openssh;
-      wrap = stubWrap;
+  certTree = withPkgs {
+    "/services/sshd" = {
       trustedUserCAKeys = [ "ssh-ed25519 AAAA user-ca" ];
       principals.root = [ "alice@example.com" ];
       revokedKeys = true;
@@ -210,16 +221,21 @@ let
   certConfig = certWrapped._wrapArgs.files.sshd_config;
   certArgv = builtins.concatStringsSep " " certWrapped._wrapArgs.argv;
   sshdOptions = attrNames (import ../modules/services/sshd/default.nix { inherit types; }).options;
-  sshdTree =
+  sshdTree = opts: withPkgs { "/services/sshd" = opts; };
+  sshdThrows = opts: throws (compose [ ((sshdTree opts).modules.services.modules.sshd { }) ]);
+  # the set enters once: a tree without /pkgs cannot build what needs a package
+  noSet = f.modules { options."/services/sshd" = { }; };
+  pkgsResult = (withPkgs { }).modules.pkgs { };
+  wrapModule =
     opts:
-    f.modules {
-      options."/services/sshd" = {
-        package = openssh;
-        wrap = stubWrap;
+    (withPkgs {
+      "/wrap" = {
+        package = standIn;
       }
       // opts;
-    };
-  sshdThrows = opts: throws (compose [ ((sshdTree opts).modules.services.modules.sshd { }) ]);
+    }).modules.wrap
+      { };
+  wrapped = wrapModule { argv = [ "--version" ]; };
 
   # 8. the factory: /etc seeds under /usr/share/factory/etc and their manifest
   factoryDir = "/usr/share/factory/etc";
@@ -275,9 +291,63 @@ let
     (check "sshd: the program must be one of the package's executables" (sshdThrows {
       package = standIn;
     }))
-    (check "sshd: wrap is a function" (sshdThrows {
-      wrap = "set.wrap";
-    }))
+    (check "pkgs: /pkgs returns the set, its pkgs and wrap" (
+      pkgsResult.set.pkgs == stubSet.pkgs
+      && pkgsResult.pkgs.openssh == openssh
+      && (pkgsResult.wrap { package = standIn; }).name == "jq-wrap"
+    ))
+    (check "pkgs: sshd takes openssh from the set" (
+      sshdWrapped._wrapArgs.package == openssh
+      && (sshdTree { package = standIn; }).modules.services.modules.sshd.args.options.package == standIn
+    ))
+    (check "pkgs: without the set, sshd and /pkgs throw" (
+      throws (noSet.modules.services.modules.sshd { }) && !(tryEval (noSet.modules.pkgs { })).success
+    ))
+    (check "pkgs: the set must have pkgs and wrap" (
+      let
+        setThrows =
+          set:
+          !(tryEval (builtins.seq ((f.modules { options."/pkgs".set = set; }).modules.pkgs { }).set true))
+          .success;
+      in
+      setThrows { pkgs = { }; }
+      && setThrows { wrap = stubWrap; }
+      && setThrows "repkgs"
+      && !setThrows stubSet
+    ))
+    (check "wrap: the module wraps the package through the set" (
+      wrapped._wrapArgs.package == standIn
+      && wrapped._wrapArgs.argv == [ "--version" ]
+      && wrapped.bin == [ "jq" ]
+      && wrapped.wraps == standIn
+      &&
+        (wrapModule {
+          files.conf = "x";
+          argv = [ (a.file "conf") ];
+        })._wrapArgs.argv == [
+          "{root}/share/wrap/jq/conf"
+        ]
+    ))
+    (check "wrap: a launcher from the module stands in for the program in the farm" (
+      map (l: l.target)
+        (compose [
+          {
+            packages = [
+              standIn
+              wrapped
+            ];
+          }
+        ]).links == [ "${wrapped}/bin/jq" ]
+    ))
+    (check "wrap: argv refuses a credential ref and a newline" (
+      # the stub's outPath hashes the arguments, so forcing it forces argv
+      !(tryEval (wrapModule { argv = [ (s.credential "k") ]; }).outPath).success
+      && !(tryEval (wrapModule { argv = [ "a\nb" ]; }).outPath).success
+      && (tryEval (wrapModule { argv = [ "a b" ]; }).outPath).success
+    ))
+    (check "wrap: without the set the module throws" (
+      !(tryEval ((f.modules { options."/wrap".package = standIn; }).modules.wrap { }).name).success
+    ))
     (check "sshd: waits for the var" (hasInfix "After=golconda-var-sshd-hostkey.service" unit))
     (check "sshd: privsep user" (any (hasInfix "u sshd ") system.sysusers))
     (check "var: runs once" (
@@ -312,7 +382,6 @@ let
         "principals"
         "revokedKeys"
         "trustedUserCAKeys"
-        "wrap"
       ]
     ))
     (check "sshd: without a CA no certificate lines" (
@@ -841,6 +910,7 @@ let
       &&
         attrNames docs.pages == [
           "/factory"
+          "/pkgs"
           "/services"
           "/services/sshd"
           "/system"
@@ -852,6 +922,7 @@ let
       attrNames docs.files == [
         "factory.md"
         "index.md"
+        "pkgs.md"
         "services-sshd.md"
         "services.md"
         "system.md"
@@ -890,8 +961,19 @@ let
       in
       hasInfix "a\\|b &lt;c>" p."/x"
     ))
-    (check "module-docs: sshd's only opaque option is the wrap function" (
-      hasInfix "Options with one: `wrap`." docs.pages."/services/sshd"
+    (check "module-docs: sshd has no opaque option; package renders as a package" (
+      !hasInfix "Opaque types" docs.pages."/services/sshd"
+      && !hasInfix "`wrap`" docs.pages."/services/sshd"
+      && hasInfix "| `package` | package | none |" docs.pages."/services/sshd"
+    ))
+    (check "schema: sshd has no wrap option and /pkgs.set is the set" (
+      let
+        schema = schemaLib.toJsonSchema (f.modules { });
+      in
+      !(schema.properties."/services/sshd".properties ? wrap)
+      && schema.properties."/services/sshd".properties.package."x-golconda" == "package"
+      && schema.properties."/pkgs".properties.set."x-golconda" == "set"
+      && hasInfix "| `set` | set | none |" docs.pages."/pkgs"
     ))
 
     # New tests for module doc comments and types
@@ -969,8 +1051,14 @@ let
     ))
 
     # 6. TOML config loader
-    (check "config: validPaths includes sshd" (
-      builtins.elem "/services/sshd" configLib.validPaths && builtins.elem "/system" configLib.validPaths
+    (check "config: validPaths includes sshd and not /pkgs" (
+      builtins.elem "/services/sshd" configLib.validPaths
+      && builtins.elem "/system" configLib.validPaths
+      && !builtins.elem "/pkgs" configLib.validPaths
+    ))
+    (check "config: a /pkgs table is refused: the set is not data" (
+      !(tryEval (configLib.loadConfigText "[\"/pkgs\"]\nset = \"repkgs\"\n")).success
+      && !(configLib.loadConfig ../examples/server.toml).options ? "/pkgs"
     ))
     (check "config: loadConfig parses server.toml" (
       let
@@ -981,13 +1069,20 @@ let
     (check "config: loadConfig rejects unknown table" (
       !(tryEval (configLib.loadConfig ../examples/bad.toml)).success
     ))
-    (check "config: loadAndApply applies options to tree" (
+    (check "config: loadAndApply with the set builds sshd from the document" (
       let
-        appliedTree = configLib.loadAndApply ../examples/server.toml;
-        # Check that the sshd module can be called and returns a fragment
-        sshdFrag = appliedTree.modules.services.modules.sshd { };
+        appliedTree = (configLib.withPkgs stubSet).loadAndApply ../examples/server.toml;
+        frag = compose [ (appliedTree.modules.services.modules.sshd { }) ];
       in
-      sshdFrag ? units && sshdFrag ? files
+      ((configLib.withPkgs stubSet).loadConfig ../examples/server.toml).options."/pkgs".set.pkgs
+      == stubSet.pkgs
+      && hasInfix "ExecStart=/usr/bin/sshd -h %d/hostkey\n" frag.units."sshd.service"
+      && (builtins.head (builtins.filter (p: p ? _wrapArgs) frag.packages))._wrapArgs.package == openssh
+    ))
+    (check "config: loadAndApply without the set cannot build sshd" (
+      throws (compose [
+        ((configLib.loadAndApply ../examples/server.toml).modules.services.modules.sshd { })
+      ])
     ))
 
     # 5. wrapApp and renderWrapped
