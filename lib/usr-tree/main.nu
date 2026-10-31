@@ -185,11 +185,8 @@ export def build [] {
   log "writing lib/os-release"
   $attrs.osRelease | save -f $"($out)/lib/os-release"
 
-  # Step 10: Set mtimes on all files and directories
-  log $"setting mtimes to epoch ($epoch)"
-  # Find all files and directories, set mtime
-  # -h: do not dereference symlinks (sets mtime on the link itself)
-  ^find $out -exec touch -h -d $"@($epoch)" "{}" ";"
+  # mtimes are not set here: Nix normalises every store path to mtime 1. The version-derived
+  # timestamp (epoch) is applied by mkfs.erofs -T when the image is made (image/erofs.nix).
 
   # Step 11: Verification
   log "verifying..."
