@@ -7,7 +7,6 @@
 { types }:
 let
   inherit (types)
-    attrsOf
     bool
     derivation
     listOf
@@ -22,6 +21,7 @@ let
     attrNames
     concatStringsSep
     head
+    isAttrs
     isList
     length
     ;
@@ -29,6 +29,29 @@ let
   inherit (builtins) isString match;
 
   path = import ./path.nix;
+
+  # A value the renderer puts on one line of a unit: no control character. A
+  # newline would end the directive and start another (review finding 13).
+  unitValue = typedef' "unitValue" (
+    v:
+    if !isString v then
+      "Expected a string"
+    else if path.hasControl v then
+      "'${v}' contains a control character: a value is one line of a unit"
+    else
+      null
+  );
+
+  # An Environment= variable name.
+  envName = typedef' "envName" (
+    v:
+    if !isString v then
+      "Expected a string"
+    else if match "[A-Za-z_][A-Za-z0-9_]*" v == null then
+      "'${v}' is not an environment variable name: letters, digits and _, not starting with a digit"
+    else
+      null
+  );
 
   # A credential reference, { credential = "name"; prefix ? ""; }. The
   # renderer writes it as <prefix>%d/name and checks that the service
@@ -73,10 +96,10 @@ let
   #   { PATH = { prepend = [ "/usr/lib/foo/bin" ]; }; HOME = { set = "/var/lib/foo"; }; }
   envOp =
     (struct "envOp" {
-      set = optionalAttr string;
-      default = optionalAttr string;
-      prepend = optionalAttr (listOf string);
-      append = optionalAttr (listOf string);
+      set = optionalAttr unitValue;
+      default = optionalAttr unitValue;
+      prepend = optionalAttr (listOf unitValue);
+      append = optionalAttr (listOf unitValue);
       unset = optionalAttr bool;
     }).override
       {
@@ -88,6 +111,31 @@ let
           else
             "an env operation has exactly one of set, default, prepend, append, unset; got [${concatStringsSep ", " (attrNames v)}]";
       };
+
+  # Environment variable name -> operation; attrsOf checks values only, so the
+  # names are checked here and an error names the variable.
+  env = typedef' "env" (
+    v:
+    if !isAttrs v then
+      "Expected type 'env' (environment variable name -> operation)"
+    else
+      builtins.foldl' (
+        err: n:
+        if err != null then
+          err
+        else
+          let
+            k = envName.verify n;
+            o = envOp.verify v.${n};
+          in
+          if k != null then
+            k
+          else if o != null then
+            "in env '${n}': ${o}"
+          else
+            null
+      ) null (attrNames v)
+  );
 
   # One image serves every machine, so an app file holds no per-machine
   # value (docs/design/modules.md). A credential path or a key is the one
@@ -133,15 +181,28 @@ let
       ) null (attrNames v)
   );
 
+  # The program name: a file name in /usr/bin, so no slash and no control
+  # character.
+  programName = typedef' "programName" (
+    v:
+    if !isString v then
+      "Expected a string"
+    else if match "[A-Za-z0-9_@.+-]+" v == null then
+      "'${v}' is not a program name: letters, digits and _ @ . + - (it becomes /usr/bin/<program>)"
+    else
+      null
+  );
+
   app =
     (struct "app" {
       package = derivation;
-      # the executable in the package's `bin` list; default: its first entry
-      program = optionalAttr string;
+      # the executable in the package's `bin` list; default: its first entry. It
+      # becomes /usr/bin/<program>, so it is one name, not a path.
+      program = optionalAttr programName;
       # default [ ]; strings and credential references
       argv = optionalAttr argv;
       # default { }
-      env = optionalAttr (attrsOf envOp);
+      env = optionalAttr env;
       # file name (may hold a directory, "principals/root") -> text; default { }.
       # The renderer installs them under /usr/lib/<service>/. No per-machine
       # value: see `files`.
@@ -174,9 +235,13 @@ in
     argv
     binName
     credentialRef
+    env
+    envName
     envOp
     exe
     files
+    programName
+    unitValue
     isCredentialRef
     perMachineMarkers
     ;

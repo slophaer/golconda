@@ -14,6 +14,8 @@
 let
   appLib = import ./app.nix { inherit types; };
   inherit (import ./var.nix { inherit types; }) word;
+  inherit (import ./fragment.nix { inherit types; }) unitName;
+  path = import ./path.nix;
   inherit (appLib)
     app
     exe
@@ -24,7 +26,6 @@ let
     enum
     listOf
     optionalAttr
-    string
     struct
     typedef'
     ;
@@ -108,6 +109,24 @@ let
     ];
   };
 
+  # A systemd credential id: what LoadCredentialEncrypted= names and %d/<id>
+  # reads. It is one name, never a path: no /, no control character.
+  credentialId = typedef' "credentialId" (
+    v:
+    if !isString v then
+      "Expected a string"
+    else if match "[A-Za-z0-9_.:@-]+" v == null then
+      "'${v}' is not a credential id: letters, digits and _ . : @ - (it names a file in the credstore, not a path)"
+    else
+      null
+  );
+
+  # A StateDirectory= entry: one directory name under /var/lib, so a space or
+  # a .. cannot add a second directory or leave /var/lib (review finding 13).
+  stateDirectory = typedef' "stateDirectory" (
+    v: if !isString v then "Expected a string" else path.componentError v
+  );
+
   # A target name: what systemd accepts for WantedBy= / RequiredBy=.
   targetName = typedef' "targetName" (
     v:
@@ -154,16 +173,17 @@ let
       # embedded name against the id it loads, so a renamed file fails.
       # System scope only: Golconda seals credentials for the system manager.
       # app.argv names a credential by its handle: { credential = "n"; prefix ? ""; }.
-      credentials = optionalAttr (attrsOf string);
-      # StateDirectory= entries under /var/lib; default [ ]
-      state = optionalAttr (listOf string);
+      credentials = optionalAttr (attrsOf credentialId);
+      # StateDirectory= entries under /var/lib, one name each; default [ ]
+      state = optionalAttr (listOf stateDirectory);
       # RuntimeDirectory= under /run, one component; default none
       runtimeDirectory = optionalAttr word;
       # KillMode=; default control-group (systemd's own)
       killMode = optionalAttr killMode;
-      # unit ordering; default [ ]
-      after = optionalAttr (listOf string);
-      wants = optionalAttr (listOf string);
+      # unit ordering; default [ ]. Each is a unit name, so a line break or a
+      # stray directive cannot enter the [Unit] section.
+      after = optionalAttr (listOf unitName);
+      wants = optionalAttr (listOf unitName);
       # targets that pull in this unit; default [ "multi-user.target" ], for a
       # user service [ "default.target" ]
       # generates static .wants symlinks; [Install] section kept for admin overrides
@@ -197,6 +217,10 @@ let
       s;
   arg = s: quote (escape s);
 
+  # A value in Environment=: systemd expands % specifiers there, and only
+  # there; `$` is literal (unlike in ExecStart=), so only % is doubled.
+  envValue = s: replaceStrings [ "%" ] [ "%%" ] s;
+
   # Environment= from launch env operations. A unit starts from an empty
   # environment, so `default` is `set` and prepend/append have nothing to join.
   envLines =
@@ -209,13 +233,13 @@ let
       if op ? unset then
         "UnsetEnvironment=${k}"
       else if op ? set then
-        "Environment=${quote "${k}=${op.set}"}"
+        "Environment=${quote "${k}=${envValue op.set}"}"
       else if op ? default then
-        "Environment=${quote "${k}=${op.default}"}"
+        "Environment=${quote "${k}=${envValue op.default}"}"
       else if op ? prepend then
-        "Environment=${quote "${k}=${concatStringsSep ":" op.prepend}"}"
+        "Environment=${quote "${k}=${envValue (concatStringsSep ":" op.prepend)}"}"
       else
-        "Environment=${quote "${k}=${concatStringsSep ":" op.append}"}"
+        "Environment=${quote "${k}=${envValue (concatStringsSep ":" op.append)}"}"
     ) (attrNames env);
 
   sortStrings = sort (a: b: a < b);

@@ -251,18 +251,13 @@ let
           description = "The package; its first bin entry is the program.";
         };
         program = {
-          type = "string";
-          description = "The executable, one of the package's bin entries; default the first.";
+          "$ref" = "#/$defs/programName";
         };
         argv = {
           "$ref" = "#/$defs/argv";
         };
         env = {
-          type = "object";
-          additionalProperties = {
-            "$ref" = "#/$defs/envOp";
-          };
-          description = "Environment operations.";
+          "$ref" = "#/$defs/env";
         };
         files = {
           "$ref" = "#/$defs/appFiles";
@@ -300,27 +295,31 @@ let
       oneOf = [
         {
           properties.set = {
-            type = "string";
+            "$ref" = "#/$defs/unitValue";
           };
           required = [ "set" ];
         }
         {
           properties.default = {
-            type = "string";
+            "$ref" = "#/$defs/unitValue";
           };
           required = [ "default" ];
         }
         {
           properties.prepend = {
             type = "array";
-            items.type = "string";
+            items = {
+              "$ref" = "#/$defs/unitValue";
+            };
           };
           required = [ "prepend" ];
         }
         {
           properties.append = {
             type = "array";
-            items.type = "string";
+            items = {
+              "$ref" = "#/$defs/unitValue";
+            };
           };
           required = [ "append" ];
         }
@@ -331,6 +330,29 @@ let
           required = [ "unset" ];
         }
       ];
+    };
+
+    env = {
+      description = "Environment variable name -> operation; the name is letters, digits and _, and does not start with a digit.";
+      type = "object";
+      propertyNames = {
+        type = "string";
+        pattern = "^[A-Za-z_][A-Za-z0-9_]*$";
+      };
+      additionalProperties = {
+        "$ref" = "#/$defs/envOp";
+      };
+    };
+
+    unitValue = {
+      description = "A value on one line of a unit: a string with no control character (a newline would add a directive).";
+      type = "string";
+    };
+
+    programName = {
+      description = "An executable name in /usr/bin: letters, digits and _ @ . + -, never a path.";
+      type = "string";
+      pattern = "^[A-Za-z0-9_@.+-]+$";
     };
 
     credentialRef = {
@@ -370,16 +392,16 @@ let
         credentials = {
           type = "object";
           additionalProperties = {
-            type = "string";
+            "$ref" = "#/$defs/credentialId";
           };
-          description = "Credential name -> credstore id.";
+          description = "Credential name -> credstore id (one name, never a path).";
         };
         state = {
           type = "array";
           items = {
-            type = "string";
+            "$ref" = "#/$defs/stateDirectory";
           };
-          description = "StateDirectory entries under /var/lib.";
+          description = "StateDirectory entries under /var/lib, one directory name each.";
         };
         runtimeDirectory = {
           "$ref" = "#/$defs/word";
@@ -397,14 +419,14 @@ let
         after = {
           type = "array";
           items = {
-            type = "string";
+            "$ref" = "#/$defs/unitName";
           };
           description = "Units to order after.";
         };
         wants = {
           type = "array";
           items = {
-            type = "string";
+            "$ref" = "#/$defs/unitName";
           };
           description = "Units to want.";
         };
@@ -421,6 +443,18 @@ let
         "app"
         "sandbox"
       ];
+    };
+
+    credentialId = {
+      description = "A systemd credential id: letters, digits and _ . : @ -, one name in the credstore, never a path.";
+      type = "string";
+      pattern = "^[A-Za-z0-9_.:@-]+$";
+    };
+
+    stateDirectory = {
+      description = "A StateDirectory= entry: one directory name under /var/lib (letters, digits, _ . -), not . or ...";
+      type = "string";
+      pattern = "^[A-Za-z0-9_.-]+$";
     };
 
     serviceScope = {
