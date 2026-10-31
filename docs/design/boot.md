@@ -2,8 +2,8 @@
 
 Boot is a chain of signed and measured steps from firmware to `boot-complete.target`, all of them
 systemd's. Each UKI carries the `usrhash=` of its `/usr` slot, which is how A and B differ. The UKI
-and the initrd are built (`lib/image/`); Secure Boot and measured boot are signed but not yet
-enforced or tested *(planned)*.
+and the initrd are built (`lib/image/`) and boot in QEMU to `basic.target`. Secure Boot and measured
+boot are signed today (the smoke uses throwaway keys); enrolment and enforcement are not proven.
 
 ```mermaid
 sequenceDiagram
@@ -54,14 +54,19 @@ three failures systemd-boot falls back to the other entry, which is the other `/
 The cmdline is fixed in the UKI and measured with it:
 `usrhash=<hash> lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=0 console=tty0 console=ttyS0,115200`
 (`image/uki.nix`), plus `rdinit=<systemd>` from the builder. The LSM parameters are described in
-[Kernel](kernel.md). No administrator edits: `loader.conf` edits are off, and nothing adds `ro` or
-`systemd.volatile=` (`/` is the state partition, which gpt-auto mounts writable when nothing says
-`ro`; `/usr` is verity). A debug image with other parameters is a separate build *(after v1)*.
+[Kernel](kernel.md). No administrator edits: `loader.conf` edits are off. The decided cmdline has
+neither `ro` nor `rw` and no `systemd.volatile=` (`/` is the state partition, which gpt-auto mounts
+writable when nothing says `ro`; `/usr` is verity). A debug image with other parameters is a
+separate build *(after v1)*.
 
-Stand-ins today: the image smoke also appends `rw` and `LD_LIBRARY_PATH=…`, and `rdinit=` names
-systemd by its store path. They go when the fork fixes gpt-auto's exit, the RUNPATH of `dlopen`
-libraries and symlink resolution from `AT_EXECFN`. `ipe.enforce=0` means IPE enforces nothing yet:
-it becomes `1` once the verity certificate is in a kernel keyring.
+Stand-ins today. The image smoke also appends `rw`: the host's gpt-auto-generator exits 1, so the
+remount-rw drop-in it would write is missing, and without `rw` sysusers, vars and state directories
+fail. It also appends `LD_LIBRARY_PATH=…` for PID 1, and every image sets the same for services in
+`system.conf.d/golconda-dlopen.conf` (`/base`): both stand in for a fork fix, RUNPATH entries for
+the sonames in `.note.dlopen`. `rdinit=/usr/nix/store/<systemd>/lib/systemd/systemd` stands in until
+the fork resolves `AT_EXECFN` symlinks; then `/init` suffices. Each leaves with its fix.
+`ipe.enforce=0` means IPE enforces nothing yet: it becomes `1` once the verity certificate is in a
+kernel keyring.
 
 ## Serial console
 
@@ -97,6 +102,8 @@ What happens once, on the first boot of a disk:
 1. repart creates the root partition from `/usr/lib/repart.d/30-root.conf` (`GrowFileSystem=`,
    `FactoryReset=`), with `/etc`, `/var`, `/home`, `/root` inside.
 1. PID 1 writes `/etc/machine-id`; systemd-firstboot writes `/etc/hostname` from the credential.
+   Open: today firstboot also stops at its interactive root-password prompt, which must be turned
+   off (no local login).
 1. systemd-sysusers writes `passwd`, `group`, `shadow` from `/usr/lib/sysusers.d`.
 1. systemd-tmpfiles links each factory file into `/etc` and makes the state directories.
 1. The var units generate the machine-local secrets and seal them to the TPM
@@ -106,14 +113,14 @@ What happens once, on the first boot of a disk:
 Every later boot runs the same units; `ConditionNeedsUpdate=` and the vars' `done` markers make them
 no-ops ([Updates: Versions](updates.md#versions)).
 
-## Measured boot *(planned)*
+## Measured boot
 
 systemd-stub measures the UKI's parts into PCR 11. `systemd-measure` precomputes those values at
 build time and signs them; the signature travels in the UKI (`.pcrsig`). Credentials are sealed to
 the signing key, not to a PCR value, so a new signed image unseals them without re-enrolment.
 Firmware PCRs (0–7) are policy-locked with `systemd-pcrlock`.
 
-## Secure Boot *(planned)*
+## Secure Boot
 
 Keys are generated once per deployment with `ukify genkey`; UKIs and systemd-boot are signed at
 build time. Enrolment is systemd-boot's automatic enrolment from `loader/keys/auto` in setup mode,
