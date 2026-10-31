@@ -1961,11 +1961,14 @@ let
       in
       e2 > e1 # revision 2 is later than revision 1
     ))
-    (check "usr-tree: versionToEpoch handles fallback" (
+    (check "usr-tree: versionToEpoch throws on a bad format" (
       let
-        e = usrTreeLib.versionToEpoch "1";
+        bad = v: !(tryEval (usrTreeLib.versionToEpoch v)).success;
       in
-      e == 1609459201 # base epoch + 1
+      bad "1" && bad "2026.10.31" && bad "20261031" && bad "v1.0.0" && bad "" && !bad "20261031.1"
+    ))
+    (check "image: versionToEpoch throws on a bad format too" (
+      !(tryEval (imageLib.versionToEpoch "1")).success
     ))
     (check "usr-tree: makeRelative creates correct relative paths" (
       usrTreeLib.makeRelative "/usr/bin/jq" "/nix/store/abc-jq/bin/jq" == "../nix/store/abc-jq/bin/jq"
