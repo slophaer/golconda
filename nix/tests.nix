@@ -111,10 +111,7 @@ let
   # base packages for /base module
   stubSystemd = withBin "systemd-262" [ "systemctl" ];
   stubDbusBroker = withBin "dbus-broker-42" [ "dbus-broker" ];
-  stubBash = withBin "bash-5.2" [
-    "bash"
-    "sh"
-  ];
+  stubDash = withBin "dash-0.5.13.5" [ "dash" ];
   stubUutils = withBin "uutils-coreutils-0.0.25" [
     "ls"
     "cat"
@@ -131,7 +128,7 @@ let
       # base packages
       systemd = stubSystemd;
       dbus-broker = stubDbusBroker;
-      bash = stubBash;
+      dash = stubDash;
       uutils-coreutils = stubUutils;
       linux-kernel = stubLinuxKernel;
     };
@@ -2194,17 +2191,17 @@ let
       # /base's packages are there even with no fragments
       any (p: p.name == "systemd-262") result.packages
       && any (p: p.name == "dbus-broker-42") result.packages
-      && any (p: p.name == "bash-5.2") result.packages
+      && any (p: p.name == "dash-0.5.13.5") result.packages
       && any (p: p.name == "uutils-coreutils-0.0.25") result.packages
     ))
-    (check "base: sh link is a package link from bash" (
+    (check "base: /usr/bin/sh is an explicit link to dash" (
       let
         result = compose [ ];
       in
-      # bash advertises [ "bash" "sh" ] in bin, so /usr/bin/sh is a package link
       result.links ? "/usr/bin/sh"
-      && result.links."/usr/bin/sh".kind == "package"
-      && hasInfix "bash" result.links."/usr/bin/sh".target
+      && result.links."/usr/bin/sh".kind == "explicit"
+      && hasInfix "dash" result.links."/usr/bin/sh".target
+      && !(any (p: hasPrefix "bash" p.name) result.packages)
     ))
     (check "base: dbus.socket is a file (not a link, since dbus-broker lacks it)" (
       let

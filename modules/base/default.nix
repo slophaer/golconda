@@ -3,8 +3,8 @@
 #! Always implicit: `/system` merges this fragment first, before any other
 #! module's fragment. A configuration need not declare it.
 #!
-#! Packages: systemd, dbus-broker, bash (as /usr/bin/sh until dash is in
-#! repkgs), uutils-coreutils, and the kernel (consumed later by the UKI
+#! Packages: systemd, dbus-broker, dash (linked as /usr/bin/sh; the image
+#! has no bash), uutils-coreutils, and the kernel (consumed later by the UKI
 #! builder). No GNU coreutils.
 #!
 #! Units enabled: dbus.socket (wanted by sockets.target), dbus-broker.service
@@ -155,9 +155,14 @@ in
         }
       ];
 
-      # bash package advertises both "bash" and "sh" in its bin list,
-      # so /usr/bin/sh is created as a package link automatically.
-      # TODO: when dash is in repkgs, add it and use an explicit link.
+      # dash is /bin/sh (/bin -> usr/bin is made by the image builder).
+      shLinks = [
+        {
+          path = "/usr/bin/sh";
+          target = "${p.dash}/bin/dash";
+          kind = "explicit";
+        }
+      ];
 
       # Farm links: directories the image builder expands file by file.
       # systemd's lib/systemd/system, udev rules, sysusers.d, tmpfiles.d.
@@ -207,7 +212,7 @@ in
       packages = [
         p.systemd
         p.dbus-broker
-        p.bash
+        p.dash
         p.uutils-coreutils
         p.linux-kernel # kernel; UKI builder consumes it
       ];
@@ -220,7 +225,7 @@ in
         "/usr/lib/systemd/system/dbus.socket" = dbusSocketUnit;
       };
 
-      links = linksToAttrs (dbusUnitLinks ++ wantsLinks ++ farmLinks ++ dlopenLinks);
+      links = linksToAttrs (dbusUnitLinks ++ wantsLinks ++ shLinks ++ farmLinks ++ dlopenLinks);
 
       # The dbus user, if dbus-broker needs it. dbus-broker runs as root by
       # default on most configurations (UID 0 in the unit), but the messagebus
