@@ -139,7 +139,7 @@ let
       )
     ))
 
-    # 3. a duplicate unit across two fragments is a composer error
+    # 3. a duplicate unit or file across two fragments is a composer error
     (check "composer refuses a duplicate unit" (
       throws (
         (f.modules {
@@ -154,6 +154,25 @@ let
         }).modules.system
           { }
       )
+    ))
+    (check "composer refuses a duplicate file" (
+      !(tryEval (
+        deepSeq
+          (
+            (f.modules {
+              options."/system" = {
+                name = "dup";
+                version = "0";
+                fragments = [
+                  { files."/usr/lib/foo/config" = "a"; }
+                  { files."/usr/lib/foo/config" = "b"; }
+                ];
+              };
+            }).modules.system
+              { }
+          ).files
+          true
+      )).success
     ))
     (check "composer concatenates lists" (
       (
