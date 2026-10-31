@@ -1,8 +1,11 @@
-# The composer: takes fragments, returns one system. Union with an error on a
-# duplicate key; there is no priority system (docs/design/modules.md). The
-# union itself is modules/lib/merge.nix, so a module that returns several
-# fragments applies the same rule. Output: { name; version; units; files;
-# sysusers; tmpfiles; packages }, every file as { text; mode; }.
+#! The composer: takes fragments, returns one system.
+#!
+#! Union with an error on a duplicate key; there is no priority system
+#! (see `docs/design/modules.md`). The union itself is `modules/lib/merge.nix`,
+#! so a module that returns several fragments applies the same rule.
+#!
+#! Output: `{ name; version; units; files; sysusers; tmpfiles; packages }`,
+#! every file as `{ text; mode; }`.
 { types, ... }:
 let
   fragmentT = (import ../lib/fragment.nix { inherit types; }).fragment;
@@ -27,6 +30,7 @@ in
     fragments = {
       type = types.listOf fragmentT;
       default = [ ];
+      description = "Fragments to merge. Each module returns a fragment; the composer unions them, erroring on duplicate keys.";
     };
   };
 

@@ -1,6 +1,8 @@
-# The runner every var unit executes (modules/lib/var.nix). One file for all
-# vars, so one module installs it: a configuration with vars adds `/vars` to
-# the fragments once; the composer refuses a second copy.
+#! Installs the var runner `/usr/lib/golconda/golconda-var-run`.
+#!
+#! Every var unit executes this runner (`modules/lib/var.nix`). One file for
+#! all vars, so one module installs it: a configuration with vars adds `/vars`
+#! to the fragments once; the composer refuses a second copy.
 _: {
   name = "vars";
 

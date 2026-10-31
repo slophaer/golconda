@@ -1,16 +1,9 @@
-# wrap module: wraps a package with argv, env, and files.
-# Returns an app record (modules/lib/app.nix) that can be passed to `wrapApp`
-# from app.nix or directly to `repkgs.wrap`.
-#
-# Example use:
-#   let wrapped = wrapApp set.wrap (modules.wrap {
-#     options.package = pkgs.ripgrep;
-#     options.argv = [ "--config-path" (file "ripgreprc") ];
-#     options.files.ripgreprc = "--smart-case\n";
-#   });
-#
-# For services, pass the app record to service.app and use renderWrapped:
-#   s.renderWrapped set.wrap { name = "rg"; app = modules.wrap {...}; ... }
+#! Wraps a package with argv, env, and files.
+#!
+#! Returns an app record (`modules/lib/app.nix`) that can be passed to
+#! `wrapApp` from `app.nix` or directly to `repkgs.wrap`.
+#!
+#! For services, pass the app record to `service.app` and use `renderWrapped`.
 { types, ... }:
 let
   appLib = import ../lib/app.nix { inherit types; };

@@ -1,26 +1,12 @@
-# /factory: the seed for /etc and its manifest. The composer writes the
-# files below to /usr/share/factory/etc; on the machine a tmpfiles `C+` line
-# copies what /etc lacks (`C` alone would skip /etc, which PID 1 has already
-# filled with machine-id), two `L` lines make the symlinks a fragment cannot
-# hold, and `f` records the manifest hash in /etc/.golconda-factory-id on the
-# boot that seeded it. Nothing replaces an existing file: an admin edit
-# persists, and a later image changes /etc only through etc-sync (planned),
-# which reads /usr/lib/golconda/etc.manifest: one line per factory path,
-# `<type> <mode> <owner> <sha256 or target> <path>`.
-#
-# Not in the factory, by decision (docs/design/layout.md):
-# - passwd, group, shadow, gshadow: systemd-sysusers creates them on first
-#   boot from /usr/lib/sysusers.d (root and the standard groups come from
-#   systemd's basic.conf; `passwd.hashed-password.root` is read then). A
-#   factory copy would freeze a second source of the same users.
-# - machine-id: PID 1 generates it; a copy would make every machine one.
-# The `extraFiles` type refuses these names.
-#
-# PAM stays for account and session only (docs/design/trust.md): pam.d/sshd
-# has no auth line, so an auth request falls through to pam.d/other, which
-# denies everything. The sshd privilege-separation user and /var/empty are
-# ambient like /etc/pam.d, so they live here: a configuration with
-# /services/sshd adds /factory once.
+#! The seed for `/etc` and its manifest.
+#!
+#! The composer writes files to `/usr/share/factory/etc`; on the machine a
+#! tmpfiles `C+` line copies what `/etc` lacks. Nothing replaces an existing
+#! file: an admin edit persists, and a later image changes `/etc` only through
+#! etc-sync (planned), which reads `/usr/lib/golconda/etc.manifest`.
+#!
+#! The sshd privilege-separation user and `/var/empty` are ambient like
+#! `/etc/pam.d`: add `/factory` once when using `/services/sshd`.
 { types, ... }:
 let
   inherit (builtins)
