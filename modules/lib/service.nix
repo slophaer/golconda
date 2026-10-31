@@ -114,7 +114,8 @@ let
       user
       sandbox
       ;
-    # unit-only arguments after app.argv: strings or { credential = "n"; } (%d/n); default [ ]
+    # unit-only arguments after app.argv: strings or { credential = "n"; prefix ? ""; }
+    # (<prefix>%d/n); default [ ]
     extraArgv = optionalAttr (
       listOf (union [
         string
@@ -179,7 +180,7 @@ let
       checkedRef =
         r:
         if credentials ? ${r.credential} then
-          "%d/${r.credential}"
+          "${r.prefix or ""}%d/${r.credential}"
         else
           throw "golconda: service ${svc.name} references credential '${r.credential}' but declares only [${concatStringsSep ", " (attrNames credentials)}]";
 
@@ -256,4 +257,9 @@ in
     ;
   inherit (appLib) app credentialRef file;
   credential = n: { credential = n; };
+  # `-o RevokedKeys=%d/krl` style: credentialArg "RevokedKeys=" "krl"
+  credentialArg = prefix: n: {
+    credential = n;
+    inherit prefix;
+  };
 }
