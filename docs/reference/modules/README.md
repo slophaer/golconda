@@ -102,7 +102,7 @@ What a program needs to run, with nothing systemd-specific. Embedded in `service
 | `package` | derivation                                                            | the package; its `bin` list names its executables                                               |
 | `program` | string, default the first `bin` entry                                 | the executable; must be in `bin` when the package declares it                                   |
 | `argv`    | list of string or `{ credential = "n"; prefix ? ""; }`, default `[ ]` | arguments after the program; a ref renders as `<prefix>%d/n` and must be in `credentials`       |
-| `env`     | attrs of one-key `{ set \| default \| prepend \| append \| unset }`   | environment operations, `Environment=` lines                                                    |
+| `env`     | attrs of one-key `{ set \| unset }`                                   | `Environment=` (a replacement value) or `UnsetEnvironment=` lines                               |
 | `files`   | attrs name → text, default `{ }`                                      | files installed to `/usr/lib/<service>/<name>`; a name may hold a directory (`principals/root`) |
 
 An argument with a newline is a type error (it would end the `ExecStart=` line). A file text that

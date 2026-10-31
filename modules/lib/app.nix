@@ -99,14 +99,14 @@ let
     if v == true then null else "Expected true: the key is the operation; to keep the variable, omit it"
   );
 
-  # One launch env operation: exactly one key.
-  #   { PATH = { prepend = [ "/usr/lib/foo/bin" ]; }; HOME = { set = "/var/lib/foo"; }; }
+  # One launch env operation: exactly one key, and a replacement value or a
+  # presence marker. Inherited-value operations (default, prepend, append)
+  # are not offered: the renderer replaces the value, and systemd already
+  # sets values such as PATH (review finding 27).
+  #   { HOME = { set = "/var/lib/foo"; }; OLD = { unset = true; }; }
   envOp =
     (struct "envOp" {
       set = optionalAttr unitValue;
-      default = optionalAttr unitValue;
-      prepend = optionalAttr (listOf unitValue);
-      append = optionalAttr (listOf unitValue);
       unset = optionalAttr unsetFlag;
     }).override
       {
@@ -116,7 +116,7 @@ let
           if length (attrNames v) == 1 then
             null
           else
-            "an env operation has exactly one of set, default, prepend, append, unset; got [${concatStringsSep ", " (attrNames v)}]";
+            "an env operation has exactly one of set, unset; got [${concatStringsSep ", " (attrNames v)}]";
       };
 
   # Environment variable name -> operation; attrsOf checks values only, so the

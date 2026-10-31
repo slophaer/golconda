@@ -1061,6 +1061,28 @@ let
         }
       )
     ))
+    (check "env: default, prepend and append are not operations" (
+      all
+        (
+          env:
+          throws (
+            s.render {
+              name = "x";
+              app = {
+                package = standIn;
+                inherit env;
+              };
+              user = "root";
+              sandbox = "strict";
+            }
+          )
+        )
+        [
+          { PATH.default = "/usr/lib/foo/bin"; }
+          { PATH.prepend = [ "/usr/lib/foo/bin" ]; }
+          { PATH.append = [ "/usr/lib/foo/bin" ]; }
+        ]
+    ))
     (check "var: an admin var is a manifest entry and nothing else" (
       let
         frag = v.admin {
@@ -3404,7 +3426,7 @@ let
               env = {
                 HOME.set = "%h";
                 VAR.set = "$HOME";
-                PATH.prepend = [ "/usr/lib/foo/bin" ];
+                PATH.set = "/usr/lib/foo/bin";
               };
             };
             user = "root";
