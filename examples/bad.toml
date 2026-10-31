@@ -1,0 +1,3 @@
+# Invalid config: unknown module path
+["/unknown/module"]
+x = 1

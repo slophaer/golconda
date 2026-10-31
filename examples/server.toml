@@ -1,0 +1,19 @@
+# Example Golconda server configuration.
+# Table names are adios module paths. Each table sets options for that module.
+# Validate with: iets eval --json -E '(import ./default.nix).schema' > schema.json
+# then use any JSON Schema validator (ajv, jsonschema, etc.).
+
+["/system"]
+name = "server"
+version = "2026.10.0"
+
+["/services/sshd"]
+port = 22
+authorizedKeys = [
+  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample admin@example.com",
+]
+
+# Certificate-based login: uncomment to enable.
+# trustedUserCAKeys = ["ssh-ed25519 AAAA... user-ca-key"]
+# ["/services/sshd".principals]
+# root = ["admin@example.com"]
