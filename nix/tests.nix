@@ -2696,6 +2696,21 @@ let
       in
       result.files."/usr/lib/systemd/network/bare.network".text == "[Match]\nName=lo\n"
     ))
+
+    # entry point: system is explicit, platform follows it, no builtins.currentSystem
+    (check "mkSystem: platform defaults to system, evaluated purely" (
+      let
+        sys = import ../lib/system.nix {
+          inherit sources;
+          config = ../examples/server.toml;
+          system = "aarch64-linux";
+        };
+      in
+      sys.platform.name == "aarch64-linux"
+    ))
+    (check "examples/golconda.nix evaluates without --impure" (
+      (import ../examples/golconda.nix).platform.name == "x86_64-linux"
+    ))
   ];
 in
 assert all (t: t) tests;

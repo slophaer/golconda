@@ -23,7 +23,7 @@
 # `extra`, so a configuration can be pure TOML or TOML + Nix.
 {
   config,
-  platform ? builtins.currentSystem,
+  platform ? system,
   system ? builtins.currentSystem,
   sources ? import ../nix/sources.nix,
   extra ? { },
