@@ -75,7 +75,7 @@ writes `proof.txt` (sizes, `veritysetup verify`, the cpio listing, `ukify inspec
 | verity | `verity { erofs; key; cert; … }`          | `<id>_<version>.usr-verity.raw`, `roothash`, `<id>_<version>.usr-verity-sig.raw`                                                                |
 | initrd | `initrdTree { … }`, `initrd { usrTree; }` | `initrd.cpio.zst`, `rdinit` ([Boot: the initrd](../design/boot.md#the-initrd))                                                                  |
 | uki    | `uki { initrd; verity; usrTree; keys… }`  | `<id>_<version>+3-0.efi` (`ukiName`), `cmdline`                                                                                                 |
-| disk   | `disk { erofs; verity; uki; … }`          | `disk.raw` (sparse), `disk.json`                                                                                                                |
+| disk   | `disk { erofs; verity; uki; … }`          | `disk.raw` (sparse, fully allotted: ESP, A and B slots, no room for `root`), `disk.json`                                                        |
 
 The verity step: `veritysetup format` with a salt and superblock UUID from the version; the
 signature is `openssl smime -sign -nocerts -noattr -binary` over the hex root hash, as
@@ -96,9 +96,11 @@ store. Not yet: the UKI under its sysupdate name (`<id>_<version>.efi`), a relea
 verity certificate in the kernel keyring, Secure Boot enforcement, a TPM.
 
 Stand-ins the smoke carries on its cmdline, outside `image/uki.nix`: `LD_LIBRARY_PATH=` with the
-store directories of the libraries systemd dlopens (the fork's RUNPATH does not name them; `/base`
-writes the same for services into `system.conf.d`), and `rw` (gpt-auto-generator exits 1 in the
-host, so the remount drop-in it would write is missing).
+store directories of the libraries systemd dlopens (the fork's RUNPATH does not name them), and `rw`
+(gpt-auto-generator exits 1 in the host, so the remount drop-in it would write is missing). Every
+image, not only the smoke, sets the same `LD_LIBRARY_PATH` for services in
+`system.conf.d/golconda-dlopen.conf` (`/base`). All three leave with the fork fixes
+([Boot: Kernel command line](../design/boot.md#kernel-command-line)).
 
 ## Builder constraints
 
@@ -107,4 +109,6 @@ host, so the remount drop-in it would write is missing).
 - The UKI cmdline carries `usrhash=<root hash>`, which the generators use to find the `/usr`
   partition; the partition UUIDs of `usr-a` and `usr-a-verity` are the two halves of that hash.
 - repart needs no root and no loop device with `--offline=yes`; outside the sandbox it runs the same
-  way. The disk file is written straight into the output: it is sparse (two 10 GiB slots).
+  way. The disk file is written straight into the output: it is sparse (two 10 GiB slots), and it
+  has no free space for the `root` partition: boot it through a larger overlay (see
+  [the walkthrough](walkthrough.md#6-first-boot)), or `truncate` a copy.

@@ -84,4 +84,7 @@ series, monolithic (no modules, so no kmod), built with `LLVM=1`.
 | openssh, linux-pam (no setuid helpers), p11-kit, tpm2-tss (ESYS only), iproute2 (minimal)                         | ukify, dosfstools, erofs-utils                         |
 | e2fsprogs (first-boot `mkfs.ext4`), lvm2 (device-mapper only), libtasn1, libmnl, json-c, popt                     | automake, libtool                                      |
 
+Missing: tzdata. No zoneinfo package is in the image, so `/factory`'s `/etc/localtime` link to
+`/usr/share/zoneinfo/UTC` dangles (a v1 gap; packaging tzdata is a fork task).
+
 A new daemon is a packaging job on the fork first ([Comparison](comparison.md)).
