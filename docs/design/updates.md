@@ -1,57 +1,59 @@
 # Updates
 
-*(Planned.)* The sysupdate definitions exist in `image/sysupdate.nix`; the image builder is not
-implemented.
-
-An update is a new version of three artifacts, written to the inactive slot by systemd-sysupdate,
-and a reboot. Rollback is the previous slot, chosen by boot counting or by hand.
+An update is a new version of four artifacts, written to the inactive slot by systemd-sysupdate, and
+a reboot. Rollback is the previous slot, chosen by boot counting or by hand. The transfer
+definitions are rendered today (`/system.updateSource`); the artifacts come from the image builder
+*(being built)*.
 
 ```mermaid
 flowchart TD
-  rel[release: usr image, verity, sig, UKI] --> src[http source or local directory]
+  rel[release: usr image, verity, sig, UKI] --> src[http source]
   src -->|systemd-sysupdate update| chk{version newer than installed?}
   chk -->|no| done[nothing to do]
-  chk -->|yes| w1[write usr, verity, sig to inactive slot]
-  w1 --> w2[write UKI to ESP as id_version+3-0.efi]
+  chk -->|yes| w1[write usr, verity, sig to the inactive slot]
+  w1 --> w2[write UKI to the ESP as id_version+3-0.efi]
   w2 --> reboot
   reboot --> good{boot-complete?}
-  good -->|yes| bless[bless-boot: entry good; old slot is now inactive]
-  good -->|3 failures| fallback[systemd-boot falls back to previous UKI and slot]
+  good -->|yes| bless[bless-boot: entry good; the old slot is now inactive]
+  good -->|3 failures| fallback[systemd-boot falls back to the previous UKI and slot]
 ```
 
 ## Transfers
 
-Four `sysupdate.d` definitions, one per artifact: `usr` (partition, type usr), `usr-verity`,
-`usr-verity-sig`, and the UKI (regular file on the ESP). `InstancesMax=2` keeps exactly two of each.
-The definitions are generated from the image name and are listed in
+Four `sysupdate.d` definitions, one per artifact: `usr` (partition, type `usr`), `usr-verity`,
+`usr-verity-sig`, and the UKI (a regular file on the ESP). `InstancesMax=2` keeps exactly two of
+each and `ProtectVersion=%A` never overwrites the running one. The definitions are generated from
+the image name and the update source; artifact names are in
 [reference/image](../reference/image.md).
-
-## Versions
-
-Version format: `YYYYMMDD.N` (date plus a revision counter within the day). Examples: `20261031.1`,
-`20261101.2`. sysupdate orders versions with `strverscmp`; this format sorts correctly. The
-`/system.version` type enforces the regex.
-
-The image builder derives a unique, increasing timestamp from the version (`mkfs.erofs -T`), so
-`ConditionNeedsUpdate=` fires exactly once per new image while the image stays reproducible.
 
 ## Update source
 
-The `/system.updateSource` option (a URL string) is rendered into `/usr/lib/sysupdate.d/*.conf`.
-When `updateSource` is null (the default), sysupdate has no transfer definitions and no update runs.
+`/system.updateSource` is the URL of the release directory. The composer renders it as `Path=` into
+`/usr/lib/sysupdate.d/*.conf`, so the source is part of the image and never a per-machine file in
+`/etc`. When it is null (the default) no transfer definition exists and no update runs. In v1 the
+transfers carry `Verify=no` *(not rendered yet)*: what protects the machine is the verity signature
+and Secure Boot, not the download; a signed `SHA256SUMS` manifest is *(after v1)*.
+
+## Versions
+
+A version is `YYYYMMDD.N`: the date and a counter within the day (`20261031.1`, `20261101.2`). The
+`/system.version` type enforces the format; sysupdate orders versions with `strverscmp`, which this
+format sorts correctly. The machine refuses to go backwards: sysupdate installs only a version newer
+than the ones it has. The composer cannot check that (evaluation does not know the previous
+release); a release script *(planned)* will refuse a non-increasing version on the builder.
+
+The version also sets the mtime of every file in the image (`mkfs.erofs -T`, the epoch of the date
+plus `N`). systemd's `ConditionNeedsUpdate=` compares `/usr`'s mtime with `/etc/.updated`, so
+sysusers, tmpfiles and the other first-boot units run exactly once per new image while the image
+itself stays reproducible. Other downgrades than the boot-counting fall-back are unsupported.
 
 ## Factory reset
 
-`systemd-repart` with `FactoryReset=yes` clears the root partition and regenerates it from the
-factory on the next boot. The data is gone; what stays is the ESP and the `/usr` slots.
+The root partition is defined with `FactoryReset=yes`: a factory reset
+(`systemd-repart --factory-reset=yes`, or the EFI variable) removes it on the next boot and first
+boot runs again. The state is gone; the ESP and the `/usr` slots stay.
 
-## Sizes
+## Rollback protection *(after v1)*
 
-| partition | min size  |
-| --------- | --------- |
-| ESP       | 512 MiB   |
-| usr-a/b   | 10 GiB    |
-| root      | 512 MiB + |
-
-The usr slots are sized large so an update of a grown image has room; the erofs image itself stays
-small.
+Nothing stops an attacker with an older image signed by the same key from booting it; see
+[Trust: Rollback weakness](trust.md#rollback-weakness).

@@ -1,8 +1,9 @@
 # Layout
 
 The disk follows the Discoverable Partitions Specification so that systemd-gpt-auto-generator mounts
-it without an fstab. `/usr` is the operating system; `/` is a thin state partition created on first
-boot (unencrypted in v1, LUKS2+TPM2 later).
+it without an fstab. `/usr` is the operating system, twice (the A/B slots); `/` is one state
+partition, created on first boot and grown to the disk. The exact partitions, sizes and the owner of
+every path are in [reference/layout](../reference/layout.md).
 
 ```mermaid
 block-beta
@@ -10,41 +11,38 @@ block-beta
   esp["ESP\nsystemd-boot, UKIs"]:1
   ua["usr-a\nerofs"]:2 uav["verity"]:1 uas["sig"]:1
   ub["usr-b\nerofs"]:2 ubv["verity"]:1 ubs["sig"]:1
-  root["root: ext4 (LUKS2+TPM2 later) · /etc /var /home · created on first boot, grows to disk"]:8
+  root["root: ext4 · /etc /var /home · created on first boot, grows to the disk (unencrypted in v1, LUKS2+TPM2 later)"]:8
 ```
 
 ## `/usr`
 
-- `/usr/nix/store/<hash>-<name>`: the closure. Relocatable by construction, so the hash in the name
-  is only an identity. Stock Nix would see this as the chroot store `--store /usr`.
-- `/usr/bin`, `/usr/lib`, `/usr/share`: a symlink farm into the store for what systemd and scripts
-  address by absolute path. `/usr/sbin` is a symlink to `bin`.
-- `/usr/lib/systemd/system`, `sysusers.d`, `tmpfiles.d`, `repart.d`, `sysupdate.d`,
-  `/usr/lib/os-release`: the system's configuration, written by the composer.
-- `/usr/share/factory/etc`: the seed for `/etc`, written by `/factory`: `shells`, a minimal `pam.d`
-  (account and session only) and the empty trust directories. It holds no `passwd`, `group` or
-  `shadow` (systemd-sysusers writes them on first boot), no `machine-id` (PID 1 does) and no
-  `hostname` (a bootstrap credential).
+`/usr/nix/store/<hash>-<name>` is the closure. Every output is relocatable, so the hash is only an
+identity; stock Nix would see the tree as the chroot store `--store /usr`. Around the store sits
+what systemd, PAM, sshd and `dlopen` address by absolute path:
 
-### Farm specification
+- `/usr/bin`, `/usr/lib`, `/usr/share`: symlinks into the store (the **symlink farm**); `/usr/sbin`
+  is a symlink to `bin`.
+- `/usr/lib/systemd/system`, `sysusers.d`, `tmpfiles.d`, `systemd/network`, `sysupdate.d`,
+  `/usr/lib/<service>/`: the system's configuration, from the composer's `units` and `files`.
+- `/usr/lib/os-release`: the image identity and version.
+- `/usr/share/factory/etc`: the seed for `/etc`, from `/factory`.
 
-`/usr/bin` and friends exist because systemd, PAM, sshd and `dlopen` address programs and libraries
-by name; the store path is only an identity. The composer outputs every symlink of `/usr` as one
-map, path → `{ target; kind; }`, for the image builder:
+### The symlink map
 
-- **`package`**: `/usr/bin/<name>`, one symlink per entry in a package's `bin` list; the composer
-  derives these from `packages`.
-- **`dlopen`**: `/usr/lib/<soname>` for a library systemd (or other code) opens by name:
-  `"/usr/lib/libtss2-esys.so.0" = { target = "${tpm2-tss}/lib/libtss2-esys.so.0"; kind = "dlopen"; }`.
-  The image builder checks that it resolves.
-- **`farm`**: a directory the image builder links file by file, for a package built with
-  `prefix = "/usr"`:
+The composer outputs every symlink of `/usr` as one map, path → `{ target; kind; }`, and the `/usr`
+tree builder makes them:
+
+- **`package`**: `/usr/bin/<name>`, one per entry in a package's `bin` list; derived from
+  `packages`.
+- **`farm`**: a directory expanded file by file, for a package compiled with `prefix = "/usr"`
+  ([Packaging](packaging.md#prefixed-packages)):
   `"/usr/lib/udev/rules.d" = { target = "${systemd}/lib/udev/rules.d"; kind = "farm"; }`.
-- **`explicit`**: anything else, such as the `.wants` symlinks of static enablement (see
-  [unit enablement](#unit-enablement) below).
+- **`dlopen`**: `/usr/lib/<soname>` for a library systemd opens by name; the builder checks that it
+  resolves.
+- **`explicit`**: anything else, such as `/usr/bin/sh` → dash and the `.wants` links below.
 
-One check covers the map: a path with two sources is an error naming both, whatever their kinds. A
-link path and a file at the same path is an error. Everything else stays reachable only through
+One rule covers the map: a path with two sources is an error naming both, whatever their kinds, and
+a link and a file at one path is an error too. Everything else stays reachable only through
 `/usr/nix/store`.
 
 ### Unit enablement
@@ -55,21 +53,20 @@ Units are enabled by static `.wants` symlinks, not by presets:
 /usr/lib/systemd/system/multi-user.target.wants/sshd.service -> ../sshd.service
 ```
 
-The composer generates these from each unit's `wantedBy` list. The `[Install]` section remains in
-the unit text so `systemctl enable/disable` still works for admin overrides in `/etc`.
-
-**Why not presets?** Presets need a first-boot step (`systemctl preset-all`). Static `.wants` links
-work without any first-boot action and also work in the initrd.
+The service renderer writes these from `wantedBy`; `[Install]` stays in the unit text so
+`systemctl enable/disable` still works for an administrator's overrides in `/etc`. Presets would
+need a first-boot step (`systemctl preset-all`); static links work without one, also in the initrd.
 
 ## State
 
-| path             | partition               | how it comes to be                                                                                                                                                                                                                                                                          |
-| ---------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/etc`           | root                    | symlinks to `/usr/share/factory/etc` by tmpfiles `L`; an admin file at the same path (a regular file, not a symlink) wins; PID 1 writes `machine-id` and sysusers write `passwd`/`group`/`shadow` before tmpfiles runs, so those are never linked. `find /etc -type f` lists admin changes. |
-| `/var`           | root                    | `StateDirectory=`, tmpfiles                                                                                                                                                                                                                                                                 |
-| `/home`, `/root` | root                    | tmpfiles                                                                                                                                                                                                                                                                                    |
-| `/tmp`, `/run`   | tmpfs                   | systemd                                                                                                                                                                                                                                                                                     |
-| `/var/lib/<app>` | optional data partition | repart definition in the image; service state always lives under `/var/lib`, never `/srv`                                                                                                                                                                                                   |
+| path             | where | how it comes to be                                                                                                                                                                                                                                                                               |
+| ---------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/etc`           | root  | tmpfiles `L` lines link each factory file to `/usr/share/factory/etc/<path>`; `L` (not `L+`) creates only what is missing, so an administrator's regular file at the same path wins and stays. PID 1 writes `machine-id`, sysusers write `passwd`/`group`/`shadow`, firstboot writes `hostname`. |
+| `/var`           | root  | `StateDirectory=`, tmpfiles; vars under `/var/lib/golconda/vars`                                                                                                                                                                                                                                 |
+| `/home`, `/root` | root  | `MakeDirectories=` of the root partition                                                                                                                                                                                                                                                         |
+| `/tmp`, `/run`   | tmpfs | systemd                                                                                                                                                                                                                                                                                          |
+| `/var/lib/<app>` | root  | service state always lives under `/var/lib`; there is no `/srv`                                                                                                                                                                                                                                  |
 
-The reference list of partitions, type GUIDs and flags is in
-[reference/layout](../reference/layout.md).
+The `/etc` rule has three consequences: a vendor change reaches every unmodified file on the next
+boot with no tool, `find /etc -type f` lists the administrator's changes, and a file a program
+rewrites in place (such as the CA bundle) must be a directory of its own, not a link.

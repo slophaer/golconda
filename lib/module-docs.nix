@@ -238,7 +238,7 @@ let
       Golconda's custom types from the schema registry (`lib/schema.nix`) and
       `modules/lib/*.nix`. This page is generated; do not edit it.
 
-      See the [modules overview](README.md) for how types are used.
+      See the [modules overview](../README.md) for how types are used.
 
     ''
     + join "\n" (map typeSection typeNames);
@@ -256,10 +256,10 @@ let
     - [Layout](design/layout.md)
     - [Boot](design/boot.md)
     - [Updates](design/updates.md)
-    - [Modules](design/modules.md)
     - [Trust](design/trust.md)
-    - [Packaging](design/packaging.md)
+    - [Modules](design/modules.md)
     - [Configuration](design/config.md)
+    - [Packaging](design/packaging.md)
     - [Comparison](design/comparison.md)
 
     # Reference
