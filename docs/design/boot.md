@@ -21,6 +21,7 @@ sequenceDiagram
   IRD->>IRD: first boot: repart creates root, ext4, unencrypted in v1
   IRD->>SYS: switch-root
   SYS->>SYS: firstboot, sysusers, tmpfiles (/etc links), vars, units
+  SYS->>SYS: health units (network routable, sshd active)
   SYS->>SB: boot-complete.target → bless-boot marks the entry good
 ```
 
@@ -48,6 +49,37 @@ The UKI is installed as `EFI/Linux/<id>_<version>+3-0.efi`. systemd-boot decreme
 each attempt; `systemd-bless-boot` renames it to good when `boot-complete.target` is reached. After
 three failures systemd-boot falls back to the other entry, which is the other `/usr` slot. See
 [Updates](updates.md).
+
+### Boot health
+
+Reaching `boot-complete.target` is the whole condition for blessing. systemd's own target requires
+only `sysinit.target`, so a candidate that boots but cannot be reached would be blessed. Golconda
+adds two small predicates, one in each module that knows the fact:
+
+| module           | unit                              | passes when                                                                           |
+| ---------------- | --------------------------------- | ------------------------------------------------------------------------------------- |
+| `/base`          | `golconda-health-network.service` | `systemd-networkd-wait-online --any --operational-state=routable --timeout=60` passes |
+| `/services/sshd` | `golconda-health-sshd.service`    | `systemctl is-active sshd.service`                                                    |
+
+"Routable" is networkctl's state: the link has carrier and a routable address, so DHCP finished and
+there is a route to the network. Each unit is `Before=boot-complete.target` and is pulled into the
+target by a `boot-complete.target.requires/` link, the same shape as systemd's own
+`systemd-boot-check-no-failures.service`. A failed predicate fails the target's start job;
+`systemd-bless-boot.service` requires the target and is ordered after it, so it does not run. The
+counter stays and one attempt is lost. systemd's own bless-boot ordering is not changed and no
+orchestrator is added.
+
+What the predicate leaves out, on purpose: DNS and resolved, a default route to the administrator's
+network, reachability from outside the machine (firewall, NAT, the client side), and every step of a
+login (authentication, the host key credential, `/etc/pam.d/sshd`, the listening socket).
+`is-active` proves that the sshd process runs, not that a login would succeed.
+
+What happens after a failure: the machine stays up but is not blessed, and nothing in v1 reboots it,
+so the counter falls only at the next boot. systemd-boot counts down `+3-0` → `+2-1` → `+1-2`; at
+`+0-3` the entry is bad and is no longer preferred. A second deployment entry on the ESP (the other
+`/usr` slot) is selected instead, which is the point of boot counting. The smoke image carries one
+slot only: there systemd-boot still boots the exhausted entry, and a failed health check leaves the
+machine unblessed until it is repaired or the other slot is filled.
 
 systemd-sysupdate tells the slots apart by GPT label: an installed slot carries its version
 (`usr_20261031.1`, `usr-verity_…`, `usr-verity-sig_…`), a free one `_empty`, which gpt-auto also
@@ -125,7 +157,7 @@ What happens once, on the first boot of a disk:
 1. systemd-tmpfiles links each factory file into `/etc` and makes the state directories.
 1. The var units generate the machine-local secrets and seal them to the TPM
    ([reference: /vars](../reference/modules/generated/vars.md)).
-1. The services start; `boot-complete.target` blesses the entry.
+1. The services start; the health units must pass before `boot-complete.target` blesses the entry.
 
 Every later boot runs the same units; `ConditionNeedsUpdate=` and the vars' `done` markers make them
 no-ops ([Updates: Versions](updates.md#versions)).
