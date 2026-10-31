@@ -18,9 +18,11 @@ let
     genList
     isString
     length
+    lessThan
     listToAttrs
     match
     readFile
+    sort
     split
     stringLength
     substring
@@ -2408,6 +2410,42 @@ let
         probe = (probeTree { options."/pkgs".target = stubSet; }).modules.probe { };
       in
       !(probe ? pkgs) && !(probe ? target)
+    ))
+
+    # package attribution
+    (check "attribution: a package in two fragments lists both origins, in order" (
+      let
+        s2 = compose [
+          { packages = [ standIn ]; }
+          {
+            name = "/services/x";
+            packages = [ standIn ];
+          }
+          { packages = [ openssh ]; }
+        ];
+        o = s2.packageOrigins;
+      in
+      o.${merge.pkgKey standIn} == [
+        "fragments[0]"
+        "/services/x"
+      ]
+      && o.${merge.pkgKey openssh} == [ "fragments[2]" ]
+      && length (filter (p: p == standIn) s2.packages) == 1
+    ))
+    (check "attribution: /base's systemd has origin /base; /network and sshd are named" (
+      let
+        o = (compose [ { packages = [ stubSystemd ]; } ]).packageOrigins;
+        sshdO = system.packageOrigins;
+      in
+      o.${merge.pkgKey stubSystemd} == [
+        "/base"
+        "fragments[0]"
+      ]
+      && o.${merge.pkgKey stubDash} == [ "/base" ]
+      && sshdO.${merge.pkgKey openssh} == [ "/services/sshd" ]
+    ))
+    (check "attribution: packageOrigins keys exactly the packages" (
+      sort lessThan (attrNames system.packageOrigins) == sort lessThan (map merge.pkgKey system.packages)
     ))
   ];
 in
