@@ -829,7 +829,9 @@ let
           { units."getty@.service" = "[Service]\nExecStart=/usr/bin/agetty %I\n"; }
         ];
       in
-      builtins.length (attrNames r.units) == 8
+      # /base is implicit and brings its own units (golconda-health-network.service);
+      # assert that these names are present rather than a total count
+      all (n: r.units ? ${n}) (map (sfx: "a.${sfx}") fr.unitSuffixes ++ [ "getty@.service" ])
       &&
         fr.unitSuffixes == [
           "service"
@@ -1894,7 +1896,8 @@ let
           };
         }
       && composed.files.${path}.mode == "0644"
-      && composed.units == { }
+      # /base contributes its own units; a user service adds none to `units`
+      && !(composed.units ? "agent.service")
       && composed.links ? "/usr/lib/systemd/user/default.target.wants/agent.service"
     ))
     (check "user service: files beside the unit and explicit wantedBy" (
@@ -3561,11 +3564,66 @@ let
         && matches "30-usr-verity-sig" names.verity == null
       ))
     ]
+  )
+  # review 6: a release is blessed only when the machine is usable. systemd-bless-boot.service
+  # requires boot-complete.target and is After= it, so reaching the target is the whole
+  # blessing condition. Each health unit gets Required= from a `.requires` link (a link adds
+  # no ordering) and orders itself Before= the target; no other link or target pulls it in.
+  ++ (
+    let
+      baseOnly = compose [ ];
+      requires = u: "/usr/lib/systemd/system/boot-complete.target.requires/${u}";
+      # every link whose path names the unit: the single `.requires` link
+      linksNaming = sys: u: builtins.filter (p: hasInfix u p) (attrNames sys.links);
+      gated =
+        sys: u:
+        sys.units ? ${u}
+        && hasInfix "\nBefore=boot-complete.target\n" sys.units.${u}
+        && sys.links ? ${requires u}
+        &&
+          sys.links.${requires u} == {
+            target = "../${u}";
+            kind = "explicit";
+          }
+        && linksNaming sys u == [ (requires u) ];
+    in
+    [
+      (check "boot health: /base fails boot-complete.target unless the network has a routable link" (
+        gated baseOnly "golconda-health-network.service"
+        &&
+          hasInfix
+            "\nExecStart=/usr/lib/systemd/systemd-networkd-wait-online --any --operational-state=routable --timeout=60\n"
+            baseOnly.units."golconda-health-network.service"
+        && hasInfix "\nAfter=systemd-networkd.service\n" baseOnly.units."golconda-health-network.service"
+      ))
+      (check "boot health: /services/sshd fails boot-complete.target unless sshd is active" (
+        gated system "golconda-health-sshd.service"
+        &&
+          hasInfix "\nExecStart=/usr/bin/systemctl is-active --quiet sshd.service\n"
+            system.units."golconda-health-sshd.service"
+        && hasInfix "\nAfter=sshd.service\n" system.units."golconda-health-sshd.service"
+      ))
+      (check "boot health: systemd's own bless-boot ordering is untouched" (
+        # systemd ships systemd-bless-boot.service and the generator wants it from basic.target;
+        # the module supplies no copy, no mask and no WantedBy= of its own
+        !(system.units ? "systemd-bless-boot.service")
+        && !(system.files ? "/usr/lib/systemd/system/systemd-bless-boot.service")
+        && !(system.links ? "/usr/lib/systemd/system/basic.target.wants/systemd-bless-boot.service")
+        && !(hasInfix "WantedBy=" system.units."golconda-health-network.service")
+        && !(hasInfix "WantedBy=" system.units."golconda-health-sshd.service")
+      ))
+      (check "boot health: a configuration without /services/sshd still gates the network" (
+        attrNames baseOnly.units == [ "golconda-health-network.service" ]
+        && linksNaming baseOnly "golconda-health-sshd" == [ ]
+      ))
+    ]
   );
 in
 assert all (t: t) tests;
 assert
   attrNames system.units == [
+    "golconda-health-network.service"
+    "golconda-health-sshd.service"
     "golconda-var-sshd-hostkey.service"
     "sshd.service"
   ];
