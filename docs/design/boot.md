@@ -97,14 +97,16 @@ The cmdline is fixed in the UKI and measured with it:
 `editor no` (the editor would let anyone at the console change the cmdline) and `timeout 0` (the
 menu does not wait). The UKI under `EFI/Linux` needs no entry line. This is menu policy, not
 protection: an offline disk writer can change the unsigned configuration ([Trust](trust.md)). The
-decided cmdline has neither `ro` nor `rw` and no `systemd.volatile=` (`/` is the state partition,
-which gpt-auto mounts writable when nothing says `ro`; `/usr` is verity). A debug image with other
+decided cmdline carries `rw` and neither `ro` nor `systemd.volatile=` (`/` is the state partition;
+the initrd mounts it read-only unless the cmdline says `rw`, and gpt-auto's remount-rw drop-in takes
+effect only when `systemd-remount-fs.service` runs, late in boot). A debug image with other
 parameters is a separate build *(after v1)*.
 
-The smoke image adds `rw` on its cmdline: gpt-auto's remount-rw drop-in takes effect only after the
-first units have run, so the ssh host key var unit would seal its key on a read-only root. The
-decided image does not add it; ordering that unit after the remount is a follow-up. Libraries need
-no such flag: the fork's RUNPATH reaches every dlopen soname.
+The ssh host key var unit seals its key in `/etc/credstore.encrypted` before
+`systemd-remount-fs.service` runs, so without `rw` it fails and sshd starts without a host key. `rw`
+is an ordinary kernel parameter, and the test image boots the same cmdline: the earlier
+`cmdlineExtra = "rw"` stand-in is gone. Libraries need no such flag: the fork's RUNPATH reaches
+every dlopen soname.
 
 gpt-auto-generator mounts the root partition (writable), the ESP and `/usr` by `usrhash=`. systemd
 finds the libraries it dlopens through the RUNPATH the fork gives it. `ipe.enforce=0` means IPE
