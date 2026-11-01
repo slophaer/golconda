@@ -3,7 +3,7 @@
 An update is a new version of four artifacts, written to the inactive slot by systemd-sysupdate, and
 a reboot. Rollback is the previous slot, chosen by boot counting or by hand. The transfer
 definitions are rendered (`/system.updateSource`); the artifacts come from the image builder
-([Image artifacts](../reference/image.md)). No update has run on a machine yet.
+([Image artifacts](../reference/image.md)).
 
 ```mermaid
 flowchart TD
@@ -42,13 +42,8 @@ the transfers carry `Verify=no` (rendered: `image/sysupdate.nix`), so sysupdate 
 What authenticates the bytes instead is the signature: firmware checks each new UKI, and the kernel
 checks its verity signature when the `db` certificate is in the platform keyring
 ([Trust: Verity key](trust.md#2-verity-key)). Both depend on an enrolled deployment key, which is
-manual today, so an update is unauthenticated on a machine without it. A signed `SHA256SUMS`
-manifest is *(after v1)*.
-
-The test image sets `updateSource = "http://10.0.2.2:8074/"`. The A/B proof is 20261031.1 to
-20261031.2: the new entry is blessed when both health units pass, and a failed candidate falls back
-to 20261031.1 after three tries ([Boot: Boot health](boot.md#boot-health),
-[Image artifacts: the update test](../reference/image.md#the-update-test)).
+manual ([Boot: Secure Boot](boot.md#secure-boot)), so an update is unauthenticated on a machine
+without it. A signed `SHA256SUMS` manifest is *(after v1)*.
 
 ## Versions
 
@@ -65,9 +60,12 @@ itself stays reproducible. Other downgrades than the boot-counting fall-back are
 
 ## Factory reset
 
-The root partition is defined with `FactoryReset=yes`: a factory reset
-(`systemd-repart --factory-reset=yes`, or the EFI variable) removes it on the next boot and first
-boot runs again. The state is gone; the ESP and the `/usr` slots stay.
+The root partition is defined with `FactoryReset=yes`. `systemctl start factory-reset.target` asks
+for a reset: it sets the `FactoryResetRequest` EFI variable and reboots, and the next boot has
+systemd-repart delete the partitions marked `FactoryReset=` and create them again empty
+(systemd-factory-reset(8)). First boot then runs again. The state is gone; the ESP and the `/usr`
+slots stay. Do not run `systemd-repart --factory-reset=yes` for this: it deletes the partition at
+once, on the running machine.
 
 ## Enable links and systemd's store path
 
@@ -87,10 +85,6 @@ job transaction as `initrd-switch-root.service`, and `Before=` makes switch-root
 pulled by `initrd.target` is stopped when switch-root cleans up, possibly before it rewrites the
 links. The service environment may have no `PATH`, so the script uses `/usr/bin/readlink` and
 `/usr/bin/ln` and the shell's parameter expansion for the target's name.
-
-The A/B test from 20261031.1 to 20261031.2 with a changed systemd store path shows the second boot
-reaches multi-user.target with no failed units, and every `/etc/systemd/system` link resolves. The
-second image changes systemd's package hash with one extra file, which is a test-only change.
 
 The unit does not remove an enable link for a unit that the new release no longer ships; such a link
 stays and is ignored by PID 1. Cleaning those links is not designed.

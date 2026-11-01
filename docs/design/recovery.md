@@ -26,10 +26,9 @@ for ([Updates](updates.md)).
 An update writes its four artifacts to the inactive slot and installs the UKI on the ESP as
 `EFI/Linux/<id>_<version>+3-0.efi` ([Updates: Transfers](updates.md#transfers)). The previous slot
 and its UKI are untouched, so after three failed attempts systemd-boot starts the previous UKI,
-which carries the previous `usrhash=` and finds the previous `/usr` slot (the update test proves
-this: [Boot: Boot health](boot.md#boot-health)). A successful boot of that older image is a machine
-that works, not a repair: the new version is not running and nothing yet reports why the candidate
-failed.
+which carries the previous `usrhash=` and finds the previous `/usr` slot. A successful boot of that
+older image is a machine that works, not a repair: the new version is not running and nothing yet
+reports why the candidate failed.
 
 A freshly written disk carries one slot only (`image/repart.nix` leaves B `_empty`). There
 systemd-boot still boots the exhausted entry, because no other entry can boot; a failed health check
@@ -38,7 +37,7 @@ machine after its first update has both slots filled and gets the fallback above
 
 ## Manual choice in the systemd-boot menu
 
-The ESP's `EFI/loader/loader.conf` sets `timeout 0` and `editor no`
+The ESP's `loader/loader.conf` (at the root of the ESP) sets `timeout 0` and `editor no`
 ([Boot: Kernel command line](boot.md#kernel-command-line), `lib/image/disk.nix`). systemd-boot
 therefore does not wait at power-on, but it still opens its menu when a key is held down during
 firmware start. The menu lists the UKIs under `EFI/Linux`, with their boot-counting suffixes, and
@@ -49,10 +48,12 @@ firmware to use it. The boot test does not exercise the menu.
 
 ## State reset
 
-`FactoryReset=yes` on the root partition makes systemd-repart delete it on the next boot (the EFI
-variable or `systemd-repart --factory-reset=yes`), and first boot runs again
-([Updates: Factory reset](updates.md#factory-reset)). The ESP and the `/usr` slots stay, so this
-path repairs a broken state partition, not a broken image. All state is lost.
+`FactoryReset=yes` on the root partition makes systemd-repart delete it at the next boot, and first
+boot runs again. The request is `systemctl start factory-reset.target`, which sets the
+`FactoryResetRequest` EFI variable and reboots ([Updates: Factory reset](updates.md#factory-reset)).
+The ESP and the `/usr` slots stay, so this path repairs a broken state partition, not a broken
+image. All state is lost. It needs a working ssh login, because there is no console login; a machine
+without one is reflashed.
 
 ## Reflash
 
@@ -64,13 +65,13 @@ image is written to the disk directly ([Image artifacts](../reference/image.md))
 
 ## What is missing
 
-| not available                   | consequence today                                                                    |
-| ------------------------------- | ------------------------------------------------------------------------------------ |
-| local login, rescue shell       | no getty, no password; a machine without working ssh has no console session          |
-| automatic reboot of a candidate | a failed health check leaves the machine up; an operator must reboot it              |
-| a remote recovery channel       | no out-of-band agent; if sshd or the network is the failing unit, ssh cannot be used |
-| loader maintenance (finding 26) | no transfer updates systemd-boot on the ESP; a loader repair is manual or a reflash  |
-| LUKS recovery                   | no encrypted state in v1, so no unlock prompt to recover                             |
+| not available                   | consequence                                                                                                                                               |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| local login, rescue shell       | no getty, no password; a machine without working ssh has no console session                                                                               |
+| automatic reboot of a candidate | a failed health check leaves the machine up; an operator must reboot it                                                                                   |
+| a remote recovery channel       | no out-of-band agent; if sshd or the network is the failing unit, ssh cannot be used                                                                      |
+| loader repair without a boot    | the loader is updated after a good boot; one that no longer starts needs the firmware menu or a reflash ([Boot loader: Recovery](bootloader.md#recovery)) |
+| LUKS recovery                   | no encrypted state in v1, so no unlock prompt to recover                                                                                                  |
 
 Recovery that needs the machine to answer is designed around the one channel that exists, ssh as
 root with a certificate ([Identity](trust.md#identity)). Everything else is local or a reflash.
