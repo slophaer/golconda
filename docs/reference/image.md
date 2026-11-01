@@ -43,8 +43,10 @@ warning) and enables the update timer with a static link,
 `timers.target.wants/systemd-sysupdate-update.timer`. systemd 262 renamed
 `systemd-sysupdate.timer`/`.service` to `systemd-sysupdate-update.timer`/`.service` and keeps the
 old names as aliases. The timer starts `systemd-sysupdate-update.service`, which runs
-`systemd-sysupdate update --component-all --cleanup=yes` over the built-in definitions; no
-definition comes from `/etc` or `/run`.
+`systemd-sysupdate update --component-all --cleanup=yes`. The image ships its definitions in
+`/usr/lib/sysupdate.d` only. sysupdate.d(5) also reads `/etc/sysupdate.d` and `/run/sysupdate.d`,
+and a file there hides the one of the same name in `/usr/lib/sysupdate.d`; the boot test uses that
+to point the transfers at a local copy ([The update test](#the-update-test)).
 
 ## Image definitions (`image/`)
 
@@ -133,9 +135,8 @@ filled offline with mtools (`packages/mtools`). Keys are paths: the smoke makes 
 the store (`throwawayKeys`); a release signs with the deployment's keys (`image/default.nix`
 `keys`), which never enter the store. Not yet: the verity certificate in the kernel keyring, a TPM.
 
-The smoke's cmdline is `image/uki.nix`'s template plus `rdinit=/init`; the test image and the
-production image boot the same cmdline, and any `cmdlineExtra` is for debug flags only
-([Boot: Kernel command line](../design/boot.md#kernel-command-line)).
+The smoke, the test image and the production image boot the same command line
+([The kernel command line](#the-kernel-command-line)).
 
 ## Builder constraints
 
@@ -145,8 +146,35 @@ production image boot the same cmdline, and any `cmdlineExtra` is for debug flag
   partition; the partition UUIDs of `usr-a` and `usr-a-verity` are the two halves of that hash.
 - repart needs no root and no loop device with `--offline=yes`; outside the sandbox it runs the same
   way. The disk file is written straight into the output: it is sparse (two 10 GiB slots), and it
-  has no free space for the `root` partition: boot it through a larger overlay (see
-  [the walkthrough](walkthrough.md#6-first-boot)), or `truncate` a copy.
+  has no free space for the `root` partition: boot it through a larger overlay, which
+  `scripts/boot-test` does ([the walkthrough](walkthrough.md#6-first-boot)), or `truncate` a copy.
+
+## The kernel command line
+
+This section is the only copy of the command line in the documentation. Other pages link here.
+
+`cmdlineTemplate` in `image/uki.nix` is:
+
+```text
+usrhash={usrhash} systemd.verity_usr_options=root-hash-signature=base64:{usrhashSig} rw lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=1 console=tty0 console=ttyS0,115200
+```
+
+The UKI step (`lib/image/uki.nu`) fills `{usrhash}` and `{usrhashSig}`, appends `rdinit=/init`
+(`rdinit` in `lib/image/initrd.nu`), and appends `cmdlineExtra` (empty; for debug flags only). It
+squeezes repeated spaces and fails the build at 2048 bytes, where the EFI stub would cut the line
+after the signature. The result is in the UKI's `.cmdline` section and in the step's `cmdline`
+output.
+
+| parameter                                          | meaning                                                                                                                                                   |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `usrhash={usrhash}`                                | the verity root hash; the generators derive the two `/usr` partition UUIDs from it, which is how a UKI finds its own slot                                 |
+| `systemd.verity_usr_options=root-hash-signature=…` | the base64 PKCS#7 signature of that hash; the kernel checks it against the platform keyring (firmware db), and IPE trusts only such volumes               |
+| `rw`                                               | the root partition carries the state; without it the initrd mounts root read-only and the host key var fails to seal. `/usr` stays read-only by dm-verity |
+| `lsm=lockdown,yama,ipe,bpf`                        | the LSM stack order (capability is always first)                                                                                                          |
+| `lockdown=integrity`                               | kernel lockdown level: blocks kexec, `/dev/mem` and similar                                                                                               |
+| `ipe.enforce=1`                                    | IPE runs only the initramfs and verity volumes whose signature the kernel verified                                                                        |
+| `console=tty0 console=ttyS0,115200`                | the local console and the serial line; output only, there is no getty                                                                                     |
+| `rdinit=/init`                                     | what the kernel execs; `/init` links to systemd (`lib/image/initrd.nix` says why a link works before `/proc` exists)                                      |
 
 ## Boot test (`scripts/boot-test`)
 
@@ -162,8 +190,8 @@ nix-build -A packages.x86_64-linux.image-smoke-test
 # platform keyring, which the firmware fills from db.
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --timeout 120
 
-# With TPM (starts swtpm); the db must be enrolled too
-scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --tpm
+# With TPM (starts swtpm); the db must be enrolled too. The host key checks need --ssh-test.
+scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-test --tpm
 
 # With SSH login test (needs image-smoke-test, not image-smoke)
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-test
@@ -190,69 +218,133 @@ negative control for the mechanism, not a harness defect.
 report `Secure Boot: enabled` (the `secure-boot-enabled` marker); the same disk with an unsigned
 loader on the ESP is refused by firmware, which is the negative control for this check.
 
-The script creates a 40 GiB qcow2 overlay (room for the root partition), copies OVMF vars, passes
-the hostname `boot-test` as a credential (`-smbios type=11,...`), and logs the serial console.
-Markers checked (each prints PASS/FAIL):
+The script creates a 40 GiB qcow2 overlay (room for the root partition), copies the OVMF variable
+store, passes the host name `boot-test` as a credential (`-smbios type=11,...`), and logs the serial
+console to a file. QEMU runs with `-display none` and no monitor or QMP socket: the harness reaches
+the guest through the serial log and ssh, and nothing else. QEMU runs with `-no-reboot` unless
+`--tpm` or `--next` is given, because those reboot the guest.
 
-| marker              | what it proves                                 |
-| ------------------- | ---------------------------------------------- |
-| no-firstboot-prompt | systemd-firstboot did not prompt (masked)      |
-| ldconfig-masked     | ldconfig.service did not run                   |
-| modprobe-masked     | modprobe@.service did not run                  |
-| multi-user-reached  | multi-user.target reached                      |
-| sshd-active         | sshd.service started                           |
-| hostname-set        | the credential was read (log says `boot-test`) |
-| boot-complete       | boot-complete.target reached                   |
+### The markers
 
-With `--ssh-test`, the script uses the test SSH key from `tests/fixtures/snakeoil-ssh` to log in,
-then:
+Each check prints `PASS: <marker>` or `FAIL: <marker>`. The script is the source of truth; this list
+was made from it at commit `dbafac0`. To list the names the script prints:
 
-| marker            | what it proves                                              |
-| ----------------- | ----------------------------------------------------------- |
-| ssh-login         | an ssh login with authorized keys works                     |
-| varlink-available | `varlinkctl list-interfaces` shows io.systemd.\* interfaces |
-| bootctl-list      | `bootctl list` shows the boot entry                         |
-| bless-boot        | the entry is marked good (no +N-M counter)                  |
+```sh
+grep -ho 'verdict "[a-z0-9-]*\|PASS: [a-z0-9-]*' scripts/boot-test | sed 's/verdict "//;s/PASS: //' | sort -u
+```
 
-`--ssh-test` also checks the boot loader ([Boot loader](../design/bootloader.md)):
+Always (read from the serial log; `check_markers`):
 
-| marker                | what it proves                                                                          |
-| --------------------- | --------------------------------------------------------------------------------------- |
-| loader-update-ran     | `golconda-loader-update.service` ran after bless-boot on the counted first boot         |
-| loader-matches-usr    | `EFI/systemd/systemd-bootx64.efi` and `EFI/BOOT/BOOTX64.EFI` are `/usr`'s signed loader |
-| loader-conf-in-effect | `bootctl status` reads `loader/loader.conf`, and it is `/usr/lib/golconda/loader.conf`  |
-| boot-update-off       | `systemd-boot-update.service` was skipped by its condition                              |
+| marker                | what it proves                                                        |
+| --------------------- | --------------------------------------------------------------------- |
+| `multi-user-reached`  | `multi-user.target` was reached                                       |
+| `sshd-active`         | sshd started                                                          |
+| `var-sshd-hostkey`    | the host key var finished, so the root was writable when the unit ran |
+| `boot-complete`       | `boot-complete.target` was reached                                    |
+| `no-firstboot-prompt` | no "Please enter" prompt appeared (see the limit below)               |
 
-`--next DIR` copies DIR's `disk/release/` into the guest over ssh, writes the image's transfer
-definitions to `/run/sysupdate.d` with a `regular-file` source on the copy, starts
-`systemd-sysupdate-update.service`, reboots, and checks: the new release runs, its first good boot
-installed its loader (the previous one kept as `systemd-boot-fallbackx64.efi`), `bootctl list` shows
-both slots, a damaged `BOOTX64.EFI` is reinstalled by `golconda-loader-update`,
-`bootctl set-oneshot` and `bootctl set-default` boot the other slot (which installs nothing) and
-back, and `bootctl reboot-to-firmware` reaches OVMF's boot menu. `--rotate` enrols DIR's db
-certificate beside the old one before the first boot; after the checks it stops QEMU, sets db to the
-new certificate alone and adds the old one to dbx (`virt-fw-vars`), boots again, checks that the
-kernel loaded only the new db certificate, and boots the original disk under the rotated store,
-which firmware must refuse.
+`no-firstboot-prompt` passes when the log has no prompt. The script prints `INFO` and counts a pass
+when firstboot left no trace in the log, so this marker is absence of evidence, not proof that
+firstboot ran.
+
+With `--ssh-test` (the harness logs in as root with `tests/fixtures/snakeoil-ssh`):
+
+| marker                       | what it proves                                                                |
+| ---------------------------- | ----------------------------------------------------------------------------- |
+| `ssh-login`                  | an ssh login with the test key works                                          |
+| `hostname`                   | `hostname` prints `boot-test`: PID 1 applied the `system.hostname` credential |
+| `no-failed-units`            | `systemctl --failed` lists no unit                                            |
+| `varlinkctl-list-interfaces` | `io.systemd.Manager` answers on its varlink socket                            |
+| `secure-boot-enabled`        | `bootctl status` says `Secure Boot: enabled` (with `--secure-boot`)           |
+
+The loader checks ([Boot loader](../design/bootloader.md)) run on the first boot, again after an
+update, and after a rotation:
+
+| marker                  | what it proves                                                                          |
+| ----------------------- | --------------------------------------------------------------------------------------- |
+| `loader-update-ran`     | `golconda-loader-update.service` ran after bless-boot on a counted boot                 |
+| `loader-update-not-run` | it did not run on a blessed boot (used after a rotation)                                |
+| `loader-matches-usr`    | `EFI/systemd/systemd-bootx64.efi` and `EFI/BOOT/BOOTX64.EFI` are `/usr`'s signed loader |
+| `loader-conf-in-effect` | `bootctl status` reads `loader/loader.conf`, and it is `/usr/lib/golconda/loader.conf`  |
+| `boot-update-off`       | `systemd-boot-update.service` was skipped by its condition                              |
+
+With `--tpm` (and `--ssh-test`):
+
+| marker                     | what it proves                                                                |
+| -------------------------- | ----------------------------------------------------------------------------- |
+| `hostkey-sealed-with-tpm2` | the header of `sshd-hostkey.key` says TPM2 sealing (the host key alone fails) |
+| `ssh-after-reboot`         | the guest came back with a new boot id                                        |
+| `hostkey-unchanged`        | the second boot presents the first boot's host key: unsealed, not regenerated |
+| `sshd-active-after-reboot` | sshd is active on the second boot                                             |
+
+With `--next DIR` ([The update test](#the-update-test)):
+
+| marker                                                                 | what it proves                                                                                               |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `release-index`                                                        | `SHA256SUMS` has four lines in the fixed order, the digests match, none lists itself                         |
+| `sysupdate-installed`                                                  | `systemd-sysupdate-update.service` installed the release                                                     |
+| `boots-next`                                                           | after the reboot `IMAGE_VERSION` is the new version                                                          |
+| `etc-links-stable`                                                     | links under `/etc/systemd/system` exist, none names a store path, none dangles                               |
+| `no-failed-units-after-update`                                         | the updated system has no failed unit                                                                        |
+| `loader-replaced`                                                      | when the loader bytes differ, the new loader is on the ESP and the old one is `systemd-boot-fallbackx64.efi` |
+| `bootctl-list-both-slots`                                              | `bootctl list` shows the entries of both versions                                                            |
+| `loader-reinstall`                                                     | a damaged `BOOTX64.EFI` is reinstalled by `golconda-loader-update`                                           |
+| `set-oneshot-other-slot`, `other-slot-keeps-loader`, `oneshot-is-once` | `bootctl set-oneshot` boots the other slot once and installs nothing                                         |
+| `set-default-other-slot`, `set-default-cleared`                        | `bootctl set-default` boots the other slot until it is cleared                                               |
+| `reboot-to-firmware`                                                   | `bootctl reboot-to-firmware` reaches OVMF's boot menu                                                        |
+
+With `--rotate`:
+
+| marker                                                       | what it proves                                                                   |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| `loader-signed-again`                                        | a new db key gives new loader bytes                                              |
+| `boots-after-rotation`, `secure-boot-enabled-after-rotation` | the guest boots the new chain with db = the new certificate alone                |
+| `kernel-db-rotated`                                          | the kernel loaded only the new db certificate                                    |
+| `no-failed-units-after-rotation`                             | no failed unit after the rotation                                                |
+| `old-loader-refused`                                         | the original disk under the rotated store gets "Access Denied"; no kernel starts |
 
 The test SSH keypair is a committed test fixture (`tests/fixtures/snakeoil-ssh*`). The
-`image-smoke-test` reads the public key and adds it to `authorizedKeys`. The test script uses the
-private key to authenticate. See `tests/fixtures/README.md` for why both keys are committed.
+`image-smoke-test` reads the public key and adds it to `authorizedKeys`. See
+`tests/fixtures/README.md` for why both keys are committed.
 
 ### The update test
 
-`image-smoke-test` sets `updateSource = "http://10.0.2.2:8074/"`: under QEMU user networking
-10.0.2.2 is the host. The test is manual; it needs a held boot (the guest stays up after the checks)
-and a second release:
+`scripts/boot-test … --next DIR` runs the whole A/B update. No step is manual and the guest need not
+be held. `DIR` is a built release (`DIR/disk/release`, `DIR/keys`). The harness:
 
-1. Build the next release: the `image-smoke-test` call with `version = "20261031.2"` (and the same
-   throwaway keys). Copy its `disk/release/` with the symlinks resolved and serve it on the host:
-   `python3 -m http.server 8074 --bind 127.0.0.1`.
-1. Boot 20261031.1 with `--secure-boot --ssh-test`. In the guest,
-   `systemctl start --wait systemd-sysupdate-update.service` (the unit the timer starts) writes the
-   B slots and `EFI/Linux/boot-test_20261031.2+3-0.efi`.
-1. `systemctl reboot`: 20261031.2 boots from the B slots, the health units pass and the entry is
-   blessed ([Boot: Boot health](../design/boot.md#boot-health)).
-1. For the fallback, cut the link before the reboot (`set_link net0 off` in the QEMU monitor) and
-   reset after each failed health check: after three boots the entry is `+0-3` and systemd-boot
-   selects 20261031.1.
+1. checks the release's `SHA256SUMS` on the host (`release-index`);
+1. copies every file of `DIR/disk/release` into the guest over scp, to `/var/tmp/next`;
+1. rewrites the image's own definitions from `/usr/lib/sysupdate.d` into `/run/sysupdate.d`:
+   `Path=http…` becomes `Path=/var/tmp/next` and `Type=url-file` becomes `Type=regular-file`. A file
+   in `/run/sysupdate.d` hides the one of the same name in `/usr/lib/sysupdate.d`;
+1. starts `systemd-sysupdate-update.service` and waits for it (`sysupdate-installed`), which writes
+   the B slots and `EFI/Linux/<id>_<version>+3-0.efi`;
+1. removes the copies, reboots, and checks `boots-next`, `etc-links-stable`,
+   `no-failed-units-after-update` and the loader markers (the new release installed its loader on
+   its first good boot and kept the previous one as `systemd-boot-fallbackx64.efi`);
+1. runs the recovery paths: `bootctl list` shows both slots, a damaged `BOOTX64.EFI` is reinstalled
+   by `golconda-loader-update`, `bootctl set-oneshot` and `bootctl set-default` boot the other slot
+   and back, and `bootctl reboot-to-firmware` reaches OVMF's boot menu.
+
+`image-smoke-test` sets `updateSource = "http://10.0.2.2:8074/"` (under QEMU user networking
+10.0.2.2 is the host), but the harness never serves that address.
+
+The release to install must be signed with a key the firmware holds. The only next release that
+`nix/default.nix` builds is `image-smoke-test-rotated` (version `20261031.2`, a new db key), so use
+it with `--rotate`: the harness enrols its certificate beside the old one before the first boot, and
+after the checks it stops QEMU, sets db to the new certificate alone, adds the old one to dbx
+(`virt-fw-vars`), boots again, checks that the kernel loaded only the new db certificate, and boots
+the original disk under the rotated store, which firmware must refuse. `--next` without `--rotate`
+needs a next release signed with the first release's keys. The repository has no output for one.
+
+What this test does not prove:
+
+- **The production transfer.** The transfer is a local copy (`regular-file`), not HTTP. sysupdate
+  never fetches over the network, never reads `SHA256SUMS` itself (the harness reads it), and never
+  meets a `url-file` source. A fault in the server URL or in that source type shows up only on a
+  real machine.
+- **The fallback.** No test forces a failed health check, so the three-boot fallback (`+3-0` to
+  `+0-3`, then the previous version on the fourth boot) has not run in this repository. A test needs
+  a way to cut the guest's link, for example a QMP `set_link` call; the harness starts QEMU with no
+  monitor and no QMP socket, and no such mode exists. Nothing reboots a failed candidate by itself
+  ([Boot: Boot health](../design/boot.md#boot-health)).
