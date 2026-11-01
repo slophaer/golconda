@@ -289,8 +289,9 @@ Set `updateSource = "https://updates.example.com/server/"` in `"/system"` and th
 slots and the new UKI to the ESP, and the next boot runs them. Three failed boots make systemd-boot
 choose the other slot ([Updates](../design/updates.md)).
 
-The harness runs this whole update. `scripts/boot-test … --next DIR` copies the next release into
-the guest, installs it, reboots, and checks the result. Output *(boot)*:
+The harness runs this whole update. `scripts/boot-test … --next DIR` serves the next release over
+HTTP at the image's `updateSource`, lets the guest install it, reboots, and checks the result.
+Output *(boot)*:
 
 ```text
 PASS: release-index (4 lines: usr, verity, signature, UKI; digests match)
@@ -302,6 +303,4 @@ PASS: etc-links-stable (372 links, 0 naming a store path, 0 dangling)
 PASS: no-failed-units-after-update
 ```
 
-The limits of this test are on [Image artifacts: the update test](image.md#the-update-test): the
-transfer is a local copy, not HTTP, and no test yet makes the health check fail to prove the
-fallback after three boots.
+The limits of this test are on [Image artifacts: the update test](image.md#the-update-test).
