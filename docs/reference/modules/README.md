@@ -36,12 +36,15 @@ this shape: [design/modules](../../design/modules.md).
 
 Units, files and links are installed into one `/usr` tree, so a path that two of them claim is an
 error that names both claims and both origins (a module's `name`, or `fragments[<i>]`): a unit is
-installed at `/usr/lib/systemd/system/<name>`, a file or link at its path. `/usr/lib/golconda/` is
-written by the composer and the builder (`config.json`, `schema.json`, `attribution.json`,
-`packages.json`), so a fragment cannot claim a path there. Every file and link path must be
-canonical: under `/usr/`, with no empty, `.` or `..` component, no repeated separator, and no
-control character. The check runs before the duplicate check, so `/usr/lib/../x` and `/usr/x` are
-one path, not two. `merge.installedPathError` gives the same message as a value.
+installed at `/usr/lib/systemd/system/<name>`, a file or link at its path, a package's executable at
+`/usr/bin/<name>`. The system and the image builder write some paths themselves, and a fragment
+cannot claim them: `lib/system.nix` writes `/usr/lib/golconda/config.json` and `schema.json`,
+`lib/usr-tree.nix` writes `/usr/lib/golconda/attribution.json`, and `lib/usr-tree/main.nu` writes
+`/usr/lib/golconda/packages.json`, `/usr/lib/golconda/sbom.json`, `/usr/lib/os-release`,
+`/usr/lib/sysusers.d/golconda.conf` and `/usr/lib/tmpfiles.d/golconda.conf`. Every file and link
+path must be canonical: under `/usr/`, with no empty, `.` or `..` component, no repeated separator,
+and no control character, so `/usr/lib/../x` and `/usr/x` cannot be two claims on one path.
+`merge.duplicateError` gives the message as a value.
 
 ## Shared types (`modules/lib/`)
 
@@ -50,7 +53,7 @@ Plain files that modules import. The directory has no `default.nix`, so adios do
 | file               | exports                                                                                                                                                                                                                     |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `fragment.nix`     | `fragment`: `{ name; units; files; sysusers; tmpfiles; packages; links }`, every field optional, no other field; `units`, `unitName`, `unitText`, `unitSuffixes`, `file`, `mode`, `links`, `link`, `linkTarget`, `linkKind` |
-| `merge.nix`        | `merge [ fragment… ]` → the output above without `name`/`version`; `linkSources`, `duplicateLink` expose the link check, `installedPathError` the installed-path check; `pkgKey` the package key                            |
+| `merge.nix`        | `merge [ fragment… ]` → the output above without `name`/`version`; `duplicateError` the duplicate check's message or `null`; `pkgKey` the package key                                                                       |
 | `path.nix`         | `usrError`, `relativeError`, `componentError`: the canonical-path checks (plain functions, no `types`)                                                                                                                      |
 | `app.nix`          | `app`, `argv`, `files`, `perMachineMarkers`, `envOp`, `env`, `envName`, `unitValue`, `programName`, `credentialRef`, `isCredentialRef`, `binName`, `exe`                                                                    |
 | `service.nix`      | `service`, `render`, `filesDir`, `sandbox`, `sandboxLines`, `killMode`, `scope`, `credentialId`, `stateDirectory`, `credential`, `credentialArg`                                                                            |
@@ -153,22 +156,24 @@ on a running system.
 
 ### `merge`
 
-`merge [ fragmentA fragmentB ]` unions `units`, `files` and `links` (a repeated key throws,
-whichever shape the two values have), normalises every file to `{ text; mode; }`, concatenates
-`sysusers` and `tmpfiles`, returns `packages` with each package once, and records in
-`packageOrigins` which fragments (by `name`, or `fragments[<i>]`) brought each. The output's `links`
-is one map: the composer derives `/usr/bin/<name>` for every name in a package's `bin` list (kind
-`package`) into the same map as the fragments' links, then runs one duplicate check over the whole
-map. A path with two sources throws and names both, whatever their kinds; a link path that collides
-with a file path is an error too. The one non-duplicate is a `package` link that repeats a `package`
-link to the same target: a module that merges its own fragments with `merge` returns a fragment
-whose `links` already hold its packages' `/usr/bin` links, and the composer derives them again.
-`merge.linkSources fragments` lists every link with its source and `merge.duplicateLink` returns the
-message or `null`, so a test can read what the error says.
+`merge [ fragmentA fragmentB ]` unions `units`, `files` and `links`, normalises every file to
+`{ text; mode; }`, concatenates `sysusers` and `tmpfiles`, returns `packages` with each package
+once, and records in `packageOrigins` which fragments (by `name`, or `fragments[<i>]`) brought each.
+The output's `links` is one map: the composer derives `/usr/bin/<name>` for every name in a
+package's `bin` list (kind `package`) into the same map as the fragments' links.
+
+One duplicate check covers it all. Each fragment claims paths in `/usr`: its units, files, links and
+its packages' `/usr/bin` links. A path claimed twice throws, whatever the kinds, and the message
+names both claims and both origins. The one exception is a `package` link that repeats a `package`
+link to the same target: the same package from two fragments, or a module that merges its own
+fragments with `merge`, so its `links` already hold its packages' `/usr/bin` links and the composer
+derives them again. `merge.duplicateError fragments` returns the message or `null`, so a test can
+read what the error says.
 
 Error message examples:
-`golconda: /usr/bin/jq defined twice: package jq-1.7, explicit link to <store path>/bin/jq`;
-`golconda: /usr/lib/x defined twice: explicit link to a, explicit link to b`.
+`golconda: /usr/lib/foo.conf defined twice: file from /services/a, file from /services/b`;
+`golconda: /usr/bin/jq defined twice: package jq-1.7 from fragments[0], explicit link to <store path>/bin/jq from fragments[1]`;
+`golconda: /usr/lib/os-release defined twice: file from lib/usr-tree/main.nu, file from /services/a`.
 
 ### `/pkgs`
 

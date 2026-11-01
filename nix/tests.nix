@@ -1744,7 +1744,7 @@ let
             };
           }
         ];
-        msg = merge.duplicateLink (merge.linkSources frags);
+        msg = merge.duplicateError frags;
       in
       !(tryEval (deepSeq (compose frags).links true)).success
       && !(tryEval (deepSeq (compose frags).packages true)).success
@@ -1764,18 +1764,16 @@ let
           (at "a")
           (at "b")
         ];
-        msg = merge.duplicateLink (merge.linkSources frags);
+        msg = merge.duplicateError frags;
       in
       !(tryEval (deepSeq (compose frags).links true)).success
-      && hasInfix "/usr/lib/x defined twice: explicit link to a, explicit link to b" msg
+      && hasInfix "/usr/lib/x defined twice: explicit link to a from fragments[0], explicit link to b from fragments[1]" msg
       # the same target twice is still two sources
       &&
-        merge.duplicateLink (
-          merge.linkSources [
-            (at "a")
-            (at "a")
-          ]
-        ) != null
+        merge.duplicateError [
+          (at "a")
+          (at "a")
+        ] != null
     ))
     (check "links: a module's own merge is a fragment: its package links repeat without a clash" (
       let
@@ -1823,10 +1821,10 @@ let
             };
           }
         ];
-        msg = merge.duplicateLink (merge.linkSources frags);
+        msg = merge.duplicateError frags;
       in
       !(tryEval (deepSeq (compose frags).links true)).success
-      && hasInfix "farm link to /nix/store/a-1/lib/security, dlopen link to /nix/store/b-1/lib/security" msg
+      && hasInfix "farm link to /nix/store/a-1/lib/security from fragments[0], dlopen link to /nix/store/b-1/lib/security from fragments[1]" msg
     ))
     (check "links: distinct paths from every kind are no duplicate" (
       let
@@ -1855,7 +1853,7 @@ let
         ];
         result = compose frags;
       in
-      merge.duplicateLink (merge.linkSources frags) == null
+      merge.duplicateError frags == null
       # /base adds links, check the fragment links are present
       && result.links ? "/usr/lib/custom/rules.d"
       && result.links ? "/usr/lib/libfoo.so.1"
@@ -3427,7 +3425,7 @@ let
     # claim is an error that names both, not last-one-wins.
     (check "composer: a unit and a file at one installed path name both" (
       let
-        msg = merge.installedPathError [
+        msg = merge.duplicateError [
           {
             name = "/services/a";
             units."demo.service" = "[Unit]\n";
@@ -3436,13 +3434,13 @@ let
         ];
       in
       msg != null
-      && hasInfix "/usr/lib/systemd/system/demo.service installed twice" msg
+      && hasInfix "/usr/lib/systemd/system/demo.service defined twice" msg
       && hasInfix "unit 'demo.service' from /services/a" msg
       && hasInfix "file from /services/a" msg
     ))
     (check "composer: a unit and a link at one installed path name both" (
       let
-        msg = merge.installedPathError [
+        msg = merge.duplicateError [
           {
             units."demo.service" = "[Unit]\n";
             links."/usr/lib/systemd/system/demo.service" = {
@@ -3454,7 +3452,7 @@ let
       in
       msg != null
       && hasInfix "unit 'demo.service' from fragments[0]" msg
-      && hasInfix "link from fragments[0]" msg
+      && hasInfix "explicit link to ../x.service from fragments[0]" msg
     ))
     (check "composer: a path two kinds claim throws when composed" (
       filesThrow [
@@ -3479,6 +3477,41 @@ let
           files."/usr/lib/systemd/system/x.service" = "x";
         }
       ])
+    ))
+    (check "composer: two fragments claiming one file name both module paths" (
+      let
+        msg = merge.duplicateError [
+          {
+            name = "/services/a";
+            files."/usr/lib/foo.conf" = "a";
+          }
+          {
+            name = "/services/b";
+            files."/usr/lib/foo.conf" = "b";
+          }
+        ];
+      in
+      filesThrow [
+        { files."/usr/lib/foo.conf" = "a"; }
+        { files."/usr/lib/foo.conf" = "b"; }
+      ]
+      && msg == "golconda: /usr/lib/foo.conf defined twice: file from /services/a, file from /services/b"
+    ))
+    (check "composer: the paths the image builder writes are reserved" (
+      filesThrow [ { files."/usr/lib/os-release" = "ID=x\n"; } ]
+      && filesThrow [ { files."/usr/lib/sysusers.d/golconda.conf" = "u x -\n"; } ]
+      && filesThrow [ { files."/usr/lib/tmpfiles.d/golconda.conf" = "d /x\n"; } ]
+      && filesThrow [ { files."/usr/lib/golconda/sbom.json" = "{}"; } ]
+      &&
+        hasInfix "/usr/lib/os-release defined twice: file from lib/usr-tree/main.nu, file from /services/a"
+          (
+            merge.duplicateError [
+              {
+                name = "/services/a";
+                files."/usr/lib/os-release" = "ID=x\n";
+              }
+            ]
+          )
     ))
     (check "composer: the metadata the system writes is reserved" (
       filesThrow [ { files."/usr/lib/golconda/config.json" = "{}"; } ]
