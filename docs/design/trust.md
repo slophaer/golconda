@@ -115,8 +115,9 @@ uses short-lived certificates instead.
 
 ## Deployment keys
 
-A release is signed with the deployment's keys, not the store's throwaways. The operator builds it
-with `lib.mkImage`:
+A release is signed with the deployment's keys, not the store's throwaways. The procedure, from
+making the set to enrolling the certificate, is in [Making a release](../reference/release.md). The
+operator builds the image with `lib.mkImage`:
 
 ```nix
 (import ./default.nix).lib.mkImage {
