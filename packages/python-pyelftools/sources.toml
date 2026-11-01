@@ -1,0 +1,11 @@
+[upstream]
+purl = "pkg:pypi/pyelftools"
+
+[[source]]
+key = "default"
+url = "https://files.pythonhosted.org/packages/source/p/pyelftools/pyelftools-{version}.tar.gz"
+hash = "sha256-SX8SjZ7+oBH31TkybpMXeVrK4C36tfBV7splso+zBxc="
+
+[pin]
+version = "0.33"
+date = "2026-10-31"

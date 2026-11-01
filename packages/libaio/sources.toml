@@ -1,0 +1,10 @@
+[upstream]
+purl = "pkg:deb/debian/libaio"
+
+[[source]]
+key = "default"
+url = "https://deb.debian.org/debian/pool/main/liba/libaio/libaio_{version}.orig.tar.gz"
+hash = "sha256-8TofYbwsnenv5GuC6FjkUt9rBTULEb5nhknuxr2ckQg="
+
+[pin]
+version = "0.3.113"

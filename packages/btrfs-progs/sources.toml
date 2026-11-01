@@ -1,0 +1,10 @@
+[upstream]
+purl = 'pkg:generic/btrfs-progs?url=https://github.com/kdave/btrfs-progs/tags&regex=v([0-9.]+)\.tar\.gz'
+
+[[source]]
+key = "default"
+url = "https://www.kernel.org/pub/linux/kernel/people/kdave/btrfs-progs/btrfs-progs-v{version}.tar.xz"
+hash = "sha256-B5Ez+1wzgxgPyM03f8sFdJWG5NPYdJwwA1vo2lSrSZw="
+
+[pin]
+version = "7.3"

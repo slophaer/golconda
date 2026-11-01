@@ -1,0 +1,10 @@
+[upstream]
+purl = "pkg:github/lvmteam/lvm2"
+
+[[source]]
+key = "default"
+url = "https://github.com/lvmteam/lvm2/archive/refs/tags/v{version}.tar.gz"
+hash = "sha256-a2oVwLelDVEt7n6X7MNd0ztJZuPLC+xsLzM6T9jy4kA="
+
+[pin]
+version = "2_03_43"

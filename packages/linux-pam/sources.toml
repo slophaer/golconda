@@ -1,0 +1,12 @@
+[upstream]
+purl = "pkg:github/linux-pam/linux-pam"
+
+[[source]]
+key = "default"
+url = "https://github.com/linux-pam/linux-pam/releases/download/v{version}/Linux-PAM-{version}.tar.xz"
+hash = "sha256-K/LgnUNQSInQRNOxkw46yOOXhjd7zIV2T6GB1KrYZso="
+
+[pin]
+version = "1.7.3"
+date = "2026-09-24"
+tag = "v1.7.3"

@@ -1,0 +1,12 @@
+[upstream]
+purl = "pkg:github/tpm2-software/tpm2-tss"
+
+[[source]]
+key = "default"
+url = "https://github.com/tpm2-software/tpm2-tss/releases/download/{version}/tpm2-tss-{version}.tar.gz"
+hash = "sha256-gGS1VX0nuMYe3tzr2AQZhO/pEwyTjFI3D5q2HgZxTBg="
+
+[pin]
+version = "4.2.1"
+date = "2026-10-30"
+tag = "4.2.1"

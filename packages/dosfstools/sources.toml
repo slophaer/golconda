@@ -1,0 +1,10 @@
+[upstream]
+purl = "pkg:github/dosfstools/dosfstools"
+
+[[source]]
+key = "default"
+url = "https://github.com/dosfstools/dosfstools/releases/download/v{version}/dosfstools-{version}.tar.gz"
+hash = "sha256-bugQJt4o7LXDW1fBB/XirAI/e1yVQNljbshVv7xttlo="
+
+[pin]
+version = "4.2"

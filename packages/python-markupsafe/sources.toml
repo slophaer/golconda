@@ -1,0 +1,11 @@
+[upstream]
+purl = "pkg:pypi/markupsafe"
+
+[[source]]
+key = "default"
+url = "https://files.pythonhosted.org/packages/source/m/markupsafe/markupsafe-{version}.tar.gz"
+hash = "sha256-iDys4utyvqONYEiq2JXgG0GHDLWzJlClh8xr+2K/5js="
+
+[pin]
+version = "3.0.4"
+date = "2026-10-31"

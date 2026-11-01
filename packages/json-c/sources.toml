@@ -1,0 +1,10 @@
+[upstream]
+purl = "pkg:github/json-c/json-c"
+
+[[source]]
+key = "default"
+url = "https://s3.amazonaws.com/json-c_releases/releases/json-c-{version}.tar.gz"
+hash = "sha256-ZfwVOU6PJKHSj7XVZh5BUb3VJ+lHXZVMPdHh5fgrock="
+
+[pin]
+version = "0.19"

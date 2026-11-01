@@ -1,0 +1,247 @@
+diff -ru a/common/options.c b/common/options.c
+--- a/common/options.c
++++ b/common/options.c
+@@ -273,6 +273,10 @@
+ 			} else if (strcmp (argv[in], "--help") == 0) {
+ 				want_help = true;
+ 
++			} else if (strcmp (argv[in], "--version") == 0) {
++				printf ("%s %s\n", PACKAGE_NAME, PACKAGE_VERSION);
++				return 0;
++
+ 			} else if (!command) {
+ 				p11_message (_("unknown global option: %s"), argv[in]);
+ 				return 2;
+diff -ru a/common/path.c b/common/path.c
+--- a/common/path.c
++++ b/common/path.c
+@@ -277,6 +277,28 @@
+ 	return built;
+ }
+ 
++/*
++ * The directory of the running executable, so helpers (bin/trust,
++ * libexec/p11-kit) are found next to it and not under a prefix that was
++ * compiled in. NULL when the system cannot tell.
++ */
++char *
++p11_path_self_dir (void)
++{
++#ifdef OS_UNIX
++	char buf[4096];
++	ssize_t len;
++
++	len = readlink ("/proc/self/exe", buf, sizeof (buf) - 1);
++	if (len <= 0)
++		return NULL;
++	buf[len] = '\0';
++	return p11_path_parent (buf);
++#else
++	return NULL;
++#endif
++}
++
+ char *
+ p11_path_parent (const char *path)
+ {
+diff -ru a/common/path.h b/common/path.h
+--- a/common/path.h
++++ b/common/path.h
+@@ -61,6 +61,8 @@
+ 
+ char *       p11_path_parent    (const char *path);
+ 
++char *       p11_path_self_dir  (void);
++
+ bool         p11_path_prefix    (const char *string,
+                                  const char *prefix);
+ 
+diff -ru a/meson.build b/meson.build
+--- a/meson.build
++++ b/meson.build
+@@ -27,6 +27,7 @@
+ conf = configuration_data()
+ 
+ conf.set_quoted('PACKAGE_NAME', meson.project_name())
++conf.set_quoted('PACKAGE_VERSION', meson.project_version())
+ conf.set('PACKAGE_MAJOR', major_version)
+ conf.set('PACKAGE_MINOR', minor_version)
+ conf.set('PACKAGE_MICRO', micro_version)
+@@ -96,8 +97,6 @@
+ privatedir = libexecdir / meson.project_name()
+ 
+ common_c_args = [
+-  '-DBINDIR="@0@"'.format(prefix / bindir),
+-  '-DPRIVATEDIR="@0@"'.format(prefix / privatedir),
+   '-DSYSCONFDIR="@0@"'.format(prefix / sysconfdir)
+ ]
+ 
+diff -ru a/p11-kit/meson.build b/p11-kit/meson.build
+--- a/p11-kit/meson.build
++++ b/p11-kit/meson.build
+@@ -184,7 +184,7 @@
+                 link_depends: [p11_module_symbol_map],
+                 link_with: [libp11_kit_internal],
+                 install: true,
+-                install_dir: p11_module_path)
++                install_dir: libdir / 'pkcs11')
+ endif
+ 
+ if get_option('test')
+@@ -519,4 +519,4 @@
+                                      output: '@BASENAME@',
+                                      configuration: pkcs11_conf_example_conf)
+ install_data(pkcs11_conf_example,
+-             install_dir: prefix / p11_system_config)
++             install_dir: pkgdatadir)
+diff -ru a/p11-kit/p11-kit.c b/p11-kit/p11-kit.c
+--- a/p11-kit/p11-kit.c
++++ b/p11-kit/p11-kit.c
+@@ -125,11 +125,17 @@
+                char *argv[])
+ {
+ 	char **args;
++	char *self_dir;
+ 
+ 	args = calloc (argc + 2, sizeof (char *));
+ 	return_val_if_fail (args != NULL, 1);
+ 
+-	args[0] = BINDIR "/trust" EXEEXT;
++	/* trust is installed next to p11-kit */
++	self_dir = p11_path_self_dir ();
++	return_val_if_fail (self_dir != NULL, 1);
++	args[0] = p11_path_build (self_dir, "trust" EXEEXT, NULL);
++	return_val_if_fail (args[0] != NULL, 1);
++	free (self_dir);
+ 	memcpy (args + 1, argv, sizeof (char *) * argc);
+ 	args[argc + 1] = NULL;
+ 
+@@ -147,6 +153,8 @@
+                   char *argv[])
+ {
+ 	const char *private_dir;
++	char *allocated = NULL;
++	char *self_dir;
+ 	char *filename;
+ 	char *path;
+ 
+@@ -162,11 +170,18 @@
+ 		return_val_if_reached (1);
+ 
+ 	private_dir = secure_getenv ("P11_KIT_PRIVATEDIR");
+-	if (!private_dir || !private_dir[0])
+-		private_dir = PRIVATEDIR;
++	if (!private_dir || !private_dir[0]) {
++		/* libexec/p11-kit next to bin/ */
++		self_dir = p11_path_self_dir ();
++		return_val_if_fail (self_dir != NULL, 1);
++		private_dir = allocated = p11_path_build (self_dir, "..", "libexec", "p11-kit", NULL);
++		free (self_dir);
++		return_val_if_fail (allocated != NULL, 1);
++	}
+ 
+ 	/* Add our libexec directory to the path */
+ 	path = p11_path_build (private_dir, filename, NULL);
++	free (allocated);
+ 	return_val_if_fail (path != NULL, 1);
+ 
+ 	/* Windows execv() requires the first element of ARGV must be
+diff -ru a/p11-kit/server.c b/p11-kit/server.c
+--- a/p11-kit/server.c
++++ b/p11-kit/server.c
+@@ -292,17 +292,22 @@
+ 	       char *argv[])
+ {
+ 	const char *private_dir;
++	char *allocated = NULL;
+ 	char *path;
+ 	int rc;
+ 
+ 	return_val_if_fail (argc >= 1, -1);
+ 
+ 	private_dir = secure_getenv ("P11_KIT_PRIVATEDIR");
+-	if (!private_dir || !private_dir[0])
+-		private_dir = PRIVATEDIR;
++	if (!private_dir || !private_dir[0]) {
++		/* p11-kit-server is installed in the directory of its helpers */
++		private_dir = allocated = p11_path_self_dir ();
++		return_val_if_fail (allocated != NULL, -1);
++	}
+ 
+ 	/* Add our libexec directory to the path */
+ 	path = p11_path_build (private_dir, argv[0], NULL);
++	free (allocated);
+ 	return_val_if_fail (path != NULL, -1);
+ 
+ 	argv[argc] = NULL;
+diff -ru a/trust/extract.c b/trust/extract.c
+--- a/trust/extract.c
++++ b/trust/extract.c
+@@ -307,15 +307,24 @@
+                           char *argv[])
+ {
+ 	char *path = NULL;
++	char *private_dir;
++	char *self_dir;
+ 	int error;
+ 
+ 	argv[argc] = NULL;
+ 
++	/* libexec/p11-kit next to bin/ */
++	self_dir = p11_path_self_dir ();
++	return_val_if_fail (self_dir != NULL, 1);
++	private_dir = p11_path_build (self_dir, "..", "libexec", "p11-kit", NULL);
++	free (self_dir);
++	return_val_if_fail (private_dir != NULL, 1);
++
+ 	/*
+ 	 * For compatibility with people who deployed p11-kit 0.18.x
+ 	 * before trust stuff was put into its own branch.
+ 	 */
+-	path = p11_path_build (PRIVATEDIR, "p11-kit-extract-trust" EXEEXT, NULL);
++	path = p11_path_build (private_dir, "p11-kit-extract-trust" EXEEXT, NULL);
+ 	return_val_if_fail (path != NULL, 1);
+ 	execv (path, argv);
+ 	error = errno;
+@@ -323,7 +332,7 @@
+ 	if (error == ENOENT) {
+ 		free (path);
+ 		/* "trust-extract-compat" is supposed to be a script, not a binary */
+-		path = p11_path_build (PRIVATEDIR, "trust-extract-compat", NULL);
++		path = p11_path_build (private_dir, "trust-extract-compat", NULL);
+ 		return_val_if_fail (path != NULL, 1);
+ 		execv (path, argv);
+ 		error = errno;
+@@ -332,6 +341,7 @@
+ 	/* At this point we have no command */
+ 	p11_message_err (error, _("could not run %s command"), path);
+ 
++	free (private_dir);
+ 	free (path);
+ 	return 2;
+ }
+diff -ru a/trust/meson.build b/trust/meson.build
+--- a/trust/meson.build
++++ b/trust/meson.build
+@@ -20,10 +20,10 @@
+ ]
+ 
+ install_data('p11-kit-trust.module',
+-             install_dir: prefix / p11_package_config_modules)
++             install_dir: pkgdatadir / 'modules')
+ 
+ p11_kit_trust_c_args = [
+-  '-DP11_DEFAULT_TRUST_PREFIX="@0@"'.format(prefix / datadir),
++  '-DP11_DEFAULT_TRUST_PREFIX="/usr/share"',
+   '-DP11_SYSTEM_TRUST_PREFIX="@0@"'.format(prefix / sysconfdir)
+ ]
+ 
+@@ -37,7 +37,7 @@
+               link_depends: [p11_module_symbol_map],
+               link_with: libtrust_data,
+               install: true,
+-              install_dir: prefix / p11_module_path)
++              install_dir: libdir / 'pkcs11')
+ 
+ if get_option('test')
+   libtrust_testable_c_args = [

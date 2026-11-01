@@ -1,0 +1,10 @@
+[upstream]
+purl = "pkg:sourceforge/e2fsprogs"
+
+[[source]]
+key = "default"
+url = "https://sourceforge.net/projects/e2fsprogs/files/e2fsprogs/v{version}/e2fsprogs-{version}.tar.gz/download"
+hash = "sha256-5JRNLHt0vkq7Hxual98x6KV+aYFxZSiJSqE1LcxvZhY="
+
+[pin]
+version = "1.47.4"

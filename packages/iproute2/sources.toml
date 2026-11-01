@@ -1,0 +1,10 @@
+[upstream]
+purl = "pkg:generic/iproute2?url=https://www.kernel.org/pub/linux/utils/net/iproute2/"
+
+[[source]]
+key = "default"
+url = "https://www.kernel.org/pub/linux/utils/net/iproute2/iproute2-{version}.tar.xz"
+hash = "sha256-pegEbBHj5umup7MsBikkMvbTiSz3hVmNJ4On4brHWUM="
+
+[pin]
+version = "7.3.0"

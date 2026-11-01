@@ -1,0 +1,12 @@
+[upstream]
+purl = "pkg:github/p11-glue/p11-kit"
+
+[[source]]
+key = "default"
+url = "https://github.com/p11-glue/p11-kit/releases/download/{version}/p11-kit-{version}.tar.xz"
+hash = "sha256-H2DiIB/x3JaZw0nwnvLkDowe/TQPfks1Hmxd9bVjomM="
+
+[pin]
+version = "0.26.5"
+date = "2026-08-06"
+tag = "0.26.5"
