@@ -2,7 +2,7 @@
 # scripts/boot-test: VM boot test for Golconda images.
 #
 # Usage: boot-test <disk.raw> --keys DIR [--secure-boot] [--tpm] [--timeout SECONDS]
-#                  [--ssh-test] [--next DIR [--rotate]]
+#                  [--ssh-test] [--next DIR [--rotate | --fail-health]]
 #
 # The script boots the image in QEMU with:
 #   - a 40 GiB qcow2 overlay (room for root partition)
@@ -36,12 +36,14 @@
 #   was blessed, and systemd-boot-update.service stayed off.
 # With --next DIR (implies --ssh-test): DIR is the next release's image-smoke output
 #   (DIR/disk/release, DIR/keys). The harness checks that release directory against
-#   docs/design/releases.md (four SHA256SUMS lines, fixed order, digests match), copies it into
-#   the guest over ssh and installs it with systemd-sysupdate-update.service from
-#   /run/sysupdate.d definitions that read the copy, reboots into it, and checks that
-#   golconda-loader-update.service put the new loader on the ESP, and that no /etc/systemd/system
-#   link names the old systemd store path or dangles (golconda-etc-links.service), and that the
-#   updated system has no failed unit. Then the
+#   docs/design/releases.md (four SHA256SUMS lines, fixed order, digests match), resolves its
+#   symlinks into $WORKDIR/http, serves that directory on 127.0.0.1:$BOOT_TEST_HTTP_PORT with
+#   python3 -m http.server, and installs it with systemd-sysupdate-update.service. The guest reads
+#   its own /usr/lib/sysupdate.d/*.transfer (Type=url-file, Path=http://10.0.2.2:PORT/), so it
+#   fetches SHA256SUMS and the artifacts over HTTP; the harness rewrites no definition. Then it
+#   reboots into the release, and checks that golconda-loader-update.service put the new loader on
+#   the ESP, that no /etc/systemd/system link names the old systemd store path or dangles
+#   (golconda-etc-links.service), and that the updated system has no failed unit. Then the
 #   recovery checks: bootctl list shows both slots, a damaged loader
 #   is reinstalled by hand, `bootctl set-oneshot` and `bootctl set-default` boot the other slot
 #   and back, and `bootctl reboot-to-firmware` reaches the firmware's menu.
@@ -57,6 +59,8 @@
 #   the variable store (db: the new certificate only; dbx: the old one), boots again and checks
 #   the new chain, then boots the original disk with the rotated store, which firmware must
 #   refuse.
+# BOOT_TEST_HTTP_PORT: the host port for the release HTTP server (default 8074). The test image's
+#   updateSource is http://10.0.2.2:8074/, so another port needs an image built for it.
 # BOOT_TEST_STORE_ROOT: the root of a chroot store (nix --store 'local?root=DIR'); a symlink
 #   into /nix/store under DIR is followed there.
 # With --ssh-test --tpm: also checks that the host key is sealed with the TPM
@@ -81,12 +85,14 @@ if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
   # nix-shell sets its own TMPDIR and removes it on exit: keep the work directory outside
   BOOT_TEST_TMPDIR="${TMPDIR:-/tmp}"
   export BOOT_TEST_TMPDIR
-  exec nix-shell -I "nixpkgs=$DEV_PIN" -p qemu OVMF swtpm openssh python3Packages.virt-firmware --run "$0 $*"
+  exec nix-shell -I "nixpkgs=$DEV_PIN" -p qemu OVMF swtpm openssh python3 python3Packages.virt-firmware --run "$0 $*"
 fi
 
 # --- argument parsing ---
 # the host port for the guest's sshd: set BOOT_TEST_SSH_PORT when another VM uses 10022
 SSH_PORT=${BOOT_TEST_SSH_PORT:-10022}
+# the host port for the release HTTP server: the test image's updateSource uses 8074
+HTTP_PORT=${BOOT_TEST_HTTP_PORT:-8074}
 DISK=""
 KEYS_DIR=""
 SECURE_BOOT=0
@@ -164,6 +170,30 @@ real_path() {
   echo "$rp"
 }
 
+# http_port_in_use PORT: true when 127.0.0.1:PORT is already bound
+http_port_in_use() {
+  python3 - "$1" <<'EOF'
+import socket, sys
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+try:
+    s.bind(("127.0.0.1", int(sys.argv[1])))
+except OSError:
+    sys.exit(0)
+sys.exit(1)
+EOF
+}
+
+# http_answers PORT: true when 127.0.0.1:PORT accepts a connection
+http_answers() {
+  python3 - "$1" <<'EOF'
+import socket, sys
+try:
+    socket.create_connection(("127.0.0.1", int(sys.argv[1])), 1).close()
+except OSError:
+    sys.exit(1)
+EOF
+}
+
 if [ "$FAIL_HEALTH" = 1 ] && [ -z "$NEXT" ]; then
   echo "Error: --fail-health needs --next" >&2
   exit 1
@@ -179,6 +209,14 @@ if [ -n "$NEXT" ]; then
     echo "Error: $NEXT has no disk/release/SHA256SUMS or keys/secureboot/db.crt" >&2
     exit 1
   fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "Error: python3 is required to serve $NEXT_RELEASE over HTTP, and it is not on PATH" >&2
+    exit 1
+  fi
+  if http_port_in_use "$HTTP_PORT"; then
+    echo "Error: 127.0.0.1:$HTTP_PORT is already in use; set BOOT_TEST_HTTP_PORT to a free port, and use a test image whose updateSource names that port (the image's default is 8074)" >&2
+    exit 1
+  fi
 fi
 
 # --- working directory ---
@@ -192,6 +230,10 @@ cleanup() {
   fi
   if [ -n "${SWTPM_PID:-}" ]; then
     kill "$SWTPM_PID" 2>/dev/null || true
+  fi
+  if [ -n "${HTTP_PID:-}" ]; then
+    kill "$HTTP_PID" 2>/dev/null || true
+    wait "$HTTP_PID" 2>/dev/null || true
   fi
   if [ "$KEEP_WORKDIR" = 0 ]; then
     rm -rf "$WORKDIR"
@@ -303,6 +345,44 @@ setup_ssh_test() {
   chmod 600 "$SSH_DIR/user"
   
   echo "Using test SSH key: $TEST_KEY"
+}
+
+# --- the release HTTP server (--next) ---
+# start_http_server: serve the release directory on the host, where the image's url-file source
+# expects it. QEMU user networking maps 10.0.2.2 to the host loopback.
+start_http_server() {
+  HTTP_ROOT="$WORKDIR/http"
+  HTTP_LOG="$WORKDIR/http.log"
+  mkdir -p "$HTTP_ROOT"
+  # the release directory holds symlinks into the store: copy the bytes, not the links
+  if ! cp -L "$NEXT_RELEASE"/* "$HTTP_ROOT/"; then
+    echo "Error: cannot copy $NEXT_RELEASE into $HTTP_ROOT" >&2
+    return 1
+  fi
+
+  echo "Serving $NEXT_RELEASE on http://127.0.0.1:$HTTP_PORT/ (the guest uses http://10.0.2.2:$HTTP_PORT/)"
+  python3 -m http.server "$HTTP_PORT" --bind 127.0.0.1 --directory "$HTTP_ROOT" \
+    > "$HTTP_LOG" 2>&1 &
+  HTTP_PID=$!
+
+  WAIT=0
+  while [ "$WAIT" -lt 50 ]; do
+    if ! kill -0 "$HTTP_PID" 2>/dev/null; then
+      echo "Error: the HTTP server on 127.0.0.1:$HTTP_PORT exited; its log:" >&2
+      cat "$HTTP_LOG" >&2 || true
+      return 1
+    fi
+    if http_answers "$HTTP_PORT"; then
+      echo "HTTP server ready (pid $HTTP_PID)"
+      return 0
+    fi
+    WAIT=$((WAIT + 1))
+    sleep 0.2
+  done
+
+  echo "Error: the HTTP server on 127.0.0.1:$HTTP_PORT did not answer within 10 s; its log:" >&2
+  cat "$HTTP_LOG" >&2 || true
+  return 1
 }
 
 # --- run QEMU ---
@@ -637,8 +717,6 @@ reboot_guest() {
   fi
 }
 
-SCP_OPTS="-F /dev/null -q -o BatchMode=yes -o LogLevel=ERROR -P $SSH_PORT"
-
 # test_release_index: the release directory a server publishes, as docs/design/releases.md states
 # it: four lines in the fixed order usr, verity, signature, UKI; the digest of each file; no line
 # for the index itself.
@@ -768,26 +846,33 @@ test_next() {
   test_release_index
   OLD_VERSION=$(guest_version)
   OLD_LOADER=$(guest_hash "$ESP_REMOVABLE")
-  echo "running $OLD_VERSION, installing $NEXT_VERSION from $NEXT_RELEASE"
-  guest mkdir -p /var/tmp/next /run/sysupdate.d
-  for f in "$NEXT_RELEASE"/*; do
-    # shellcheck disable=SC2086
-    scp $SCP_OPTS $NO_HOSTKEY_CHECK -i "$WORKDIR/ssh/user" "$(real_path "$f")" \
-      "root@localhost:/var/tmp/next/$(basename "$f")"
-  done
-  # the image's own definitions, reading the copy instead of the update server: a file in
-  # /run/sysupdate.d hides the one of the same name in /usr/lib/sysupdate.d
-  for n in $(guest ls /usr/lib/sysupdate.d); do
-    guest cat "/usr/lib/sysupdate.d/$n" \
-      | sed 's|^Path=http.*|Path=/var/tmp/next|; s|^Type=url-file$|Type=regular-file|' \
-      | guest "cat > /run/sysupdate.d/$n"
-  done
+  echo "running $OLD_VERSION, installing $NEXT_VERSION from http://10.0.2.2:$HTTP_PORT/"
+
+  echo ""
+  echo "=== the guest's own sysupdate definition ==="
+  DEF=$(guest cat /usr/lib/sysupdate.d/10-usr.transfer 2>&1) || true
+  echo "$DEF"
+  RC=0
+  echo "$DEF" | grep -q '^Type=url-file$' || RC=1
+  echo "$DEF" | grep -q "^Path=http://10.0.2.2:$HTTP_PORT/$" || RC=1
+  verdict "http-source (10-usr.transfer: Type=url-file, Path=http://10.0.2.2:$HTTP_PORT/)" $RC
+
+  echo ""
+  echo "=== systemd-sysupdate-update.service ==="
   RC=0
   guest systemctl start --wait systemd-sysupdate-update.service || RC=1
-  guest journalctl -b -u systemd-sysupdate-update.service -o cat --no-pager 2>&1 \
-    | grep "Successfully installed" || true
+  JOURNAL=$(guest journalctl -b -u systemd-sysupdate-update.service -o cat --no-pager 2>&1) || true
+  echo "$JOURNAL" | grep "Successfully installed" || true
+  # sysupdate logs "Successfully installed '<source URL>' ... as '<target>' ...": for a url-file
+  # source the source is the http URL, not a local path
+  RC_FETCH=0
+  echo "$JOURNAL" | grep -q "Successfully installed 'http://10.0.2.2:$HTTP_PORT/" || RC_FETCH=1
+  verdict "http-fetch (the journal names the release over http, not a local file)" $RC_FETCH
   verdict "sysupdate-installed ($NEXT_VERSION)" $RC
-  guest rm -rf /var/tmp/next /run/sysupdate.d
+  if [ "$RC" != 0 ]; then
+    echo "HTTP server log (last 20 lines):"
+    tail -20 "$HTTP_LOG" 2>/dev/null || true
+  fi
 
   echo "Rebooting into $NEXT_VERSION..."
   if [ "$FAIL_HEALTH" = 1 ]; then
@@ -1016,6 +1101,12 @@ main() {
 
   if [ "$SSH_TEST" = 1 ]; then
     setup_ssh_test
+  fi
+
+  if [ -n "$NEXT" ]; then
+    if ! start_http_server; then
+      exit 1
+    fi
   fi
 
   start_qemu

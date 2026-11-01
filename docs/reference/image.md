@@ -45,8 +45,9 @@ warning) and enables the update timer with a static link,
 old names as aliases. The timer starts `systemd-sysupdate-update.service`, which runs
 `systemd-sysupdate update --component-all --cleanup=yes`. The image ships its definitions in
 `/usr/lib/sysupdate.d` only. sysupdate.d(5) also reads `/etc/sysupdate.d` and `/run/sysupdate.d`,
-and a file there hides the one of the same name in `/usr/lib/sysupdate.d`; the boot test uses that
-to point the transfers at a local copy ([The update test](#the-update-test)).
+and a file there hides the one of the same name in `/usr/lib/sysupdate.d`; the boot test runs the
+image's definitions unchanged and serves the release over HTTP
+([The update test](#the-update-test)).
 
 ## Image definitions (`image/`)
 
@@ -207,9 +208,11 @@ scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --next n
   --rotate --timeout 480
 ```
 
-`BOOT_TEST_SSH_PORT` sets the host port for the guest's sshd (default 10022). `BOOT_TEST_STORE_ROOT`
-names the root of a chroot store (`--store 'local?root=DIR'`): the harness follows a `/nix/store`
-symlink under it.
+`BOOT_TEST_SSH_PORT` sets the host port for the guest's sshd (default 10022). `BOOT_TEST_HTTP_PORT`
+sets the port of the release HTTP server for `--next` (default 8074). The test image's
+`updateSource` names 8074, so another port needs an image built with that `updateSource`.
+`BOOT_TEST_STORE_ROOT` names the root of a chroot store (`--store 'local?root=DIR'`): the harness
+follows a `/nix/store` symlink under it.
 
 The image enforces IPE (`ipe.enforce=1`): `/usr` executes only from a dm-verity mapping whose root
 hash signature the kernel verified. The signature is signed with the Secure Boot db key and its
@@ -286,6 +289,8 @@ With `--next DIR` ([The update test](#the-update-test)):
 | marker                                                                 | what it proves                                                                                               |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `release-index`                                                        | `SHA256SUMS` has four lines in the fixed order, the digests match, none lists itself                         |
+| `http-source`                                                          | the guest's own `10-usr.transfer` has `Type=url-file` and `Path=http://10.0.2.2:<port>/`                     |
+| `http-fetch`                                                           | the sysupdate journal names the release over `http`, so the guest fetched it, not a local file               |
 | `sysupdate-installed`                                                  | `systemd-sysupdate-update.service` installed the release                                                     |
 | `boots-next`                                                           | after the reboot `IMAGE_VERSION` is the new version                                                          |
 | `etc-links-stable`                                                     | links under `/etc/systemd/system` exist, none names a store path, none dangles                               |
@@ -317,21 +322,29 @@ The test SSH keypair is a committed test fixture (`tests/fixtures/snakeoil-ssh*`
 be held. `DIR` is a built release (`DIR/disk/release`, `DIR/keys`). The harness:
 
 1. checks the release's `SHA256SUMS` on the host (`release-index`);
-1. copies every file of `DIR/disk/release` into the guest over scp, to `/var/tmp/next`;
-1. rewrites the image's own definitions from `/usr/lib/sysupdate.d` into `/run/sysupdate.d`:
-   `Path=http…` becomes `Path=/var/tmp/next` and `Type=url-file` becomes `Type=regular-file`. A file
-   in `/run/sysupdate.d` hides the one of the same name in `/usr/lib/sysupdate.d`;
-1. starts `systemd-sysupdate-update.service` and waits for it (`sysupdate-installed`), which writes
-   the B slots and `EFI/Linux/<id>_<version>+3-0.efi`;
-1. removes the copies, reboots, and checks `boots-next`, `etc-links-stable`,
-   `no-failed-units-after-update` and the loader markers (the new release installed its loader on
-   its first good boot and kept the previous one as `systemd-boot-fallbackx64.efi`);
+1. resolves the release's symlinks into `$WORKDIR/http` (`cp -L`) and serves that directory on
+   `127.0.0.1:$BOOT_TEST_HTTP_PORT` with `python3 -m http.server`, waiting until it answers. QEMU
+   user networking maps `10.0.2.2` to the host loopback, so the image's `http://10.0.2.2:8074/`
+   reaches the server;
+1. checks that the guest's own `/usr/lib/sysupdate.d/10-usr.transfer` has `Type=url-file` and
+   `Path=http://10.0.2.2:8074/` (`http-source`). No definition is rewritten;
+1. starts `systemd-sysupdate-update.service` and waits for it. The journal's
+   `Successfully installed 'http://…'` line is `http-fetch`; the service's exit status is
+   `sysupdate-installed`. sysupdate fetches `SHA256SUMS` and the four artifacts over HTTP, then
+   writes the B slots and `EFI/Linux/<id>_<version>+3-0.efi`;
+1. reboots and checks `boots-next`, `etc-links-stable`, `no-failed-units-after-update` and the
+   loader markers (the new release installed its loader on its first good boot and kept the previous
+   one as `systemd-boot-fallbackx64.efi`);
 1. runs the recovery paths: `bootctl list` shows both slots, a damaged `BOOTX64.EFI` is reinstalled
    by `golconda-loader-update`, `bootctl set-oneshot` and `bootctl set-default` boot the other slot
    and back, and `bootctl reboot-to-firmware` reaches OVMF's boot menu.
 
 `image-smoke-test` sets `updateSource = "http://10.0.2.2:8074/"` (under QEMU user networking
-10.0.2.2 is the host), but the harness never serves that address.
+10.0.2.2 is the host). The harness serves `DIR/disk/release` at that address with
+`python3 -m http.server`, so the image's own `url-file` definitions fetch the release over HTTP; it
+rewrites nothing under `/run`. `BOOT_TEST_HTTP_PORT` changes the host port; the image's
+`updateSource` must then name the same port. The harness stops the server in its cleanup, on every
+exit path.
 
 The next release comes from `packages.<system>.image-smoke-test-next` (version `20261031.2`, the
 same keys as the first release; [Outputs](outputs.md)), and `--next` takes its path. The firmware
@@ -357,7 +370,7 @@ candidate is blessed.
 
 What this test does not prove:
 
-- **The production transfer.** The transfer is a local copy (`regular-file`), not HTTP. sysupdate
-  never fetches over the network, never reads `SHA256SUMS` itself (the harness reads it), and never
-  meets a `url-file` source. A fault in the server URL or in that source type shows up only on a
-  real machine.
+- **The production transfer.** The test serves a release over plain `http` from the host. It proves
+  the image's `url-file` source and the HTTP fetch, but not HTTPS, a signed manifest (`Verify=no`
+  checks no signature), a real update server with redirects or authentication, the update timer, or
+  a machine whose network is not QEMU's user-mode network.
