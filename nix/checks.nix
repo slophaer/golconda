@@ -101,6 +101,12 @@ in
         mdbook build -d $out
       '';
 
+  # every internal Markdown link and anchor resolves; scripts/check-doc-links says which does not
+  docs-links = pkgs.runCommand "check-docs-links" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+    python3 ${src}/scripts/check-doc-links ${src}
+    touch $out
+  '';
+
   # the generated module pages alone: `nix-build -A checks.x86_64-linux.module-docs`
   module-docs = moduleDocs;
 

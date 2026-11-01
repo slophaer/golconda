@@ -11,6 +11,7 @@
 - [Boot](design/boot.md)
 - [Boot loader](design/bootloader.md)
 - [Updates](design/updates.md)
+- [Releases](design/releases.md)
 - [Recovery](design/recovery.md)
 - [Trust](design/trust.md)
 - [Kernel](design/kernel.md)
