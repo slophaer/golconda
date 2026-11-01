@@ -30,7 +30,7 @@ let
   path = import ./path.nix;
 
   # A value the renderer puts on one line of a unit: no control character. A
-  # newline would end the directive and start another (review finding 13).
+  # newline would end the directive and start another.
   unitValue = typedef' "unitValue" (
     v:
     if !isString v then
@@ -102,7 +102,7 @@ let
   # One launch env operation: exactly one key, and a replacement value or a
   # presence marker. Inherited-value operations (default, prepend, append)
   # are not offered: the renderer replaces the value, and systemd already
-  # sets values such as PATH (review finding 27).
+  # sets values such as PATH.
   #   { HOME = { set = "/var/lib/foo"; }; OLD = { unset = true; }; }
   envOp =
     (struct "envOp" {

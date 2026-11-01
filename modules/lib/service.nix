@@ -4,8 +4,7 @@
 # ExecStart=/usr/bin/<program> <argv...>, where a credential reference in
 # argv is %d/<name> and the app's files are written to /usr/lib/<name>/<file>
 # (`filesDir name`). No enable flag: a service in `fragments` is on. Two
-# instances are two names; the composer refuses a duplicate unit. Report:
-# ~/spikes/research-services/REPORT.md section 3.
+# instances are two names; the composer refuses a duplicate unit.
 #
 #   let s = import ../../lib/service.nix { inherit types; };
 #   in s.render { name = "foo"; app = { package = pkg; argv = [ "-f" "${s.filesDir "foo"}/foo.conf" ];
@@ -122,7 +121,7 @@ let
   );
 
   # A StateDirectory= entry: one directory name under /var/lib, so a space or
-  # a .. cannot add a second directory or leave /var/lib (review finding 13).
+  # a .. cannot add a second directory or leave /var/lib.
   stateDirectory = typedef' "stateDirectory" (
     v: if !isString v then "Expected a string" else path.componentError v
   );
@@ -222,7 +221,7 @@ let
   envValue = s: replaceStrings [ "%" ] [ "%%" ] s;
 
   # Environment= from launch env operations: a replacement value, or an
-  # unset marker. There are no inherited-value operations (review finding 27).
+  # unset marker. There are no inherited-value operations.
   envLines =
     env:
     map (

@@ -9,7 +9,7 @@
 # A local registry lets Golconda's own types register their schema explicitly.
 # Mark the gap with `x-golconda-opaque` for types that cannot be introspected.
 #
-# Provenance, for the UI: every option carries `x-golconda-declaredIn` ({ module;
+# Provenance: every option carries `x-golconda-declaredIn` ({ module;
 # file?; line? }: the module path that declares it, that module's file relative to
 # the repo, and the line of the option in it, when the evaluator reports a position: iets does, nix does not), and every module `x-golconda-inputs`,
 # the module paths it reads (its `inputs.<x>.path`, sorted): the edges of the module

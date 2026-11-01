@@ -2,8 +2,8 @@
 # repeats the key; booleans become yes/no; null drops the key.
 #
 # The renderer is the boundary between a typed value and the file text, so it
-# is where a value that would change the file's structure is refused (review
-# finding 14): a section name or a key is one plain word, and a string value
+# is where a value that would change the file's structure is refused: a
+# section name or a key is one plain word, and a string value
 # holds no control character, because a line break would start a directive
 # (or, in a section position, a new section). Callers keep raw text out of
 # INI: a value that is meant to be several lines is a file of its own.

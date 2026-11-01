@@ -78,7 +78,7 @@ let
     "3.pool.ntp.org"
   ];
 
-  # Convert a list of { path; target; kind; } to the new attrset format
+  # Convert a list of { path; target; kind; } to the attrset the composer takes: path -> { target; kind; }
   linksToAttrs =
     list:
     foldl' (
@@ -657,10 +657,10 @@ in
       # user exists for compatibility.
       sysusers = [ "u messagebus - \"D-Bus message bus user\" -" ];
 
-      # merged /usr on the root partition: #!/bin/sh and friends (repart makes the directories,
-      # image/repart.nix; the root is read-only until systemd-remount-fs, so switch-root could
-      # not make these itself). Plus the CA links: /etc is created by tmpfiles at boot, and an
-      # admin file at either path wins (L, not L+).
+      # merged /usr on the root partition: #!/bin/sh and friends. The root partition starts
+      # empty (image/repart.nix makes only directories), so tmpfiles makes these links at
+      # boot. Plus the CA links: /etc is created by tmpfiles at boot, and an admin file at
+      # either path wins (L, not L+).
       tmpfiles = [
         "L /bin - - - - usr/bin"
         "L /sbin - - - - usr/bin"
