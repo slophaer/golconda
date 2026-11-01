@@ -1,0 +1,10 @@
+[upstream]
+purl = "pkg:generic/libksba?url=https://gnupg.org/ftp/gcrypt/libksba/"
+
+[[source]]
+key = "default"
+url = "https://gnupg.org/ftp/gcrypt/libksba/libksba-{version}.tar.bz2"
+hash = "sha256-Z1dqcHmiqBQwxUqUiAKUnPqO25jEJBTbyZm+Bi/ZirI="
+
+[pin]
+version = "1.8.1"

@@ -1,0 +1,42 @@
+--- a/src/gpg-error.c
++++ b/src/gpg-error.c
+@@ -27,6 +27,7 @@
+ #include <string.h>
+ #include <errno.h>
+ #include <limits.h>
++#include <unistd.h>
+ #include <stdio.h>
+ 
+ #ifdef HAVE_LOCALE_H
+@@ -450,8 +451,30 @@
+ 
+   if (!initialized)
+     {
++      char exe[4096];
++      char *name;
++      ssize_t n;
++
++      /* The reference sits at <root>/share/libgpg-error, <root> being the
++       * directory above the bin directory of the running tool.  Nothing
++       * of the build prefix is compiled in, so the package can move.  */
+       initialized = 1;
+-      fp = fopen (PKGDATADIR "/errorref.txt", "r");
++      n = readlink ("/proc/self/exe", exe, sizeof exe - 1);
++      if (n > 0)
++        {
++          exe[n] = 0;
++          name = strrchr (exe, '/');
++          if (name)
++            {
++              *name = 0;
++              name = strrchr (exe, '/');
++            }
++          if (name)
++            {
++              strcpy (name, "/share/libgpg-error/errorref.txt");
++              fp = fopen (exe, "r");
++            }
++        }
+     }
+   if (!fp)
+     return;
