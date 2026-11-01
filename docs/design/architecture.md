@@ -49,19 +49,19 @@ file. Everything else is a module the document names ([Configuration](config.md)
 
 ## Components
 
-| component                      | role                                                                               | where                              |
-| ------------------------------ | ---------------------------------------------------------------------------------- | ---------------------------------- |
-| npins                          | pins repkgs, adios, flake-incompat, iets, pele                                     | `npins/`                           |
-| flake-incompat                 | output schema, per-system arguments                                                | `default.nix`, `nix/default.nix`   |
-| platform record                | repkgs' record, every tool reads it                                                | `nix/packages.nix`                 |
-| repkgs                         | packages, toolchain, relocatable outputs                                           | `nix/packages.nix`, `packages/`    |
-| adios                          | typed module tree, fragments, the composer                                         | `modules/`                         |
-| iets                           | evaluation and lints                                                               | `iets.toml`, `scripts/lint`        |
-| schema, TOML loader            | JSON Schema of the tree; document → options                                        | `lib/schema.nix`, `lib/config.nix` |
-| entry point                    | `mkSystem`: document → composed system → `/usr` tree                               | `lib/system.nix`, `golconda.nix`   |
-| usr tree                       | closure + symlinks + config → directory for erofs                                  | `lib/usr-tree.nix`                 |
-| image                          | definitions as data; builder: erofs, verity, initrd, UKI, GPT from the `/usr` tree | `image/*.nix`; `lib/image/`        |
-| systemd-boot, stub, bless-boot | boot, counting, measurement                                                        | ESP                                |
-| systemd-sysupdate              | A/B updates                                                                        | `/usr/lib/sysupdate.d`             |
+| component                      | role                                                                               | where                                              |
+| ------------------------------ | ---------------------------------------------------------------------------------- | -------------------------------------------------- |
+| npins                          | pins repkgs, adios, flake-incompat, iets, pele                                     | `npins/`                                           |
+| flake-incompat                 | output schema, per-system arguments                                                | `default.nix`, `nix/default.nix`                   |
+| platform record                | repkgs' record, every tool reads it                                                | `nix/packages.nix`                                 |
+| repkgs                         | packages, toolchain, relocatable outputs                                           | `nix/packages.nix`, `packages/`                    |
+| adios                          | typed module tree, fragments, the composer                                         | `modules/`                                         |
+| iets                           | evaluation and lints                                                               | `iets.toml`, `scripts/lint`                        |
+| schema, TOML loader            | JSON Schema of the tree; document → options; the one tree walker                   | `lib/schema.nix`, `lib/config.nix`, `lib/tree.nix` |
+| entry point                    | `mkSystem`: document → composed system → `/usr` tree                               | `lib/system.nix`, `golconda.nix`                   |
+| usr tree                       | closure + symlinks + config → directory for erofs                                  | `lib/usr-tree.nix`                                 |
+| image                          | definitions as data; builder: erofs, verity, initrd, UKI, GPT from the `/usr` tree | `image/*.nix`; `lib/image/`                        |
+| systemd-boot, stub, bless-boot | boot, counting, measurement                                                        | ESP                                                |
+| systemd-sysupdate              | A/B updates                                                                        | `/usr/lib/sysupdate.d`                             |
 
 See [Layout](layout.md) for the on-disk result and [Boot](boot.md) for the sequence.

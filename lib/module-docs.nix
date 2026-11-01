@@ -17,7 +17,7 @@
 #     schemaLib = import ./schema.nix { };
 #     tree = import ../modules { inherit (adios) adios; };
 #     docComments = import ./doc-comments.nix { };
-#     modulePaths = discoverModulePaths ../modules;
+#     modulePaths = (import ./tree.nix { }).modulePaths ../modules;
 #   in
 #   toMarkdown {
 #     schema = schemaLib.toJsonSchema (tree { });
@@ -33,8 +33,6 @@ let
     isAttrs
     listToAttrs
     map
-    pathExists
-    readDir
     replaceStrings
     sort
     stringLength
@@ -42,7 +40,7 @@ let
     toJSON
     ;
 
-  schemaLib = import ./schema.nix { };
+  treeLib = import ./tree.nix { };
 
   join = concatStringsSep;
   sortStrings = sort (a: b: a < b);
@@ -112,58 +110,9 @@ let
       + join ", " (map (n: "`${n}`") names)
       + ".\n";
 
-  # Discover module paths by walking the modules/ directory, mirroring adios.lib.importModules.
-  # Returns a set of { path = "/system"; filePath = ./system/default.nix; } records.
-  discoverModulePaths =
-    rootPath:
-    let
-      # Recursively walk the directory
-      walk =
-        prefix: dir:
-        let
-          files = readDir dir;
-          filenames = attrNames files;
-        in
-        builtins.concatMap (
-          name:
-          if name == "lib" then
-            # Skip lib/ directory (shared types, not a module)
-            [ ]
-          else if files.${name} == "directory" then
-            let
-              subdir = dir + "/${name}";
-              hasDefault = pathExists (subdir + "/default.nix");
-              modulePath = prefix + "/" + name;
-            in
-            if hasDefault then
-              [
-                {
-                  path = modulePath;
-                  filePath = subdir + "/default.nix";
-                }
-              ]
-              ++ walk modulePath subdir
-            else
-              [ ]
-          else
-            let
-              m = builtins.match "(.+)\\.nix$" name;
-            in
-            if m == null || name == "default.nix" then
-              [ ]
-            else
-              let
-                moduleName = builtins.head m;
-              in
-              [
-                {
-                  path = prefix + "/" + moduleName;
-                  filePath = dir + "/${name}";
-                }
-              ]
-        ) filenames;
-    in
-    walk "" rootPath;
+  # The module files under the modules/ directory: lib/tree.nix, one walker for all.
+  # Returns a list of { path = "/system"; filePath = ./system/default.nix; } records.
+  discoverModulePaths = treeLib.modulePaths;
 
   # Generate a page for one module
   page =
@@ -254,7 +203,7 @@ let
     let
       sortedPaths = sortStrings (map (m: m.path) modulePaths);
       # Indent based on depth: /system is depth 0, /services/sshd is depth 1
-      depth = path: builtins.length (schemaLib.pathComponents path) - 1;
+      depth = path: builtins.length (treeLib.pathComponents path) - 1;
       indent = d: join "" (builtins.genList (_: "  ") d);
       moduleEntry =
         path:
@@ -288,7 +237,7 @@ let
         }) modulePaths
       );
 
-      getModule = schemaLib.moduleAt tree;
+      getModule = treeLib.moduleAt tree;
 
       # Generate pages for all discovered modules
       pages = listToAttrs (

@@ -14,7 +14,7 @@
 # the repo, and the line of the option in it, when the evaluator reports a position: iets does, nix does not), and every module `x-golconda-inputs`,
 # the module paths it reads (its `inputs.<x>.path`, sorted): the edges of the module
 # graph. `toJsonSchemaWith { files; root; }` knows the files: `files` maps a module
-# path to its file path (module-docs.nix `discoverModulePaths`, as a list of
+# path to its file path (lib/tree.nix `modulePaths`, as a list of
 # { path; filePath; }), `root` is the repo directory as a string; the files and lines
 # are left out without them.
 #
@@ -27,7 +27,6 @@ let
     attrNames
     attrValues
     filter
-    foldl'
     head
     isAttrs
     isBool
@@ -627,32 +626,9 @@ let
     };
   };
 
-  # The walk of a module tree, the one copy: lib/config.nix, lib/module-docs.nix and
-  # lib/system.nix use these. A tree is loaded (`f.modules { }`) or evaluated; both
-  # nest a submodule under `modules.<name>`.
-
-  # The components of a module path: "/services/sshd" -> [ "services" "sshd" ].
-  pathComponents = p: filter (c: isString c && c != "") (builtins.split "/" p);
-
-  # The module at path `p` ("/services/sshd") of `tree`.
-  moduleAt = tree: p: foldl' (mod: part: mod.modules.${part}) tree (pathComponents p);
-
-  # Every module under `tree`, parent before child, in name order: [ { path; module; } ].
-  modulesOf =
-    tree:
-    let
-      go =
-        prefix: mods:
-        builtins.concatMap (
-          name:
-          let
-            module = mods.${name};
-            path = "${prefix}/${name}";
-          in
-          [ { inherit path module; } ] ++ go path (module.modules or { })
-        ) (attrNames mods);
-    in
-    go "" (tree.modules or { });
+  # The walk of a module tree is lib/tree.nix; these names stay here for the callers
+  # (lib/config.nix, lib/system.nix) that read them from the schema library.
+  inherit (import ./tree.nix { }) pathComponents moduleAt modulesOf;
 
   # A module that declares options: it has a table in the configuration and in the schema.
   hasOptions = mod: (mod.options or { }) != { };
