@@ -23,6 +23,7 @@ let
     sort
     ;
   inherit (import ../lib/fragment.nix { inherit types; }) file;
+  grammar = import ../lib/grammar.nix;
 
   factoryDir = "/usr/share/factory/etc";
 
@@ -41,10 +42,8 @@ let
     v:
     if !isString v then
       "Expected a string"
-    else if
-      match "[A-Za-z0-9_.+-]+(/[A-Za-z0-9_.+-]+)*" v == null || match "(.*/)?[.][.](/.*)?" v != null
-    then
-      "'${v}' is not a path under /etc: relative components of letters, digits and _ . + -"
+    else if match grammar.etcPath v == null then
+      "'${v}' is not a path under /etc: relative components of letters, digits and _ . + -, none . or .."
     else if elem v denied then
       "'${v}' is not a factory file: sysusers or PID 1 or bootstrap credentials write it on the machine (modules/factory)"
     else
@@ -80,7 +79,7 @@ let
     v:
     if !isString v then
       "Expected a string"
-    else if match "[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*" v == null then
+    else if match grammar.timezone v == null then
       "'${v}' is not a time zone name like \"UTC\" or \"Europe/Berlin\""
     else
       null
