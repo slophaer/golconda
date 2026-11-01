@@ -99,9 +99,7 @@ in
   # the /usr tree builder's link-target conversion: this runs the Nu function the
   # builder runs (lib/usr-tree/main.nu), not a Nix copy of it.
   usr-tree-test = pkgs.runCommand "check-usr-tree-test" { nativeBuildInputs = [ pkgs.nushell ]; } ''
-    cp -r ${src}/lib/usr-tree usr-tree
-    cd usr-tree
-    nu --no-config-file --include-path . test.nu
+    nu --no-config-file --include-path ${src}/lib/usr-tree ${src}/tests/usr-tree/test.nu
     touch $out
   '';
 

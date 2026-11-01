@@ -58,7 +58,7 @@ in
     && bad "20261301.1"
     && bad "20261031.86400"
   ))
-  # make-relative is tested in lib/usr-tree/test.nu, against the function the
+  # make-relative is tested in tests/usr-tree/test.nu, against the function the
   # builder runs; lib/usr-tree.nix has no second copy.
   (check "usr-tree: renderOsRelease includes version and arch" (
     let
