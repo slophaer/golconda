@@ -185,8 +185,8 @@ passes as `options."/pkgs".target`; and `build`, the build host's set (default
 `defaultFunc = { results }: ...`. A tree without `target` throws when a module first needs a
 package. A module never imports repkgs and never reads a set it did not declare; a second kind of
 set is a second module path, never a second argument. `target` is the one option that is not
-configuration data: the TOML loader refuses a `/pkgs` table, and `configLib.withPkgs set` binds the
-set instead.
+configuration data: the TOML loader refuses a `/pkgs` table, and `mkSystem` binds the platform's
+set.
 
 ### `/base`, `/network` and `/security`
 

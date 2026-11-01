@@ -31,9 +31,6 @@
 let
   inherit (builtins)
     attrNames
-    concatStringsSep
-    elem
-    filter
     isAttrs
     isPath
     isString
@@ -53,12 +50,8 @@ let
     inherit sources system platform;
   };
 
-  # The configLib with the set bound, so modules can look up packages.
-  configLib = import ./config.nix {
-    tree = tree { };
-    modules = tree;
-    pkgsSet = setFull.set; # store-path-ok: setFull.set is the repkgs set
-  };
+  # The TOML loader: a document in, checked options out (lib/config.nix).
+  configLib = import ./config.nix { tree = tree { }; };
 
   # Load configuration: a path is TOML, an attrset is already loaded options.
   loadedOptions =
@@ -76,43 +69,14 @@ let
     builtins.mapAttrs (k: av: if b ? ${k} && isAttrs av && isAttrs b.${k} then av // b.${k} else av) a
     // builtins.removeAttrs b (attrNames a);
 
-  givenOptions = mergeDeep loadedOptions extra // {
-    # /pkgs.target is always from the set, never from extra
+  # A table names a module, and an option name must be one the module
+  # declares (configLib.checkOptions). The loader checked the TOML; this
+  # checks what an attrset config and `extra` give, so every route into the
+  # tree is checked. mkSystem is the one place that binds /pkgs.target: it is
+  # always the platform's set, never from the document or `extra`.
+  mergedOptions = configLib.checkOptions (mergeDeep loadedOptions extra) // {
     "/pkgs".target = setFull.set;
   };
-
-  # A table names a module, and an option name must be one the module
-  # declares: adios applies only declared options and ignores the rest, so a
-  # misspelt name would silently keep the default. One
-  # check covers every route into the tree: the TOML loader's tables (its
-  # path check is config.nix), an attrset config, and `extra`.
-  moduleAt =
-    p:
-    builtins.foldl' (mods: part: mods.modules.${part}) (tree { }) (
-      builtins.filter (s: builtins.isString s && s != "") (builtins.split "/" p)
-    );
-
-  checkOptionNames =
-    p: given:
-    if p != "/pkgs" && !(elem p configLib.validPaths) then
-      throw "golconda: unknown module path '${p}' in config; valid paths: ${concatStringsSep ", " configLib.validPaths}"
-    else
-      let
-        declared = attrNames ((moduleAt p).options or { });
-        unknown = filter (k: !(elem k declared)) (attrNames given);
-      in
-      if unknown != [ ] then
-        throw "golconda: ${p} has no option ${
-          concatStringsSep ", " (map (k: "'${k}'") unknown)
-        } (a misspelt option would silently keep the default); valid options: ${concatStringsSep ", " declared}"
-      else
-        true;
-
-  # deepSeq over a list of booleans: every module's option names are checked
-  # now, not when something later reads the table.
-  mergedOptions = builtins.deepSeq (map (p: checkOptionNames p givenOptions.${p}) (
-    attrNames givenOptions
-  )) givenOptions;
 
   # Evaluate the module tree with the merged options.
   evaluated = tree { options = mergedOptions; };
