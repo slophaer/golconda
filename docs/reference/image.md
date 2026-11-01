@@ -343,14 +343,21 @@ QEMU, sets db to the new certificate alone, adds the old one to dbx (`virt-fw-va
 checks that the kernel loaded only the new db certificate, and boots the original disk under the
 rotated store, which firmware must refuse.
 
+`--next DIR --fail-health` proves the fallback instead of the good update boot. It masks a health
+unit (`/etc/systemd/system/golconda-health-network.service` → `/dev/null`), so
+`boot-complete.target` cannot be reached and the candidate is never blessed. It then reboots three
+times and checks after each one that the counter fell (`tries: 2 left; 1 done`, then
+`1 left; 2 done`, then `0 left; 3 done`), that `boot-complete.target` is inactive and that the
+loader update did not run. It lifts the mask and checks the fourth boot: the previous release runs,
+the candidate is at `tries: 0 left; 3 done`, and the old entry is the one systemd-boot selected. A
+mask keeps every boot clean and ssh reachable, so the counter can be read after each one; cutting
+the link would need a QMP `set_link` call and a hard reset. `--fail-health` and `--rotate` are
+alternatives, and `--fail-health` skips the loader and recovery checks, because no boot of the
+candidate is blessed.
+
 What this test does not prove:
 
 - **The production transfer.** The transfer is a local copy (`regular-file`), not HTTP. sysupdate
   never fetches over the network, never reads `SHA256SUMS` itself (the harness reads it), and never
   meets a `url-file` source. A fault in the server URL or in that source type shows up only on a
   real machine.
-- **The fallback.** No test forces a failed health check, so the three-boot fallback (`+3-0` to
-  `+0-3`, then the previous version on the fourth boot) has not run in this repository. A test needs
-  a way to cut the guest's link, for example a QMP `set_link` call; the harness starts QEMU with no
-  monitor and no QMP socket, and no such mode exists. Nothing reboots a failed candidate by itself
-  ([Boot: Boot health](../design/boot.md#boot-health)).

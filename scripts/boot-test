@@ -45,6 +45,13 @@
 #   recovery checks: bootctl list shows both slots, a damaged loader
 #   is reinstalled by hand, `bootctl set-oneshot` and `bootctl set-default` boot the other slot
 #   and back, and `bootctl reboot-to-firmware` reaches the firmware's menu.
+# With --next DIR --fail-health: prove the three-boot fallback. The harness masks a health unit
+#   in /etc, so boot-complete.target cannot be reached, the candidate is never blessed and every
+#   boot of it loses one try. It reboots three times, checking after each that the counter fell,
+#   then checks that the fourth boot runs the old release with the candidate at "tries: 0 left".
+#   The mask is in /etc on the state partition, so it holds for every slot; the harness removes it
+#   at the end. A mask instead of a cut link keeps every boot clean and ssh reachable.
+#   This mode skips the loader and recovery checks: no boot of the candidate is blessed.
 # With --next DIR --rotate: DIR is signed with a new db key. Its certificate is enrolled in db
 #   beside the old one before the first boot; after the update the harness stops QEMU, rewrites
 #   the variable store (db: the new certificate only; dbx: the old one), boots again and checks
@@ -88,9 +95,10 @@ TIMEOUT=120
 SSH_TEST=0
 NEXT=""
 ROTATE=0
+FAIL_HEALTH=0
 
 usage() {
-  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot] [--tpm] [--timeout SECONDS] [--ssh-test] [--next DIR [--rotate]]"
+  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot] [--tpm] [--timeout SECONDS] [--ssh-test] [--next DIR [--rotate | --fail-health]]"
   exit 1
 }
 
@@ -103,6 +111,7 @@ while [ $# -gt 0 ]; do
     --ssh-test) SSH_TEST=1; shift ;;
     --next) NEXT="$2"; SSH_TEST=1; shift 2 ;;
     --rotate) ROTATE=1; shift ;;
+    --fail-health) FAIL_HEALTH=1; shift ;;
     --help|-h) usage ;;
     -*)
       echo "Unknown option: $1" >&2
@@ -155,6 +164,10 @@ real_path() {
   echo "$rp"
 }
 
+if [ "$FAIL_HEALTH" = 1 ] && [ -z "$NEXT" ]; then
+  echo "Error: --fail-health needs --next" >&2
+  exit 1
+fi
 if [ "$ROTATE" = 1 ] && { [ -z "$NEXT" ] || [ "$SECURE_BOOT" = 0 ]; }; then
   echo "Error: --rotate needs --next and --secure-boot" >&2
   exit 1
@@ -693,6 +706,58 @@ test_units_after_update() {
   verdict "no-failed-units-after-update" $RC
 }
 
+# test_fail_health: the three-boot fallback of docs/design/boot.md. A masked health unit keeps
+# boot-complete.target from being reached, so the candidate is never blessed and every boot of it
+# loses a try. The mask is in /etc on the state partition, so it applies to every slot until it is
+# removed; the harness removes it at the end. A mask keeps the boots clean and ssh reachable, so
+# the counter can be read after each one.
+test_fail_health() {
+  echo ""
+  echo "=== the fallback: $NEXT_VERSION fails its health check three times ==="
+  RC=0
+  guest "ln -sf /dev/null /etc/systemd/system/golconda-health-network.service" || RC=1
+  verdict "health-check-broken (a masked health unit, so boot-complete.target is not reached)" $RC
+
+  i=1
+  while [ "$i" -le 3 ]; do
+    echo "--- attempt $i of 3: boot $NEXT_VERSION ---"
+    if ! reboot_guest; then
+      verdict "boots-next-attempt-$i (no login before the timeout)" 1
+      return 1
+    fi
+    V=$(guest_version)
+    BC=$(guest systemctl is-active boot-complete.target 2>&1 || true)
+    TRIES=$(guest bootctl list --no-pager 2>/dev/null | grep -o "tries: [0-9]* left; [0-9]* done" | head -1)
+    LU=$(guest systemctl is-active golconda-loader-update.service 2>&1 || true)
+    echo "$V, boot-complete.target: $BC, $TRIES, loader update: $LU"
+    RC=0
+    [ "$V" = "$NEXT_VERSION" ] || RC=1
+    [ "$BC" != "active" ] || RC=1
+    [ "$TRIES" = "tries: $((3 - i)) left; $i done" ] || RC=1
+    [ "$LU" != "active" ] || RC=1
+    verdict "attempt-$i-unblessed ($NEXT_VERSION, $TRIES, boot-complete $BC, loader $LU)" $RC
+    i=$((i + 1))
+  done
+
+  echo "--- attempt 4: the counter is exhausted ---"
+  # lift the mask, so the fallback boot is a normal one and the checks below mean what they say
+  guest "rm -f /etc/systemd/system/golconda-health-network.service" || true
+  if ! reboot_guest; then
+    verdict "fallback-to-old-slot (no login after the fourth boot)" 1
+    return 1
+  fi
+  V=$(guest_version)
+  echo "running $V"
+  RC=0; [ "$V" = "$OLD_VERSION" ] || RC=1
+  verdict "fallback-to-old-slot ($NEXT_VERSION failed 3 times, $V boots)" $RC
+  L=$(guest bootctl list --no-pager 2>&1) || true
+  echo "$L" | grep -E " (title|version|tries):" || true
+  RC=0; echo "$L" | grep -q "tries: 0 left; 3 done" || RC=1
+  verdict "counter-exhausted (the candidate has tries: 0 left; 3 done)" $RC
+  RC=0; echo "$L" | grep "$OLD_VERSION" | grep -q "(selected)" || RC=1
+  verdict "old-slot-selected ($OLD_VERSION is the entry systemd-boot picked)" $RC
+}
+
 # --- --next: install the next release, boot it, check its loader, then recovery ---
 test_next() {
   echo ""
@@ -725,6 +790,13 @@ test_next() {
   guest rm -rf /var/tmp/next /run/sysupdate.d
 
   echo "Rebooting into $NEXT_VERSION..."
+  if [ "$FAIL_HEALTH" = 1 ]; then
+    # no blessed boot of the candidate, so no loader and no recovery checks here
+    test_fail_health || return 1
+    test_etc_links
+    test_units_after_update
+    return 0
+  fi
   reboot_guest || return 1
   V=$(guest_version)
   RC=0; [ "$V" = "$NEXT_VERSION" ] || RC=1
