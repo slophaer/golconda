@@ -21,6 +21,9 @@ One grammar enforces this (`lib/version.nix`): the `/system.version` type refuse
 evaluation, and `versionToEpoch` (`lib/usr-tree.nix`, re-exported by `lib/image/common.nix`) throws
 before a builder runs. Versions are unique and increase: a revision can never share or pass the next
 date's timestamp. sysupdate orders versions with `strverscmp`, which this format sorts correctly.
+The revision has no leading zero: `20261031.01` is refused (`lib/version.nix`), because two
+spellings of one version would share one timestamp, and `ConditionNeedsUpdate=` would not fire
+between them.
 
 The timestamp has two uses:
 
