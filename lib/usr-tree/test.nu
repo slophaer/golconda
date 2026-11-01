@@ -26,6 +26,11 @@ check "same directory" (make-relative "/usr/lib/a" "/usr/lib/b") "b"
 check "one level up" (make-relative "/usr/lib/systemd/system/multi-user.target.wants/sshd.service" "/usr/lib/systemd/system/sshd.service") "../sshd.service"
 check "sibling directory" (make-relative "/usr/lib/a" "/usr/share/zoneinfo/UTC") "../share/zoneinfo/UTC"
 check "link directly in /usr" (make-relative "/usr/a" "/usr/lib/b") "lib/b"
+# The shared prefix ends at the first differing component: a name that
+# matches after it (foo here) is not shared.
+check "later component matches" (make-relative "/usr/lib/foo/l" "/usr/share/foo/t") "../../share/foo/t"
+check "later components match, deeper" (make-relative "/usr/lib/a/b/c/l" "/usr/lib/x/b/c/t") "../../../x/b/c/t"
+check "target is an ancestor directory" (make-relative "/usr/lib/a/b/l" "/usr/lib") "../.."
 
 # A store path keeps the existing relative form.
 check "store path from /usr/bin" (make-relative "/usr/bin/jq" "/nix/store/abc-jq/bin/jq") "../nix/store/abc-jq/bin/jq" # store-path-ok

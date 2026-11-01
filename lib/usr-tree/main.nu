@@ -50,8 +50,10 @@ export def make-relative [link_path: string, target: string]: nothing -> string 
   if ($target | str starts-with "/usr/") {
     let target_parts = ((path-components $target) | skip 1)
     let depth = ([($link_parts | length) ($target_parts | length)] | math min)
-    let diffs = (0..<$depth | where {|i| ($link_parts | get $i) != ($target_parts | get $i) } | length)
-    let shared = ($depth - $diffs)
+    # The shared prefix ends at the first differing component; a name that
+    # matches again after it is not shared.
+    let first_diff = (0..<$depth | where {|i| ($link_parts | get $i) != ($target_parts | get $i) } | first 1)
+    let shared = if ($first_diff | is-empty) { $depth } else { $first_diff | first }
     let ups = (0..<(($link_parts | length) - $shared) | each { ".." } | str join "/")
     let down = ($target_parts | skip $shared | str join "/")
     if $ups == "" { $down } else if $down == "" { $ups } else { $"($ups)/($down)" }
@@ -123,10 +125,10 @@ export def build [] {
     # Create symlink
     ^ln -sf $rel_target $dest
 
-    # A target under /usr/ must resolve to that path in the image's /usr. The
-    # old conversion of /usr/lib/a -> /usr/lib/b gave ../usr/lib/b, which
-    # resolves to /usr/usr/lib/b; compare the created link's resolved path
-    # with the path the target names.
+    # A target under /usr/ must resolve to that path in the image's /usr:
+    # compare the created link's resolved path with the path the target names.
+    # A wrong prefix count gives a link that resolves elsewhere (../usr/lib/b
+    # from /usr/lib/a lands on /usr/usr/lib/b), so this stops the build.
     if ($target | str starts-with "/usr/") {
       let want = ($"($out)/($target | str replace -r '^/usr/' '')" | path expand)
       let link_text = (^readlink $dest | str trim)
