@@ -125,9 +125,10 @@ do, and [Boot loader: Recovery](bootloader.md#recovery) gives the loader steps.
 A few values are neither in the image nor generated on the machine: they arrive as systemd
 credentials at first boot. This is Golconda's provisioning path; there is no cloud-init.
 
-| credential        | read by | what it sets                                                        |
-| ----------------- | ------- | ------------------------------------------------------------------- |
-| `system.hostname` | PID 1   | the hostname, at every boot; nothing writes `/etc/hostname` from it |
+| credential                 | read by                | what it sets                                                                                                                   |
+| -------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `system.hostname`          | PID 1                  | the hostname, at every boot; nothing writes `/etc/hostname` from it                                                            |
+| `ssh.authorized_keys.root` | systemd-tmpfiles-setup | `/root/.ssh/authorized_keys`, written by systemd's `tmpfiles.d/provision.conf`; sshd reads it through its `AuthorizedKeysFile` |
 
 PID 1 takes the hostname from the first of: `systemd.hostname=` on the kernel command line,
 `/etc/hostname`, the `system.hostname` credential, the fallback `golconda` compiled into systemd
@@ -143,6 +144,16 @@ Delivery, in the order systemd-stub and PID 1 look:
   provider exposes as OEM strings.
 - **qemu fw_cfg**: `-fw_cfg name=opt/io.systemd.credentials/system.hostname,string=web1`.
 - **ESP**: `loader/credentials/*.cred` files; systemd-stub passes them to the initrd.
+
+An ESP credential must be in the systemd-creds envelope; plain text is not accepted. systemd-stub
+puts the files in the initrd, and PID 1 imports them into `/run/credentials/@encrypted`, not
+`@system`; it decrypts on read, which is how it reads `system.hostname`. A machine has no host key
+before its first boot, so the file is encrypted with the null key
+(`systemd-creds encrypt --with-key=null --name=<name>`); `scripts/provision-esp` does this for a
+disk image. The policy `systemd.credentials_boot_policy=relaxed`, the default, accepts a null-key
+credential when Secure Boot is off or the machine has no TPM2. With Secure Boot on and a TPM2
+present, PID 1 refuses it: anyone who can write the ESP could otherwise plant a credential that the
+measured boot chain never vouched for. On such a machine use SMBIOS or fw_cfg.
 
 The ESP is not encrypted, and SMBIOS strings are readable by every process: a bootstrap credential
 carries no secret. Secrets are vars ([Trust: Secrets and vars](trust.md#secrets-and-vars)).
