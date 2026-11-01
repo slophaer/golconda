@@ -1,0 +1,103 @@
+#!/bin/sh
+# make-keys DIR: make a deployment key set for lib.mkImage.
+#
+# The layout is the one lib.mkImage reads (nix/default.nix, docs/design/trust.md):
+#   secureboot/db.key, secureboot/db.crt   systemd-boot, the UKI and the verity root hash
+#   pcr/pcr.key, pcr/pcr.pub               the PCR 11 policy and its public half
+#
+# DIR must be absolute: lib.mkImage takes the key directory as a string path and
+# refuses a relative one. DIR must not exist with anything in it, and is made
+# 0700. Every file is 0600. The script prints the paths, what each key signs and
+# the certificate's fingerprint; it never prints key material.
+#
+# The db certificate is a self-signed PEM X.509 certificate, the form
+# systemd-sbsign takes, with a key and no chain: lib/image/uki.nu verifies the
+# verity signature against the certificate alone. It carries the extensions a
+# firmware db entry carries (CA:TRUE, digitalSignature, codeSigning) and lasts
+# 3650 days, as the smoke keys do (lib/image/keys.nu).
+#
+# docs/reference/release.md is the procedure around this script.
+
+set -eu
+
+usage() {
+  echo "usage: scripts/make-keys DIR" >&2
+}
+
+[ $# -eq 1 ] || {
+  usage
+  exit 2
+}
+
+dir=$1
+case $dir in
+  /*) ;;
+  *)
+    echo "make-keys: DIR must be an absolute path, not '$dir': lib.mkImage reads" >&2
+    echo "make-keys: the key directory as a string, and a relative string is an error" >&2
+    exit 2
+    ;;
+esac
+
+command -v openssl >/dev/null 2>&1 || {
+  echo "make-keys: openssl is not on PATH" >&2
+  exit 1
+}
+
+if [ -L "$dir" ]; then
+  echo "make-keys: $dir is a symlink; give the key set a directory of its own" >&2
+  exit 1
+fi
+if [ -e "$dir" ] && [ ! -d "$dir" ]; then
+  echo "make-keys: $dir exists and is not a directory" >&2
+  exit 1
+fi
+if [ -d "$dir" ] && [ -n "$(find "$dir" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+  echo "make-keys: $dir is not empty; give a new directory" >&2
+  exit 1
+fi
+
+umask 077
+mkdir -p "$dir"
+chmod 700 "$dir"
+# generate beside the final names, so a failed run leaves no half key set behind
+stage=$(mktemp -d "$dir/.new-keys.XXXXXX")
+trap 'rm -rf "$stage"' EXIT
+trap 'exit 1' HUP INT TERM
+
+# openssl prints key-generation progress on stderr; keep it, and print it only on failure
+run_openssl() {
+  if ! openssl "$@" 2>"$stage/openssl.log"; then
+    echo "make-keys: openssl failed:" >&2
+    cat "$stage/openssl.log" >&2
+    exit 1
+  fi
+}
+
+mkdir "$stage/secureboot" "$stage/pcr"
+run_openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 3650 \
+  -subj "/CN=golconda deployment db $(date -u +%Y%m%d)" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,digitalSignature,keyCertSign,cRLSign" \
+  -addext "extendedKeyUsage=codeSigning" \
+  -addext "subjectKeyIdentifier=hash" \
+  -keyout "$stage/secureboot/db.key" -out "$stage/secureboot/db.crt"
+run_openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$stage/pcr/pcr.key"
+run_openssl pkey -in "$stage/pcr/pcr.key" -pubout -out "$stage/pcr/pcr.pub"
+
+mv "$stage/secureboot" "$stage/pcr" "$dir"
+trap - EXIT HUP INT TERM
+rm -rf "$stage"
+chmod 600 "$dir/secureboot/db.key" "$dir/secureboot/db.crt" \
+  "$dir/pcr/pcr.key" "$dir/pcr/pcr.pub"
+
+fingerprint=$(openssl x509 -in "$dir/secureboot/db.crt" -outform der | sha256sum | cut -d ' ' -f 1)
+cat <<EOF
+deployment key set: $dir
+  $dir/secureboot/db.key  (0600)  signs systemd-boot, each UKI and each verity root hash
+  $dir/secureboot/db.crt  (0600)  the certificate for those signatures; enrol it in the firmware db
+  $dir/pcr/pcr.key        (0600)  signs the PCR 11 policy (.pcrsig) in each UKI
+  $dir/pcr/pcr.pub        (0600)  the public half, embedded in each UKI as .pcrpkey
+db.crt sha256 (DER): $fingerprint
+keep the private keys out of the store: docs/reference/release.md
+EOF
