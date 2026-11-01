@@ -101,7 +101,7 @@ iets eval --json -E 'builtins.attrNames (import ./examples/golconda.nix).compose
 - `tmpfiles`: `L /bin`, `L /sbin` and `L /lib` into `usr/`; `L /etc/ssl/cert.pem` and
   `L /etc/ssl/certs/ca-certificates.crt`; `d /var/empty`; one
   `L /etc/<path> - - - - /usr/share/factory/etc/<path>` per factory file; `L /etc/localtime`
-  (`/usr/share/zoneinfo/UTC`); `L /etc/os-release`; `d /etc/ssh`.
+  (`/usr/share/zoneinfo/UTC`); `L /etc/os-release`.
 
 - `packageOrigins`: `openssh` from `/services/sshd`; `cacert`, `dash`, `dbus-broker`, `e2fsprogs`,
   `linux-kernel`, `systemd`, `tpm2-tss`, `tzdata` and `uutils-coreutils` from `/base`.
@@ -220,7 +220,7 @@ What happens, in order, and which marker or file shows it:
    (`messagebus`, `sshd`).
 1. systemd-tmpfiles runs `tmpfiles.d/golconda.conf`: `/etc/pam.d/sshd`, `/etc/shells` and the other
    factory files become symlinks into `/usr/share/factory/etc`; `/etc/localtime`, `/etc/os-release`,
-   `/etc/ssh` and `/var/empty` exist.
+   `/var/empty` exists.
 1. `golconda-var-sshd-hostkey.service` runs `golconda-var-run sshd-hostkey "key" "key.pub"`:
    `ssh-keygen -q -t ed25519 -N '' -f key` in a runtime directory, then
    `systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11 --name=sshd-hostkey.key` of the
