@@ -16,6 +16,9 @@
   # UKI configuration (for ukify)
   uki = import ./uki.nix;
 
+  # systemd-boot: loader.conf and its place on the ESP
+  loader = import ./loader.nix;
+
   # erofs configuration
   erofs = import ./erofs.nix;
 

@@ -12,14 +12,15 @@
 # disk { erofs; verity; uki; imageId; version; platform; buildSystem; pkgs; sbKey; sbCert; }
 #   → derivation with
 #   disk.raw        GPT: ESP (systemd-boot as EFI/BOOT/BOOT<ARCH>.EFI, signed with the UKI's
-#                   Secure Boot key and certificate; loader.conf with the boot policy; the UKI
-#                   in EFI/Linux/), usr-a, usr-a-verity, usr-a-verity-sig filled from the images,
+#                   Secure Boot key and certificate; loader.conf with the boot policy at
+#                   loader/loader.conf, where systemd-boot reads it; the UKI in EFI/Linux/),
+#                   usr-a, usr-a-verity, usr-a-verity-sig filled from the images,
 #                   the B slots empty, no root partition
 #   disk.json       systemd-repart's own listing (--json=pretty) of what it made
 #
 # The loader is signed with the same db key and certificate as the UKI (image/default.nix
 # keys; lib/image/uki.nix): enforcing firmware starts nothing else. loader.conf is written from
-# this file's loaderConf, so the policy is one string the tests can read.
+# image/loader.nix, so the policy is one string the tests can read.
 #   release/        the release under the names image/sysupdate.nix's sources match
 #                   (releaseNames): <id>_<v>.usr.<uuid>.raw, <id>_<v>.usr-verity.<uuid>.raw with
 #                   the hash-derived UUIDs, <id>_<v>.usr-verity-sig.raw, <id>_<v>.efi, each a
@@ -83,14 +84,8 @@ let
     .${uefi} or (throw "golconda: no removable-media boot name for uefi arch ${uefi}");
 in
 rec {
-  # The ESP's systemd-boot policy (loader.conf(5), systemd v262.1): the UKI under EFI/Linux is
-  # auto-discovered, so there is no entry line; the menu does not wait and the editor is off
-  # (an editor would let anyone at the console change the measured cmdline).
-  loaderConf = ''
-    # Golconda: lib/image/disk.nix; docs/design/boot.md.
-    timeout 0
-    editor no
-  '';
+  # The ESP's systemd-boot policy: image/loader.nix
+  loaderConf = image.loader.conf;
   inherit slotLabel;
 
   # releaseNames { imageId; version; } → { usr; verity; sig; uki; }: the release file names, the
@@ -171,6 +166,7 @@ rec {
         release = releaseNames { inherit imageId version; };
         systemdBoot = "${pkgs.systemd}/lib/systemd/boot/efi/systemd-boot${uefi}.efi";
         bootEntry = "EFI/BOOT/${removableMediaName uefi}";
+        loaderConfPath = image.loader.confPath;
         inherit loaderConf sbKey sbCert;
         architecture = platform.names.systemd;
         seed = common.uuidOfHex (common.hexOf "${stem}.disk");
