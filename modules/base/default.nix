@@ -65,7 +65,7 @@
 #! (journal retention).
 { types, ... }:
 let
-  inherit (builtins) concatStringsSep foldl';
+  inherit (builtins) concatStringsSep listToAttrs;
   inherit (types) listOf string;
 
   lines = l: concatStringsSep "\n" l + "\n";
@@ -78,18 +78,6 @@ let
     "3.pool.ntp.org"
   ];
 
-  # Convert a list of { path; target; kind; } to the attrset the composer takes: path -> { target; kind; }
-  linksToAttrs =
-    list:
-    foldl' (
-      acc: l:
-      acc
-      // {
-        ${l.path} = {
-          inherit (l) target kind;
-        };
-      }
-    ) { } list;
 in
 {
   name = "base";
@@ -174,13 +162,12 @@ in
         "RemainAfterExit=yes"
         "ExecStart=/usr/lib/golconda/golconda-loader-update"
       ];
-      loaderLinks = [
-        {
-          path = "/usr/lib/systemd/system/systemd-bless-boot.service.wants/golconda-loader-update.service";
+      loaderLinks = {
+        "/usr/lib/systemd/system/systemd-bless-boot.service.wants/golconda-loader-update.service" = {
           target = "../golconda-loader-update.service";
           kind = "explicit";
-        }
-      ];
+        };
+      };
 
       # Initrd step, in the switch-root transaction after the new /usr is mounted: rewrite
       # the old /etc/systemd/system enable links (absolute systemd store paths from the
@@ -206,13 +193,12 @@ in
       # fails the target's job, and systemd-bless-boot.service (Requires= the target,
       # After= it) then does not run. Nothing else is added: systemd-boot decrements the
       # counter on every attempt by itself.
-      requiresLinks = [
-        {
-          path = "/usr/lib/systemd/system/boot-complete.target.requires/golconda-health-network.service";
+      requiresLinks = {
+        "/usr/lib/systemd/system/boot-complete.target.requires/golconda-health-network.service" = {
           target = "../golconda-health-network.service";
           kind = "explicit";
-        }
-      ];
+        };
+      };
 
       # repart.d: the root partition, made by systemd-repart in the initrd at first boot
       # (docs/design/layout.md); the image's own partitions are the image builder's
@@ -299,60 +285,52 @@ in
 
       # Explicit links for dbus-broker: the service from the package, and
       # the dbus.service alias pointing to dbus-broker.service.
-      dbusUnitLinks = [
-        {
-          path = "/usr/lib/systemd/system/dbus-broker.service";
+      dbusUnitLinks = {
+        "/usr/lib/systemd/system/dbus-broker.service" = {
           target = "${p.dbus-broker}/lib/systemd/system/dbus-broker.service";
           kind = "explicit";
-        }
+        };
         # dbus.service alias points to dbus-broker.service
-        {
-          path = "/usr/lib/systemd/system/dbus.service";
+        "/usr/lib/systemd/system/dbus.service" = {
           target = "dbus-broker.service";
           kind = "explicit";
-        }
-      ];
+        };
+      };
 
       # Unit enablement: .wants links for static enablement.
       # dbus.socket wanted by sockets.target; systemd-networkd, systemd-resolved,
       # systemd-timesyncd enabled via their target's .wants directories.
-      wantsLinks = [
+      wantsLinks = {
         # dbus
-        {
-          path = "/usr/lib/systemd/system/sockets.target.wants/dbus.socket";
+        "/usr/lib/systemd/system/sockets.target.wants/dbus.socket" = {
           target = "../dbus.socket";
           kind = "explicit";
-        }
+        };
         # networkd
-        {
-          path = "/usr/lib/systemd/system/multi-user.target.wants/systemd-networkd.service";
+        "/usr/lib/systemd/system/multi-user.target.wants/systemd-networkd.service" = {
           target = "../systemd-networkd.service";
           kind = "explicit";
-        }
-        {
-          path = "/usr/lib/systemd/system/sockets.target.wants/systemd-networkd.socket";
+        };
+        "/usr/lib/systemd/system/sockets.target.wants/systemd-networkd.socket" = {
           target = "../systemd-networkd.socket";
           kind = "explicit";
-        }
+        };
         # resolved
-        {
-          path = "/usr/lib/systemd/system/multi-user.target.wants/systemd-resolved.service";
+        "/usr/lib/systemd/system/multi-user.target.wants/systemd-resolved.service" = {
           target = "../systemd-resolved.service";
           kind = "explicit";
-        }
+        };
         # timesyncd
-        {
-          path = "/usr/lib/systemd/system/sysinit.target.wants/systemd-timesyncd.service";
+        "/usr/lib/systemd/system/sysinit.target.wants/systemd-timesyncd.service" = {
           target = "../systemd-timesyncd.service";
           kind = "explicit";
-        }
+        };
         # in the switch-root transaction: rewrite the /etc enable links before switch-root
-        {
-          path = "/usr/lib/systemd/system/initrd-switch-root.target.wants/golconda-etc-links.service";
+        "/usr/lib/systemd/system/initrd-switch-root.target.wants/golconda-etc-links.service" = {
           target = "../golconda-etc-links.service";
           kind = "explicit";
-        }
-      ];
+        };
+      };
 
       # Drop-ins for units the systemd farm ships: a mask link would collide
       # with the farm, and a condition says the real reason.
@@ -439,13 +417,12 @@ in
       # libcurl is built with CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt.
       # The file stays in /usr, so an image update replaces it; a later p11-kit
       # trust extract may replace the links, but not this file.
-      caBundleLinks = [
-        {
-          path = "/usr/share/ca-certificates/ca-bundle.crt";
+      caBundleLinks = {
+        "/usr/share/ca-certificates/ca-bundle.crt" = {
           target = "${p.cacert}/etc/ssl/certs/ca-bundle.crt";
           kind = "explicit";
-        }
-      ];
+        };
+      };
       caBundleTmpfiles = [
         "L /etc/ssl/cert.pem - - - - /usr/share/ca-certificates/ca-bundle.crt"
         "L /etc/ssl/certs/ca-certificates.crt - - - - /usr/share/ca-certificates/ca-bundle.crt"
@@ -454,87 +431,76 @@ in
       # The zone database: /etc/localtime (the factory's tmpfiles line) links
       # /usr/share/zoneinfo/<timezone>, UTC by default. One directory link: the
       # zone files are data that no $ORIGIN rule reaches.
-      zoneinfoLinks = [
-        {
-          path = "/usr/share/zoneinfo";
+      zoneinfoLinks = {
+        "/usr/share/zoneinfo" = {
           target = "${p.tzdata}/share/zoneinfo";
           kind = "explicit";
-        }
-      ];
+        };
+      };
 
       # PAM modules: Linux-PAM loads a relative module name from /usr/lib/security/, and the
       # factory's stacks name <package>/<module>. Each package's module directory is one
       # directory link: repkgs writes DT_NEEDED as $ORIGIN/../../../<dep>/lib/..., $ORIGIN is
       # the directory of the path PAM opens, and only a directory link makes `..` reach the
       # store (a file link breaks pam_unix's libcrypt; merged copies break $ORIGIN/../libpam).
-      pamLinks = [
-        {
-          path = "/usr/lib/security/linux-pam";
+      pamLinks = {
+        "/usr/lib/security/linux-pam" = {
           target = "${p.linux-pam}/lib/security";
           kind = "explicit";
-        }
-        {
-          path = "/usr/lib/security/systemd";
+        };
+        "/usr/lib/security/systemd" = {
           target = "${p.systemd}/lib/security";
           kind = "explicit";
-        }
-      ];
+        };
+      };
 
       # dash is /bin/sh (/bin -> usr/bin is made by the image builder).
-      shLinks = [
-        {
-          path = "/usr/bin/sh";
+      shLinks = {
+        "/usr/bin/sh" = {
           target = "${p.dash}/bin/dash";
           kind = "explicit";
-        }
-      ];
+        };
+      };
 
       # Farm links: directories the image builder expands file by file, subdirectories
       # included: systemd's lib/systemd (PID 1, the executor, udevd, every daemon,
       # libsystemd-shared, the units with their static .wants/, generators, presets, catalog),
       # lib/udev (rules, hwdb, the id helpers), sysusers.d, tmpfiles.d; all by systemd's
       # compiled-in /usr/lib/... paths.
-      farmLinks = [
-        {
-          path = "/usr/lib/systemd";
+      farmLinks = {
+        "/usr/lib/systemd" = {
           target = "${p.systemd}/lib/systemd";
           kind = "farm";
-        }
-        {
-          path = "/usr/lib/udev";
+        };
+        "/usr/lib/udev" = {
           target = "${p.systemd}/lib/udev";
           kind = "farm";
-        }
-        {
-          path = "/usr/lib/sysusers.d";
+        };
+        "/usr/lib/sysusers.d" = {
           target = "${p.systemd}/lib/sysusers.d";
           kind = "farm";
-        }
-        {
-          path = "/usr/lib/tmpfiles.d";
+        };
+        "/usr/lib/tmpfiles.d" = {
           target = "${p.systemd}/lib/tmpfiles.d";
           kind = "farm";
-        }
+        };
         # NvPCR definitions: systemd-pcrextend (pcrproduct, pcrlogin@) and cryptsetup look
         # them up in /usr/lib/nvpcr
-        {
-          path = "/usr/lib/nvpcr";
+        "/usr/lib/nvpcr" = {
           target = "${p.systemd}/lib/nvpcr";
           kind = "farm";
-        }
+        };
         # D-Bus: systemd's bus policies (system.conf includes system.d) and the activation
         # files that map a bus name to its unit (SystemdService=)
-        {
-          path = "/usr/share/dbus-1/system.d";
+        "/usr/share/dbus-1/system.d" = {
           target = "${p.systemd}/share/dbus-1/system.d";
           kind = "farm";
-        }
-        {
-          path = "/usr/share/dbus-1/system-services";
+        };
+        "/usr/share/dbus-1/system-services" = {
           target = "${p.systemd}/share/dbus-1/system-services";
           kind = "farm";
-        }
-      ];
+        };
+      };
 
       # dlopen: libraries systemd opens by soname (its ELF .note.dlopen, every one the fork
       # enables; libbz2 is static there); the builder checks they resolve. Their packages are
@@ -565,36 +531,43 @@ in
         "libtss2-rc.so.0" = p.tpm2-tss;
         "libtss2-tcti-device.so.0" = p.tpm2-tss;
       };
-      dlopenLinks = map (so: {
-        path = "/usr/lib/${so}";
-        target = "${dlopenSonames.${so}}/lib/${so}";
-        kind = "dlopen";
-      }) (builtins.attrNames dlopenSonames);
+      dlopenLinks = listToAttrs (
+        map (so: {
+          name = "/usr/lib/${so}";
+          value = {
+            target = "${dlopenSonames.${so}}/lib/${so}";
+            kind = "dlopen";
+          };
+        }) (builtins.attrNames dlopenSonames)
+      );
 
       # mount units and systemd-fsck exec these from util-linux (in the closure as systemd's
       # library dependency; the whole package would bring 100 more tools). blkid: lvm2's
       # 13-dm-disk.rules probes a dm device with it, and without ID_FS_USAGE systemd's
       # 99-systemd.rules keeps a CRYPT-* device (dm-verity's /usr) at SYSTEMD_READY=0 forever.
       toolLinks =
-        map
-          (b: {
-            path = "/usr/bin/${b}";
-            target = "${p.util-linux}/bin/${b}";
-            kind = "explicit";
-          })
-          [
-            "mount"
-            "umount"
-            "fsck"
-            "blkid"
-          ]
-        ++ [
-          {
-            path = "/usr/bin/fsck.ext4";
+        listToAttrs (
+          map
+            (b: {
+              name = "/usr/bin/${b}";
+              value = {
+                target = "${p.util-linux}/bin/${b}";
+                kind = "explicit";
+              };
+            })
+            [
+              "mount"
+              "umount"
+              "fsck"
+              "blkid"
+            ]
+        )
+        // {
+          "/usr/bin/fsck.ext4" = {
             target = "${p.e2fsprogs}/bin/fsck.ext4";
             kind = "explicit";
-          }
-        ];
+          };
+        };
     in
     {
       packages = [
@@ -638,19 +611,19 @@ in
         "/usr/share/dbus-1/system.conf" = dbusSystemConf;
       };
 
-      links = linksToAttrs (
+      # path -> { target; kind; }, the shape the composer takes
+      links =
         dbusUnitLinks
-        ++ wantsLinks
-        ++ requiresLinks
-        ++ loaderLinks
-        ++ shLinks
-        ++ toolLinks
-        ++ farmLinks
-        ++ dlopenLinks
-        ++ pamLinks
-        ++ caBundleLinks
-        ++ zoneinfoLinks
-      );
+        // wantsLinks
+        // requiresLinks
+        // loaderLinks
+        // shLinks
+        // toolLinks
+        // farmLinks
+        // dlopenLinks
+        // pamLinks
+        // caBundleLinks
+        // zoneinfoLinks;
 
       # The dbus user, if dbus-broker needs it. dbus-broker runs as root by
       # default on most configurations (UID 0 in the unit), but the messagebus
