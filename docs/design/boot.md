@@ -191,31 +191,37 @@ is a marker of `scripts/boot-test`, which runs the image in QEMU with OVMF; the 
 [Image artifacts: the boot test](../reference/image.md#boot-test-scriptsboot-test). The image
 enforces IPE, so every run uses `--secure-boot`; the last column lists the flags on top of it.
 
-| claim                                                                                 | marker                                                                                                   | flags                  |
-| ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------- |
-| boots to `multi-user.target` and `boot-complete.target`                               | `multi-user-reached`, `boot-complete`                                                                    | none                   |
-| sshd is active; the host key var finished; firstboot finished without a prompt        | `sshd-active`, `var-sshd-hostkey`, `no-firstboot-prompt`                                                 | none                   |
-| root login by ssh, host name from the SMBIOS credential                               | `ssh-login`, `hostname`                                                                                  | `--ssh-test`           |
-| no failed unit; varlink answers                                                       | `no-failed-units`, `varlinkctl-list-interfaces`                                                          | `--ssh-test`           |
-| firmware enforces Secure Boot                                                         | `secure-boot-enabled`                                                                                    | `--secure-boot`        |
-| the kernel accepts the verity signature and IPE enforces                              | no marker of its own: the boot reaches `multi-user.target` with `ipe.enforce=1`                          | `--secure-boot`        |
-| the host key is sealed to the TPM and unseals after reboot                            | `hostkey-sealed-with-tpm2`, `ssh-after-reboot`, `hostkey-unchanged`                                      | `--ssh-test --tpm`     |
-| the ESP loader is the one in `/usr`, and `loader.conf` is read                        | `loader-matches-usr`, `loader-conf-in-effect`, `boot-update-off`                                         | `--ssh-test`           |
-| the loader updates after a good boot, not after a blessed one                         | `loader-update-ran`, `loader-update-not-run`                                                             | `--ssh-test`           |
-| the release directory is well formed; sysupdate installs it; it boots; no failed unit | `release-index`, `sysupdate-installed`, `boots-next`, `etc-links-stable`, `no-failed-units-after-update` | `--next`               |
-| the recovery commands in [Boot loader](bootloader.md#recovery) work                   | `loader-reinstall`, `set-oneshot-other-slot`, `set-default-other-slot`, `reboot-to-firmware`             | `--next`               |
-| a `db` rotation works; the old disk is refused                                        | `boots-after-rotation`, `kernel-db-rotated`, `old-loader-refused`                                        | `--next --rotate`      |
-| a failed health check costs one try, and the old release boots after the third        | `health-check-broken`, `attempt-[1-3]-unblessed`, `fallback-to-old-slot`, `counter-exhausted`            | `--next --fail-health` |
+| claim                                                                                 | marker                                                                                                   | flags                        |
+| ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| boots to `multi-user.target` and `boot-complete.target`                               | `multi-user-reached`, `boot-complete`                                                                    | none                         |
+| sshd is active; the host key var finished; firstboot finished without a prompt        | `sshd-active`, `var-sshd-hostkey`, `no-firstboot-prompt`                                                 | none                         |
+| root login by ssh, host name from the SMBIOS credential                               | `ssh-login`, `hostname`                                                                                  | `--ssh-test`                 |
+| no failed unit; varlink answers                                                       | `no-failed-units`, `varlinkctl-list-interfaces`                                                          | `--ssh-test`                 |
+| firmware enforces Secure Boot                                                         | `secure-boot-enabled`                                                                                    | `--secure-boot`              |
+| the kernel accepts the verity signature and IPE enforces                              | no marker of its own: the boot reaches `multi-user.target` with `ipe.enforce=1`                          | `--secure-boot`              |
+| the host key is sealed to the TPM and unseals after reboot                            | `hostkey-sealed-with-tpm2`, `ssh-after-reboot`, `hostkey-unchanged`                                      | `--ssh-test --tpm`           |
+| the ESP loader is the one in `/usr`, and `loader.conf` is read                        | `loader-matches-usr`, `loader-conf-in-effect`, `boot-update-off`                                         | `--ssh-test`                 |
+| the loader updates after a good boot, not after a blessed one                         | `loader-update-ran`, `loader-update-not-run`                                                             | `--ssh-test`                 |
+| the release directory is well formed; sysupdate installs it; it boots; no failed unit | `release-index`, `sysupdate-installed`, `boots-next`, `etc-links-stable`, `no-failed-units-after-update` | `--next`                     |
+| the recovery commands in [Boot loader](bootloader.md#recovery) work                   | `loader-reinstall`, `set-oneshot-other-slot`, `set-default-other-slot`, `reboot-to-firmware`             | `--next`                     |
+| a `db` rotation works; the old disk is refused                                        | `boots-after-rotation`, `kernel-db-rotated`, `old-loader-refused`                                        | `--next --rotate`            |
+| a failed health check costs one try, and the old release boots after the third        | `health-check-broken`, `attempt-[1-3]-unblessed`, `fallback-to-old-slot`, `counter-exhausted`            | `--next --fail-health`       |
+| the guest fetches the release from the update server, with its own definition         | `http-source`, `http-fetch`                                                                              | `--next`                     |
+| `factory-reset.target` deletes the state and keeps the slots and the ESP              | `state-gone`, `machine-id-new`, `first-boot-rerun`, `multi-user-after-reset`, `slots-kept`               | `--factory-reset --ssh-test` |
 
 Not proven:
 
-- **The HTTP fetch.** `--next` installs from a copy in the guest (a `regular-file` source), not from
-  the update server.
+- **The update server's own index.** The guest fetches each file by name from the directory the host
+  serves. It does not read a published index, and in v1 it does not verify the signature of one
+  (`Verify=no`).
 - **Enrolment on real firmware.** The harness enrols keys offline in the variable store.
 - **Hardware.** Only QEMU with OVMF on x86_64 has run. aarch64 is postponed after v1
   ([Scope](scope.md)), because no aarch64 package can be built here.
-- **A state reset.** No run has started `factory-reset.target`.
 - **Loader recovery by hand.** A loader that no longer starts, a lost ESP and a lost `db` key
   ([Boot loader: Recovery](bootloader.md#recovery)) have no marker. The rotation run has two
   releases, so it leaves out step 4 of the rotation.
 - **A boot without the `db` enrolled.** It stops at switch-root; the harness has no marker for it.
+
+One release was signed with a deployment key set that `scripts/make-keys` wrote outside the store.
+It booted on the same markers as the throwaway set, and its next release installed over HTTP
+([Release](../reference/release.md)).

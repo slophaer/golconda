@@ -87,8 +87,11 @@ build host. The expression returns seven attributes, `erofs` to `disk` plus `rel
 [Outputs: `lib.mkImage`](outputs.md#libmkimage). `disk` needs every other step; its output holds
 `disk.raw`, `disk.json` and `release/`. The command prints the output path.
 
-**Unverified:** no test builds the chain with a key set outside the store. A build with the command
-above and `scripts/boot-test <disk.raw> --keys /srv/golconda-keys --secure-boot` would test it.
+Verification: two releases were built from the path form (`keys = /srv/keys;`) and both booted with
+`--secure-boot --keys` and the whole update test
+([Boot: What is proven](../design/boot.md#what-is-proven)). **Unverified:** no build uses the string
+form. It is the one that keeps the private keys out of the store, so a build with
+`keys = "/srv/golconda-keys";` and a boot of its disk would test it.
 
 ## 4. The release directory
 
@@ -98,11 +101,10 @@ do not rename or reorder the files. Serve this directory at the URL `/system.upd
 machine with that option set fetches the release from it
 ([Image artifacts: A release](image.md#a-release)).
 
-**Unverified:** no test fetches a release from an HTTP server with the image's own transfer
-definitions. `scripts/boot-test --next` copies `release/` into the guest and rewrites each transfer
-to `Type=regular-file` with a local `Path`, so it tests the transfer contract but not the fetch. A
-boot of an image with `/system.updateSource` set, against a server that publishes `release/`, would
-test it.
+Verification: `scripts/boot-test --next` serves `release/` on `127.0.0.1:8074` (`10.0.2.2:8074` in
+the guest) and rewrites no transfer file. The markers `http-source` and `http-fetch` show that the
+guest read its own `Type=url-file` definition and fetched each file over HTTP. **Unverified:** the
+index a server publishes, and its signature (`Verify=no` in v1).
 
 ## 5. Enrol the certificate in the firmware
 
