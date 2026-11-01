@@ -164,7 +164,17 @@ scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --tpm
 
 # With SSH login test (needs image-smoke-test, not image-smoke)
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-test
+
+# Update to the next release, the loader update and the recovery paths; with --rotate the next
+# release is signed with a new db key and the variable store is rotated (needs both images)
+nix-build -A packages.x86_64-linux.image-smoke-test-rotated -o next
+scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --next next --rotate \
+  --timeout 480
 ```
+
+`BOOT_TEST_SSH_PORT` sets the host port for the guest's sshd (default 10022). `BOOT_TEST_STORE_ROOT`
+names the root of a chroot store (`--store 'local?root=DIR'`): the harness follows a `/nix/store`
+symlink under it.
 
 The image enforces IPE (`ipe.enforce=1`): `/usr` executes only from a dm-verity mapping whose root
 hash signature the kernel verified. The signature is signed with the Secure Boot db key and its
@@ -200,6 +210,27 @@ then:
 | varlink-available | `varlinkctl list-interfaces` shows io.systemd.\* interfaces |
 | bootctl-list      | `bootctl list` shows the boot entry                         |
 | bless-boot        | the entry is marked good (no +N-M counter)                  |
+
+`--ssh-test` also checks the boot loader ([Boot loader](../design/bootloader.md)):
+
+| marker                | what it proves                                                                          |
+| --------------------- | --------------------------------------------------------------------------------------- |
+| loader-update-ran     | `golconda-loader-update.service` ran after bless-boot on the counted first boot         |
+| loader-matches-usr    | `EFI/systemd/systemd-bootx64.efi` and `EFI/BOOT/BOOTX64.EFI` are `/usr`'s signed loader |
+| loader-conf-in-effect | `bootctl status` reads `loader/loader.conf`, and it is `/usr/lib/golconda/loader.conf`  |
+| boot-update-off       | `systemd-boot-update.service` was skipped by its condition                              |
+
+`--next DIR` copies DIR's `disk/release/` into the guest over ssh, writes the image's transfer
+definitions to `/run/sysupdate.d` with a `regular-file` source on the copy, starts
+`systemd-sysupdate-update.service`, reboots, and checks: the new release runs, its first good boot
+installed its loader (the previous one kept as `systemd-boot-fallbackx64.efi`), `bootctl list` shows
+both slots, a damaged `BOOTX64.EFI` is reinstalled by `golconda-loader-update`,
+`bootctl set-oneshot` and `bootctl set-default` boot the other slot (which installs nothing) and
+back, and `bootctl reboot-to-firmware` reaches OVMF's boot menu. `--rotate` enrols DIR's db
+certificate beside the old one before the first boot; after the checks it stops QEMU, sets db to the
+new certificate alone and adds the old one to dbx (`virt-fw-vars`), boots again, checks that the
+kernel loaded only the new db certificate, and boots the original disk under the rotated store,
+which firmware must refuse.
 
 The test SSH keypair is a committed test fixture (`tests/fixtures/snakeoil-ssh*`). The
 `image-smoke-test` reads the public key and adds it to `authorizedKeys`. The test script uses the
