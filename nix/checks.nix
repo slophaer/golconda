@@ -26,46 +26,32 @@ let
       in
       !(builtins.elem b ignored) && !(pkgs.lib.hasPrefix "result" b);
   };
-  # the generated module pages (lib/module-docs.nix), by file name
-  moduleDocs =
+
+  # the generated Markdown (lib/module-docs.nix): the pages by file name, the SUMMARY lines
+  md =
     let
       adiosPin = import sources.adios;
       tree = import ../modules { inherit (adiosPin) adios; };
       schemaLib = import ../lib/schema.nix { };
-      moduleDocs' = import ../lib/module-docs.nix { };
+      docsLib = import ../lib/module-docs.nix { };
       docComments = import ../lib/doc-comments.nix { };
-      modulePaths = moduleDocs'.discoverModulePaths ../modules;
-      md = moduleDocs'.toMarkdown {
-        schema = schemaLib.toJsonSchema (tree { });
-        inherit modulePaths docComments;
-        inherit (schemaLib) typeRegistry;
-        tree = tree { };
-      };
+      modulePaths = (import ../lib/tree.nix { }).modulePaths ../modules;
     in
-    pkgs.linkFarm "module-docs" (
-      pkgs.lib.mapAttrsToList (name: text: {
-        inherit name;
-        path = pkgs.writeText name text;
-      }) md.files
-    );
+    docsLib.toMarkdown {
+      schema = schemaLib.toJsonSchema (tree { });
+      inherit modulePaths docComments;
+      inherit (schemaLib) typeRegistry;
+      tree = tree { };
+    };
+  moduleDocs = pkgs.linkFarm "module-docs" (
+    pkgs.lib.mapAttrsToList (name: text: {
+      inherit name;
+      path = pkgs.writeText name text;
+    }) md.files
+  );
 
   # The module-pages lines that docs/SUMMARY.md must contain
-  generatedSummary =
-    let
-      adiosPin = import sources.adios;
-      tree = import ../modules { inherit (adiosPin) adios; };
-      schemaLib = import ../lib/schema.nix { };
-      moduleDocs' = import ../lib/module-docs.nix { };
-      docComments = import ../lib/doc-comments.nix { };
-      modulePaths = moduleDocs'.discoverModulePaths ../modules;
-      md = moduleDocs'.toMarkdown {
-        schema = schemaLib.toJsonSchema (tree { });
-        inherit modulePaths docComments;
-        inherit (schemaLib) typeRegistry;
-        tree = tree { };
-      };
-    in
-    pkgs.writeText "summary-modules.md" md.summary;
+  generatedSummary = pkgs.writeText "summary-modules.md" md.summary;
 in
 {
   # formatting and Nix lints, as treefmt sees them

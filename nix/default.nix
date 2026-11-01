@@ -17,7 +17,7 @@ let
       schemaLib = import ../lib/schema.nix { };
       moduleDocs = import ../lib/module-docs.nix { };
       docComments = import ../lib/doc-comments.nix { };
-      modulePaths = moduleDocs.discoverModulePaths ../modules;
+      modulePaths = (import ../lib/tree.nix { }).modulePaths ../modules;
     in
     moduleDocs.toMarkdown {
       schema = schemaLib.toJsonSchema (tree { });
