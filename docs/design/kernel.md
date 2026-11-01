@@ -1,9 +1,10 @@
 # Kernel
 
 The kernel ships with Linux Security Modules (LSMs) enabled and configured for a signed, immutable
-system. Status today: lockdown, Yama and IPE are on, and IPE enforces its boot policy
+system. Lockdown, Yama and IPE are on, and IPE enforces its boot policy
 ([Trust: Execution policy](trust.md#execution-policy)). The configuration is in
-`packages/kernel/golconda.config`; the UKI cmdline activates the LSMs.
+`packages/kernel/golconda.config`; the UKI cmdline activates the LSMs
+([Image artifacts: the kernel command line](../reference/image.md#the-kernel-command-line)).
 
 ## LSM stack
 
@@ -46,7 +47,7 @@ marks the volume `dmverity_signature`. dm-verity tries two keyrings, in order:
   the `db` key that signs the UKI also signs the verity root hash.
 
 The signature reaches dm-verity through the UKI cmdline
-(`systemd.verity_usr_options=root-hash-signature=base64:`); why, and how it was proven, is in
+(`systemd.verity_usr_options=root-hash-signature=base64:`); why is in
 [Trust: Verity key](trust.md#2-verity-key).
 
 ## Lockdown

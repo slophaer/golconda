@@ -1,9 +1,8 @@
 # Boot
 
 Boot is a chain of signed and measured steps from firmware to `boot-complete.target`, all of them
-systemd's. Each UKI carries the `usrhash=` of its `/usr` slot, which is how A and B differ. The UKI
-and the initrd are built (`lib/image/`) and boot in QEMU to `basic.target`. Secure Boot and measured
-boot are signed today (the smoke uses throwaway keys); enrolment and enforcement are not proven.
+systemd's. Each UKI carries the `usrhash=` of its `/usr` slot, which is how A and B differ. What the
+test harness has run, and what it has not, is in [What is proven](#what-is-proven).
 
 ```mermaid
 sequenceDiagram
@@ -82,15 +81,6 @@ check leaves the machine unblessed until it is repaired or the other slot is fil
 units run only on a counted boot: `systemd-bless-boot-generator` adds `boot-complete.target` only
 when the entry has a counter, so a blessed entry boots without them.
 
-The update test proves both outcomes on a real B slot, with `--secure-boot`
-([Image artifacts: the update test](../reference/image.md#the-update-test)). 20261031.1 installs
-20261031.2 through `systemd-sysupdate-update.service`; with the network up, 20261031.2 boots, both
-health units pass, and `systemd-bless-boot` renames its entry to `boot-test_20261031.2.efi`. With
-the guest's link cut in the QEMU monitor (`set_link net0 off`), `golconda-health-network.service`
-fails after its 60 s timeout in each of three boots, `boot-complete.target` and bless-boot fail on
-the dependency, the entry falls to `boot-test_20261031.2+0-3.efi`, and the fourth boot selects
-20261031.1.
-
 systemd-sysupdate tells the slots apart by GPT label: an installed slot carries its version
 (`usr_20261031.1`, `usr-verity_…`, `usr-verity-sig_…`), a free one `_empty`, which gpt-auto also
 skips. The builder labels slot A this way and leaves B `_empty`; an update relabels the slot it
@@ -101,27 +91,26 @@ finds its own slot and the old UKI still finds the old one. The UKI goes to `EFI
 
 ## Kernel command line
 
-The cmdline is fixed in the UKI and measured with it:
-`usrhash=<hash> lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=0 console=tty0 console=ttyS0,115200`
-(`image/uki.nix`), plus `rdinit=/init` from the builder. The LSM parameters are described in
-[Kernel](kernel.md). No administrator edits: the ESP carries `loader/loader.conf` with `editor no`
-(the editor would let anyone at the console change the cmdline) and `timeout 0` (the menu does not
-wait); see [Boot loader](bootloader.md). The UKI under `EFI/Linux` needs no entry line. This is menu
-policy, not protection: an offline disk writer can change the unsigned configuration
-([Trust](trust.md)). The decided cmdline carries `rw` and neither `ro` nor `systemd.volatile=` (`/`
-is the state partition; the initrd mounts it read-only unless the cmdline says `rw`, and gpt-auto's
-remount-rw drop-in takes effect only when `systemd-remount-fs.service` runs, late in boot). A debug
-image with other parameters is a separate build *(after v1)*.
+The cmdline is fixed in the UKI and measured with it. The one authoritative copy is in
+[Image artifacts: the kernel command line](../reference/image.md#the-kernel-command-line); the LSM
+parameters are described in [Kernel](kernel.md). No administrator edits: the ESP carries
+`loader/loader.conf` with `editor no` (the editor would let anyone at the console change the
+cmdline) and `timeout 0` (the menu does not wait); see [Boot loader](bootloader.md). The UKI under
+`EFI/Linux` needs no entry line. This is menu policy, not protection: an offline disk writer can
+change the unsigned configuration ([Trust](trust.md)). The cmdline carries `rw` and neither `ro` nor
+`systemd.volatile=` (`/` is the state partition; the initrd mounts it read-only unless the cmdline
+says `rw`, and gpt-auto's remount-rw drop-in takes effect only when `systemd-remount-fs.service`
+runs, late in boot). A debug image with other parameters is a separate build *(after v1)*.
 
 The ssh host key var unit seals its key in `/etc/credstore.encrypted` before
 `systemd-remount-fs.service` runs, so without `rw` it fails and sshd starts without a host key. `rw`
-is an ordinary kernel parameter, and the test image boots the same cmdline: the earlier
-`cmdlineExtra = "rw"` stand-in is gone. Libraries need no such flag: the fork's RUNPATH reaches
-every dlopen soname.
+is an ordinary kernel parameter, and the test image boots the same cmdline. Libraries need no such
+flag: the fork's RUNPATH reaches every dlopen soname.
 
 gpt-auto-generator mounts the root partition (writable), the ESP and `/usr` by `usrhash=`. systemd
-finds the libraries it dlopens through the RUNPATH the fork gives it. `ipe.enforce=0` means IPE
-enforces nothing yet: it becomes `1` once the verity certificate is in a kernel keyring.
+finds the libraries it dlopens through the RUNPATH the fork gives it. IPE enforces from the first
+boot: `/usr` runs only if the kernel verified the verity signature, so the signer must be in the
+firmware `db` ([Kernel: IPE](kernel.md#ipe-integrity-policy-enforcement)).
 
 ## Serial console
 
@@ -164,8 +153,8 @@ What happens once, on the first boot of a disk:
 
 1. repart creates the root partition from `/usr/lib/repart.d/30-root.conf` (`GrowFileSystem=`,
    `FactoryReset=`), with `/etc`, `/var`, `/home`, `/root` inside.
-1. PID 1 writes `/etc/machine-id` and sets the hostname from the credential. Open: today firstboot
-   also stops at its interactive root-password prompt, which must be turned off (no local login).
+1. PID 1 writes `/etc/machine-id` and sets the hostname from the credential. A drop-in runs
+   `systemd-firstboot --mute-console=yes`, so firstboot never prompts: there is no local login.
 1. systemd-sysusers writes `passwd`, `group`, `shadow` from `/usr/lib/sysusers.d`.
 1. systemd-tmpfiles links each factory file into `/etc` and makes the state directories.
 1. The var units generate the machine-local secrets and seal them to the TPM
@@ -189,10 +178,45 @@ systemd-boot (`lib/image/loader.nu`, `systemd-sbsign`) are signed at build time 
 and certificate, so one enrolled certificate covers the loader and the image it starts. The signed
 loader ships in `/usr`, and a machine installs it on the ESP after a good boot; the loader update,
 the key rotation and the recovery paths are in [Boot loader](bootloader.md). Firmware starts nothing
-else: with OVMFFull and only this certificate enrolled, `bootctl status` in the guest says
-`Secure Boot: enabled (user)`, and the same disk with the unsigned loader on the ESP is refused
-(`Access Denied -- rejected probably by Secure Boot`).
+else: with only this certificate enrolled, firmware refuses an unsigned loader.
 
-Enrolment is not part of the image yet: nothing writes `loader/keys/auto`, and a release step does
-not do it either. Until then, enrolment is manual on the variable store (`virt-fw-vars`) or with
-`sbctl` where firmware needs it. Key hierarchy in [Trust](trust.md).
+The image does not enrol the key: nothing writes `loader/keys/auto`, and a release step does not do
+it either. Enrolment is manual, on the variable store (`virt-fw-vars`) or with `sbctl` where
+firmware needs it. Key hierarchy in [Trust](trust.md).
+
+## What is proven
+
+This is the one place that says how far the work has got; the design pages above say why. Each row
+is a marker of `scripts/boot-test`, which runs the image in QEMU with OVMF; the flags are in
+[Image artifacts: the boot test](../reference/image.md#boot-test-scriptsboot-test). The image
+enforces IPE, so every run uses `--secure-boot`; the last column lists the flags on top of it.
+
+| claim                                                                         | marker                                                                                       | flags              |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------ |
+| boots to `multi-user.target` and `boot-complete.target`                       | `multi-user-reached`, `boot-complete`                                                        | none               |
+| sshd is active; the host key var finished; no firstboot prompt on the console | `sshd-active`, `var-sshd-hostkey`, `no-firstboot-prompt`                                     | none               |
+| root login by ssh, host name from the SMBIOS credential                       | `ssh-login`, `hostname`                                                                      | `--ssh-test`       |
+| no failed unit; varlink answers                                               | `no-failed-units`, `varlinkctl-list-interfaces`                                              | `--ssh-test`       |
+| firmware enforces Secure Boot                                                 | `secure-boot-enabled`                                                                        | `--secure-boot`    |
+| the kernel accepts the verity signature and IPE enforces                      | no marker of its own: the boot reaches `multi-user.target` with `ipe.enforce=1`              | `--secure-boot`    |
+| the host key is sealed to the TPM and unseals after reboot                    | `hostkey-sealed-with-tpm2`, `ssh-after-reboot`, `hostkey-unchanged`                          | `--ssh-test --tpm` |
+| the ESP loader is the one in `/usr`, and `loader.conf` is read                | `loader-matches-usr`, `loader-conf-in-effect`, `boot-update-off`                             | `--ssh-test`       |
+| the loader updates after a good boot, not after a blessed one                 | `loader-update-ran`, `loader-update-not-run`                                                 | `--ssh-test`       |
+| sysupdate installs the next release; it boots; no failed unit                 | `sysupdate-installed`, `boots-next`, `etc-links-stable`, `no-failed-units-after-update`      | `--next`           |
+| the recovery commands in [Boot loader](bootloader.md#recovery) work           | `loader-reinstall`, `set-oneshot-other-slot`, `set-default-other-slot`, `reboot-to-firmware` | `--next`           |
+| a `db` rotation works; the old disk is refused                                | `boots-after-rotation`, `kernel-db-rotated`, `old-loader-refused`                            | `--next --rotate`  |
+
+Not proven:
+
+- **Fallback after three failed boots.** The harness cannot fail a candidate. The steps are manual
+  ([Image artifacts: the update test](../reference/image.md#the-update-test)), and no run is
+  recorded here.
+- **The HTTP fetch.** `--next` installs from a copy in the guest (a `regular-file` source), not from
+  the update server.
+- **Enrolment on real firmware.** The harness enrols keys offline in the variable store.
+- **Hardware.** Only QEMU with OVMF on x86_64 has run. No bootable aarch64 image is built.
+- **A state reset.** No run has started `factory-reset.target`.
+- **Loader recovery by hand.** A loader that no longer starts, a lost ESP and a lost `db` key
+  ([Boot loader: Recovery](bootloader.md#recovery)) have no marker. The rotation run has two
+  releases, so it leaves out step 4 of the rotation.
+- **A boot without the `db` enrolled.** It stops at switch-root; the harness has no marker for it.

@@ -16,7 +16,8 @@ by systemd-sysupdate. The machine runs systemd and nothing that duplicates it, a
   symlinks into the image's factory and an administrator's file at the same path wins; `/var` holds
   state. The state partition is unencrypted in v1 (LUKS2+TPM2 later).
 - **A/B updates with rollback.** Two `/usr` slots and two UKIs; systemd-boot counts boots and falls
-  back to the other slot.
+  back to the other slot after three failed tries. Nothing in v1 reboots a failed candidate: an
+  operator power-cycles the machine until the count runs out ([Recovery](docs/design/recovery.md)).
 - **One of each.** One libc, one toolchain (LLVM), one TLS stack, one CA store, one init, one
   logger, one network stack. Enforced by package features and lints, not by convention.
 - **Typed, explicit modules.** A module returns a typed fragment; the composer unions the fragments
@@ -28,10 +29,9 @@ by systemd-sysupdate. The machine runs systemd and nothing that duplicates it, a
 
 The module tree, the composer, the `/usr` tree builder, the schema, the TOML loader and the entry
 point (`golconda.nix`) exist and are tested. The image chain (erofs, verity, initrd, UKI, disk)
-builds, and the disk boots in QEMU to `basic.target` with a stand-in or two (see
-[Boot](docs/design/boot.md#kernel-command-line)). Not proven on a machine: Secure Boot enforced, a
-TPM, the kernel checking the verity signature, `multi-user.target` and sshd, sysupdate, aarch64
-images. The docs mark each designed thing *(planned)*, and each deferred one *(after v1)*;
+builds. `scripts/boot-test` boots the disk in QEMU and checks what it can; the one table of what
+that covers, and what nobody has run yet, is [What is proven](docs/design/boot.md#what-is-proven).
+The docs mark each designed thing *(planned)*, and each deferred one *(after v1)*;
 [Scope](docs/design/scope.md) says what is v1, after v1 and out of scope, and
 [Comparison](docs/design/comparison.md) says what you give up against NixOS.
 
@@ -42,6 +42,10 @@ nix-shell                      # or: direnv allow
 ./scripts/lint                 # strict iets lint, module tests, sandboxed checks
 scripts/docs serve             # the book (generates the module pages first)
 ```
+
+The lint's sandboxed checks and every image build need a Nix daemon with `ca-derivations` and
+`dynamic-derivations`. The build and boot-test commands, and that requirement, are in
+[CONTRIBUTING](CONTRIBUTING.md#getting-started).
 
 Start with [Principles](docs/design/principles.md), then read the design pages in order; the
 [Walkthrough](docs/reference/walkthrough.md) goes from `examples/server.toml` to a booted machine.
