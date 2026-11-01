@@ -34,7 +34,7 @@
 - **prefixed package**: a package compiled with `prefix = "/usr"` (systemd, dbus-broker, openssh)
   because it addresses its own files by absolute path; reached through the farm.
 - **relocatable**: an output that refers to other store paths only relative to itself.
-- **repkgs**: the package set and build system Golconda pins (a fork, branch `golconda`). Every
+- **repkgs**: the package set and build system Golconda pins (a fork, branch `reloc-boot`). Every
   output is relocatable; builders are nushell; packages declare `bin` and `features`.
 - **service**: a typed value (`modules/lib/service.nix`) that embeds an `app` and adds credentials,
   state, user, sandbox tier and ordering. `render service` returns a fragment.
