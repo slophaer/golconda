@@ -7,6 +7,9 @@
 #   - month 01-12, day 01-daysInMonth (leap years included)
 #   - revision 0-86399, so date + revision is inside the day and a revision can
 #     never reach, or pass, the next date's timestamp.
+#   - revision without a leading zero: 20261031.01 and 20261031.1 would be two
+#     versions with one timestamp, and ConditionNeedsUpdate= compares
+#     timestamps.
 # The revision is N in YYYYMMDD.N. It is a second offset for the erofs mtime,
 # not a free counter: unbounded N made 20261031.86400 share 20261101.0's epoch.
 _:
@@ -24,7 +27,8 @@ let
     substring
     ;
 
-  # decimal digits to an integer; fromJSON would refuse a leading zero ("01")
+  # decimal digits to an integer; the month and day have a leading zero ("01"),
+  # which fromJSON would refuse
   toInt =
     s: foldl' (acc: i: acc * 10 + fromJSON (substring i 1 s)) 0 (genList (i: i) (stringLength s));
 
@@ -49,7 +53,7 @@ let
   # seconds, so 86399 is 23:59:59.
   maxRevision = 86399;
 
-  # parse :: string -> null | { year; month; day; revision; }
+  # parse :: string -> null | { year; month; day; revision; revisionText; }
   parse =
     v:
     if !isString v then
@@ -66,6 +70,7 @@ let
           month = toInt (elemAt m 1);
           day = toInt (elemAt m 2);
           revision = toInt (elemAt m 3);
+          revisionText = elemAt m 3;
         };
 
   # error :: string -> null | string: the reason a version is refused, or null.
@@ -82,6 +87,8 @@ let
       "'${v}' is not a version: the month must be 01-12"
     else if p.day < 1 || p.day > elemAt (monthLengths p.year) (p.month - 1) then
       "'${v}' is not a version: ${toString p.year}-${toString p.month} has no day ${toString p.day}"
+    else if match "0[0-9]+" p.revisionText != null then
+      "'${v}' is not a version: the daily revision has no leading zero (write ${toString p.revision})"
     else if p.revision > maxRevision then
       "'${v}' is not a version: the daily revision must be 0-${toString maxRevision}, or it reaches the next date"
     else
