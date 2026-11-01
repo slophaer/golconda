@@ -15,16 +15,16 @@ lost ([Comparison](comparison.md)).
 `/var` on the state partition and is declared: a `StateDirectory=`, a tmpfiles line, a repart
 definition. A path that is neither in the image nor declared does not exist.
 
-Enforced today: a fragment's `files` must be under `/usr` (a path under `/etc` is a type error
-outside `/factory`), and the `/usr` tree builder refuses a top-level directory other than `bin`,
-`lib`, `share`, `libexec`, `nix` and the `sbin` link. Nothing checks `/var` yet.
+Enforced: a fragment's `files` must be under `/usr` (a path under `/etc` is a type error outside
+`/factory`), and the `/usr` tree builder refuses a top-level directory other than `bin`, `lib`,
+`share`, `libexec`, `nix` and the `sbin` link. Nothing checks `/var`.
 
 ## The image holds no per-machine value
 
 One image serves every machine of its kind. A host name, a key, a certificate or a password hash
 never enters the image: it is a bootstrap credential, a var generated on the machine, or a value the
 administrator pushes ([Boot](boot.md#bootstrap-credentials), [Trust](trust.md#secrets-and-vars)).
-Enforced today: an app file that contains a credential path or a key marker is a type error.
+Enforced: an app file that contains a credential path or a key marker is a type error.
 
 ## systemd first
 
@@ -67,8 +67,10 @@ result calls it and transforms the value ([Modules](modules.md)).
 
 ## No compatibility layers
 
-No `/bin` beyond the `sh` symlink, no FHS shims for foreign binaries, no NixOS module compatibility,
-no channel or flake-registry support, no cloud-init. A thing that needs them is not packaged.
+`/bin`, `/sbin` and `/lib` are links into `/usr` (merged `/usr`, so `#!/bin/sh` works), and no other
+FHS path exists: no `/lib64`, `/usr/local` or `/opt`. There are no FHS shims for foreign binaries,
+no NixOS module compatibility, no channel or flake-registry support, no cloud-init. A thing that
+needs them is not packaged.
 
 ## Nothing from nixpkgs
 
