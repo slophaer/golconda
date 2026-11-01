@@ -39,8 +39,16 @@ root hash, which is how gpt-auto finds the pair the UKI's `usrhash=` names.
 | `/usr/lib/golconda/vars.d/`, `golconda-var-run` | image | `/vars` and the var renderer                                                                                                                 |
 | `/usr/lib/<service>/`                           | image | the service renderer: the app's files                                                                                                        |
 | `/usr/share/factory/etc`                        | image | `/factory`                                                                                                                                   |
-| `/etc`                                          | root  | tmpfiles `L` links into the factory; PID 1 (`machine-id`), sysusers (`passwd`, `group`, `shadow`), firstboot (`hostname`); the administrator |
+| `/etc`                                          | root  | tmpfiles `L` links into the factory; PID 1 (`machine-id`), sysusers (`passwd`, `group`, `shadow`); the administrator (`hostname`, if wanted) |
 | `/etc/credstore.encrypted/`                     | root  | the var runner and the deploy tool: sealed credentials                                                                                       |
 | `/var/lib/golconda/vars/<name>/`                | root  | the var runner: public halves and the `done` marker                                                                                          |
 | `/var`                                          | root  | services (`StateDirectory=`), tmpfiles                                                                                                       |
-| `/efi`                                          | ESP   | systemd-boot, the UKIs, sysupdate                                                                                                            |
+| `/boot`                                         | ESP   | systemd-boot, the UKIs, sysupdate                                                                                                            |
+
+Nothing writes `/etc/hostname`. PID 1 reads the `system.hostname` credential at every boot
+([Boot: Bootstrap credentials](../design/boot.md#bootstrap-credentials)); `systemd-firstboot` reads
+`firstboot.hostname`, a different credential.
+
+The ESP is at `/boot`, not `/efi`: systemd-gpt-auto-generator(8) mounts the ESP at `/boot/` when
+that directory is not used for XBOOTLDR, and the image has no XBOOTLDR partition.
+`scripts/boot-test` reads `/boot/EFI/systemd`.
