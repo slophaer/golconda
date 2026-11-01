@@ -33,7 +33,7 @@
 - **Pins.** `npins/sources.json` is the lock; `nix/sources.nix` reads it. The forge needs a sign-in,
   so update the repkgs pin by hand (see [patches/repkgs](patches/repkgs/README.md)).
 - **Fork patches.** Changes to repkgs go first to the fork branch the pin follows (`branch` in
-  `npins/sources.json`, today `reloc-boot`); regenerate `patches/repkgs/*.patch` when it moves.
+  `npins/sources.json`, today `golconda`); regenerate `patches/repkgs/*.patch` when it moves.
 
 ## Getting started
 

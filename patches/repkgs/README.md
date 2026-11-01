@@ -1,9 +1,9 @@
 # repkgs patches
 
 Golconda uses a fork of [Mic92/repkgs](https://github.com/Mic92/repkgs). The fork is the branch
-`npins/sources.json` names (`branch`, today `reloc-boot`) of Golconda's repkgs repository (the URL
-is there too). It holds the infrastructure commits mirrored below on top of upstream `main`, plus
-the packaging round-1 packages under `pkgs/`, which are not mirrored. The patches fix two relocation
+`npins/sources.json` names (`branch`, today `golconda`) of Golconda's repkgs repository (the URL is
+there too). It holds the infrastructure commits mirrored below on top of upstream `main`, plus the
+packaging round-1 packages under `pkgs/`, which are not mirrored. The patches fix two relocation
 bugs (the sysroot in PT_INTERP and RUNPATH, `$ORIGIN` without `/proc`) and the glibc regression that
 followed (libunwind must sit next to libc), make aclocal see macros from build tools, and add the
 systemd and UEFI platform names, the `wrap` and `closure` package shapes, the `bin` list of
@@ -15,9 +15,8 @@ describe the two original bugs for upstream.
 The `.patch` files are those commits, numbered in the order they apply to upstream `main`
 (`fab7121`). Package commits are excluded: `git log fab7121..reloc-boot -- pkgs` lists them.
 
-The files here were made from branch `golconda`, an ancestor of `reloc-boot`. They lack four
-infrastructure commits that `reloc-boot` adds
-(`jig: put a package's -rpath into the padded RUNPATH`,
+The files here were made from branch `golconda`, an ancestor of `golconda`. They lack four
+infrastructure commits that `golconda` adds (`jig: put a package's -rpath into the padded RUNPATH`,
 `finish: check that .note.dlopen libraries are on RUNPATH`,
 `glibc: resolve AT_EXECFN like realpath for $ORIGIN without /proc`,
 `finish: warn about bin/ executables the spec does not list`). Run the steps below to add them.
