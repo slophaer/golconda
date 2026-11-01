@@ -32,8 +32,9 @@
   planning or history pages.
 - **Pins.** `npins/sources.json` is the lock; `nix/sources.nix` reads it. The forge needs a sign-in,
   so update the repkgs pin by hand (see [patches/repkgs](patches/repkgs/README.md)).
-- **Fork patches.** Changes to repkgs go first to the fork branch the pin follows (`branch` in
-  `npins/sources.json`, today `golconda`); regenerate `patches/repkgs/*.patch` when it moves.
+- **Fork patches.** A change to repkgs' build system goes to the fork branch the pin follows
+  (`branch` in `npins/sources.json`, today `golconda`), in the series it belongs to. A new package
+  goes to `packages/` instead.
 
 ## Getting started
 
