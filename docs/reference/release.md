@@ -61,8 +61,14 @@ The directory must be on the machine whose daemon builds the image: with a remot
 the builder, not the client. The derivation names only the path, not the file contents, so new keys
 under the same path rebuild nothing. Put a new set under a new path (step 6).
 
+A daemon that builds in a chroot store (`--store local?root=DIR`) copies only the derivation's
+inputs into a fresh root directory. A string is not an input, so the builder sees nothing at that
+path and signing stops with `Failed to load X.509 certificate from … No such file or directory`. On
+such a daemon use the path form, and accept the store copy.
+
 **Unverified:** no test builds an image with a string key directory. A build on a daemon with the
-`extra-sandbox-paths` line, then a boot test of the result, would test it.
+`extra-sandbox-paths` line, then a boot test of the result, would test it. The path form was used to
+build the two releases of the real-key boot test ([`image.md`](image.md)).
 
 ## 3. Build
 
