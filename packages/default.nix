@@ -18,6 +18,7 @@
   p11-kit = ./p11-kit;
   libtasn1 = ./libtasn1;
   # the signed update index: gpg verifies SHA256SUMS.gpg (systemd-pull's argv); gpg-agent signs it
+  gnupg = ./gnupg;
   libgpg-error = ./libgpg-error;
   libgcrypt = ./libgcrypt;
   libassuan = ./libassuan;

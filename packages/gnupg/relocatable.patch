@@ -1,0 +1,105 @@
+--- a/common/homedir.c
++++ b/common/homedir.c
+@@ -620,10 +620,27 @@
+ 
+       if (gnupg_access (buffer, F_OK))
+         {
+-          /* No gpgconf.ctl file.  */
+-          xfree (buffer);
++          /* No gpgconf.ctl file: the root is the directory above the
++           * one the running executable is in (BUFFER is then
++           * "<root>/bin/gpgconf.ctl"), so that the helpers are found
++           * next to gpg wherever the package is.  The paths the
++           * program is configured with are not used.  */
++          p = strrchr (buffer, '/');
++          if (p)
++            {
++              *p = 0;
++              p = strrchr (buffer, '/');
++            }
++          if (p)
++            {
++              *p = 0;
++              dir = buffer;
++              gpgrt_annotate_leaked_object (dir);
++            }
++          else
++            xfree (buffer);
+           checked = 1;
+-          return NULL;
++          return dir;
+         }
+       /* log_info ("detected '%s'\n", buffer); */
+       fp = es_fopen (buffer, "r");
+@@ -1326,7 +1343,7 @@
+   if (dir)
+     return dir;
+   else
+-    return GNUPG_SYSCONFDIR;
++    return "/etc/gnupg";
+ #endif /*!HAVE_W32_SYSTEM*/
+ }
+ 
+@@ -1362,7 +1379,7 @@
+       return name;
+     }
+   else
+-    return GNUPG_BINDIR;
++    return "/usr/bin";
+ #endif /*!HAVE_W32_SYSTEM*/
+ }
+ 
+@@ -1389,7 +1406,7 @@
+       return name;
+     }
+   else
+-    return GNUPG_LIBEXECDIR;
++    return "/usr/libexec";
+ #endif /*!HAVE_W32_SYSTEM*/
+ }
+ 
+@@ -1419,7 +1436,7 @@
+       return name;
+     }
+   else
+-    return GNUPG_LIBDIR;
++    return "/usr/lib/gnupg";
+ #endif /*!HAVE_W32_SYSTEM*/
+ }
+ 
+@@ -1450,7 +1467,7 @@
+       return name;
+     }
+   else
+-    return GNUPG_DATADIR;
++    return "/usr/share/gnupg";
+ #endif /*!HAVE_W32_SYSTEM*/
+ }
+ 
+@@ -1482,7 +1499,7 @@
+       return name;
+     }
+   else
+-    return LOCALEDIR;
++    return "/usr/share/locale";
+ #endif /*!HAVE_W32_SYSTEM*/
+ }
+ 
+--- a/common/exechelp-posix.c
++++ b/common/exechelp-posix.c
+@@ -298,11 +298,10 @@
+     while (argv[i])
+       i++;
+   arg_list = xcalloc (i+2, sizeof *arg_list);
+-  arg_list[0] = strrchr (pgmname, '/');
+-  if (arg_list[0])
+-    arg_list[0]++;
+-  else
+-    arg_list[0] = xstrdup (pgmname);
++  /* Pass the program name as it was given, not its last component:
++   * a launcher script or stub looks itself up by argv[0], and a bare
++   * "gpg-agent" would be searched on PATH.  */
++  arg_list[0] = (char*)pgmname;
+   if (argv)
+     for (i=0,j=1; argv[i]; i++, j++)
+       arg_list[j] = (char*)argv[i];
