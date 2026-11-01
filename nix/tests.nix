@@ -63,6 +63,7 @@ let
       inherit platform;
     })
     pkgs
+    set
     ;
 
   # repkgs needs ca-derivations to instantiate, so no package is built here;
@@ -251,24 +252,51 @@ let
     };
   };
   sshd = tree.modules.services.modules.sshd { };
-  vars = tree.modules.vars { };
   factory = tree.modules.factory { };
-  system =
+  # the sshd system assembled by hand from the fragments of a tree with package set `target`
+  handSystem =
+    target:
+    let
+      t = f.modules {
+        options = {
+          "/pkgs" = { inherit target; };
+          "/services/sshd" = {
+            authorizedKeys = [ "ssh-ed25519 AAAA test" ];
+          };
+        };
+      };
+    in
     (f.modules {
       options = {
-        "/pkgs".target = stubSet;
+        "/pkgs" = { inherit target; };
         "/system" = {
           name = "test";
           version = "20261031.1";
           fragments = [
-            sshd
-            vars
-            factory
+            (t.modules.services.modules.sshd { })
+            (t.modules.vars { })
+            (t.modules.factory { })
           ];
         };
       };
     }).modules.system
       { };
+  system = handSystem stubSet;
+  # the same system through mkSystem, which binds the pinned package set and adds
+  # /vars and /factory itself
+  mkSystemFixture = import ../lib/system.nix {
+    inherit sources platform;
+    system = platform;
+    config = {
+      "/system" = {
+        name = "test";
+        version = "20261031.1";
+      };
+      "/services/sshd" = {
+        authorizedKeys = [ "ssh-ed25519 AAAA test" ];
+      };
+    };
+  };
   unit = system.units."sshd.service";
   varUnit = system.units."golconda-var-sshd-hostkey.service";
   sshdDir = "/usr/lib/sshd";
@@ -326,6 +354,30 @@ let
   ];
 
   tests = [
+    # step one of moving the fixture onto mkSystem: with one package set, the hand
+    # assembly and mkSystem compose the same system
+    (check "fixture: mkSystem composes what the hand-built fixture composes" (
+      let
+        hand = handSystem set;
+        made = mkSystemFixture.composed;
+        same = n: builtins.toJSON hand.${n} == builtins.toJSON made.${n};
+      in
+      attrNames hand == attrNames made
+      && all same [
+        "name"
+        "version"
+        "updateSource"
+        "units"
+        "files"
+        "links"
+        "sysusers"
+        "tmpfiles"
+        "origins"
+        "packageOrigins"
+      ]
+      && map merge.pkgKey hand.packages == map merge.pkgKey made.packages
+      && map toString hand.packages == map toString made.packages
+    ))
     (check "sshd: LoadCredentialEncrypted" (hasInfix "LoadCredentialEncrypted=sshd-hostkey.key\n" unit))
     (check "sshd: credential ref renders as %d" (hasInfix " -h %d/sshd-hostkey.key" unit))
     (check "sshd: ExecStart is the program from the farm with its config and credential" (
