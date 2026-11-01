@@ -212,7 +212,8 @@ Not proven:
 - **The HTTP fetch.** `--next` installs from a copy in the guest (a `regular-file` source), not from
   the update server.
 - **Enrolment on real firmware.** The harness enrols keys offline in the variable store.
-- **Hardware.** Only QEMU with OVMF on x86_64 has run. No bootable aarch64 image is built.
+- **Hardware.** Only QEMU with OVMF on x86_64 has run. aarch64 is postponed after v1
+  ([Scope](scope.md)), because no aarch64 package can be built here.
 - **A state reset.** No run has started `factory-reset.target`.
 - **Loader recovery by hand.** A loader that no longer starts, a lost ESP and a lost `db` key
   ([Boot loader: Recovery](bootloader.md#recovery)) have no marker. The rotation run has two
