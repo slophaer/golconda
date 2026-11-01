@@ -1,5 +1,5 @@
 #!/bin/sh
-# Unit test for scripts/golconda-etc-links. Builds a throwaway root with the
+# Unit test for modules/base/golconda-etc-links. Builds a throwaway root with the
 # link shapes PID 1 writes on first boot and checks what the generator rewrites.
 set -eu
 
