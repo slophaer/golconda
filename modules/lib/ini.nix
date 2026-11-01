@@ -15,12 +15,10 @@ let
     isList
     isBool
     isString
-    length
     match
-    split
     ;
 
-  hasControl = s: length (split "[[:cntrl:]]" s) > 1;
+  inherit (import ./path.nix) hasControl;
   isWord = s: isString s && match "[A-Za-z0-9_.:-]+" s != null;
 
   checkValue =

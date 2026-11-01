@@ -38,8 +38,6 @@ let
     mapAttrs
     match
     split
-    stringLength
-    substring
     ;
 
   adios = import sources.adios;
@@ -128,7 +126,7 @@ let
 
   # updateSource is the Path= of every sysupdate transfer: one URL or absolute
   # path, never several lines.
-  hasPrefix = p: s: substring 0 (stringLength p) s == p;
+  inherit (import ../modules/lib/path.nix) hasPrefix;
   checkUpdateSource =
     source:
     if !isString source then
