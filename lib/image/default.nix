@@ -25,19 +25,26 @@ in
 // {
   inherit (common) versionToEpoch uuidOfHex hexOf;
 
-  # throwawayKeys { buildSystem; pkgs; } → derivation with the key pairs for the smoke:
-  # Secure Boot db, verity, PCR policy (made with openssl), and an SSH user CA for the boot
-  # test (made with ssh-keygen). All self-signed, all made inside the store. For the smoke
-  # only: a production key never enters the store.
+  # throwawayKeys { buildSystem; pkgs; variant ? null; } → derivation with the key pairs for
+  # the smoke: Secure Boot db, verity, PCR policy (made with openssl), and an SSH user CA for the
+  # boot test (made with ssh-keygen). All self-signed, all made inside the store. For the smoke
+  # only: a production key never enters the store. A `variant` is a second, different set (its
+  # name and the certificates' CN carry it): the key rotation test signs the next release with
+  # it (docs/design/bootloader.md).
   throwawayKeys =
-    { buildSystem, pkgs }:
+    {
+      buildSystem,
+      pkgs,
+      variant ? null,
+    }:
     common.nuDerivation {
-      name = "golconda-throwaway-keys";
+      name = "golconda-throwaway-keys" + (if variant == null then "" else "-${variant}");
       inherit buildSystem;
       module = "keys";
       tools = [
         pkgs.openssl
         pkgs.openssh # ssh-keygen for the test CA
       ];
+      attrs = if variant == null then { } else { inherit variant; };
     };
 }

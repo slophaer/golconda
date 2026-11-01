@@ -2,7 +2,7 @@
 # scripts/boot-test: VM boot test for Golconda images.
 #
 # Usage: boot-test <disk.raw> --keys DIR [--secure-boot] [--tpm] [--timeout SECONDS]
-#                  [--ssh-test]
+#                  [--ssh-test] [--next DIR [--rotate]]
 #
 # The script boots the image in QEMU with:
 #   - a 40 GiB qcow2 overlay (room for root partition)
@@ -29,6 +29,24 @@
 #   ssh-login, hostname (must be "boot-test", the SMBIOS credential),
 #   systemctl --failed (no failed units), varlinkctl list-interfaces.
 # With --secure-boot: boots OVMFFull and checks that the firmware enforces Secure Boot.
+# With --ssh-test: also checks the boot loader (docs/design/bootloader.md): the ESP's two
+#   copies of systemd-boot are the signed file in /usr, loader/loader.conf is the one
+#   systemd-boot reads and the copy in /usr, golconda-loader-update.service ran after the boot
+#   was blessed, and systemd-boot-update.service stayed off.
+# With --next DIR (implies --ssh-test): DIR is the next release's image-smoke output
+#   (DIR/disk/release, DIR/keys). The harness copies the release into the guest over ssh and
+#   installs it with systemd-sysupdate-update.service from /run/sysupdate.d definitions that
+#   read the copy, reboots into it, and checks that golconda-loader-update.service put the new
+#   loader on the ESP. Then the recovery checks: bootctl list shows both slots, a damaged loader
+#   is reinstalled by hand, `bootctl set-oneshot` and `bootctl set-default` boot the other slot
+#   and back, and `bootctl reboot-to-firmware` reaches the firmware's menu.
+# With --next DIR --rotate: DIR is signed with a new db key. Its certificate is enrolled in db
+#   beside the old one before the first boot; after the update the harness stops QEMU, rewrites
+#   the variable store (db: the new certificate only; dbx: the old one), boots again and checks
+#   the new chain, then boots the original disk with the rotated store, which firmware must
+#   refuse.
+# BOOT_TEST_STORE_ROOT: the root of a chroot store (nix --store 'local?root=DIR'); a symlink
+#   into /nix/store under DIR is followed there.
 # With --ssh-test --tpm: also checks that the host key is sealed with the TPM
 #   (credential header), reboots the guest in the same QEMU (swtpm keeps its
 #   state) and checks the second boot: a new boot id, sshd active, the same
@@ -63,9 +81,11 @@ SECURE_BOOT=0
 TPM=0
 TIMEOUT=120
 SSH_TEST=0
+NEXT=""
+ROTATE=0
 
 usage() {
-  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot] [--tpm] [--timeout SECONDS] [--ssh-test]"
+  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot] [--tpm] [--timeout SECONDS] [--ssh-test] [--next DIR [--rotate]]"
   exit 1
 }
 
@@ -76,6 +96,8 @@ while [ $# -gt 0 ]; do
     --tpm) TPM=1; shift ;;
     --timeout) TIMEOUT="$2"; shift 2 ;;
     --ssh-test) SSH_TEST=1; shift ;;
+    --next) NEXT="$2"; SSH_TEST=1; shift 2 ;;
+    --rotate) ROTATE=1; shift ;;
     --help|-h) usage ;;
     -*)
       echo "Unknown option: $1" >&2
@@ -111,6 +133,34 @@ fi
 if [ ! -d "$KEYS_DIR" ]; then
   echo "Error: keys directory not found: $KEYS_DIR" >&2
   exit 1
+fi
+
+# real_path PATH: PATH with its symlinks followed; a target in /nix/store is looked up under
+# $BOOT_TEST_STORE_ROOT, so a chroot store's outputs resolve on the host
+real_path() {
+  rp=$1
+  while [ -L "$rp" ]; do
+    rt=$(readlink "$rp")
+    case $rt in
+      /nix/store/*) rp=${BOOT_TEST_STORE_ROOT:-}$rt ;;
+      /*) rp=$rt ;;
+      *) rp=$(dirname "$rp")/$rt ;;
+    esac
+  done
+  echo "$rp"
+}
+
+if [ "$ROTATE" = 1 ] && { [ -z "$NEXT" ] || [ "$SECURE_BOOT" = 0 ]; }; then
+  echo "Error: --rotate needs --next and --secure-boot" >&2
+  exit 1
+fi
+if [ -n "$NEXT" ]; then
+  NEXT_RELEASE=$(real_path "$NEXT/disk")/release
+  NEXT_KEYS=$(real_path "$NEXT/keys")
+  if [ ! -f "$NEXT_RELEASE/SHA256SUMS" ] || [ ! -f "$NEXT_KEYS/secureboot/db.crt" ]; then
+    echo "Error: $NEXT has no disk/release/SHA256SUMS or keys/secureboot/db.crt" >&2
+    exit 1
+  fi
 fi
 
 # --- working directory ---
@@ -173,12 +223,19 @@ enroll_keys() {
   # virt-fw-vars 25.12 wants an owner GUID with every entry; one fixed GUID is fine
   # for a throwaway test key (the GUID names the entry, it does not verify anything)
   GUID=11111111-2222-3333-4444-555555555555
+  # --rotate: step 1 of the rotation, the new db certificate beside the old one
+  DB_NEXT=""
+  if [ "$ROTATE" = 1 ]; then
+    DB_NEXT="--add-db $GUID $NEXT_KEYS/secureboot/db.crt"
+  fi
+  # shellcheck disable=SC2086
   virt-fw-vars \
     --input "$VARS" \
     --output "$VARS.new" \
     --set-pk "$GUID" "$DB_CERT" \
     --add-kek "$GUID" "$DB_CERT" \
     --add-db "$GUID" "$DB_CERT" \
+    $DB_NEXT \
     --secure-boot
   mv "$VARS.new" "$VARS"
   echo "Secure Boot keys enrolled"
@@ -232,11 +289,14 @@ setup_ssh_test() {
 
 # --- run QEMU ---
 start_qemu() {
-  qemu-img create -q -f qcow2 -b "$DISK" -F raw "$OVERLAY" 40G
+  # a later QEMU run (--rotate) boots the same overlay again
+  if [ ! -f "$OVERLAY" ]; then
+    qemu-img create -q -f qcow2 -b "$DISK" -F raw "$OVERLAY" 40G
+  fi
 
-  # the --tpm run reboots the guest in the same QEMU, so swtpm keeps its state
+  # the --tpm and --next runs reboot the guest in the same QEMU (swtpm keeps its state)
   NO_REBOOT=-no-reboot
-  if [ "$TPM" = 1 ]; then
+  if [ "$TPM" = 1 ] || [ -n "$NEXT" ]; then
     NO_REBOOT=""
   fi
 
@@ -447,6 +507,8 @@ test_ssh() {
   echo "=== bootctl list ==="
   guest bootctl list --no-pager 2>&1 || true
 
+  test_loader "first boot" 1
+
   if [ "$SECURE_BOOT" = 1 ]; then
     echo ""
     echo "=== secure boot state ==="
@@ -477,6 +539,281 @@ test_ssh() {
     verdict "hostkey-sealed-with-tpm2" $RC
   fi
   return 0
+}
+
+# --- the boot loader on the ESP (docs/design/bootloader.md) ---
+# The harness runs qemu-system-x86_64, so the names are x64's.
+USR_LOADER=/usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed
+ESP_PRIMARY=/boot/EFI/systemd/systemd-bootx64.efi
+ESP_REMOVABLE=/boot/EFI/BOOT/BOOTX64.EFI
+ESP_FALLBACK=/boot/EFI/systemd/systemd-boot-fallbackx64.efi
+
+# guest_hash FILE: the sha256 of a file in the guest, empty when it is missing
+guest_hash() {
+  guest "sha256sum < $1" 2>/dev/null | cut -c1-64
+}
+
+# shellcheck disable=SC2016 # $IMAGE_VERSION is the guest's
+guest_version() {
+  guest '. /usr/lib/os-release && echo "$IMAGE_VERSION"' 2>/dev/null
+}
+
+# test_loader LABEL COUNTED: on a counted boot (COUNTED=1) golconda-loader-update.service ran
+# after bless-boot, on a blessed one (0) it did not; the ESP's two copies of systemd-boot are
+# /usr's signed file, and the loader.conf in effect is /usr's
+test_loader() {
+  echo ""
+  echo "=== boot loader ($1) ==="
+  LU=""
+  if [ "$2" = 1 ]; then
+    # it runs after systemd-bless-boot.service, which waits for the health units (the network
+    # one waits up to 60 s)
+    LW=0
+    while [ "$LW" -lt 120 ] && qemu_running; do
+      LU=$(guest systemctl is-active golconda-loader-update.service 2>/dev/null) || true
+      [ "$LU" = active ] && break
+      LW=$((LW + 2))
+      sleep 2
+    done
+    guest journalctl -b -u golconda-loader-update.service -o cat --no-pager 2>&1 || true
+    RC=0; [ "$LU" = active ] || RC=1
+    verdict "loader-update-ran (golconda-loader-update.service after bless-boot: $LU)" $RC
+  else
+    LU=$(guest systemctl is-active golconda-loader-update.service 2>/dev/null) || true
+    RC=0; [ "$LU" != active ] || RC=1
+    verdict "loader-update-not-run (a blessed entry has no counter: $LU)" $RC
+  fi
+
+  USR=$(guest_hash "$USR_LOADER")
+  PRI=$(guest_hash "$ESP_PRIMARY")
+  REM=$(guest_hash "$ESP_REMOVABLE")
+  echo "$USR_LOADER: $USR"
+  echo "$ESP_PRIMARY: $PRI"
+  echo "$ESP_REMOVABLE: $REM"
+  RC=0
+  { [ -n "$USR" ] && [ "$USR" = "$PRI" ] && [ "$USR" = "$REM" ]; } || RC=1
+  verdict "loader-matches-usr (both ESP copies are the signed loader in /usr)" $RC
+
+  # bootctl reads loader.conf where systemd-boot does, at the ESP's root
+  CONF_LINE=$(guest bootctl status --no-pager 2>&1 | grep "config:") || true
+  echo "$CONF_LINE"
+  guest cat /boot/loader/loader.conf 2>&1 || true
+  RC=0
+  echo "$CONF_LINE" | grep -q "/loader/loader.conf$" || RC=1
+  [ "$(guest_hash /boot/loader/loader.conf)" = "$(guest_hash /usr/lib/golconda/loader.conf)" ] || RC=1
+  verdict "loader-conf-in-effect (ESP loader/loader.conf = /usr/lib/golconda/loader.conf)" $RC
+
+  CR=$(guest systemctl show -P ConditionResult systemd-boot-update.service 2>&1) || true
+  RC=0; [ "$CR" = no ] || RC=1
+  verdict "boot-update-off (systemd-boot-update.service ConditionResult=$CR)" $RC
+}
+
+# reboot_guest: reboot in the same QEMU and wait for a login with a new boot id
+reboot_guest() {
+  PREV_BOOT_ID=$BOOT_ID
+  guest systemctl reboot 2>&1 || true
+  if ! wait_for_ssh "$PREV_BOOT_ID"; then
+    verdict "ssh-after-reboot (no login before the timeout)" 1
+    return 1
+  fi
+}
+
+SCP_OPTS="-F /dev/null -q -o BatchMode=yes -o LogLevel=ERROR -P $SSH_PORT"
+
+# --- --next: install the next release, boot it, check its loader, then recovery ---
+test_next() {
+  echo ""
+  echo "=== update to the next release ==="
+  NEXT_NAME=$(basename "$(ls "$NEXT_RELEASE"/*.efi)" .efi)
+  NEXT_VERSION=${NEXT_NAME##*_}
+  IMAGE_ID=${NEXT_NAME%_*}
+  OLD_VERSION=$(guest_version)
+  OLD_LOADER=$(guest_hash "$ESP_REMOVABLE")
+  echo "running $OLD_VERSION, installing $NEXT_VERSION from $NEXT_RELEASE"
+  guest mkdir -p /var/tmp/next /run/sysupdate.d
+  for f in "$NEXT_RELEASE"/*; do
+    # shellcheck disable=SC2086
+    scp $SCP_OPTS $NO_HOSTKEY_CHECK -i "$WORKDIR/ssh/user" "$(real_path "$f")" \
+      "root@localhost:/var/tmp/next/$(basename "$f")"
+  done
+  # the image's own definitions, reading the copy instead of the update server: a file in
+  # /run/sysupdate.d hides the one of the same name in /usr/lib/sysupdate.d
+  for n in $(guest ls /usr/lib/sysupdate.d); do
+    guest cat "/usr/lib/sysupdate.d/$n" \
+      | sed 's|^Path=http.*|Path=/var/tmp/next|; s|^Type=url-file$|Type=regular-file|' \
+      | guest "cat > /run/sysupdate.d/$n"
+  done
+  RC=0
+  guest systemctl start --wait systemd-sysupdate-update.service || RC=1
+  guest journalctl -b -u systemd-sysupdate-update.service -o cat --no-pager 2>&1 \
+    | grep "Successfully installed" || true
+  verdict "sysupdate-installed ($NEXT_VERSION)" $RC
+  guest rm -rf /var/tmp/next /run/sysupdate.d
+
+  echo "Rebooting into $NEXT_VERSION..."
+  reboot_guest || return 1
+  V=$(guest_version)
+  RC=0; [ "$V" = "$NEXT_VERSION" ] || RC=1
+  verdict "boots-next ($OLD_VERSION -> $V)" $RC
+  test_loader "$NEXT_VERSION, its first good boot" 1
+  NEW_LOADER=$(guest_hash "$ESP_REMOVABLE")
+  if [ "$NEW_LOADER" != "$OLD_LOADER" ]; then
+    FB=$(guest_hash "$ESP_FALLBACK")
+    echo "$ESP_FALLBACK: $FB"
+    RC=0; [ "$FB" = "$OLD_LOADER" ] || RC=1
+    verdict "loader-replaced (the previous loader kept as $ESP_FALLBACK)" $RC
+  else
+    echo "INFO: $NEXT_VERSION carries the loader bytes of $OLD_VERSION; nothing replaced"
+  fi
+  if [ "$ROTATE" = 1 ]; then
+    RC=0; [ "$NEW_LOADER" != "$OLD_LOADER" ] || RC=1
+    verdict "loader-signed-again (a new db key gives new loader bytes)" $RC
+  fi
+
+  test_recovery
+}
+
+# --- the recovery paths of docs/design/bootloader.md, on a machine with two slots ---
+test_recovery() {
+  OLD_ENTRY=${IMAGE_ID}_${OLD_VERSION}.efi
+  NEXT_ENTRY=${IMAGE_ID}_${NEXT_VERSION}.efi
+
+  echo ""
+  echo "=== recovery: bootctl list ==="
+  L=$(guest bootctl list --no-pager 2>&1) || true
+  echo "$L" | grep -E " (title|id|source|tries):" || true
+  RC=0
+  { echo "$L" | grep -q "id: $OLD_ENTRY" && echo "$L" | grep -q "id: $NEXT_ENTRY"; } || RC=1
+  verdict "bootctl-list-both-slots" $RC
+
+  echo ""
+  echo "=== recovery: reinstall a damaged loader ==="
+  guest "echo damaged > $ESP_REMOVABLE && sync"
+  echo "$ESP_REMOVABLE damaged: $(guest_hash "$ESP_REMOVABLE")"
+  RC=0
+  guest /usr/lib/golconda/golconda-loader-update || RC=1
+  [ "$(guest_hash "$ESP_REMOVABLE")" = "$(guest_hash "$USR_LOADER")" ] || RC=1
+  verdict "loader-reinstall (golconda-loader-update by hand; the boots below start from it)" $RC
+
+  echo ""
+  echo "=== recovery: bootctl set-oneshot (the other slot, once) ==="
+  guest bootctl set-oneshot "$OLD_ENTRY"
+  reboot_guest || return 1
+  V=$(guest_version)
+  RC=0; [ "$V" = "$OLD_VERSION" ] || RC=1
+  verdict "set-oneshot-other-slot (running $V)" $RC
+  # a blessed entry has no counter: bless-boot does not run, so golconda-loader-update does not
+  # either, and the ESP keeps the newer release's loader
+  LU=$(guest systemctl is-active golconda-loader-update.service 2>/dev/null) || true
+  RC=0
+  { [ "$LU" != active ] && [ "$(guest_hash "$ESP_REMOVABLE")" = "$NEW_LOADER" ]; } || RC=1
+  verdict "other-slot-keeps-loader (golconda-loader-update.service: $LU)" $RC
+  reboot_guest || return 1
+  V=$(guest_version)
+  RC=0; [ "$V" = "$NEXT_VERSION" ] || RC=1
+  verdict "oneshot-is-once (running $V)" $RC
+
+  echo ""
+  echo "=== recovery: bootctl set-default (the other slot, until cleared) ==="
+  guest bootctl set-default "$OLD_ENTRY"
+  reboot_guest || return 1
+  V=$(guest_version)
+  RC=0; [ "$V" = "$OLD_VERSION" ] || RC=1
+  verdict "set-default-other-slot (running $V)" $RC
+  # ssh joins its arguments into one command line: the empty argument must be quoted there
+  guest "bootctl set-default ''"
+  reboot_guest || return 1
+  V=$(guest_version)
+  RC=0; [ "$V" = "$NEXT_VERSION" ] || RC=1
+  verdict "set-default-cleared (running $V)" $RC
+
+  echo ""
+  echo "=== recovery: the firmware menu ==="
+  FW_MARK=$(wc -c < "$SERIAL_LOG")
+  guest bootctl reboot-to-firmware true 2>&1 || true
+  guest bootctl reboot-to-firmware 2>&1 || true
+  guest systemctl reboot 2>&1 || true
+  FW=1
+  FW_WAIT=0
+  while [ "$FW_WAIT" -lt 45 ] && qemu_running; do
+    if tail -c +"$((FW_MARK + 1))" "$SERIAL_LOG" | grep -aq "EFI Firmware Setup"; then
+      FW=0
+      break
+    fi
+    FW_WAIT=$((FW_WAIT + 1))
+    sleep 1
+  done
+  # OVMF draws its menu with cursor moves; the item texts are plain runs
+  tail -c +"$((FW_MARK + 1))" "$SERIAL_LOG" \
+    | grep -ao "Please select boot device:\|EFI Firmware Setup\|UEFI [A-Za-z0-9 ]*Device" | sort -u || true
+  verdict "reboot-to-firmware (OVMF's boot menu on the serial console)" $FW
+}
+
+# db_certs LOG: the db certificates the kernel loaded, "<CN>: <key id>", one per line
+db_certs() {
+  tr -d '\033' < "$1" | grep -a "integrity: Loaded X.509 cert" \
+    | sed "s/.*Loaded X.509 cert '\(.*\)'.*/\1/" | tr ' ' '_' | sort -u
+}
+
+# --- --rotate: db holds the new key only, dbx the old; boot the new chain, refuse the old ---
+test_rotate() {
+  echo ""
+  echo "=== key rotation: db = the new certificate, dbx += the old one ==="
+  stop_qemu
+  virt-fw-vars --input "$VARS" --output "$VARS.new" \
+    --delete db --add-db "$GUID" "$NEXT_KEYS/secureboot/db.crt" \
+    --add-dbx-cert "$GUID" "$KEYS_DIR/secureboot/db.crt" 2>&1 | grep -v "^INFO: \\(reading\\|var store\\|writing\\)" || true
+  mv "$VARS.new" "$VARS"
+
+  SERIAL_LOG=$WORKDIR/serial-rotated.log
+  SAVED_TIMEOUT=$TIMEOUT
+  TIMEOUT=240
+  start_qemu
+  TIMEOUT=$SAVED_TIMEOUT
+  if ! wait_for_ssh ""; then
+    verdict "boots-after-rotation (no login before the timeout)" 1
+    return 1
+  fi
+  V=$(guest_version)
+  RC=0; [ "$V" = "$NEXT_VERSION" ] || RC=1
+  verdict "boots-after-rotation (running $V)" $RC
+  SB=$(guest bootctl status 2>&1 | grep "Secure Boot:") || true
+  echo "$SB"
+  RC=0; echo "$SB" | grep -q "enabled" || RC=1
+  verdict "secure-boot-enabled-after-rotation" $RC
+  # the kernel loads db into its .platform keyring, which the verity signature is checked
+  # against, and logs each certificate
+  BEFORE=$(db_certs "$FIRST_SERIAL_LOG")
+  AFTER=$(db_certs "$SERIAL_LOG")
+  echo "db certificates the kernel loaded before the rotation:"
+  echo "$BEFORE"
+  echo "after:"
+  echo "$AFTER"
+  RC=0
+  [ -n "$AFTER" ] || RC=1
+  [ "$(echo "$AFTER" | wc -l)" -lt "$(echo "$BEFORE" | wc -l)" ] || RC=1
+  for c in $AFTER; do echo "$BEFORE" | grep -qxF "$c" || RC=1; done
+  verdict "kernel-db-rotated (the kernel keeps the new certificate only)" $RC
+  test_loader "after the rotation" 0
+  FAILED=$(guest systemctl --failed --no-pager 2>&1) || true
+  echo "$FAILED"
+  RC=0; echo "$FAILED" | grep -q "^0 loaded units listed" || RC=1
+  verdict "no-failed-units-after-rotation" $RC
+  stop_qemu
+
+  echo ""
+  echo "=== negative control: the original disk under the rotated keys ==="
+  OVERLAY=$WORKDIR/disk-original.qcow2
+  SERIAL_LOG=$WORKDIR/serial-original.log
+  TIMEOUT=45
+  start_qemu
+  TIMEOUT=$SAVED_TIMEOUT
+  wait "$QEMU_PID" 2>/dev/null || true
+  tr -d '\033' < "$SERIAL_LOG" | grep -a "Access Denied\|Linux version" | sort -u || true
+  RC=0
+  tr -d '\033' < "$SERIAL_LOG" | grep -aq "Access Denied" || RC=1
+  ! grep -aq "Linux version" "$SERIAL_LOG" || RC=1
+  verdict "old-loader-refused (dbx holds the old db certificate; no kernel started)" $RC
 }
 
 # --- second boot, TPM: the host key is unsealed, not regenerated ---
@@ -534,6 +871,7 @@ main() {
   fi
 
   start_qemu
+  FIRST_SERIAL_LOG=$SERIAL_LOG
   wait_for_boot || true
 
   RESULT=0
@@ -544,10 +882,18 @@ main() {
     if [ "$TPM" = 1 ] && [ "$RESULT" = 0 ]; then
       test_reboot || RESULT=1
     fi
+    if [ -n "$NEXT" ] && [ "$RESULT" = 0 ]; then
+      test_next || RESULT=1
+    fi
+    if [ "$ROTATE" = 1 ] && [ "$RESULT" = 0 ]; then
+      test_rotate || RESULT=1
+    fi
     SSH_PASS=$PASS
     SSH_FAIL=$FAIL
   fi
   stop_qemu
+  # the markers are the first QEMU run's
+  SERIAL_LOG=$FIRST_SERIAL_LOG
 
   echo ""
   echo "=== Serial log (last 100 lines) ==="

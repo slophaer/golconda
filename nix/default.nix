@@ -165,6 +165,14 @@ in
           authorizedKeys = [ (builtins.readFile ../tests/fixtures/snakeoil-ssh.pub) ];
         };
       };
+
+      # The key rotation test's new db key: a second throwaway set
+      # (docs/design/bootloader.md)
+      rotatedKeys = imageLib.throwawayKeys {
+        inherit pkgs;
+        buildSystem = system;
+        variant = "rotated";
+      };
     in
     {
       # the patched Nix daemon repkgs needs (CA + dynamic derivations); builders run it
@@ -188,6 +196,17 @@ in
         (imageChain {
           config = testConfig "20261031.1";
           sbKeys = throwawayKeys;
+        }).smoke;
+
+      # The next release of the test image, signed with a new db key: the loader, the UKI and
+      # the verity root hash take rotatedKeys; the PCR policy key stays, so a credential sealed
+      # by 20261031.1 still unseals. scripts/boot-test --next <this> --rotate installs it and
+      # rotates the firmware's db (docs/design/bootloader.md).
+      image-smoke-test-rotated =
+        (imageChain {
+          config = testConfig "20261031.2";
+          sbKeys = rotatedKeys;
+          pcrKeys = throwawayKeys;
         }).smoke;
 
       # Smoke test for the /usr tree builder: base system + jq via mkSystem.
