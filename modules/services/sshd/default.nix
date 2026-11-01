@@ -8,7 +8,7 @@
 #! unless `sshd.service` is active, so a candidate without a reachable sshd is
 #! not blessed. Only credentials go on the command line; every fixed path
 #! (`TrustedUserCAKeys`, `AuthorizedPrincipalsFile`) is a line in `sshd_config`. `/etc/pam.d/sshd` is in `/factory`, because `/etc` content
-#! lives there: add `/factory` once.
+#! lives there; `mkSystem` adds `/vars` and `/factory`.
 #!
 #! Authentication is by public key or OpenSSH certificate only. The lines
 #! that turn off every password path are fixed in the generated `sshd_config`;
