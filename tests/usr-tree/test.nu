@@ -1,8 +1,8 @@
 # Tests for the /usr tree builder's link-target conversion. They call the
 # function the builder uses (main.nu), not a copy of it.
 #
-# Run from the repo root:
-#   nu --no-config-file --include-path lib/usr-tree lib/usr-tree/test.nu
+# Run from the repo root (checks.usr-tree-test runs it so):
+#   nu --no-config-file --include-path lib/usr-tree tests/usr-tree/test.nu
 use main.nu make-relative
 
 def check [name: string, got: string, want: string] {

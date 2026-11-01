@@ -39,7 +39,8 @@ let
   merge = import ../modules/lib/merge.nix;
   versionLib = import ./version.nix { };
 
-  # The builder scripts (nu modules) are stored here
+  # The builder scripts (nu modules). Their test is tests/usr-tree/test.nu, outside this
+  # directory, so a change to the test does not change the /usr tree.
   builderTree = builtins.path {
     path = ./usr-tree;
     name = "usr-tree-builder";
