@@ -109,7 +109,7 @@ flowchart LR
 ```
 
 The image ships one CA file: cacert's Mozilla bundle, linked into `/usr` as
-`/usr/share/ca-certificates/ca-bundle.crt` (`caBundleLinks` in `modules/base/default.nix`). Two
+`/usr/share/ca-certificates/ca-bundle.crt` (`caBundleLinks` in `modules/base/parts/links.nix`). Two
 tmpfiles lines make the paths the image's TLS clients read by default: `L /etc/ssl/cert.pem`, which
 OpenSSL reads because `openssl version -d` says `OPENSSLDIR=/etc/ssl`, and
 `L /etc/ssl/certs/ca-certificates.crt`, which libcurl reads because it is built with
