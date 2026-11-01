@@ -283,6 +283,7 @@ in
 {
   inherit
     duplicateError
+    labelFragments
     pkgKey
     ;
 

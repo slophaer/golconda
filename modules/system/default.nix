@@ -65,10 +65,7 @@ let
         }
       ];
   inherit (builtins)
-    elemAt
-    genList
     isString
-    length
     match
     ;
   fragmentT = (import ../lib/fragment.nix { inherit types; }).fragment;
@@ -145,10 +142,7 @@ in
           fragment = results.security;
         }
       ]
-      ++ genList (i: {
-        origin = (elemAt options.fragments i).name or "fragments[${toString i}]";
-        fragment = elemAt options.fragments i;
-      }) (length options.fragments)
+      ++ merge.labelFragments options.fragments
       ++ map (fragment: {
         origin = "/system";
         inherit fragment;
