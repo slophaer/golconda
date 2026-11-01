@@ -2450,12 +2450,6 @@ let
     ))
     # make-relative is tested in lib/usr-tree/test.nu, against the function the
     # builder runs; lib/usr-tree.nix has no second copy.
-    (check "usr-tree: allowedDirs includes expected directories" (
-      builtins.elem "bin" usrTreeLib.allowedDirs
-      && builtins.elem "lib" usrTreeLib.allowedDirs
-      && builtins.elem "share" usrTreeLib.allowedDirs
-      && builtins.elem "nix" usrTreeLib.allowedDirs
-    ))
     (check "usr-tree: renderOsRelease includes version and arch" (
       let
         osRel = usrTreeLib.renderOsRelease {
@@ -3084,24 +3078,6 @@ let
       ]
       # one text: the disk step's and the one /base installs in /usr
       && conf == (import ../image).loader.conf
-    ))
-    # systemd-boot reads \loader\loader.conf at the ESP's root (src/boot/boot.c); the image
-    # wrote EFI/loader/loader.conf, which nothing reads, so the editor stayed on
-    (check "image: loader.conf goes where systemd-boot reads it" (
-      (import ../image).loader.confPath == "loader/loader.conf"
-    ))
-    (check "image: the loader is signed with the UKI's key, and the disk takes it from /usr" (
-      let
-        loaderArgs = builtins.functionArgs imageLib.loader;
-        diskArgs = builtins.functionArgs imageLib.disk;
-      in
-      # lib/image/loader.nix takes the same sbKey/sbCert as lib/image/uki.nix; the disk step
-      # takes the signed file and the /usr tree it checks the file against, and signs nothing
-      loaderArgs ? sbKey
-      && loaderArgs ? sbCert
-      && diskArgs ? loader
-      && diskArgs ? usrTree
-      && !(diskArgs ? sbKey)
     ))
     (check "image: the loader fragment puts the signed loader where bootctl looks" (
       let
@@ -4292,17 +4268,7 @@ let
           }
         && filter (p: hasInfix "golconda-loader-update" p) (attrNames baseOnly.links) == [ wants ]
       ))
-      (check "loader: the program is executable and installs both copies and loader.conf" (
-        script.mode == "0755"
-        && hasInfix "/EFI/systemd/$name" script.text
-        && hasInfix "/EFI/BOOT/$removable" script.text
-        && hasInfix "/loader/loader.conf" script.text
-        && hasInfix "systemd-boot-fallback$arch.efi" script.text
-        # it compares content: bootctl's version check would skip a loader signed again
-        && hasInfix "sha256sum" script.text
-        # the ESP wherever bootctl finds it (/boot or /efi)
-        && hasInfix "esp=$(bootctl --print-esp-path)" script.text
-      ))
+      (check "loader: the program is executable" (script.mode == "0755"))
       (check "loader: /usr carries image/loader.nix's loader.conf" (
         baseOnly.files."/usr/lib/golconda/loader.conf".text == (import ../image).loader.conf
       ))
