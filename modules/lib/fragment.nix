@@ -84,6 +84,17 @@ let
       null
   );
 
+  # A target name, a unit name with the .target suffix: what systemd accepts for WantedBy= / RequiredBy=.
+  targetName = typedef' "targetName" (
+    v:
+    if !isString v then
+      "Expected a string"
+    else if match "[A-Za-z0-9:_.\\-]+\\.target" v == null then
+      "'${v}' is not a valid target name (must end with .target)"
+    else
+      null
+  );
+
   # Unit file text: at least one section header line, [Unit], [Service], ...
   unitText = typedef' "unitText" (
     v:
@@ -207,6 +218,7 @@ in
     link
     linkKind
     links
+    targetName
     unitName
     unitSuffixes
     unitText

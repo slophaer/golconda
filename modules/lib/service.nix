@@ -13,7 +13,7 @@
 let
   appLib = import ./app.nix { inherit types; };
   inherit (import ./var.nix { inherit types; }) word;
-  inherit (import ./fragment.nix { inherit types; }) unitName;
+  inherit (import ./fragment.nix { inherit types; }) targetName unitName;
   path = import ./path.nix;
   inherit (appLib)
     app
@@ -124,17 +124,6 @@ let
   # a .. cannot add a second directory or leave /var/lib.
   stateDirectory = typedef' "stateDirectory" (
     v: if !isString v then "Expected a string" else path.componentError v
-  );
-
-  # A target name: what systemd accepts for WantedBy= / RequiredBy=.
-  targetName = typedef' "targetName" (
-    v:
-    if !isString v then
-      "Expected a string"
-    else if match "[A-Za-z0-9:_.\\-]+\\.target" v == null then
-      "'${v}' is not a valid target name (must end with .target)"
-    else
-      null
   );
 
   # How the unit's processes are killed on stop (KillMode=). `process` is for

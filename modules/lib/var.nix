@@ -31,6 +31,7 @@
 # list them. The runner needs /bin/sh, coreutils and systemd-creds in the image.
 { types }:
 let
+  inherit (import ./fragment.nix { inherit types; }) targetName;
   inherit (types)
     derivation
     listOf
@@ -53,17 +54,6 @@ let
       "Expected a string"
     else if match "[A-Za-z0-9_.-]+" v == null then
       "'${v}' must be one path component of letters, digits, _ . -"
-    else
-      null
-  );
-
-  # A target name: what systemd accepts for WantedBy= / RequiredBy=.
-  targetName = typedef' "targetName" (
-    v:
-    if !isString v then
-      "Expected a string"
-    else if match "[A-Za-z0-9:_.\\-]+\\.target" v == null then
-      "'${v}' is not a valid target name (must end with .target)"
     else
       null
   );
