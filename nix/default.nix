@@ -172,6 +172,7 @@ in
   packages =
     {
       pkgs,
+      set,
       system,
       ...
     }:
@@ -223,6 +224,10 @@ in
       # the kernel: the repkgs fork's linux-kernel (a small bootable base) with Golconda's kconfig
       # fragment, which the override in nix/packages.nix applies to every `pkgs.linux-kernel`
       kernel = pkgs.linux-kernel;
+    }
+    # tests-<name>: a package's own test from tests/packages/ (they moved with the packages)
+    // import ../tests/packages { inherit sources set; }
+    // {
 
       # The image chain (lib/image) over the /base system: erofs, verity, initrd, UKI, disk, and
       # the proofs in proof.txt. Keys are throwaways made in the store; a release signs with the
