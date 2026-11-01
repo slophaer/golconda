@@ -33,7 +33,7 @@ schema is the flake one, produced by flake-incompat.
 
 Pinned in `npins/sources.json`, read by `nix/sources.nix`:
 
-- `repkgs`: the package set (Golconda's fork, branch `reloc-boot`, the one the pin follows)
+- `repkgs`: the package set (Golconda's fork, branch `golconda`, the one the pin follows)
 - `adios`: the module system (korora types vendored inside)
 - `flake-incompat`: the output schema
 - `iets`: the evaluator and linter
