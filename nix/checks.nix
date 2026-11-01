@@ -109,6 +109,13 @@ in
     touch $out
   '';
 
+  # the /etc/systemd/system link generator: first-boot links with an old store path
+  # become the stable /usr/lib/systemd/system/<unit> path, and other shapes stay
+  etc-systemd-links = pkgs.runCommand "check-etc-systemd-links" { } ''
+    sh ${src}/tests/etc-systemd-links.sh ${src}/scripts/golconda-etc-links
+    touch $out
+  '';
+
   # schema export produces valid JSON; evaluated at check eval time, not build time,
   # because the sandbox cannot fetch the sources. The schema JSON is written to $out.
   schema =
