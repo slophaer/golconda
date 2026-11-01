@@ -1,11 +1,11 @@
 # Markdown reference pages from the JSON Schema that lib/schema.nix exports,
-# plus module doc comments, types documentation, and SUMMARY.md generation.
+# plus module doc comments, types documentation, and the module list for SUMMARY.md.
 #
 # `toMarkdown { schema; modulePaths; docComments; typeRegistry; }` returns
 #   pages      module path ("/services/sshd") -> Markdown
 #   index      Markdown listing every module
 #   types      Markdown for the types page
-#   summary    generated SUMMARY.md content
+#   summary    the module-pages lines of docs/SUMMARY.md (the rest is committed)
 #   files      file name ("services-sshd.md", "index.md", "types.md") -> Markdown
 #   fileName   module path -> file name
 #
@@ -243,46 +243,10 @@ let
     ''
     + join "\n" (map typeSection typeNames);
 
-  # The fixed part of SUMMARY.md (hand-written content)
-  summaryPrefix = ''
-    # Summary
-
-    [Golconda](index.md)
-
-    # Design
-
-    - [Principles](design/principles.md)
-    - [Scope](design/scope.md)
-    - [Architecture](design/architecture.md)
-    - [Layout](design/layout.md)
-    - [Boot](design/boot.md)
-    - [Boot loader](design/bootloader.md)
-    - [Updates](design/updates.md)
-    - [Recovery](design/recovery.md)
-    - [Trust](design/trust.md)
-    - [Kernel](design/kernel.md)
-    - [Modules](design/modules.md)
-    - [Configuration](design/config.md)
-    - [Packaging](design/packaging.md)
-    - [Comparison](design/comparison.md)
-
-    # Reference
-
-    - [Walkthrough](reference/walkthrough.md)
-    - [Partitions and paths](reference/layout.md)
-    - [Image artifacts](reference/image.md)
-    - [Modules](reference/modules/README.md)
-  '';
-
-  summarySuffix = ''
-    - [Configuration](reference/config.md)
-    - [Commands](reference/cli.md)
-    - [Build host](reference/build-host.md)
-    - [Outputs and inputs](reference/outputs.md)
-    - [Glossary](reference/glossary.md)
-  '';
-
-  # Generate SUMMARY.md
+  # The module-pages lines of docs/SUMMARY.md: one entry per module, nested by depth,
+  # then the types page. The rest of SUMMARY.md is hand-written and committed; the docs
+  # check in nix/checks.nix fails when these lines and the file disagree, and
+  # `scripts/docs` prints the lines to paste.
   generateSummary =
     modulePaths:
     let
@@ -306,11 +270,7 @@ let
         "${indent (d + 1)}- [\`${path}\`](reference/modules/generated/${fileName path})";
       moduleEntries = join "\n" (map moduleEntry sortedPaths);
     in
-    summaryPrefix
-    + moduleEntries
-    + "\n"
-    + "${indent 1}- [Types](reference/modules/generated/types.md)\n"
-    + summarySuffix;
+    moduleEntries + "\n" + "${indent 1}- [Types](reference/modules/generated/types.md)\n";
 
   # The main export function.
   toMarkdown =

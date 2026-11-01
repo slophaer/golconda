@@ -22,7 +22,6 @@ let
           ".direnv"
           "book"
           "generated"
-          "SUMMARY.md"
         ];
       in
       !(builtins.elem b ignored) && !(pkgs.lib.hasPrefix "result" b);
@@ -50,7 +49,7 @@ let
       }) md.files
     );
 
-  # Generated SUMMARY.md
+  # The module-pages lines that docs/SUMMARY.md must contain
   generatedSummary =
     let
       adiosPin = import sources.adios;
@@ -66,7 +65,7 @@ let
         tree = tree { };
       };
     in
-    pkgs.writeText "SUMMARY.md" md.summary;
+    pkgs.writeText "summary-modules.md" md.summary;
 in
 {
   # formatting and Nix lints, as treefmt sees them
@@ -91,8 +90,14 @@ in
         # the reference pages that are generated, not committed
         mkdir -p reference/modules/generated
         cp -L ${moduleDocs}/*.md reference/modules/generated/
-        # SUMMARY.md is generated, not committed
-        cp ${generatedSummary} SUMMARY.md
+        # SUMMARY.md is committed except that its module list must match the modules
+        grep 'reference/modules/generated/' SUMMARY.md > have.txt || true
+        if ! diff -u have.txt ${generatedSummary}; then
+          echo "docs/SUMMARY.md: the module list is out of date; replace the lines that link" >&2
+          echo "reference/modules/generated/ with the lines marked + (run scripts/docs to see them)" >&2
+          exit 1
+        fi
+        rm have.txt
         mdbook build -d $out
       '';
 
