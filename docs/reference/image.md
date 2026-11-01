@@ -103,7 +103,8 @@ writes `proof.txt` (sizes, `veritysetup verify`, the cpio listing, `ukify inspec
 | verity | `verity { erofs; key; cert; … }`          | `<id>_<version>.usr-verity.raw`, `roothash`, `<id>_<version>.usr-verity-sig.raw`                                                                |
 | initrd | `initrdTree { … }`, `initrd { usrTree; }` | `initrd.cpio.zst`, `rdinit` ([Boot: the initrd](../design/boot.md#the-initrd))                                                                  |
 | uki    | `uki { initrd; verity; usrTree; keys… }`  | `<id>_<version>+3-0.efi` (`ukiName`), `cmdline`                                                                                                 |
-| disk   | `disk { erofs; verity; uki; keys… }`      | `disk.raw` (sparse, fully allotted: ESP with the signed loader and `loader.conf`, A and B slots, no room for `root`), `disk.json`, `release/`   |
+| loader | `loader { keys… }`, `loaderFragment`      | `systemd-boot<arch>.efi.signed`, and the fragment that puts it in `/usr` ([Boot loader](../design/bootloader.md))                               |
+| disk   | `disk { erofs; verity; uki; loader; … }`  | `disk.raw` (sparse, fully allotted: ESP with the signed loader and `loader.conf`, A and B slots, no room for `root`), `disk.json`, `release/`   |
 
 The verity step: `veritysetup format` with a salt and superblock UUID from the version; the
 signature is `openssl smime -sign -nocerts -noattr -binary` over the hex root hash, as
@@ -114,19 +115,21 @@ the kernel package, `--os-release` from the tree, `--uname`, `--phases` from `im
 Boot signing by `systemd-sbsign` and the PCR 11 policy by `systemd-measure`. The disk step runs
 `systemd-repart --empty=create --size=auto --offline=yes --seed=<from the version>` over
 `image/repart.nix` rendered to `.conf` files (`repartDefinitions`, `modules/lib/ini.nix`) with the
-builder's fields added: the ESP's `CopyFiles=` (systemd-boot as `EFI/BOOT/BOOT<ARCH>.EFI`, the UKI
-in `EFI/Linux/`), slot A's labels (`slotLabel`), `CopyBlocks=` and the two UUIDs systemd derives
-from the root hash (usr: its first 128 bits, verity: its last). Before repart copies the ESP tree,
-`systemd-sbsign` signs systemd-boot with the same db key and certificate as the UKI, and
-`EFI/loader/loader.conf` is written from `lib/image/disk.nix`'s `loaderConf` (`timeout 0`,
-`editor no`). The B slots are empty, root is made on the machine (`/usr/lib/repart.d/30-root.conf`,
-written by `/base`). `release/` holds symlinks to the step outputs under their release names (the
-UKI as `<id>_<version>.efi`) and `SHA256SUMS`: a directory an HTTP server can publish as the update
-source. `SHA256SUMS` has four lines in a fixed order (usr, verity, signature, UKI) and names the
-release files exactly; it does not list itself. The files in `release/` are store paths: Nix sets
-their mtimes to 1, so a file mtime is not the release date. The version epoch lives in the `/usr`
-erofs image (and in `disk.raw`'s internal files), not in the release directory's metadata. The ESP
-is filled offline with mtools (`packages/mtools`). Keys are paths: the smoke makes throwaway ones in
+builder's fields added: the ESP's `CopyFiles=` (systemd-boot as `EFI/systemd/systemd-boot<arch>.efi`
+and `EFI/BOOT/BOOT<ARCH>.EFI`, the UKI in `EFI/Linux/`), slot A's labels (`slotLabel`),
+`CopyBlocks=` and the two UUIDs systemd derives from the root hash (usr: its first 128 bits, verity:
+its last). The loader is the loader step's output: `systemd-sbsign` signs systemd-boot with the same
+db key and certificate as the UKI, and the `/usr` tree carries the same file (`loaderFragment`); the
+disk step fails unless the two are equal. `loader/loader.conf` is written from `image/loader.nix`
+(`timeout 0`, `editor no`), the text `/base` installs as `/usr/lib/golconda/loader.conf`. The B
+slots are empty, root is made on the machine (`/usr/lib/repart.d/30-root.conf`, written by `/base`).
+`release/` holds symlinks to the step outputs under their release names (the UKI as
+`<id>_<version>.efi`) and `SHA256SUMS`: a directory an HTTP server can publish as the update source.
+`SHA256SUMS` has four lines in a fixed order (usr, verity, signature, UKI) and names the release
+files exactly; it does not list itself. The files in `release/` are store paths: Nix sets their
+mtimes to 1, so a file mtime is not the release date. The version epoch lives in the `/usr` erofs
+image (and in `disk.raw`'s internal files), not in the release directory's metadata. The ESP is
+filled offline with mtools (`packages/mtools`). Keys are paths: the smoke makes throwaway ones in
 the store (`throwawayKeys`); a release signs with the deployment's keys (`image/default.nix`
 `keys`), which never enter the store. Not yet: the verity certificate in the kernel keyring, a TPM.
 
