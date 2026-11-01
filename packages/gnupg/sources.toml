@@ -1,0 +1,10 @@
+[upstream]
+purl = 'pkg:generic/gnupg?url=https://gnupg.org/ftp/gcrypt/gnupg/&regex=gnupg-(2\.4\.[0-9]+)\.tar\.bz2'
+
+[[source]]
+key = "default"
+url = "https://gnupg.org/ftp/gcrypt/gnupg/gnupg-{version}.tar.bz2"
+hash = "sha256-QG8FecfRvyxrp7cDeS+xu/xp1JZ4sN68PoWzDBY4S5U="
+
+[pin]
+version = "2.4.9"
