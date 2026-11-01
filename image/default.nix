@@ -19,16 +19,11 @@
   # systemd-boot: loader.conf and its place on the ESP
   loader = import ./loader.nix;
 
-  # erofs configuration
-  erofs = import ./erofs.nix;
-
-  # os-release template
-  osRelease = import ./os-release.nix;
+  # erofs.nix and os-release.nix are imported directly (lib/image/erofs.nix, lib/usr-tree.nix).
+  # The key layout is in nix/default.nix, next to the chain that reads it (lib.mkImage).
 
   # Boot counting and blessing (one source: image/boot-counting.nix)
   bootCounting = import ./boot-counting.nix;
   # UKI naming: <imageId>_<version>+<triesLeft>-<triesDone>.efi
   # After blessing: <imageId>_<version>.efi (no counter suffix)
-
-  # The key layout is in nix/default.nix, next to the chain that reads it (lib.mkImage).
 }
