@@ -3839,8 +3839,57 @@ let
         && !(hasInfix "WantedBy=" system.units."golconda-health-sshd.service")
       ))
       (check "boot health: a configuration without /services/sshd still gates the network" (
-        attrNames baseOnly.units == [ "golconda-health-network.service" ]
+        attrNames baseOnly.units == [
+          "golconda-health-network.service"
+          "golconda-loader-update.service"
+        ]
         && linksNaming baseOnly "golconda-health-sshd" == [ ]
+      ))
+    ]
+  )
+  # finding 26: the ESP's loader follows /usr. golconda-loader-update.service is wanted by
+  # systemd-bless-boot.service and Requisite= it, so it runs only on a counted boot that
+  # passed the health gate; it is the one writer of the loader (systemd-boot-update.service is
+  # off); its loader.conf is image/loader.nix's (docs/design/bootloader.md).
+  ++ (
+    let
+      baseOnly = compose [ ];
+      u = baseOnly.units."golconda-loader-update.service";
+      wants = "/usr/lib/systemd/system/systemd-bless-boot.service.wants/golconda-loader-update.service";
+      script = baseOnly.files."/usr/lib/golconda/golconda-loader-update";
+      dropIn = baseOnly.files."/usr/lib/systemd/system/systemd-boot-update.service.d/golconda.conf";
+    in
+    [
+      (check "loader: the update runs after a good counted boot and never without one" (
+        hasInfix "\nAfter=systemd-bless-boot.service\n" u
+        && hasInfix "\nRequisite=systemd-bless-boot.service\n" u
+        && hasInfix "\nExecStart=/usr/lib/golconda/golconda-loader-update\n" u
+        && hasInfix "\nConditionPathExistsGlob=/usr/lib/systemd/boot/efi/systemd-boot*.efi.signed\n" u
+        # pulled in by bless-boot alone: no WantedBy= and no other link names it
+        && !(hasInfix "WantedBy=" u)
+        &&
+          baseOnly.links.${wants} == {
+            target = "../golconda-loader-update.service";
+            kind = "explicit";
+          }
+        && filter (p: hasInfix "golconda-loader-update" p) (attrNames baseOnly.links) == [ wants ]
+      ))
+      (check "loader: the program is executable and installs both copies and loader.conf" (
+        script.mode == "0755"
+        && hasInfix "/EFI/systemd/$name" script.text
+        && hasInfix "/EFI/BOOT/$removable" script.text
+        && hasInfix "/loader/loader.conf" script.text
+        && hasInfix "systemd-boot-fallback$arch.efi" script.text
+        # it compares content: bootctl's version check would skip a loader signed again
+        && hasInfix "sha256sum" script.text
+        # the ESP wherever bootctl finds it (/boot or /efi)
+        && hasInfix "esp=$(bootctl --print-esp-path)" script.text
+      ))
+      (check "loader: /usr carries image/loader.nix's loader.conf" (
+        baseOnly.files."/usr/lib/golconda/loader.conf".text == (import ../image).loader.conf
+      ))
+      (check "loader: systemd-boot-update.service stays off" (
+        hasInfix "\nConditionPathExists=!/usr/lib/golconda/golconda-loader-update\n" dropIn.text
       ))
     ]
   );
@@ -3850,6 +3899,7 @@ assert
   attrNames system.units == [
     "golconda-health-network.service"
     "golconda-health-sshd.service"
+    "golconda-loader-update.service"
     "golconda-var-sshd-hostkey.service"
     "sshd.service"
   ];

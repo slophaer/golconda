@@ -6,11 +6,12 @@
 #
 # loaderFragment { loader; platform; } → a /system fragment that puts the signed loader in /usr at
 #   /usr/lib/systemd/boot/efi/systemd-boot<uefi>.efi.signed, the name bootctl prefers to the
-#   unsigned file beside it. Give it to mkSystem as extra."/system".fragments.
+#   unsigned file beside it and the file golconda-loader-update copies to the ESP
+#   (modules/base). Give it to mkSystem as extra."/system".fragments.
 #
 # One signature, two places: the disk step (lib/image/disk.nix) puts the same file on the ESP and
 # fails unless the /usr tree carries the same bytes. A release therefore ships its loader inside
-# the signed, verity-checked /usr.
+# the signed, verity-checked /usr, and the machine installs it from there (docs/design/bootloader.md).
 _:
 let
   common = import ./common.nix { };
