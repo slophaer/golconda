@@ -30,23 +30,23 @@ scope is not forgotten, it is refused ([Principles](principles.md)).
 
 ## After v1
 
-| need                  | direction                                                                                        |
-| --------------------- | ------------------------------------------------------------------------------------------------ |
-| remote logging        | `systemd-journal-upload` over TLS to a collector; journal FSS for tamper evidence                |
-| firewall              | nftables (the kernel has it); `RestrictAddressFamilies=` in the sandbox tiers is not a firewall  |
-| monitoring, metrics   | journal only in v1; an exporter is a service module later                                        |
-| backup                | the administrator's; the OS gives one state partition and `/var/lib/<service>` per service       |
-| swap, zram            | none in v1                                                                                       |
-| secrets rotation tool | the deploy tool that pushes and seals admin vars; the on-machine side exists                     |
-| encrypted state       | LUKS2 bound to the TPM (PCR 11 policy); the partition definition is ready for `Encrypt=tpm2`     |
-| rollback protection   | pcrlock, policyref, key rotation; see [Trust](trust.md#rollback-weakness)                        |
-| update verification   | a signed `SHA256SUMS` manifest for sysupdate (`Verify=no` in v1)                                 |
-| root-less operators   | operators as userdb records, ssh principal → user, `run0` gated by polkit on a few action ids    |
-| workload identity     | one CA for SSH and X.509 with TPM device attestation; a renewal unit feeding systemd credentials |
-| execution policy      | the BPF LSM for `RestrictFileSystems=`, AppArmor profiles from the typed service                 |
-| debug access          | a debug image or a sysext with tools and a getty; never in the production image                  |
-| hardware              | firmware and kernel modules only when a target needs them (monolithic kernel in v1)              |
-| aarch64 images        | the cross-compiled `/usr` tree builds; the bootable image follows the x86_64 one                 |
+| need                  | direction                                                                                                                                                                                                        |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| remote logging        | `systemd-journal-upload` over TLS to a collector; journal FSS for tamper evidence                                                                                                                                |
+| firewall              | nftables (the kernel has it); `RestrictAddressFamilies=` in the sandbox tiers is not a firewall                                                                                                                  |
+| monitoring, metrics   | journal only in v1; an exporter is a service module later                                                                                                                                                        |
+| backup                | the administrator's; the OS gives one state partition and `/var/lib/<service>` per service                                                                                                                       |
+| swap, zram            | none in v1                                                                                                                                                                                                       |
+| secrets rotation tool | the deploy tool that pushes and seals admin vars; the on-machine side exists                                                                                                                                     |
+| encrypted state       | LUKS2 bound to the TPM (PCR 11 policy); the partition definition is ready for `Encrypt=tpm2`                                                                                                                     |
+| rollback protection   | pcrlock, policyref, key rotation; see [Trust](trust.md#rollback-weakness)                                                                                                                                        |
+| update verification   | a signed `SHA256SUMS` manifest for sysupdate (`Verify=no` in v1)                                                                                                                                                 |
+| root-less operators   | operators as userdb records, ssh principal → user, `run0` gated by polkit on a few action ids                                                                                                                    |
+| workload identity     | one CA for SSH and X.509 with TPM device attestation; a renewal unit feeding systemd credentials                                                                                                                 |
+| execution policy      | the BPF LSM for `RestrictFileSystems=`, AppArmor profiles from the typed service                                                                                                                                 |
+| debug access          | a debug image or a sysext with tools and a getty; never in the production image                                                                                                                                  |
+| hardware              | firmware and kernel modules only when a target needs them (monolithic kernel in v1)                                                                                                                              |
+| aarch64               | postponed after v1 (2026-11-01). Neither the cross-compiled `/usr` tree nor an image is built: an aarch64 package needs an aarch64 builder, and this host has none (no binfmt, and the farm cannot build repkgs) |
 
 ## Out of scope by design
 
