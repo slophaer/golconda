@@ -109,7 +109,7 @@ in
     # The initrd unit's script: rewrite /etc/systemd/system links to stable paths
     # after /sysroot/usr is mounted and before switch-root (golconda-etc-links.service).
     "/usr/libexec/golconda-etc-links" = {
-      text = builtins.readFile ../../../scripts/golconda-etc-links;
+      text = builtins.readFile ../golconda-etc-links;
       mode = "0755";
     };
     # the loader policy the ESP must carry, and the program that puts it there
