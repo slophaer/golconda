@@ -55,6 +55,19 @@ The ESP and the `/usr` slots stay, so this path repairs a broken state partition
 image. All state is lost. It needs a working ssh login, because there is no console login; a machine
 without one is reflashed.
 
+`scripts/boot-test … --factory-reset --ssh-test` checks this path on the test image. It writes a
+marker in `/etc` and reads `/etc/machine-id`, requests the reset, and waits for the reset boot. It
+checks that the marker is gone (`state-gone`), the machine id changed (`machine-id-new`), first boot
+ran again and `multi-user.target` was reached (`first-boot-rerun`, `multi-user-after-reset`), and
+that `bootctl list` shows the same entries and the same running version (`slots-kept`). An ssh
+failure cannot pass `state-gone`: the guest must print `absent`. The mode prints the last 100 lines
+of the reset boot's serial log
+([The factory reset test](../reference/image.md#the-factory-reset-test)).
+
+Still manual: a reset on a machine with an update installed (two `/usr` slots), the TPM clear and
+sealed credentials, a reset on real firmware, and the case where ssh is down. The test image has one
+slot and the boot test runs in QEMU.
+
 ## Reflash
 
 Writing a fresh disk image is the last resort. It replaces the ESP, both slots and the root

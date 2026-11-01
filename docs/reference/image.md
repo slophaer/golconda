@@ -206,6 +206,10 @@ scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --next n
 nix-build -A packages.x86_64-linux.image-smoke-test-rotated -o next-rotated
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --next next-rotated \
   --rotate --timeout 480
+
+# Factory reset: the reset request, the reset boot, and the state checks (two boots)
+scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-test \
+  --factory-reset --timeout 480
 ```
 
 `BOOT_TEST_SSH_PORT` sets the host port for the guest's sshd (default 10022). `BOOT_TEST_HTTP_PORT`
@@ -229,7 +233,7 @@ The script creates a 40 GiB qcow2 overlay (room for the root partition), copies 
 store, passes the host name `boot-test` as a credential (`-smbios type=11,...`), and logs the serial
 console to a file. QEMU runs with `-display none` and no monitor or QMP socket: the harness reaches
 the guest through the serial log and ssh, and nothing else. QEMU runs with `-no-reboot` unless
-`--tpm` or `--next` is given, because those reboot the guest.
+`--tpm`, `--next` or `--factory-reset` is given, because those reboot the guest.
 
 ### The markers
 
@@ -312,6 +316,19 @@ With `--rotate`:
 | `no-failed-units-after-rotation`                             | no failed unit after the rotation                                                |
 | `old-loader-refused`                                         | the original disk under the rotated store gets "Access Denied"; no kernel starts |
 
+With `--factory-reset --ssh-test` ([The factory reset test](#the-factory-reset-test)):
+
+| marker                     | what it proves                                                                            |
+| -------------------------- | ----------------------------------------------------------------------------------------- |
+| `factory-reset-test-image` | `/usr/lib/os-release` says `IMAGE_ID=boot-test`, so the reset runs on the test image only |
+| `factory-reset-before`     | `/etc/machine-id`, `IMAGE_VERSION` and `bootctl list` were readable before the reset      |
+| `state-marker-written`     | the marker in `/etc` is readable before the request                                       |
+| `state-gone`               | the guest says the marker is absent after the reset boot                                  |
+| `machine-id-new`           | `/etc/machine-id` is non-empty and differs from the id before the reset                   |
+| `first-boot-rerun`         | the reset boot's serial log has `systemd-firstboot.service` finishing                     |
+| `multi-user-after-reset`   | the reset boot reached `multi-user.target`                                                |
+| `slots-kept`               | `bootctl list` entries (ignoring the boot counter) and `IMAGE_VERSION` are unchanged      |
+
 The test SSH keypair is a committed test fixture (`tests/fixtures/snakeoil-ssh*`). The
 `image-smoke-test` reads the public key and adds it to `authorizedKeys`. See
 `tests/fixtures/README.md` for why both keys are committed.
@@ -374,3 +391,27 @@ What this test does not prove:
   the image's `url-file` source and the HTTP fetch, but not HTTPS, a signed manifest (`Verify=no`
   checks no signature), a real update server with redirects or authentication, the update timer, or
   a machine whose network is not QEMU's user-mode network.
+
+### The factory reset test
+
+`scripts/boot-test … --factory-reset --ssh-test` checks the state reset on the test image. It is a
+boot of its own: do not combine it with `--next`, and give a `--timeout` large enough for two boots
+(such as 480). The harness:
+
+1. checks that `/usr/lib/os-release` says `IMAGE_ID=boot-test`, writes
+   `/etc/boot-test-factory-reset`, and reads `/etc/machine-id`, `IMAGE_VERSION` and `bootctl list`;
+1. runs `systemctl start factory-reset.target` in the guest. The target sets the
+   `FactoryResetRequest` EFI variable, and `systemd-factory-reset-reboot.service` reboots
+   (systemd-factory-reset(8), [Updates: Factory reset](../design/updates.md#factory-reset));
+1. waits for a login with a new boot id, then checks `state-gone`, `machine-id-new`,
+   `first-boot-rerun`, `multi-user-after-reset` and `slots-kept`, and prints the last 100 lines of
+   the reset boot's serial log.
+
+`slots-kept` compares the `id:` lines of `bootctl list`, with the boot counter removed, and
+`IMAGE_VERSION` before and after the reset: systemd-repart rewrites the root partition only, so the
+ESP and the `/usr` slots stay. `state-gone` asks the guest to print `absent` for the marker file, so
+an ssh failure cannot count as a pass.
+
+What this test does not prove: a reset on a machine with an update installed (the test image has one
+`/usr` slot), the TPM clear and sealed credentials, or the console path on a machine whose ssh is
+down. Those stay manual ([Recovery: State reset](../design/recovery.md#state-reset)).
