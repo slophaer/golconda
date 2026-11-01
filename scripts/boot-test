@@ -2,14 +2,14 @@
 # scripts/boot-test: VM boot test for Golconda images.
 #
 # Usage: boot-test <disk.raw> --keys DIR [--secure-boot] [--tpm] [--timeout SECONDS]
-#                  [--ssh-test] [--next DIR [--rotate | --fail-health]] [--factory-reset]
+#                  [--ssh-test [--esp-creds]] [--next DIR [--rotate | --fail-health]] [--factory-reset]
 #
 # The script boots the image in QEMU with:
 #   - a 40 GiB qcow2 overlay (room for root partition)
 #   - OVMF firmware (UEFI)
 #   - optional Secure Boot with keys enrolled from --keys
 #   - optional TPM 2.0 via swtpm
-#   - SMBIOS type 11 credential: system.hostname=boot-test
+#   - SMBIOS type 11 credential: system.hostname=boot-test (not with --esp-creds)
 #   - user-mode networking with hostfwd to SSH (host port $BOOT_TEST_SSH_PORT, default 10022)
 #   - serial console logged to a file
 #
@@ -29,6 +29,14 @@
 # With --ssh-test: logs in with tests/fixtures/snakeoil-ssh and checks
 #   ssh-login, hostname (must be "boot-test", the SMBIOS credential),
 #   systemctl --failed (no failed units), varlinkctl list-interfaces.
+# With --esp-creds (needs --ssh-test): provisions through the ESP instead of SMBIOS and the image's
+#   test key (docs/design/boot.md, "Bootstrap credentials"). The harness copies the disk into the
+#   work directory, generates an ssh key pair there, and runs scripts/provision-esp on the copy with
+#   --hostname esp-test and --authorized-keys <the new .pub>. It passes no SMBIOS hostname. The ssh
+#   checks log in with the new key, hostname must be "esp-test", and esp-authorized-keys checks that
+#   /root/.ssh/authorized_keys in the guest holds the new key. With --secure-boot and --tpm the
+#   null-key credentials are refused (creds-util.c, relaxed policy): the run is expected to fail.
+#   BOOT_TEST_ESP_NO_KEY=1 leaves the key out of the ESP (a negative control: the login must fail).
 # With --secure-boot: boots OVMFFull and checks that the firmware enforces Secure Boot.
 # With --ssh-test: also checks the boot loader (docs/design/bootloader.md): the ESP's two
 #   copies of systemd-boot are the signed file in /usr, loader/loader.conf is the one
@@ -111,9 +119,10 @@ NEXT=""
 ROTATE=0
 FAIL_HEALTH=0
 FACTORY_RESET=0
+ESP_CREDS=0
 
 usage() {
-  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot] [--tpm] [--timeout SECONDS] [--ssh-test] [--next DIR [--rotate | --fail-health]] [--factory-reset]"
+  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot] [--tpm] [--timeout SECONDS] [--ssh-test [--esp-creds]] [--next DIR [--rotate | --fail-health]] [--factory-reset]"
   exit 1
 }
 
@@ -128,6 +137,7 @@ while [ $# -gt 0 ]; do
     --rotate) ROTATE=1; shift ;;
     --fail-health) FAIL_HEALTH=1; shift ;;
     --factory-reset) FACTORY_RESET=1; shift ;;
+    --esp-creds) ESP_CREDS=1; shift ;;
     --help|-h) usage ;;
     -*)
       echo "Unknown option: $1" >&2
@@ -204,6 +214,10 @@ except OSError:
 EOF
 }
 
+if [ "$ESP_CREDS" = 1 ] && [ "$SSH_TEST" = 0 ]; then
+  echo "Error: --esp-creds needs --ssh-test: the checks log in with the generated key" >&2
+  exit 1
+fi
 if [ "$FACTORY_RESET" = 1 ] && [ "$SSH_TEST" = 0 ]; then
   echo "Error: --factory-reset needs --ssh-test: the reset is requested over ssh, and only the test image carries the test key" >&2
   exit 1
@@ -347,11 +361,31 @@ start_tpm() {
   echo "TPM started (pid $SWTPM_PID)"
 }
 
+# --- ESP credentials (--esp-creds) ---
+# setup_esp_creds: copy the disk, make a key pair, write the credentials onto the copy's ESP
+setup_esp_creds() {
+  ssh-keygen -q -t ed25519 -N "" -C boot-test-esp -f "$SSH_DIR/user"
+  cp --sparse=always "$DISK" "$WORKDIR/disk.raw"
+  chmod u+w "$WORKDIR/disk.raw"
+  DISK="$WORKDIR/disk.raw"
+  if [ -n "${BOOT_TEST_ESP_NO_KEY:-}" ]; then
+    "$SCRIPT_DIR/provision-esp" "$DISK" --hostname esp-test || exit 1
+  else
+    "$SCRIPT_DIR/provision-esp" "$DISK" --hostname esp-test --authorized-keys "$SSH_DIR/user.pub" || exit 1
+  fi
+  echo "Provisioned the ESP of $DISK; new key: $SSH_DIR/user"
+}
+
 # --- SSH test setup ---
 setup_ssh_test() {
   SSH_DIR="$WORKDIR/ssh"
   mkdir -p "$SSH_DIR"
   
+  if [ "$ESP_CREDS" = 1 ]; then
+    setup_esp_creds
+    return
+  fi
+
   # Use the committed test SSH key from the repo
   TEST_KEY="$REPO_DIR/tests/fixtures/snakeoil-ssh"
   if [ ! -f "$TEST_KEY" ]; then
@@ -420,6 +454,11 @@ start_qemu() {
     NO_REBOOT=""
   fi
 
+  SMBIOS_HOSTNAME="-smbios type=11,value=io.systemd.credential:system.hostname=boot-test"
+  if [ "$ESP_CREDS" = 1 ]; then
+    SMBIOS_HOSTNAME=""
+  fi
+
   QEMU_ARGS="-machine q35,accel=kvm:tcg \
     -cpu max \
     -m 2G \
@@ -430,7 +469,7 @@ start_qemu() {
     -serial file:$SERIAL_LOG \
     -display none \
     $NO_REBOOT \
-    -smbios type=11,value=io.systemd.credential:system.hostname=boot-test \
+    $SMBIOS_HOSTNAME \
     -netdev user,id=net0,hostfwd=tcp::$SSH_PORT-:22 \
     -device virtio-net-pci,netdev=net0"
   
@@ -606,8 +645,21 @@ test_ssh() {
   echo "=== hostname ==="
   HN=$(guest hostname 2>&1) || true
   echo "$HN"
-  RC=0; [ "$HN" = "boot-test" ] || RC=1
+  EXPECT_HN=boot-test
+  if [ "$ESP_CREDS" = 1 ]; then
+    EXPECT_HN=esp-test
+  fi
+  RC=0; [ "$HN" = "$EXPECT_HN" ] || RC=1
   verdict "hostname (system.hostname credential applied)" $RC
+
+  if [ "$ESP_CREDS" = 1 ]; then
+    echo ""
+    echo "=== authorized_keys (ESP credential) ==="
+    AK=$(guest cat /root/.ssh/authorized_keys 2>&1) || true
+    echo "$AK"
+    RC=0; echo "$AK" | grep -qF "$(cut -d' ' -f1,2 "$WORKDIR/ssh/user.pub")" || RC=1
+    verdict "esp-authorized-keys (ssh.authorized_keys.root credential written to /root/.ssh)" $RC
+  fi
 
   echo ""
   echo "=== systemctl --failed ==="
@@ -1191,6 +1243,7 @@ main() {
   echo "Secure Boot: $SECURE_BOOT"
   echo "TPM: $TPM"
   echo "Factory reset: $FACTORY_RESET"
+  echo "ESP credentials: $ESP_CREDS"
   echo "Timeout: ${TIMEOUT}s"
   echo "Work directory: $WORKDIR"
   echo ""

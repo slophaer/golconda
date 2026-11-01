@@ -1,0 +1,128 @@
+#!/bin/sh
+# scripts/provision-esp: write bootstrap credentials onto the ESP of a disk image.
+#
+# Usage: provision-esp <disk.raw> [--hostname NAME] [--authorized-keys FILE]
+#                      [--credential NAME=FILE]...
+#
+# Each credential becomes loader/credentials/NAME.cred on the ESP, in place. systemd-stub packs
+# those files into the initrd and PID 1 imports them (docs/design/boot.md, "Bootstrap
+# credentials"). The machine has no host key before its first boot, so the files are encrypted
+# with the null key (systemd-creds encrypt --with-key=null): PID 1 accepts them in
+# /run/credentials/@encrypted unless Secure Boot is on and a TPM2 is present.
+#   --hostname NAME          the system.hostname credential
+#   --authorized-keys FILE   the ssh.authorized_keys.root credential
+#   --credential NAME=FILE   any other credential, its value read from FILE
+#
+# The ESP is found in the GPT (partition type C12A7328-F81F-11D2-BA4B-00A0C93EC93B). The disk
+# must be a writable copy: a path in /nix/store is refused. The script lists the directory
+# when it is done.
+#
+# Exit: 0 on success, non-zero on any error.
+
+set -eu
+
+# --- bootstrap: re-exec under nix-shell if tools are missing ---
+# Always the pinned systemd-creds: a host's older one sends a null-key request to the host's
+# credentials service, which refuses it without authentication.
+if [ -z "${PROVISION_ESP_IN_SHELL:-}" ]; then
+  SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+  REPO_DIR="$(dirname "$SCRIPT_DIR")"
+  DEV_PIN=$(nix-instantiate --eval -E "(import $REPO_DIR/nix/sources.nix).nixpkgs-dev-only" 2>/dev/null | tr -d '"')
+  if [ -z "$DEV_PIN" ] || [ ! -d "$DEV_PIN" ]; then
+    echo "Error: cannot find nixpkgs-dev-only pin" >&2
+    exit 1
+  fi
+  # quote each argument for the shell nix-shell runs
+  ARGS=""
+  for a in "$@"; do
+    ARGS="$ARGS '$(printf %s "$a" | sed "s/'/'\\\\''/g")'"
+  done
+  PROVISION_ESP_IN_SHELL=1
+  export PROVISION_ESP_IN_SHELL
+  exec nix-shell -I "nixpkgs=$DEV_PIN" -p systemd mtools util-linux python3 --run "$0$ARGS"
+fi
+
+usage() {
+  echo "Usage: $0 <disk.raw> [--hostname NAME] [--authorized-keys FILE] [--credential NAME=FILE]..." >&2
+  exit 1
+}
+
+DISK=""
+# one "NAME FILE" pair per line
+CREDS=""
+add_cred() {
+  CREDS="$CREDS$1 $2
+"
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --hostname)
+      [ $# -ge 2 ] || usage
+      HN_FILE=$(mktemp)
+      printf %s "$2" > "$HN_FILE"
+      TMP_FILES="${TMP_FILES:-} $HN_FILE"
+      add_cred system.hostname "$HN_FILE"
+      shift 2 ;;
+    --authorized-keys)
+      [ $# -ge 2 ] || usage
+      add_cred ssh.authorized_keys.root "$2"
+      shift 2 ;;
+    --credential)
+      [ $# -ge 2 ] || usage
+      case "$2" in
+        ?*=?*) add_cred "${2%%=*}" "${2#*=}" ;;
+        *) echo "Error: --credential wants NAME=FILE: $2" >&2; exit 1 ;;
+      esac
+      shift 2 ;;
+    --help|-h) usage ;;
+    -*) echo "Unknown option: $1" >&2; usage ;;
+    *)
+      [ -z "$DISK" ] || { echo "Unexpected argument: $1" >&2; usage; }
+      DISK="$1"
+      shift ;;
+  esac
+done
+
+[ -n "$DISK" ] || { echo "Error: disk image required" >&2; usage; }
+[ -f "$DISK" ] || { echo "Error: disk image not found: $DISK" >&2; exit 1; }
+[ -n "$CREDS" ] || { echo "Error: no credential given" >&2; usage; }
+
+case "$(realpath "$DISK")" in
+  /nix/store/*|*/nix/store/*)
+    echo "Error: $DISK is in the Nix store (read-only); provision a copy: cp --sparse=always" >&2
+    exit 1 ;;
+esac
+[ -w "$DISK" ] || { echo "Error: $DISK is not writable" >&2; exit 1; }
+
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK" ${TMP_FILES:-}' EXIT
+
+# the ESP's byte offset from the GPT
+OFFSET=$(sfdisk --json "$DISK" | python3 -c '
+import json, sys
+t = json.load(sys.stdin)["partitiontable"]
+if t.get("label") != "gpt":
+    sys.exit("not a GPT disk")
+ss = t.get("sectorsize", 512)
+for p in t["partitions"]:
+    if p["type"].upper() == "C12A7328-F81F-11D2-BA4B-00A0C93EC93B":
+        print(p["start"] * ss)
+        sys.exit(0)
+sys.exit("no ESP in the GPT")
+') || { echo "Error: cannot find the ESP in $DISK" >&2; exit 1; }
+
+IMG="$DISK@@$OFFSET"
+export MTOOLS_SKIP_CHECK=1
+
+mmd -i "$IMG" -D s ::loader 2>/dev/null || true
+mmd -i "$IMG" -D s ::loader/credentials 2>/dev/null || true
+
+printf %s "$CREDS" | while read -r NAME FILE; do
+  [ -f "$FILE" ] || { echo "Error: credential file not found: $FILE" >&2; exit 1; }
+  systemd-creds encrypt --with-key=null --name="$NAME" "$FILE" "$WORK/$NAME.cred"
+  mcopy -i "$IMG" -D o "$WORK/$NAME.cred" "::loader/credentials/$NAME.cred"
+  echo "wrote loader/credentials/$NAME.cred"
+done
+
+mdir -i "$IMG" ::loader/credentials

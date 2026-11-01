@@ -198,6 +198,9 @@ scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-te
 # With SSH login test (needs image-smoke-test, not image-smoke)
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-test
 
+# Provision by ESP credentials instead of SMBIOS and the image's test key (see below)
+scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-test --esp-creds
+
 # Update to the next release, the loader update and the recovery paths (needs both images)
 nix-build -A packages.x86_64-linux.image-smoke-test-next -o next
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --next next --timeout 480
@@ -224,16 +227,28 @@ certificate reaches the kernel through the platform keyring, which the firmware 
 boot without the db enrolled stops at switch-root with `Failed to execute /sbin/init`; this is the
 negative control for the mechanism, not a harness defect.
 
+`--esp-creds` (with `--ssh-test`) provisions through the ESP. The harness copies the disk into its
+work directory, generates an ssh key pair there, and runs `scripts/provision-esp` on the copy with
+`--hostname esp-test --authorized-keys <key>.pub`. It passes no SMBIOS host name. The ssh checks log
+in with the generated key, and `hostname` must print `esp-test`.
+`scripts/provision-esp <disk.raw> [--hostname NAME] [--authorized-keys FILE] [--credential NAME=FILE]...`
+writes each value as a null-key `loader/credentials/NAME.cred` on the ESP of the disk, in place, and
+lists the directory. It finds the ESP in the GPT and refuses a path in `/nix/store`. With
+`--secure-boot` and `--tpm` together the guest refuses these credentials
+([Bootstrap credentials](../design/boot.md#bootstrap-credentials)), so that run fails.
+`BOOT_TEST_ESP_NO_KEY=1` leaves the key out of the ESP: the login must then fail.
+
 `--secure-boot` enrolls the throwaway db key with `virt-fw-vars` (one fixed owner GUID) and boots
 `OVMFFull.fd` with `-machine smm=on`: plain `OVMF.fd` has no Secure Boot support. The guest must
 report `Secure Boot: enabled` (the `secure-boot-enabled` marker); the same disk with an unsigned
 loader on the ESP is refused by firmware, which is the negative control for this check.
 
 The script creates a 40 GiB qcow2 overlay (room for the root partition), copies the OVMF variable
-store, passes the host name `boot-test` as a credential (`-smbios type=11,...`), and logs the serial
-console to a file. QEMU runs with `-display none` and no monitor or QMP socket: the harness reaches
-the guest through the serial log and ssh, and nothing else. QEMU runs with `-no-reboot` unless
-`--tpm`, `--next` or `--factory-reset` is given, because those reboot the guest.
+store, passes the host name `boot-test` as a credential (`-smbios type=11,...`, not with
+`--esp-creds`), and logs the serial console to a file. QEMU runs with `-display none` and no monitor
+or QMP socket: the harness reaches the guest through the serial log and ssh, and nothing else. QEMU
+runs with `-no-reboot` unless `--tpm`, `--next` or `--factory-reset` is given, because those reboot
+the guest.
 
 ### The markers
 
@@ -264,6 +279,7 @@ With `--ssh-test` (the harness logs in as root with `tests/fixtures/snakeoil-ssh
 | ---------------------------- | ----------------------------------------------------------------------------- |
 | `ssh-login`                  | an ssh login with the test key works                                          |
 | `hostname`                   | `hostname` prints `boot-test`: PID 1 applied the `system.hostname` credential |
+| `esp-authorized-keys`        | with `--esp-creds`: `/root/.ssh/authorized_keys` holds the generated key      |
 | `no-failed-units`            | `systemctl --failed` lists no unit                                            |
 | `varlinkctl-list-interfaces` | `io.systemd.Manager` answers on its varlink socket                            |
 | `secure-boot-enabled`        | `bootctl status` says `Secure Boot: enabled` (with `--secure-boot`)           |
