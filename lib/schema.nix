@@ -541,6 +541,57 @@ let
       pattern = "^[A-Za-z0-9_.-]+$";
     };
 
+    # modules/network/default.nix
+    network = {
+      description = "A .network file: `match` (the Match section) and the optional sections network, link, dhcpv4, address and route. Any other key is an error.";
+      type = "object";
+      properties = {
+        match = {
+          "$ref" = "#/$defs/networkSection";
+        };
+        network = {
+          "$ref" = "#/$defs/networkSection";
+        };
+        link = {
+          "$ref" = "#/$defs/networkSection";
+        };
+        dhcpv4 = {
+          "$ref" = "#/$defs/networkSection";
+        };
+        address = {
+          "$ref" = "#/$defs/networkSection";
+        };
+        route = {
+          "$ref" = "#/$defs/networkSection";
+        };
+      };
+      required = [ "match" ];
+      additionalProperties = false;
+    };
+
+    networkSection = {
+      description = "One section of a .network file: key -> value. A list repeats the key, a boolean is yes or no, null leaves the key out.";
+      type = "object";
+      additionalProperties = {
+        anyOf = [
+          { type = "string"; }
+          { type = "integer"; }
+          { type = "boolean"; }
+          { type = "null"; }
+          {
+            type = "array";
+            items = {
+              type = [
+                "string"
+                "integer"
+                "boolean"
+              ];
+            };
+          }
+        ];
+      };
+    };
+
     # modules/pkgs/default.nix
     repkgsSet = {
       description = "The repkgs set of one platform (nix/packages.nix): `pkgs` and the rest. nix/default.nix passes it as options.\"/pkgs\".target and options.\"/pkgs\".build; a configuration document cannot.";

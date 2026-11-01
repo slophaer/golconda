@@ -3124,6 +3124,79 @@ let
       in
       result.files."/usr/lib/systemd/network/50-bare.network".text == "[Match]\nName=lo\n"
     ))
+    # A network is a closed struct: a misspelt section is an error at evaluation,
+    # never a file with [Match] only (the machine would get no address and no DHCP).
+    (check "network: an unknown section key is refused, and the message names it" (
+      let
+        networksType = (f.modules { }).modules.network.options.networks.type;
+        lan = section: {
+          lan = {
+            match.Name = "eth0";
+            ${section}.Address = "10.0.0.5/24";
+          };
+        };
+        err = networksType.verify (lan "Network");
+        rendered =
+          net:
+          (tryEval (
+            deepSeq
+              (composeWith {
+                "/network".networks = net;
+              }).files
+              true
+          )).success;
+      in
+      err != null
+      && hasInfix "'Network'" err
+      && networksType.verify (lan "network") == null
+      && !(rendered (lan "Network"))
+      && rendered (lan "network")
+      # match is required, and the message says so
+      && hasInfix "'match'" (networksType.verify { lan.network.DHCP = "yes"; })
+      # a section is a table of keys, not a string
+      &&
+        networksType.verify {
+          lan = {
+            match.Name = "eth0";
+            network = "DHCP=yes";
+          };
+        } != null
+    ))
+    (check "network: the TOML route refuses the misspelt section and renders the right one" (
+      let
+        load =
+          section:
+          (configLib.loadConfigText ''
+            ["/network".networks.lan]
+            match = { Name = "eth0" }
+            ${section} = { Address = "10.0.0.5/24" }
+          '').options;
+        files = section: (composeWith (load section)).files;
+        good = files "network";
+      in
+      !(tryEval (deepSeq (files "Network") true)).success
+      &&
+        good."/usr/lib/systemd/network/50-lan.network".text
+        == "[Match]\nName=eth0\n\n[Network]\nAddress=10.0.0.5/24\n"
+    ))
+    (check "schema: a network is a closed object with match required" (
+      let
+        net =
+          (schemaLib.toJsonSchema (f.modules { }))
+          .properties."/network".properties.networks.additionalProperties;
+      in
+      net.additionalProperties == false
+      && net.required == [ "match" ]
+      &&
+        attrNames net.properties == [
+          "address"
+          "dhcpv4"
+          "link"
+          "match"
+          "network"
+          "route"
+        ]
+    ))
 
     # entry point: system is explicit, platform follows it, no builtins.currentSystem
     (check "mkSystem: platform defaults to system, evaluated purely" (
