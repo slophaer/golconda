@@ -30,6 +30,7 @@
 { types, ... }:
 let
   ini = import ../lib/ini.nix;
+  grammar = import ../lib/grammar.nix;
   versionLib = import ../../lib/version.nix { };
   # /system.updateSource -> /usr/lib/sysupdate.d/*.transfer (image/sysupdate.nix), and the
   # timer that runs them. systemd 257 named the suffix .transfer (.conf still loads, with a
@@ -72,10 +73,20 @@ let
   merge = import ../lib/merge.nix;
 
   # Version format: YYYYMMDD.N (a real calendar date plus a revision within the day).
-  # strverscmp orders these correctly; lib/version.nix is the one grammar, and
-  # lib/usr-tree.nix versionToEpoch derives the erofs timestamp from it.
+  # strverscmp orders these correctly. The type accepts what grammar.version matches, the
+  # pattern the schema exports; lib/version.nix, whose toEpoch derives the erofs timestamp,
+  # gives the reason for a refusal, and nix/tests.nix checks that the two agree.
   version = types.typedef' "version" (
-    v: if !isString v then "Expected a string" else versionLib.error v
+    v:
+    if !isString v then
+      "Expected a string"
+    else if match grammar.version v != null then
+      null
+    else
+      let
+        reason = versionLib.error v;
+      in
+      if reason != null then reason else "'${v}' is not a version: YYYYMMDD.N, such as 20261031.1"
   );
 in
 {
@@ -101,8 +112,8 @@ in
         v:
         if !isString v then
           "Expected a string"
-        else if match "[A-Za-z0-9][A-Za-z0-9._-]*" v == null then
-          "'${v}' is not an image id: use letters, digits and _ . - and start with a letter or digit"
+        else if match grammar.imageName v == null then
+          "'${v}' is not an image id: use letters, digits and _ . - and start with a letter or digit (the id is os-release ID=, the artifact file name stem and the sysupdate match pattern)"
         else
           null
       );

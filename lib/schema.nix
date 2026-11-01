@@ -91,6 +91,15 @@ let
     in
     go 0 0 0 [ ];
 
+  # The grammars the typedefs match (modules/lib/grammar.nix): every pattern below
+  # is one of them, anchored, so a type and its schema cannot disagree.
+  grammar = import ../modules/lib/grammar.nix;
+  pattern = name: grammar.anchored grammar.${name};
+  # a name the type checks with a control-character rule besides its pattern
+  noControl = {
+    not.pattern = grammar.controlSchema;
+  };
+
   # Registry of Golconda's custom types with their JSON Schema. Each entry is
   # keyed by the type's base name (__name) and maps to a JSON Schema fragment.
   # Types that are opaque or whose schema depends on their usage are not here;
@@ -145,13 +154,13 @@ let
     imageName = {
       description = "Image id: letters, digits and _ . -, starting with a letter or digit.";
       type = "string";
-      pattern = "^[A-Za-z0-9][A-Za-z0-9._-]*$";
+      pattern = pattern "imageName";
     };
 
     version = {
       description = "Image version: YYYYMMDD.N, such as 20261031.1; N has no leading zero.";
       type = "string";
-      pattern = "^[0-9]{8}\\.(0|[1-9][0-9]*)$";
+      pattern = pattern "version";
     };
 
     file = {
@@ -166,7 +175,7 @@ let
             };
             mode = {
               type = "string";
-              pattern = "^[0-7]{4}$";
+              pattern = pattern "fileMode";
             };
           };
           required = [ "text" ];
@@ -177,19 +186,19 @@ let
     fileMode = {
       description = "Four octal digits, like 0644 or 0755.";
       type = "string";
-      pattern = "^[0-7]{4}$";
+      pattern = pattern "fileMode";
     };
 
     unitName = {
       description = "A unit file name: a stem of letters, digits, : _ . @ - and one of .service .target .socket .timer .path .mount .slice.";
       type = "string";
-      pattern = "^[A-Za-z0-9:_.@\\-]+\\.(service|target|socket|timer|path|mount|slice)$";
+      pattern = pattern "unitName";
     };
 
     unitText = {
       description = "Unit file text with at least one section header line, such as [Unit] or [Service].";
       type = "string";
-      pattern = "(^|\n)\\[[A-Za-z]+\\](\n|$)";
+      pattern = "(^|\n)${grammar.sectionHeader}(\n|$)";
     };
 
     units = {
@@ -206,9 +215,9 @@ let
     links = {
       description = "Path under /usr -> link: the symlinks of the farm; the composer refuses a path with two sources, whatever their kinds.";
       type = "object";
-      propertyNames = {
+      propertyNames = noControl // {
         type = "string";
-        pattern = "^/usr/.+";
+        pattern = pattern "usrPath";
       };
       additionalProperties = {
         "$ref" = "#/$defs/link";
@@ -283,9 +292,9 @@ let
     appFiles = {
       description = "File name -> text, installed to `/usr/lib/<service>/<name>`; the name is relative (it cannot leave that directory), and a file holds no per-machine value.";
       type = "object";
-      propertyNames = {
+      propertyNames = noControl // {
         type = "string";
-        pattern = "^[A-Za-z0-9_+.-]+(/[A-Za-z0-9_+.-]+)*$";
+        pattern = pattern "relativePath";
       };
       additionalProperties = {
         type = "string";
@@ -316,7 +325,7 @@ let
       type = "object";
       propertyNames = {
         type = "string";
-        pattern = "^[A-Za-z_][A-Za-z0-9_]*$";
+        pattern = pattern "envName";
       };
       additionalProperties = {
         "$ref" = "#/$defs/envOp";
@@ -326,12 +335,13 @@ let
     unitValue = {
       description = "A value on one line of a unit: a string with no control character (a newline would add a directive).";
       type = "string";
-    };
+    }
+    // noControl;
 
     programName = {
       description = "An executable name in /usr/bin: letters, digits and _ @ . + -, never a path.";
       type = "string";
-      pattern = "^[A-Za-z0-9_@.+-]+$";
+      pattern = pattern "programName";
     };
 
     credentialRef = {
@@ -351,7 +361,7 @@ let
     credentialPrefix = {
       description = "A credential argument prefix: letters, digits, and _ = : / . , + -.";
       type = "string";
-      pattern = "^[A-Za-z0-9_=:/.,+-]*$";
+      pattern = pattern "credentialPrefix";
     };
 
     # modules/lib/service.nix
@@ -427,13 +437,13 @@ let
     credentialId = {
       description = "A systemd credential id: letters, digits and _ . : @ -, one name in the credstore, never a path.";
       type = "string";
-      pattern = "^[A-Za-z0-9_.:@-]+$";
+      pattern = pattern "credentialId";
     };
 
     stateDirectory = {
       description = "A StateDirectory= entry: one directory name under /var/lib (letters, digits, _ . -), not . or ...";
       type = "string";
-      pattern = "^[A-Za-z0-9_.-]+$";
+      pattern = pattern "component";
     };
 
     serviceScope = {
@@ -447,7 +457,7 @@ let
     serviceName = {
       description = "Valid systemd unit name stem.";
       type = "string";
-      pattern = "^[A-Za-z0-9:_.\\-]+$";
+      pattern = pattern "serviceName";
     };
 
     serviceUser = {
@@ -476,7 +486,7 @@ let
     targetName = {
       description = "A systemd target name (must end with .target).";
       type = "string";
-      pattern = "^[A-Za-z0-9:_.\\-]+\\.target$";
+      pattern = pattern "targetName";
     };
 
     # modules/lib/var.nix
@@ -536,9 +546,9 @@ let
     };
 
     word = {
-      description = "One path component: letters, digits, _ . -.";
+      description = "One path component: letters, digits, _ . -, not . or ...";
       type = "string";
-      pattern = "^[A-Za-z0-9_.-]+$";
+      pattern = pattern "component";
     };
 
     # modules/network/default.nix

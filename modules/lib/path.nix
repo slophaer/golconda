@@ -15,7 +15,12 @@
 #
 # Plain functions, so a caller without the types library (merge.nix) can use
 # them; fragment.nix, app.nix and the like wrap them as typedefs.
+#
+# What each check accepts is one pattern of grammar.nix (usrPath, relativePath,
+# component) plus no control character: the patterns the schema exports. The rules
+# below only pick the message for a path the pattern refuses.
 let
+  grammar = import ./grammar.nix;
   inherit (builtins)
     any
     filter
@@ -31,7 +36,7 @@ let
 
   # A control character is anything at or below 0x1f, or 0x7f: a newline or a
   # NUL would add a line to a rendered file or truncate a name.
-  hasControl = s: length (split "[[:cntrl:]]" s) > 1;
+  hasControl = s: length (split grammar.control s) > 1;
 
   # The components of a path; split returns the separators too, as lists.
   components = p: filter isString (split "/" p);
@@ -48,6 +53,8 @@ let
       "Expected a string"
     else if hasControl p then
       controlError p
+    else if match grammar.usrPath p != null then
+      null
     else if !hasPrefix "/usr/" p then
       "'${p}' is not under /usr/: a file or link path in the /usr tree starts with /usr/"
     else if repeatedSeparator p then
@@ -57,7 +64,7 @@ let
     else if dotComponent p then
       "'${p}' has a . or .. component: a path in the /usr tree is canonical"
     else
-      null;
+      "'${p}' is not a canonical path under /usr/";
 
   # A relative file name, such as "principals/root"; it may name a directory,
   # but it cannot leave the directory the renderer puts it in.
@@ -69,6 +76,8 @@ let
       "a file name must not be empty"
     else if hasControl p then
       controlError p
+    else if match grammar.relativePath p != null then
+      null
     else if hasPrefix "/" p then
       "'${p}' is absolute: a file name is relative to the directory the renderer installs it in"
     else if repeatedSeparator p then
@@ -78,19 +87,19 @@ let
     else if dotComponent p then
       "'${p}' has a . or .. component: a file name cannot leave its directory"
     else
-      null;
+      "'${p}' is not a relative file name";
 
   # One path component, such as a directory under /var/lib or a network name.
   componentError =
     p:
     if !isString p then
       "Expected a string"
-    else if match "[A-Za-z0-9_.-]+" p == null then
-      "'${p}' is not one path component: letters, digits, and _ . - only"
+    else if match grammar.component p != null then
+      null
     else if p == "." || p == ".." then
       "'${p}' is not a name"
     else
-      null;
+      "'${p}' is not one path component: letters, digits, and _ . - only";
 in
 {
   inherit

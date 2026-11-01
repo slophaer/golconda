@@ -17,6 +17,7 @@ let
     typedef'
     ;
   path = import ./path.nix;
+  grammar = import ./grammar.nix;
   inherit (builtins)
     any
     attrNames
@@ -33,7 +34,7 @@ let
     v:
     if !isString v then
       "Expected a file mode string like \"0644\", got ${builtins.typeOf v}"
-    else if match "[0-7]{4}" v == null then
+    else if match grammar.fileMode v == null then
       "'${v}' is not a file mode: four octal digits, like \"0644\" or \"0755\""
     else
       null
@@ -65,20 +66,12 @@ let
 
   # A unit file name: a stem (letters, digits, : _ . @ -) and one of the unit
   # suffixes systemd loads from /usr/lib/systemd/system.
-  unitSuffixes = [
-    "service"
-    "target"
-    "socket"
-    "timer"
-    "path"
-    "mount"
-    "slice"
-  ];
+  inherit (grammar) unitSuffixes;
   unitName = typedef' "unitName" (
     v:
     if !isString v then
       "Expected a string"
-    else if match "[A-Za-z0-9:_.@\\-]+\\.(${builtins.concatStringsSep "|" unitSuffixes})" v == null then
+    else if match grammar.unitName v == null then
       "'${v}' is not a unit name: a stem of letters, digits, : _ . @ - and one of .${builtins.concatStringsSep " ." unitSuffixes}"
     else
       null
@@ -89,7 +82,7 @@ let
     v:
     if !isString v then
       "Expected a string"
-    else if match "[A-Za-z0-9:_.\\-]+\\.target" v == null then
+    else if match grammar.targetName v == null then
       "'${v}' is not a valid target name (must end with .target)"
     else
       null
@@ -100,7 +93,7 @@ let
     v:
     if !isString v then
       "Expected a string"
-    else if !any (l: isString l && match "[[][A-Za-z]+[]]" l != null) (split "\n" v) then
+    else if !any (l: isString l && match grammar.sectionHeader l != null) (split "\n" v) then
       "unit text has no section header such as [Unit] or [Service]"
     else
       null

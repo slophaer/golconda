@@ -15,6 +15,7 @@ let
   inherit (import ./var.nix { inherit types; }) word;
   inherit (import ./fragment.nix { inherit types; }) targetName unitName;
   path = import ./path.nix;
+  grammar = import ./grammar.nix;
   inherit (appLib)
     app
     exe
@@ -46,7 +47,7 @@ let
     v:
     if !isString v then
       "Expected a string"
-    else if match "[A-Za-z0-9:_.\\-]+" v == null then
+    else if match grammar.serviceName v == null then
       "'${v}' is not a valid unit name stem (letters, digits, : _ . -)"
     else
       null
@@ -114,7 +115,7 @@ let
     v:
     if !isString v then
       "Expected a string"
-    else if match "[A-Za-z0-9_.:@-]+" v == null then
+    else if match grammar.credentialId v == null then
       "'${v}' is not a credential id: letters, digits and _ . : @ - (it names a file in the credstore, not a path)"
     else
       null
@@ -343,6 +344,8 @@ in
   inherit
     service
     name
+    credentialId
+    stateDirectory
     user
     sandbox
     sandboxLines
