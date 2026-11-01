@@ -35,16 +35,24 @@ this shape: [design/modules](../../design/modules.md).
 | `links`          | `{ path = { target; kind; }; }`                                                  | every symlink of `/usr`: `/usr/bin`, expanded directories, dlopen sonames, `.wants`             |
 
 Units, files and links are installed into one `/usr` tree, so a path that two of them claim is an
-error that names both claims and both origins (a module's `name`, or `fragments[<i>]`): a unit is
-installed at `/usr/lib/systemd/system/<name>`, a file or link at its path, a package's executable at
-`/usr/bin/<name>`. The system and the image builder write some paths themselves, and a fragment
-cannot claim them: `lib/system.nix` writes `/usr/lib/golconda/config.json` and `schema.json`,
-`lib/usr-tree.nix` writes `/usr/lib/golconda/attribution.json`, and `lib/usr-tree/main.nu` writes
-`/usr/lib/golconda/packages.json`, `/usr/lib/golconda/sbom.json`, `/usr/lib/os-release`,
-`/usr/lib/sysusers.d/golconda.conf` and `/usr/lib/tmpfiles.d/golconda.conf`. Every file and link
-path must be canonical: under `/usr/`, with no empty, `.` or `..` component, no repeated separator,
-and no control character, so `/usr/lib/../x` and `/usr/x` cannot be two claims on one path.
-`merge.duplicateError` gives the message as a value.
+error that names both claims and both origins (a module's `name`, or `fragments[<i>]`). Each kind
+installs to one place:
+
+- a unit at `/usr/lib/systemd/system/<name>`;
+- a file or link at its path;
+- a package's executable at `/usr/bin/<name>`.
+
+The system and the image builder write some paths themselves, and a fragment cannot claim them:
+
+- `lib/system.nix` writes `/usr/lib/golconda/config.json` and `schema.json`;
+- `lib/usr-tree.nix` writes `/usr/lib/golconda/attribution.json`;
+- `lib/usr-tree/main.nu` writes `/usr/lib/golconda/packages.json`, `/usr/lib/golconda/sbom.json`,
+  `/usr/lib/os-release`, `/usr/lib/sysusers.d/golconda.conf` and
+  `/usr/lib/tmpfiles.d/golconda.conf`.
+
+Every file and link path must be canonical: under `/usr/`, with no empty, `.` or `..` component, no
+repeated separator, and no control character, so `/usr/lib/../x` and `/usr/x` cannot be two claims
+on one path. `merge.duplicateError` gives the message as a value.
 
 ## Shared types (`modules/lib/`)
 
@@ -75,12 +83,17 @@ The return type of every module.
 | `packages` | list of derivation                           | `/usr/nix/store` closure; every name in `bin` becomes `/usr/bin/<name>`       |
 | `links`    | attrs path under `/usr` → `{ target; kind }` | the other symlinks of `/usr`: `.wants`, directories to expand, dlopen sonames |
 
-A `link` is `{ target; kind; }`; its path is the key. `kind` is one of `package` (`/usr/bin/<name>`
-from a `bin` list; the composer derives these, a fragment rarely writes one), `farm` (the target is
-a directory the builder links file by file: `lib/udev/rules.d` of a prefixed package), `dlopen` (a
-soname the builder checks resolves) or `explicit` (anything else; a `.wants` link has a relative
-target). A path outside `/usr/`, a missing `target` or `kind`, or an unknown kind is a type error
-that names the path. The fragment refuses any other field.
+A `link` is `{ target; kind; }`; its path is the key. `kind` is one of:
+
+- `package`: `/usr/bin/<name>` from a `bin` list; the composer derives these, a fragment rarely
+  writes one;
+- `farm`: the target is a directory the builder links file by file, such as `lib/udev/rules.d` of a
+  prefixed package;
+- `dlopen`: a soname the builder checks resolves;
+- `explicit`: anything else; a `.wants` link has a relative target.
+
+A path outside `/usr/`, a missing `target` or `kind`, or an unknown kind is a type error that names
+the path. The fragment refuses any other field.
 
 A path outside `/usr/`, or a non-canonical one (`/usr/lib/../x`, `/usr//x`, a trailing `/`, a
 control character), is a type error that names the path. An `app` file name is relative and cannot
@@ -249,30 +262,45 @@ adds `/factory`.
 | `timezone`   | zone name, default `"UTC"`       | `L /etc/localtime - - - - /usr/share/zoneinfo/<timezone>`                                              |
 | `extraFiles` | attrs path under `/etc` → `file` | more seeds; a built-in path or `passwd`, `group`, `shadow`, `gshadow`, `machine-id`, `hostname` throws |
 
-Built-in seeds: `shells` (`/usr/bin/sh`, `/usr/bin/dash`), `pam.d/other` (every type
-`linux-pam/pam_deny.so`), `pam.d/sshd` (`account linux-pam/pam_unix.so`;
-`session systemd/pam_systemd.so` optional, `session linux-pam/pam_unix.so`; no `auth` line, so an
-auth request falls through to `other`), `ssl/anchors/.keep`, `ssl/blocklist/.keep`, `pkcs11/.keep`.
+Built-in seeds:
+
+- `shells` (`/usr/bin/sh`, `/usr/bin/dash`);
+- `pam.d/other` (every type `linux-pam/pam_deny.so`);
+- `pam.d/sshd` (`account linux-pam/pam_unix.so`; `session systemd/pam_systemd.so` optional,
+  `session linux-pam/pam_unix.so`; no `auth` line, so an auth request falls through to `other`);
+- `ssl/anchors/.keep`;
+- `ssl/blocklist/.keep`;
+- `pkcs11/.keep`.
+
 Never seeded: `passwd`, `group`, `shadow` (systemd-sysusers writes them on first boot), `machine-id`
 (PID 1) and `hostname` (PID 1 sets it from the bootstrap credential).
 
-tmpfiles: one `L /etc/<path> - - - - /usr/share/factory/etc/<path>` line per factory file (`L`, not
-`L+`: a regular file an admin put at that path wins and stays), `localtime` and `os-release` →
-`../usr/lib/os-release` as `L` lines, and `d /etc/ssh 0755`. Two modules that write one factory path
-are a composer error, like any duplicate file.
+tmpfiles holds:
+
+- one `L /etc/<path> - - - - /usr/share/factory/etc/<path>` line per factory file (`L`, not `L+`: a
+  regular file an admin put at that path wins and stays);
+- `localtime` and `os-release` → `../usr/lib/os-release` as `L` lines;
+- `d /etc/ssh 0755`.
+
+Two modules that write one factory path are a composer error, like any duplicate file.
 
 ### `/services/sshd`
 
-One fragment: the host key var `sshd-hostkey` (credential `sshd-hostkey.key`, passed with `-h`),
-`sshd.service`
-(`ExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config -h %d/sshd-hostkey.key …`;
-`KillMode=process`: sessions outlive a restart; sandbox `trusted`, because the sessions it spawns
-must see the real system), the files under `/usr/lib/sshd/`, the privilege-separation user
-(`u sshd - "SSH privilege separation" /var/empty`) with its directory (`d /var/empty 0755`; no
-`RuntimeDirectory=`, repkgs' openssh is built with `--with-privsep-path=/var/empty`), and, when
-their options are on, the admin vars `sshd-host-cert` and `sshd-revoked-keys`. Only credentials go
-on the command line; every fixed path is a line in `sshd_config`. The generated `sshd_config` fixes
-`PasswordAuthentication no`, `KbdInteractiveAuthentication no`,
+One fragment holds:
+
+- the host key var `sshd-hostkey` (credential `sshd-hostkey.key`, passed with `-h`);
+- `sshd.service`
+  (`ExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config -h %d/sshd-hostkey.key …`;
+  `KillMode=process`: sessions outlive a restart; sandbox `trusted`, because the sessions it spawns
+  must see the real system);
+- the files under `/usr/lib/sshd/`;
+- the privilege-separation user (`u sshd - "SSH privilege separation" /var/empty`) with its
+  directory (`d /var/empty 0755`; no `RuntimeDirectory=`, repkgs' openssh is built with
+  `--with-privsep-path=/var/empty`);
+- the admin vars `sshd-host-cert` and `sshd-revoked-keys`, when their options are on.
+
+Only credentials go on the command line; every fixed path is a line in `sshd_config`. The generated
+`sshd_config` fixes `PasswordAuthentication no`, `KbdInteractiveAuthentication no`,
 `ChallengeResponseAuthentication no`, `PermitRootLogin prohibit-password`, `UsePAM yes`,
 `LogLevel VERBOSE`, `PidFile none` and `Subsystem sftp internal-sftp`; no option changes them
 ([design/trust](../../design/trust.md#identity)). `/etc/pam.d/sshd` comes from `/factory`. The

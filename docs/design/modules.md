@@ -76,10 +76,19 @@ The composer records which fragment brought each package (`packageOrigins`: `/ba
 ## The base system
 
 `/base`, `/network` and `/security` are implicit: `/system` declares them as inputs and merges their
-fragments before the configured ones. A system with no fragments still boots with systemd, D-Bus, a
-shell, coreutils, the kernel, DHCP on every wired link, time sync and a bounded journal
-([Architecture: What every image contains](architecture.md#what-every-image-contains)). They have
-options (`/base.ntp`, `/base.journalMaxUse`, `/network.networks`, `/network.dns`,
+fragments before the configured ones. A system with no fragments still boots with:
+
+- systemd;
+- D-Bus;
+- a shell;
+- coreutils;
+- the kernel;
+- DHCP on every wired link;
+- time sync;
+- a bounded journal
+  ([Architecture: What every image contains](architecture.md#what-every-image-contains)).
+
+They have options (`/base.ntp`, `/base.journalMaxUse`, `/network.networks`, `/network.dns`,
 `/network.defaultDhcp`; `/security` has none) but no switch: there is nothing to turn off.
 
 ## `app` and `service`
