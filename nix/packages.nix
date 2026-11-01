@@ -17,7 +17,6 @@
   sources,
   system,
   platform ? system,
-  features ? { },
 }:
 let
   platforms = import "${sources.repkgs}/nix/platforms.nix";
@@ -44,10 +43,7 @@ let
       linux-kernel.kbuild.configFragments.append = [ kernelConfigFragment ];
     };
     # Set-wide choices: one TLS stack, one of each (docs/design/principles.md).
-    features = {
-      tls = "openssl";
-    }
-    // features;
+    features.tls = "openssl";
   };
 in
 {
