@@ -11,8 +11,8 @@
 #   openssl smime -sign -nocerts -noattr -binary -in roothash -inkey key -signer cert -outform der
 # Salt and superblock UUID derive from the version, so the root hash is reproducible.
 #
-# `key` and `cert` are paths. The production key lives outside the store (image/default.nix
-# `keys.verityKey`, per deployment); packages.image-smoke generates a throwaway pair.
+# `key` and `cert` are paths: the db key pair signs the root hash (lib.mkImage in nix/default.nix
+# takes the key directory, docs/design/trust.md); packages.image-smoke generates a throwaway pair.
 _:
 let
   common = import ./common.nix { };

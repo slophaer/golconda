@@ -14,7 +14,7 @@
 # Secure Boot: systemd-sbsign with sbKey/sbCert. Measured boot: one PCR 11 signature per
 # phase path in image/uki.nix's list (ukify --phases), signed with pcrKey, and the built
 # .pcrsig section is checked against the list (docs/design/trust.md). Keys are paths; the
-# production ones live outside the store (image/default.nix keys); the smoke uses throwaways.
+# production ones live outside the store (lib.mkImage keys); the smoke uses throwaways.
 _:
 let
   inherit (builtins) toString;

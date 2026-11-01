@@ -76,8 +76,7 @@ UKI's own signing certificate at build time and fails on a mismatch. On the mach
 platform keyring, and with `/sys/kernel/security/ipe/success_audit` on, IPE logs
 `rule="op=EXECUTE dmverity_signature=TRUE action=ALLOW"` for files on `/usr` (`dm-0`). With
 `ipe.enforce=1` the boot passes every check and logs no IPE denial; the same image without the `db`
-enrolled stops at switch-root. The builder's own verity key pair (`lib/image/keys.nu`) is no longer
-used.
+enrolled stops at switch-root.
 
 ### 3. CA store
 
