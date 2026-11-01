@@ -4,7 +4,7 @@
 #   derivation: a symlink to each step's output (usr, verity, initrd, uki, disk, keys) and
 #   proof.txt, what the tools say about them: veritysetup verify, the first cpio entries, ukify
 #   inspect, the sizes, and repart's listing of the disk. The keys/ symlink points at the
-#   throwaway keys (secureboot/db.crt, verity/verity.crt, pcr/pcr.pub) so scripts/boot-test can
+#   throwaway keys (secureboot/db.crt, pcr/pcr.pub) so scripts/boot-test can
 #   enrol them into OVMF vars. packages.image-smoke in nix/default.nix wires it.
 _:
 let
