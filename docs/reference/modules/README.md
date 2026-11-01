@@ -283,7 +283,10 @@ tmpfiles holds:
 - `localtime` and `os-release` → `../usr/lib/os-release` as `L` lines;
 - `d /etc/ssh 0755`.
 
-Two modules that write one factory path are a composer error, like any duplicate file.
+tmpfiles: one `L /etc/<path> - - - - /usr/share/factory/etc/<path>` line per factory file (`L`, not
+`L+`: a regular file an admin put at that path wins and stays), and `localtime` and `os-release` as
+`L` lines to `../usr/lib/os-release`. Two modules that write one factory path are a composer error,
+like any duplicate file.
 
 ### `/services/sshd`
 
