@@ -18,6 +18,9 @@ let
   # three dots or more.
   pathComponent = "([^/]*[^/.][^/]*|\\.\\.\\.+)";
 
+  # One component of a path under /etc: letters, digits and _ . + -, not . or ..
+  etcComponent = "([A-Za-z0-9_.+-]*[A-Za-z0-9_+-][A-Za-z0-9_.+-]*|\\.\\.\\.+)";
+
   # The unit suffixes systemd loads from /usr/lib/systemd/system.
   unitSuffixes = [
     "service"
@@ -65,6 +68,12 @@ in
   # not empty, . or .., one separator between them, none at the end.
   relativePath = "${pathComponent}(/${pathComponent})*";
   usrPath = "/usr(/${pathComponent})+";
+
+  # A path under /etc, relative: plain components that are not . or ..
+  etcPath = "${etcComponent}(/${etcComponent})*";
+
+  # An IANA zone name, a path under /usr/share/zoneinfo such as Europe/Berlin.
+  timezone = "[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*";
 
   credentialId = "[A-Za-z0-9_.:@-]+";
   credentialPrefix = "[A-Za-z0-9_=:/.,+-]*";

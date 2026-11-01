@@ -107,6 +107,24 @@ let
   #
   # Every entry MUST have a `description` field; the test enforces this.
   typeRegistry = {
+    # modules/factory
+    etcFiles = {
+      description = "Path under /etc -> file: the factory files, seeded into /etc with tmpfiles L lines. The names sysusers, PID 1 and the bootstrap credentials write are refused.";
+      type = "object";
+      propertyNames = {
+        type = "string";
+        pattern = pattern "etcPath";
+      };
+      additionalProperties = {
+        "$ref" = "#/$defs/file";
+      };
+    };
+    timezone = {
+      description = "An IANA zone name, such as UTC or Europe/Berlin: /etc/localtime links to /usr/share/zoneinfo/<timezone>.";
+      type = "string";
+      pattern = pattern "timezone";
+    };
+
     # modules/lib/fragment.nix
     fragment = {
       description = "A module fragment with units, files, sysusers, tmpfiles, packages and links.";
@@ -279,11 +297,11 @@ let
     };
 
     argv = {
-      description = "Program arguments after the executable: strings (no newline) and credential references, which render as `<prefix>%d/<credential>`.";
+      description = "Program arguments after the executable: strings (no control character) and credential references, which render as `<prefix>%d/<credential>`.";
       type = "array";
       items = {
         anyOf = [
-          { type = "string"; }
+          (noControl // { type = "string"; })
           { "$ref" = "#/$defs/credentialRef"; }
         ];
       };

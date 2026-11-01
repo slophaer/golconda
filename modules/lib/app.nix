@@ -82,8 +82,8 @@ let
     v:
     if !isList v then
       "Expected type 'argv' (a list of strings and credential references)"
-    else if any (a: isString a && match ".*\n.*" a != null) v then
-      "an argument must not contain a newline: it would end the ExecStart= line of the unit"
+    else if any (a: isString a && path.hasControl a) v then
+      "an argument must not contain a control character: a newline would end the ExecStart= line of the unit"
     else
       (listOf (union [
         string
