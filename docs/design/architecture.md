@@ -58,7 +58,7 @@ file. Everything else is a module the document names ([Configuration](config.md)
 | adios                          | typed module tree, fragments, the composer                                         | `modules/`                                         |
 | iets                           | evaluation and lints                                                               | `iets.toml`, `scripts/lint`                        |
 | schema, TOML loader            | JSON Schema of the tree; document → options; the one tree walker                   | `lib/schema.nix`, `lib/config.nix`, `lib/tree.nix` |
-| entry point                    | `mkSystem`: document → composed system → `/usr` tree                               | `lib/system.nix`, `golconda.nix`                   |
+| entry point                    | `mkSystem`: document → composed system → `/usr` tree                               | `lib/system.nix`, `examples/golconda.nix`          |
 | usr tree                       | closure + symlinks + config → directory for erofs                                  | `lib/usr-tree.nix`                                 |
 | image                          | definitions as data; builder: erofs, verity, initrd, UKI, GPT from the `/usr` tree | `image/*.nix`; `lib/image/`                        |
 | systemd-boot, stub, bless-boot | boot, counting, measurement                                                        | ESP                                                |
