@@ -1,5 +1,23 @@
 # Contributing
 
+## Repository map
+
+| directory         | what it holds                                                                                                                                                                        |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `modules/`        | the adios modules, one directory per path (`/base`, `/services/sshd`, …); `modules/lib/`: the shared types, grammar and renderers that `lib/` uses too                               |
+| `lib/`            | the build functions: `mkSystem` (`system.nix`), the `/usr` tree, the image chain (`lib/image/`), the schema, the TOML loader, the docs generator, the one module walker (`tree.nix`) |
+| `image/`          | image parameters as data (partitions, sysupdate transfers, the UKI cmdline); `lib/image/` builds from them, file for file                                                            |
+| `nix/`            | the outputs (`default.nix`), the pins (`sources.nix`), the repkgs set (`packages.nix`), checks, the dev shell                                                                        |
+| `packages/`       | Golconda's package specs; a name here replaces the repkgs fork's                                                                                                                     |
+| `tests/`          | `eval/`: the pure-Nix tests by area (`nix/tests.nix` imports them); `packages/`: package tests; `usr-tree/`; fixtures                                                                |
+| `scripts/`        | developer tools: `lint`, `docs`, `make-keys`, `provision-esp`, `boot-test`                                                                                                           |
+| `examples/`       | example configurations                                                                                                                                                               |
+| `patches/repkgs/` | issue drafts for the fork's commits                                                                                                                                                  |
+| `docs/`           | `design/` says why, `reference/` says what exists                                                                                                                                    |
+
+Start with [Walkthrough](docs/reference/walkthrough.md): it follows one `server.toml` through these
+directories to a booted machine.
+
 ## Commits and branches
 
 1. Use kernel commit style: `area: summary` (lower case, imperative, 50 characters or fewer, no

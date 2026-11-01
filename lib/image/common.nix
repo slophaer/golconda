@@ -29,7 +29,7 @@ in
   # `use <module>.nu; <module> build` with every package in `tools` on PATH (bin/, plus
   # lib/systemd for systemd's libexec tools) and every package in `libs` on LD_LIBRARY_PATH.
   # `libs` stands in for the farm: systemd's tools dlopen libcrypto, libcryptsetup, libtss2
-  # and the compression libraries by soname (modules/base dlopenSonames), and the fork's
+  # and the compression libraries by soname (modules/base/parts/links.nix dlopenSonames), and the fork's
   # RUNPATH does not reach them; in the image /usr/lib does.
   nuDerivation =
     {
