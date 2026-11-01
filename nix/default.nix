@@ -220,8 +220,9 @@ in
       # needs a daemon with CA and dynamic derivations first (docs/reference/build-host.md)
       inherit (pkgs) nix;
 
-      # the kernel: the fork's base with Golconda's config fragment (packages/kernel)
-      kernel = import ../packages/kernel { inherit pkgs; };
+      # the kernel: the repkgs fork's linux-kernel (a small bootable base) with Golconda's kconfig
+      # fragment, which the override in nix/packages.nix applies to every `pkgs.linux-kernel`
+      kernel = pkgs.linux-kernel;
 
       # The image chain (lib/image) over the /base system: erofs, verity, initrd, UKI, disk, and
       # the proofs in proof.txt. Keys are throwaways made in the store; a release signs with the
