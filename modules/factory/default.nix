@@ -162,20 +162,14 @@ in
         "/etc/localtime" = "/usr/share/zoneinfo/${options.timezone}";
         "/etc/os-release" = "../usr/lib/os-release";
       };
-      # Empty directories ('d'). The only one is /etc/ssh: no seed lives in it, and sshd
-      # reads /usr/lib/sshd, so nothing in the image uses it.
-      dirs = [ "/etc/ssh" ];
-
-      # Tmpfiles lines: L for symlinks into the factory, d for directories.
+      # Tmpfiles lines: L for symlinks into the factory and to the static targets.
       # Each file is a symlink into the factory (L); an admin file in its place wins.
       tmpfilesLines =
         # L /etc/<path> - - - - /usr/share/factory/etc/<path>
         # Uses L (not L+): an existing file (admin override) is left alone.
         map (p: "L /etc/${p} - - - - ${factoryDir}/${p}") paths
         # Symlinks to paths outside the factory (os-release, timezone)
-        ++ map (p: "L ${p} - - - - ${links.${p}}") (attrNames links)
-        # Empty directories
-        ++ map (d: "d ${d} 0755 root root -") dirs;
+        ++ map (p: "L ${p} - - - - ${links.${p}}") (attrNames links);
     in
     {
       files = listToAttrs (

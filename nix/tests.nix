@@ -2518,9 +2518,12 @@ let
     (check "factory: the L lines and the static links" (
       elem "L /etc/localtime - - - - /usr/share/zoneinfo/UTC" factory.tmpfiles
       && elem "L /etc/os-release - - - - ../usr/lib/os-release" factory.tmpfiles
-      && elem "d /etc/ssh 0755 root root -" factory.tmpfiles
       && !any (hasInfix "machine-id") factory.tmpfiles
     ))
+    # sshd takes its config with -f and its host key with -h; the paths openssh compiles
+    # in under /etc/ssh (moduli, sshrc, ssh_config) are optional and the image ships none,
+    # so an empty /etc/ssh would answer as a missing one does
+    (check "factory: makes no empty directory" (!any (hasPrefix "d ") factory.tmpfiles))
     (check "factory: knows no service (no sshd user, no /var/empty)" (
       !(factory ? sysusers)
       && !any (hasInfix "/var/empty") factory.tmpfiles
