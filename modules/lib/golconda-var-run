@@ -4,9 +4,10 @@
 # Run by golconda-var-NAME.service (modules/lib/var.nix) with RuntimeDirectory=
 # and StateDirectory= set. The generator script /usr/lib/golconda/vars.d/NAME.sh
 # runs in $RUNTIME_DIRECTORY (tmpfs) and writes its files there. Then every
-# SECRET is sealed to this machine's TPM as the credential NAME.SECRET, every
-# PUBLIC is kept in $STATE_DIRECTORY/pub, the plaintext is removed and `done`
-# is touched. SECRETS and PUBLICS are space-separated file names.
+# SECRET is sealed as the credential NAME.SECRET (to the host key and, when the
+# machine has a TPM2, to the TPM too), every PUBLIC is kept in
+# $STATE_DIRECTORY/pub, the plaintext is removed and `done` is touched. SECRETS
+# and PUBLICS are space-separated file names.
 #
 # Consumers load a secret with LoadCredentialEncrypted=NAME.SECRET and read
 # a public file at /var/lib/golconda/vars/NAME/pub/PUBLIC.

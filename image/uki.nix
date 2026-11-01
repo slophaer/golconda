@@ -9,8 +9,10 @@
 #   - Initrd (systemd-based, built separately)
 #   - Kernel command line (with usrhash)
 #   - os-release
-#   - Secure Boot signature (.sbat, signed by db key)
+#   - SBAT metadata (.sbat): revocation metadata, not a signature
 #   - PCR measurements (.pcrsig, signed by PCR key)
+#
+# The whole UKI is also signed with the Secure Boot db key, so the firmware accepts it.
 #
 # See docs/design/boot.md for the boot process.
 {
