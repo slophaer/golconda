@@ -53,10 +53,7 @@ let
     inherit (schemaLib) typeRegistry;
     tree = f.modules { };
   };
-  configLib = import ../lib/config.nix {
-    tree = f.modules { };
-    inherit (f) modules;
-  };
+  configLib = import ../lib/config.nix { tree = f.modules { }; };
   usrTreeLib = import ../lib/usr-tree.nix { };
   imageLib = import ../lib/image { };
   inherit
@@ -1552,22 +1549,21 @@ let
     (check "config: loadConfig rejects unknown table" (
       !(tryEval (configLib.loadConfig ../examples/bad.toml)).success
     ))
-    (check "config: loadAndApply with the set builds sshd from the document" (
+    # The loader checks option names too: its options are safe to hand to
+    # f.modules (the probe: prot = 2222 kept Port 22 through loadAndApply)
+    (check "config: loadConfigText refuses a misspelt option and names it" (
       let
-        appliedTree = (configLib.withPkgs stubSet).loadAndApply ../examples/server.toml;
-        frag = compose [ (appliedTree.modules.services.modules.sshd { }) ];
+        load = text: tryEval (deepSeq (configLib.loadConfigText text).options true);
       in
-      ((configLib.withPkgs stubSet).loadConfig ../examples/server.toml).options."/pkgs".target.pkgs
-      == stubSet.pkgs
-      &&
-        hasInfix "ExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config -h %d/sshd-hostkey.key\n"
-          frag.units."sshd.service"
-      && elem openssh frag.packages
+      !(load "[\"/services/sshd\"]\nprot = 2222\n").success
+      && (load "[\"/services/sshd\"]\nport = 2222\n").success
+      && configLib.optionError "/services/sshd" { prot = 2222; } != null
+      && hasInfix "/services/sshd has no option 'prot'" (
+        configLib.optionError "/services/sshd" { prot = 2222; }
+      )
     ))
-    (check "config: loadAndApply without the set cannot build sshd" (
-      throws (compose [
-        ((configLib.loadAndApply ../examples/server.toml).modules.services.modules.sshd { })
-      ])
+    (check "config: mkSystem is the one route that applies a document" (
+      !(configLib ? loadAndApply) && !(configLib ? withPkgs) && !(f.configLib ? loadAndApply)
     ))
 
     # 5b. app.program and the /usr/bin farm

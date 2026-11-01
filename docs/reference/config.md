@@ -27,8 +27,9 @@ root = ["alice@example.com"]
 dns = ["192.0.2.53"]
 ```
 
-An unknown table name throws with the list of valid paths. A `/pkgs` table throws: the package set
-is not data.
+An unknown table name throws with the list of valid paths, and an option name the module does not
+declare throws with the valid names: a misspelt `prot = 2222` is an error, not a silent port 22. A
+`/pkgs` table throws: the package set is not data.
 
 ## Valid paths
 
@@ -122,8 +123,10 @@ iets eval -E '(import ./examples/golconda.nix).usrTree.outPath'
 nix-build -E '(import ./examples/golconda.nix).usrTree'    # through the patched daemon
 ```
 
-Below the entry point, the loader alone is `configLib` ([Outputs](outputs.md#configlib)): a caller
-can load a document and list fragments by hand, which is what the tests do.
+`mkSystem` is the one entry point that applies a document. The loader alone is `configLib`
+([Outputs](outputs.md#configlib)): it turns a document into checked options and applies nothing.
+`mkSystem` runs the same option check over an attribute-set `config` and over `extra`, so every
+route into the tree is checked.
 
 ## Nix escapes
 

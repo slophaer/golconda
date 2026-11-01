@@ -78,22 +78,22 @@ Golconda does not ship a validator in the image yet.
 
 ## `configLib`
 
-TOML configuration loader. Exports
-`{ loadConfig; loadConfigText; loadAndApply; validPaths; withPkgs; }`.
+TOML configuration loader: a document in, checked options out. It applies nothing;
+[`lib.mkSystem`](config.md#the-entry-point) is the one entry point that does. Exports
+`{ loadConfig; loadConfigText; checkOptions; optionError; validPaths; }`.
 
 ```nix
 let
   f = import ./default.nix;
-  cfg = f.configLib.loadConfig ./examples/server.toml;
 in
-f.modules cfg
+(f.configLib.loadConfig ./examples/server.toml).options."/services/sshd".port
 ```
 
-- `loadConfig path`: parses the TOML file and returns `{ options = {...}; }` for the adios tree.
-  Table names are absolute module paths (`/services/sshd`). Unknown paths throw with the valid list.
-- `loadAndApply path`: calls `loadConfig` then applies the result to the module tree.
+- `loadConfig path`, `loadConfigText text`: parse the TOML and return `{ options = {...}; }`. Table
+  names are absolute module paths (`/services/sshd`). An unknown path throws with the valid list, an
+  undeclared option name throws with the module's valid names, and a `/pkgs` table throws.
+- `checkOptions options`: the same checks over an attribute set of options; returns it unchanged.
+  `mkSystem` runs it over an attribute-set `config` and `extra`.
+- `optionError path table`: the check's message for one table, or `null`.
 - `validPaths`: list of all module paths that accept options; `/pkgs` is not one (its `target` is
-  not data, and a `/pkgs` table throws).
-- `withPkgs set`: the same loader with the repkgs set bound, so its options carry `"/pkgs".target`
-  and a module that needs a package evaluates:
-  `(f.configLib.withPkgs set).loadAndApply ./server.toml`.
+  not data, and `mkSystem` binds it to the platform's set).

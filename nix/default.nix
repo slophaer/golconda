@@ -367,13 +367,11 @@ in
   # Module paths discovered from modules/ directory.
   docs-module-paths = docsFromSchema.modulePaths;
 
-  # TOML configuration loader. Returns { loadConfig; loadAndApply; validPaths; withPkgs; }.
+  # TOML configuration loader: a document in, checked options out. Returns
+  # { loadConfig; loadConfigText; checkOptions; optionError; validPaths; }.
+  # It applies nothing: lib.mkSystem is the one entry point that does.
   #   (import ./default.nix).configLib.loadConfig ./config.toml
-  #   ((import ./default.nix).configLib.withPkgs set).loadAndApply ./config.toml
-  configLib = import ../lib/config.nix {
-    tree = tree { };
-    modules = tree;
-  };
+  configLib = import ../lib/config.nix { tree = tree { }; };
 
   # The platforms table (repkgs nix/platforms.nix), for callers that need all target names.
   # Not per-system: the same table on every build host.

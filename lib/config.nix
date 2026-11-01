@@ -3,33 +3,33 @@
 # A TOML document of the form:
 #   ["/system"]
 #   name = "myhost"
-#   version = "1.0.0"
+#   version = "20261031.1"
 #
 #   ["/services/sshd"]
 #   port = 22
 #   authorizedKeys = ["ssh-ed25519 AAAA..."]
 #
 # becomes:
-#   { options."/system" = { name = "myhost"; version = "1.0.0"; };
+#   { options."/system" = { name = "myhost"; version = "20261031.1"; };
 #     options."/services/sshd" = { port = 22; authorizedKeys = [...]; }; }
 #
-# Table names are adios absolute paths (starting with /). Unknown table names
-# throw with the list of valid module paths. `/pkgs` is never a table: the
-# repkgs set is not data; `withPkgs set` binds a loader that adds it to the
-# options, so `loadAndApply` can evaluate a module that needs a package.
+# The loader's contract: a document in, checked options out. Table names are
+# adios absolute paths (starting with /); an unknown table throws with the
+# list of valid module paths. An option name must be one the module declares:
+# adios applies only declared options and ignores the rest, so a misspelt
+# name would silently keep the default; it throws with the valid names.
+# `/pkgs` is never a table: the repkgs set is not data.
+#
+# The loader does not apply the options. lib/system.nix (mkSystem) is the one
+# entry point that does: it binds /pkgs, runs `checkOptions` again over what an
+# attrset config and `extra` add, and composes.
 #
 # Usage:
-#   let cfg = import ./lib/config.nix { inherit tree modules; };
+#   let cfg = import ./lib/config.nix { tree = f.modules { }; };
 #   in cfg.loadConfig ./config.toml
-#   (cfg.withPkgs set).loadAndApply ./config.toml
 #
-# `tree` is the evaluated tree (f.modules { }) for path validation.
-# `modules` is the module loader function (f.modules) for applying configs.
-{
-  tree,
-  modules ? null,
-  pkgsSet ? null,
-}:
+# `tree` is the evaluated tree (f.modules { }), for path and option validation.
+{ tree }:
 let
   inherit (builtins)
     attrNames
@@ -37,7 +37,10 @@ let
     elem
     filter
     foldl'
+    head
+    isString
     readFile
+    split
     ;
 
   # Collect all valid module paths from the tree.
@@ -58,58 +61,60 @@ let
 
   validPaths = filter (p: p != "/pkgs") (collectPaths "" tree.modules);
 
-  # Check if a table name is a valid module path.
-  isValidPath = p: elem p validPaths;
+  moduleAt =
+    p: foldl' (mods: part: mods.modules.${part}) tree (filter (s: isString s && s != "") (split "/" p));
+
+  # The message for a table `given` at module path `p`, or null: an unknown
+  # path, or an option name the module does not declare.
+  optionError =
+    p: given:
+    if !(elem p validPaths) then
+      "golconda: unknown module path '${p}' in config; valid paths: ${concatStringsSep ", " validPaths}"
+    else
+      let
+        declared = attrNames ((moduleAt p).options or { });
+        unknown = filter (k: !(elem k declared)) (attrNames given);
+      in
+      if unknown == [ ] then
+        null
+      else
+        "golconda: ${p} has no option ${
+          concatStringsSep ", " (map (k: "'${k}'") unknown)
+        } (a misspelt option would silently keep the default); valid options: ${concatStringsSep ", " declared}";
+
+  # options, after every table is checked; "/pkgs" is skipped (mkSystem binds
+  # its target, a document never has it).
+  checkOptions =
+    options:
+    let
+      errors = filter (e: e != null) (
+        map (p: optionError p options.${p}) (filter (p: p != "/pkgs") (attrNames options))
+      );
+    in
+    if errors == [ ] then options else throw (head errors);
 
   # Load and validate a TOML document given as text.
+  # Strict: the result is { options; } only once every table is checked.
   loadConfigText =
     text:
     let
       toml = builtins.fromTOML text;
-      tables = attrNames toml;
-
-      # Find invalid table names
-      invalidTables = filter (t: !isValidPath t) tables;
-
+      options = checkOptions toml;
     in
     if toml ? "/pkgs" then
       throw "golconda: /pkgs is not configuration: the repkgs set comes from nix (nix/default.nix), not from the document"
-    else if invalidTables != [ ] then
-      throw "golconda: unknown module path(s) in config: ${concatStringsSep ", " invalidTables}; valid paths: ${concatStringsSep ", " validPaths}"
     else
-      {
-        options = toml // (if pkgsSet == null then { } else { "/pkgs".target = pkgsSet; });
-      };
+      builtins.seq options { inherit options; };
 
   # Load and validate a TOML configuration file.
   loadConfig = path: loadConfigText (readFile path);
-
-  # Load config and apply it to the tree, returning an evaluated tree.
-  # Requires the `modules` function to be passed to this library.
-  loadAndApply =
-    path:
-    let
-      cfg = loadConfig path;
-    in
-    if builtins.isFunction modules then
-      modules cfg
-    else
-      throw "loadAndApply requires the modules function; pass it to config.nix";
-
-  # The same loader with the repkgs set bound: its options carry "/pkgs".target.
-  withPkgs =
-    set:
-    import ./config.nix {
-      inherit tree modules;
-      pkgsSet = set;
-    };
 in
 {
   inherit
+    checkOptions
     loadConfig
     loadConfigText
-    loadAndApply
+    optionError
     validPaths
-    withPkgs
     ;
 }
