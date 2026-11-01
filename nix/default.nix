@@ -26,116 +26,156 @@ let
       tree = tree { };
     };
   imageLib = import ../lib/image { };
+
+  # The image chain over one system, as a release builds it (lib/image). The signed loader
+  # comes first: the /usr tree carries it (lib/image/loader.nix loaderFragment), and the disk
+  # step checks that the ESP gets the same file.
+  #
+  # The key layout, the only one the chain reads, relative to `keys`:
+  #   secureboot/db.key, secureboot/db.crt  sign the loader, the UKI and the verity root hash
+  #                                         (the kernel checks that signature against the
+  #                                         firmware db, docs/design/trust.md)
+  #   pcr/pcr.key, pcr/pcr.pub              sign the PCR 11 policy; pcr.pub is the UKI's .pcrpkey
+  # `pcrKeys` (default `keys`) is a second directory in the same layout, read for pcr/ only: a
+  # db key rotation keeps the PCR key (image-smoke-test-rotated).
+  #
+  # How the private keys reach the sandboxed builder depends on the type of `keys`:
+  #   - a path (./keys, /srv/keys): Nix copies the whole directory into the store, so the
+  #     private keys sit in the build host's store, readable by every local user, until a
+  #     garbage collection removes them. A remote builder gets a copy too.
+  #   - a string ("/srv/golconda-keys"): nothing is copied; the builder reads the files where
+  #     they are, so the daemon must let the sandbox see them (extra-sandbox-paths in the
+  #     daemon's nix.conf, docs/reference/build-host.md). The derivations name only the path,
+  #     so new keys under the same path do not rebuild anything: give new keys a new path.
+  #   - a derivation (throwawayKeys): keys made in the store, for the smoke outputs only.
+  # `smoke` (lib/image/smoke.nix) links its `keys`; only the image-smoke outputs use it.
+  imageChain =
+    {
+      config,
+      keys,
+      pcrKeys ? keys,
+      system ? builtins.currentSystem,
+    }:
+    let
+      # a relative string would name a path inside the build sandbox
+      absolute =
+        k:
+        if builtins.isString k && builtins.substring 0 1 k != "/" then
+          throw "golconda: mkImage: a key directory must be an absolute path, not '${k}'"
+        else
+          k;
+      checkedKeys = absolute keys;
+      # the same set default.nix argsFun hands to `packages`: the loader is built before the system
+      inherit
+        (import ./packages.nix {
+          inherit sources system;
+          platform = system;
+        })
+        pkgs
+        platform
+        ;
+      sbKey = "${checkedKeys}/secureboot/db.key";
+      sbCert = "${checkedKeys}/secureboot/db.crt";
+      loader = imageLib.loader {
+        inherit
+          pkgs
+          platform
+          sbKey
+          sbCert
+          ;
+        buildSystem = system;
+      };
+      sys = mkSystem {
+        inherit system config;
+        platform = system;
+        extra."/system".fragments = [ (imageLib.loaderFragment { inherit loader platform; }) ];
+      };
+      args = {
+        imageId = sys.name;
+        inherit (sys) version platform pkgs;
+        buildSystem = system;
+      };
+      erofs = imageLib.erofs (args // { inherit (sys) usrTree; });
+      verity = imageLib.verity (
+        args
+        // {
+          inherit erofs;
+          key = sbKey;
+          cert = sbCert;
+        }
+      );
+      initrd = imageLib.initrd (args // { usrTree = imageLib.initrdTree args; }); # not sys.usrTree
+      uki = imageLib.uki (
+        args
+        // {
+          inherit
+            initrd
+            verity
+            sbKey
+            sbCert
+            ;
+          inherit (sys) usrTree;
+          pcrKey = "${absolute pcrKeys}/pcr/pcr.key";
+          pcrPublicKey = "${absolute pcrKeys}/pcr/pcr.pub";
+          # No cmdlineExtra: every image boots the production cmdline (image/uki.nix carries
+          # `rw`, so the root is writable before the ssh host key var runs). To watch a boot:
+          # cmdlineExtra = "systemd.log_level=debug systemd.log_target=console
+          # systemd.journald.forward_to_console=1";
+        }
+      );
+      disk = imageLib.disk (
+        args
+        // {
+          inherit
+            erofs
+            verity
+            uki
+            loader
+            ;
+          inherit (sys) usrTree;
+        }
+      );
+    in
+    {
+      inherit
+        erofs
+        verity
+        initrd
+        uki
+        loader
+        disk
+        ;
+      # what sysupdate fetches: the four files and SHA256SUMS (docs/design/releases.md)
+      release = "${disk}/release";
+      smoke = imageLib.smoke (
+        args
+        // {
+          inherit
+            erofs
+            verity
+            initrd
+            uki
+            disk
+            ;
+          keys = checkedKeys;
+        }
+      );
+    };
+
+  # mkImage { config; keys; pcrKeys ? keys; system ? builtins.currentSystem; } →
+  #   { erofs; verity; initrd; uki; loader; disk; release; }
+  # `config` is what lib.mkSystem takes (a TOML path or options); `keys` is the directory
+  # above, in the layout above. No smoke: it would link the private keys into its output.
+  mkImage = args: builtins.removeAttrs (imageChain args) [ "smoke" ];
 in
 {
   packages =
     {
       pkgs,
       system,
-      platform,
       ...
     }:
     let
-      # The image chain over one system, as a release builds it (lib/image). The signed loader
-      # comes first: the /usr tree carries it (lib/image/loader.nix loaderFragment), and the disk
-      # step checks that the ESP gets the same file. `sbKeys` sign the loader, the UKI and the
-      # verity root hash (the db key: the kernel checks the signature against the firmware db,
-      # docs/design/trust.md); `pcrKeys` sign the PCR 11 policy; `keys` is the smoke's keys/
-      # link, the db certificate scripts/boot-test enrols.
-      imageChain =
-        {
-          config,
-          sbKeys,
-          pcrKeys ? sbKeys,
-          keys ? sbKeys,
-        }:
-        let
-          sbKey = "${sbKeys}/secureboot/db.key";
-          sbCert = "${sbKeys}/secureboot/db.crt";
-          loader = imageLib.loader {
-            inherit
-              pkgs
-              platform
-              sbKey
-              sbCert
-              ;
-            buildSystem = system;
-          };
-          sys = mkSystem {
-            inherit system config;
-            platform = system;
-            extra."/system".fragments = [ (imageLib.loaderFragment { inherit loader platform; }) ];
-          };
-          args = {
-            imageId = sys.name;
-            inherit (sys) version platform pkgs;
-            buildSystem = system;
-          };
-          erofs = imageLib.erofs (args // { inherit (sys) usrTree; });
-          verity = imageLib.verity (
-            args
-            // {
-              inherit erofs;
-              key = sbKey;
-              cert = sbCert;
-            }
-          );
-          initrd = imageLib.initrd (args // { usrTree = imageLib.initrdTree args; }); # not sys.usrTree
-          uki = imageLib.uki (
-            args
-            // {
-              inherit
-                initrd
-                verity
-                sbKey
-                sbCert
-                ;
-              inherit (sys) usrTree;
-              pcrKey = "${pcrKeys}/pcr/pcr.key";
-              pcrPublicKey = "${pcrKeys}/pcr/pcr.pub";
-              # No cmdlineExtra: every image boots the production cmdline (image/uki.nix carries
-              # `rw`, so the root is writable before the ssh host key var runs). To watch a boot:
-              # cmdlineExtra = "systemd.log_level=debug systemd.log_target=console
-              # systemd.journald.forward_to_console=1";
-            }
-          );
-          disk = imageLib.disk (
-            args
-            // {
-              inherit
-                erofs
-                verity
-                uki
-                loader
-                ;
-              inherit (sys) usrTree;
-            }
-          );
-        in
-        {
-          inherit
-            erofs
-            verity
-            initrd
-            uki
-            loader
-            disk
-            ;
-          smoke = imageLib.smoke (
-            args
-            // {
-              inherit
-                erofs
-                verity
-                initrd
-                uki
-                disk
-                keys
-                ;
-            }
-          );
-        };
-
       throwawayKeys = imageLib.throwawayKeys {
         inherit pkgs;
         buildSystem = system;
@@ -143,8 +183,9 @@ in
 
       # the base system of examples/server.toml, as lib.mkSystem makes it
       imageSmoke = imageChain {
+        inherit system;
         config = ../examples/server.toml;
-        sbKeys = throwawayKeys;
+        keys = throwawayKeys;
       };
 
       # Boot test image: authorizedKeys for testing SSH login.
@@ -183,7 +224,7 @@ in
 
       # The image chain (lib/image) over the /base system: erofs, verity, initrd, UKI, disk, and
       # the proofs in proof.txt. Keys are throwaways made in the store; a release signs with the
-      # deployment's keys (image/default.nix). image-smoke-<step> exposes each step on its own.
+      # deployment's keys (lib.mkImage). image-smoke-<step> exposes each step on its own.
       image-smoke = imageSmoke.smoke;
       image-smoke-erofs = imageSmoke.erofs;
       image-smoke-verity = imageSmoke.verity;
@@ -194,8 +235,9 @@ in
 
       image-smoke-test =
         (imageChain {
+          inherit system;
           config = testConfig "20261031.1";
-          sbKeys = throwawayKeys;
+          keys = throwawayKeys;
         }).smoke;
 
       # The next release of the test image, signed with a new db key: the loader, the UKI and
@@ -204,8 +246,9 @@ in
       # rotates the firmware's db (docs/design/bootloader.md).
       image-smoke-test-rotated =
         (imageChain {
+          inherit system;
           config = testConfig "20261031.2";
-          sbKeys = rotatedKeys;
+          keys = rotatedKeys;
           pcrKeys = throwawayKeys;
         }).smoke;
 
@@ -328,5 +371,6 @@ in
 
   # lib: Nix library functions for building Golconda systems.
   #   (import ./default.nix).lib.mkSystem { config = ./server.toml; }
-  lib = { inherit mkSystem; };
+  #   (import ./default.nix).lib.mkImage { config = ./server.toml; keys = "/srv/golconda-keys"; }
+  lib = { inherit mkSystem mkImage; };
 }

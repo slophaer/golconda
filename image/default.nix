@@ -30,17 +30,5 @@
   # UKI naming: <imageId>_<version>+<triesLeft>-<triesDone>.efi
   # After blessing: <imageId>_<version>.efi (no counter suffix)
 
-  # Key layout (paths relative to deployment keys directory)
-  keys = {
-    secureBootPk = "secureboot/PK.crt";
-    secureBootKek = "secureboot/KEK.crt";
-    secureBootDb = "secureboot/db.crt";
-    secureBootDbKey = "secureboot/db.key";
-    # the verity root hash is signed with the db key: the kernel checks the signature against
-    # the platform keyring, which holds the firmware db and nothing else (docs/design/trust.md)
-    verityCert = "secureboot/db.crt";
-    verityKey = "secureboot/db.key";
-    pcrCert = "pcr/pcr.crt";
-    pcrKey = "pcr/pcr.key";
-  };
+  # The key layout is in nix/default.nix, next to the chain that reads it (lib.mkImage).
 }

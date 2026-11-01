@@ -116,23 +116,67 @@ uses short-lived certificates instead.
 
 ## Deployment keys
 
-A release is signed with the deployment's keys, not the store's throwaways. `image/default.nix`
-names their layout as paths outside the store: `secureboot/PK.crt`, `KEK.crt`, `db.crt` and
-`db.key`, and `pcr/pcr.crt` and `pcr.key` under the keys directory the builder is given. The `db`
-key signs both the UKI (`ukify --secureboot-private-key`, `lib/image/uki.nu`) and the verity root
-hash (`lib/image/verity.nu`), and the same key signs the loader on the ESP (`lib/image/disk.nu`).
-The kernel checks the root hash signature against the platform keyring, which holds the firmware
-`db` ([Verity key](#2-verity-key)). The build checks the signature against the UKI's own certificate
-before the disk is written (`lib/image/uki.nu`, `openssl cms -verify`), so a mismatched key pair
-fails the build rather than the boot. A rotated `db` key needs new images: the UKI, the root hash
-signature and the loader are all signed with it.
+A release is signed with the deployment's keys, not the store's throwaways. The operator builds it
+with `lib.mkImage`:
 
-The operator protects the private keys offline. They never enter the store, the image or the
-machine; only the certificates are enrolled in firmware. Rotation and recovery:
+```nix
+(import ./default.nix).lib.mkImage {
+  config = ./server.toml;
+  keys = "/srv/golconda-keys";
+}
+```
 
-- **The ESP loader** (review finding 26, still open): no sysupdate transfer updates the loader, so a
-  new `db` key means writing a newly signed systemd-boot to the ESP and enrolling the new
-  certificate in firmware. Until that path exists, a loader repair is manual or a reflash.
+It returns the steps `erofs`, `verity`, `initrd`, `uki`, `loader` and `disk`, and `release`, the
+directory sysupdate fetches ([Releases](releases.md#the-release-directory)). The chain reads four
+files under `keys`, and nothing else:
+
+| file                | used for                                                         |
+| ------------------- | ---------------------------------------------------------------- |
+| `secureboot/db.key` | signs the loader, the UKI and the verity root hash               |
+| `secureboot/db.crt` | the certificate for those signatures; firmware `db` must hold it |
+| `pcr/pcr.key`       | signs the PCR 11 policy of each boot phase (`.pcrsig`)           |
+| `pcr/pcr.pub`       | the public half, embedded in the UKI as `.pcrpkey`               |
+
+The chain needs no `PK` or `KEK`: they are enrolled in firmware and sign nothing the build makes. An
+optional `pcrKeys` names a second directory in the same layout and is read for `pcr/` only; a `db`
+rotation uses it to keep the PCR key ([Boot loader: Key rotation](bootloader.md#key-rotation)).
+
+The `db` key signs both the UKI (`ukify --secureboot-private-key`, `lib/image/uki.nu`) and the
+verity root hash (`lib/image/verity.nu`), and the same key signs the loader
+(`lib/image/loader.nix`). The kernel checks the root hash signature against the platform keyring,
+which holds the firmware `db` ([Verity key](#2-verity-key)). The build checks the signature against
+the UKI's own certificate before the disk is written (`lib/image/uki.nu`, `openssl cms -verify`), so
+a mismatched key pair fails the build rather than the boot. A rotated `db` key needs new images: the
+UKI, the root hash signature and the loader are all signed with it.
+
+### How the private keys reach the build
+
+The builders run in the Nix sandbox, which sees only the store and the paths the daemon adds. So the
+private keys either enter the store or the daemon shows them to the sandbox. The type of `keys`
+picks one:
+
+- **A path** (`keys = ./keys;` or `/srv/golconda-keys` without quotes): Nix copies the directory
+  into the store. The private keys are then in the build host's `/nix/store`, which every local user
+  can read, and they stay there until a garbage collection removes them. With a remote builder, iets
+  uploads them to it. Use this only on a build host that you alone use.
+- **A string** (`keys = "/srv/golconda-keys";`): nothing is copied. The derivations name the path,
+  and the builder reads the files there. The daemon must make the directory visible in the sandbox
+  with `extra-sandbox-paths` in its own `nix.conf`, and the build users must be able to read it
+  ([Build host](../reference/build-host.md#keys-in-the-sandbox)). This keeps the keys out of the
+  store. It is unverified: no test builds an image this way yet. The derivations do not change when
+  the files change, so a new key under the same path rebuilds nothing; put new keys under a new
+  path.
+
+Either way the private keys never enter the image or the machine; only the certificates are enrolled
+in firmware. The smoke outputs (`packages.<system>.image-smoke*`) sign with throwaway keys made in
+the store (`throwawayKeys`) and link them as `keys/`; `lib.mkImage` has no smoke output, so it never
+links a deployment's keys anywhere.
+
+Rotation and recovery:
+
+- **The ESP loader**: `golconda-loader-update.service` installs the newly signed loader after the
+  first good boot of a release; a repair by hand is in
+  [Boot loader: Recovery](bootloader.md#recovery).
 - **An installed machine** with a rotated key: its next UKI and root hash signatures must come from
   the new key, and firmware must hold the new certificate, or Secure Boot and the verity check fail
   ([Execution policy](#execution-policy)). With no local console path, that enrolment is offline
