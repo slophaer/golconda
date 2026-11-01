@@ -2784,6 +2784,13 @@ let
         "timeout 0"
         "editor no"
       ]
+      # one text: the disk step's and the one /base installs in /usr
+      && conf == (import ../image).loader.conf
+    ))
+    # systemd-boot reads \loader\loader.conf at the ESP's root (src/boot/boot.c); the image
+    # wrote EFI/loader/loader.conf, which nothing reads, so the editor stayed on
+    (check "image: loader.conf goes where systemd-boot reads it" (
+      (import ../image).loader.confPath == "loader/loader.conf"
     ))
     (check "image: the disk builder signs the loader with the UKI's key" (
       let
