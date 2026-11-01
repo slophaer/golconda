@@ -69,13 +69,31 @@ The root partition is defined with `FactoryReset=yes`: a factory reset
 (`systemd-repart --factory-reset=yes`, or the EFI variable) removes it on the next boot and first
 boot runs again. The state is gone; the ESP and the `/usr` slots stay.
 
-## Update limits
+## Enable links and systemd's store path
 
-A release that changes systemd's own store path can break the links under `/etc/systemd/system`:
-they can name an absolute `/usr/nix/store/<hash>-systemd/...` path, and an image with a different
-systemd hash leaves those links dangling. The A/B test cannot show this, because both releases carry
-the same systemd path. A fix is not designed: either rewrite the links each boot or make them
-relative.
+PID 1 runs `preset-all` when `/etc` is empty (the first boot). It writes enable links under
+`/etc/systemd/system` with an absolute target,
+`/usr/nix/store/<hash>-systemd/lib/systemd/system/<unit>`. A release that changes systemd's own
+store path would leave those links dangling, and the units they enable would not load.
+
+The unit `golconda-etc-links.service` runs `/usr/libexec/golconda-etc-links /sysroot` in the initrd,
+after `/sysroot/usr` is mounted and before switch-root. It rewrites each link whose target is an
+absolute store path to `/usr/lib/systemd/system/<unit>`: a stable path that exists in every release.
+Masks, links inside `/etc` and relative links stay as they are, so an administrator's unit is not
+bypassed.
+
+The unit is wanted by `initrd-switch-root.target`, not `initrd.target`: only then is it in the same
+job transaction as `initrd-switch-root.service`, and `Before=` makes switch-root wait for it. A unit
+pulled by `initrd.target` is stopped when switch-root cleans up, possibly before it rewrites the
+links. The service environment may have no `PATH`, so the script uses `/usr/bin/readlink` and
+`/usr/bin/ln` and the shell's parameter expansion for the target's name.
+
+The A/B test from 20261031.1 to 20261031.2 with a changed systemd store path shows the second boot
+reaches multi-user.target with no failed units, and every `/etc/systemd/system` link resolves. The
+second image changes systemd's package hash with one extra file, which is a test-only change.
+
+The unit does not remove an enable link for a unit that the new release no longer ships; such a link
+stays and is ignored by PID 1. Cleaning those links is not designed.
 
 ## Rollback protection *(after v1)*
 

@@ -3814,6 +3814,7 @@ let
       ))
       (check "boot health: a configuration without /services/sshd still gates the network" (
         attrNames baseOnly.units == [
+          "golconda-etc-links.service"
           "golconda-health-network.service"
           "golconda-loader-update.service"
         ]
@@ -3871,6 +3872,7 @@ in
 assert all (t: t) tests;
 assert
   attrNames system.units == [
+    "golconda-etc-links.service"
     "golconda-health-network.service"
     "golconda-health-sshd.service"
     "golconda-loader-update.service"

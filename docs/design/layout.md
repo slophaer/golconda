@@ -54,8 +54,12 @@ Units are enabled by static `.wants` symlinks, not by presets:
 ```
 
 The service renderer writes these from `wantedBy`; `[Install]` stays in the unit text so
-`systemctl enable/disable` still works for an administrator's overrides in `/etc`. Presets would
-need a first-boot step (`systemctl preset-all`); static links work without one, also in the initrd.
+`systemctl enable/disable` still works for an administrator's overrides in `/etc`. Static links work
+without a first-boot step, also in the initrd. PID 1 still runs `preset-all` on the first boot when
+`/etc` is empty, and writes absolute store-path links under `/etc/systemd/system`; the initrd unit
+`golconda-etc-links.service` rewrites them to `/usr/lib/systemd/system/<unit>` after `/sysroot/usr`
+is mounted and before switch-root, so a systemd store path change in an update leaves no dangling
+link ([Updates](updates.md#enable-links-and-systemds-store-path)).
 
 ## State
 
