@@ -1,5 +1,5 @@
 # Canonical paths: the checks behind every path or name that becomes a path
-# in the installed /usr tree (review finding 10).
+# in the installed /usr tree.
 #
 # A path from a fragment is a claim on that tree, and the composer compares
 # claims by string: "/usr/bin/../lib/x" and "/usr/lib/x" are the same file

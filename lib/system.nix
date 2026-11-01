@@ -83,7 +83,7 @@ let
 
   # A table names a module, and an option name must be one the module
   # declares: adios applies only declared options and ignores the rest, so a
-  # misspelt name would silently keep the default (review finding 11). One
+  # misspelt name would silently keep the default. One
   # check covers every route into the tree: the TOML loader's tables (its
   # path check is config.nix), an attrset config, and `extra`.
   moduleAt =
@@ -146,7 +146,7 @@ let
   systemOptions = mergedOptions."/system" or { };
 
   # The image id becomes os-release ID=, the artifact file name stem and the
-  # sysupdate MatchPattern (review finding 14): one grammar that is safe in all
+  # sysupdate MatchPattern: one grammar that is safe in all
   # three, checked before anything renders it.
   checkImageName =
     name:
@@ -175,7 +175,7 @@ let
       { };
 
   # updateSource is the Path= of every sysupdate transfer: one URL or absolute
-  # path, never several lines (review finding 14).
+  # path, never several lines.
   hasPrefix = p: s: substring 0 (stringLength p) s == p;
   checkUpdateSource =
     source:

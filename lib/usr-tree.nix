@@ -12,7 +12,8 @@
 #   lib/golconda/packages.json: [{ name, version?, path, origins }], one entry per package
 #     of composerOutput.packages, origins from composerOutput.origins.packages
 #   lib/golconda/attribution.json: composerOutput.origins without packages (files, links,
-#     units, sysusers, tmpfiles: key -> the origins that emitted it), for the UI's Files view
+#     units, sysusers, tmpfiles: key -> the origins that emitted it): which module put each
+#     path in the tree
 #   files from composerOutput.files (paths are /usr/...; the /usr prefix is stripped)
 #
 # Cross-compilation: `buildSystem` is where the derivation runs (the build host);

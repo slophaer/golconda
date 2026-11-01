@@ -121,12 +121,13 @@
       GrowFileSystem = true;
       FactoryReset = true;
       # Future: Encrypt = "tpm2"; for TPM2-bound LUKS
-      # The mount points, each needed before anything can create it: the initrd mounts root
-      # read-only (gpt-auto's default without rw=). /usr is the verity slot's. /dev /proc /sys
-      # /run: switch-root chases them in the new root without creating them
-      # (systemd src/shared/switch-root.c, chase() without CHASE_NONEXISTENT). /tmp: tmp.mount
-      # makes its mount point with mkdir, which a read-only root refuses. There is no /srv:
-      # service state lives in /var/lib. /bin /sbin /lib are tmpfiles links (/base).
+      # The mount points and top-level directories. /dev /proc /sys /run must exist:
+      # switch-root chases them in the new root without creating them
+      # (systemd src/shared/switch-root.c, chase() without CHASE_NONEXISTENT). /usr is the
+      # verity slot's mount point. The cmdline's rw makes the root writable in the initrd, but
+      # making every directory here keeps the first boot working on a root mounted read-only
+      # (a cmdline without rw), where sysroot-usr.mount and tmp.mount could not mkdir. There is
+      # no /srv: service state lives in /var/lib. /bin /sbin /lib are tmpfiles links (/base).
       MakeDirectories = "/usr /etc /var /home /root /tmp /run /dev /proc /sys";
     };
   };

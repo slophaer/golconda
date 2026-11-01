@@ -1731,8 +1731,8 @@ let
         }
       )
     ))
-    # the two bugs the review found: a package link and an explicit link at one
-    # path both survived; two explicit links at one path kept the first silently
+    # one path, two links: a package link and an explicit link clash, and so do
+    # two explicit links; neither may keep one of them in silence
     (check "links: a package link and an explicit link at one path clash, both named" (
       let
         frags = [
@@ -1880,7 +1880,7 @@ let
           true
       )).success
     ))
-    (check "links: farm and dlopen are no longer fragment fields" (
+    (check "links: farm and dlopen are not fragment fields (a farm or dlopen link is a links entry)" (
       !(tryEval (deepSeq (compose [ { farm."systemd-1" = [ "lib/udev/rules.d" ]; } ]).links true)).success
       && !(tryEval (deepSeq (compose [ { dlopen."tpm2-tss-1" = [ "libtss2-esys.so.0" ]; } ]).links true))
       .success
@@ -2136,7 +2136,7 @@ let
       && epoch "20240301.0" - epoch "20240229.0" == 86400
       && epoch "20250228.0" + 86400 == epoch "20250301.0"
       && epoch "20261031.86399" + 1 == epoch "20261101.0"
-      # the old format accepted these and made them share or pass another day's epoch
+      # not dates, or past the day: these would share or pass another day's epoch
       && bad "20260231.1"
       && bad "20250229.1"
       && bad "20261301.1"
@@ -3212,8 +3212,8 @@ let
     (check "examples/golconda.nix evaluates without --impure" (
       (import ../examples/golconda.nix).platform.name == "x86_64-linux"
     ))
-    # UI phase 0: explicit per option, declaredIn, inputs, attribution
-    (check "ui data: config.json marks a TOML-set option explicit and a default not" (
+    # Provenance data: explicit per option, declaredIn, inputs, attribution
+    (check "provenance: config.json marks a TOML-set option explicit and a default not" (
       let
         mkSystem =
           args:
@@ -3265,7 +3265,7 @@ let
         };
       }).config."/services/sshd".port.explicit
     ))
-    (check "ui data: schema declaredIn names the module and file of an option" (
+    (check "provenance: schema declaredIn names the module and file of an option" (
       let
         sch = schemaLib.toJsonSchemaWith {
           files = modulePaths;
@@ -3277,7 +3277,7 @@ let
       && port."x-golconda-declaredIn".file == "modules/services/sshd/default.nix"
       && sch.properties."/system".properties.version."x-golconda-declaredIn".module == "/system"
     ))
-    (check "ui data: schema inputs list the module paths a module reads" (
+    (check "provenance: schema inputs list the module paths a module reads" (
       let
         sch = schemaLib.toJsonSchema (f.modules { });
       in
@@ -3289,7 +3289,7 @@ let
           "/security"
         ]
     ))
-    (check "ui data: /base's links and units are attributed to /base" (
+    (check "provenance: /base's links and units are attributed to /base" (
       let
         o = (compose [ ]).origins;
       in
@@ -3298,7 +3298,7 @@ let
       && o.links."/usr/lib/systemd" == [ "/base" ]
       && o.files."/usr/lib/sysctl.d/50-golconda.conf" == [ "/security" ]
     ))
-    (check "ui data: a listed fragment's file, unit, link and lines go to fragments[i] or its name" (
+    (check "provenance: a listed fragment's file, unit, link and lines go to fragments[i] or its name" (
       let
         o =
           (compose [
@@ -3361,7 +3361,7 @@ let
       hasInfix "\nAfter=systemd-pcrphase-sysinit.service\n" unit
     ))
 
-    # review 10: a path in the /usr tree is canonical, and the check runs
+    # A path in the /usr tree is canonical, and the check runs
     # before any duplicate check, so a typo cannot alias another file or leave
     # /usr. These four spell /usr/lib/x and /usr/etc/x differently.
     (check "paths: a non-canonical file path is refused" (
@@ -3423,7 +3423,7 @@ let
       })
     ))
 
-    # review 9: units, files and links go into one /usr tree; a path two kinds
+    # Units, files and links go into one /usr tree; a path two kinds
     # claim is an error that names both, not last-one-wins.
     (check "composer: a unit and a file at one installed path name both" (
       let
@@ -3495,7 +3495,7 @@ let
       ]
     ))
 
-    # review 11: an option name no module declares is an error, not a silent
+    # An option name no module declares is an error, not a silent
     # default; every route into the tree is checked
     (check "config: a misspelt option is refused, and a declared one accepted" (
       let
@@ -3532,7 +3532,7 @@ let
       && !(accepted (base // { "/network".netwroks = { }; }))
     ))
 
-    # review 13: a typed scalar that lands in unit text cannot add a directive
+    # A typed scalar that lands in unit text cannot add a directive
     (check "unit: a line break in a typed scalar cannot add a directive" (
       let
         unitThrows =
@@ -3600,7 +3600,7 @@ let
       && hasInfix "\nEnvironment=PATH=/usr/lib/foo/bin\n" u
     ))
 
-    # review 14: the image id has one grammar, safe in os-release, the artifact
+    # The image id has one grammar, safe in os-release, the artifact
     # file name and the sysupdate match pattern
     (check "config: the image id grammar is checked before it renders" (
       let
@@ -3630,7 +3630,7 @@ let
       in
       !(named "a/../b c") && !(named "a\nb") && !(named "hôte") && named "my-host_2.1"
     ))
-    # review 14: an INI scalar cannot change the file's structure
+    # An INI scalar cannot change the file's structure
     (check "ini: a line break in a value, a key or a section is refused" (
       let
         ini = import ../modules/lib/ini.nix;
@@ -3853,7 +3853,7 @@ let
       ))
     ]
   )
-  # review 6: a release is blessed only when the machine is usable. systemd-bless-boot.service
+  # A release is blessed only when the machine is usable. systemd-bless-boot.service
   # requires boot-complete.target and is After= it, so reaching the target is the whole
   # blessing condition. Each health unit gets Required= from a `.requires` link (a link adds
   # no ordering) and orders itself Before= the target; no other link or target pulls it in.
@@ -3910,7 +3910,7 @@ let
       ))
     ]
   )
-  # finding 26: the ESP's loader follows /usr. golconda-loader-update.service is wanted by
+  # The ESP's loader follows /usr. golconda-loader-update.service is wanted by
   # systemd-bless-boot.service and Requisite= it, so it runs only on a counted boot that
   # passed the health gate; it is the one writer of the loader (systemd-boot-update.service is
   # off); its loader.conf is image/loader.nix's (docs/design/bootloader.md).
