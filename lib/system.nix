@@ -108,6 +108,17 @@ let
   serviceFragments = map (path: schemaLib.moduleAt evaluated path { }) configuredServices;
 
   varsFragment = evaluated.modules.vars { };
+
+  # /usr/lib/udev/hwdb.bin, compiled at build time by the build host's systemd-hwdb from the
+  # target's sources (lib/image/hwdb.nix): the image has no writable place for it before udev runs
+  imageLib = import ./image { };
+  hwdbFragment = imageLib.hwdbFragment {
+    hwdb = imageLib.hwdb {
+      buildSystem = system;
+      tool = setFull.set.buildPkgs.systemd;
+      inherit (setFull.pkgs) systemd;
+    };
+  };
   factoryFragment = evaluated.modules.factory { };
 
   # The system options from the config (name, version, fragments, updateSource).
@@ -124,6 +135,7 @@ let
             ++ [
               varsFragment
               factoryFragment
+              hwdbFragment
             ];
         };
       };
