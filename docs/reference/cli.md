@@ -13,7 +13,7 @@ The commands a developer and a release run. All are `iets` invocations or script
 | `iets eval --expr 'import ./nix/tests.nix { }'`                                                                            | the module tests alone                                                                                                  |
 | `./scripts/lint`                                                                                                           | strict iets lint of the whole evaluation, the module tests, then the checks                                             |
 | `treefmt`                                                                                                                  | format in place                                                                                                         |
-| `scripts/docs serve`                                                                                                       | generate the module pages and `SUMMARY.md`, then serve the book                                                         |
+| `scripts/docs serve`                                                                                                       | check the module list in `docs/SUMMARY.md`, generate the module pages, then serve the book                              |
 | `npins update`                                                                                                             | bump the pins (the repkgs pin is edited by hand, see `patches/repkgs/README.md`)                                        |
 
 The update test needs two releases with the same keys, and both are outputs:

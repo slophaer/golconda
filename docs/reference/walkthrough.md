@@ -46,7 +46,7 @@ iets eval --json -E '(import ./default.nix).schema' > schema.json
 
 ## 2. Evaluation
 
-`examples/golconda.nix` (`golconda.nix` is the copy for your own repository) calls
+`examples/golconda.nix` (the template to copy into your own repository) calls
 `mkSystem { config = ./server.toml; }`. iets evaluates it:
 
 ```sh
