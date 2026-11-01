@@ -132,8 +132,9 @@ files exactly; it does not list itself. The files in `release/` are store paths:
 mtimes to 1, so a file mtime is not the release date. The version epoch lives in the `/usr` erofs
 image (and in `disk.raw`'s internal files), not in the release directory's metadata. The ESP is
 filled offline with mtools (`packages/mtools`). Keys are paths: the smoke makes throwaway ones in
-the store (`throwawayKeys`); a release signs with the deployment's keys (`image/default.nix`
-`keys`), which never enter the store. Not yet: the verity certificate in the kernel keyring, a TPM.
+the store (`throwawayKeys`); a release signs with the deployment's keys, which reach the build as
+[Trust: How the private keys reach the build](../design/trust.md#how-the-private-keys-reach-the-build)
+describes. Not yet: the verity certificate in the kernel keyring, a TPM.
 
 The smoke, the test image and the production image boot the same command line
 ([The kernel command line](#the-kernel-command-line)).
@@ -196,11 +197,14 @@ scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-te
 # With SSH login test (needs image-smoke-test, not image-smoke)
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-test
 
-# Update to the next release, the loader update and the recovery paths; with --rotate the next
-# release is signed with a new db key and the variable store is rotated (needs both images)
-nix-build -A packages.x86_64-linux.image-smoke-test-rotated -o next
-scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --next next --rotate \
-  --timeout 480
+# Update to the next release, the loader update and the recovery paths (needs both images)
+nix-build -A packages.x86_64-linux.image-smoke-test-next -o next
+scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --next next --timeout 480
+
+# With --rotate the next release is signed with a new db key and the variable store is rotated
+nix-build -A packages.x86_64-linux.image-smoke-test-rotated -o next-rotated
+scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --next next-rotated \
+  --rotate --timeout 480
 ```
 
 `BOOT_TEST_SSH_PORT` sets the host port for the guest's sshd (default 10022). `BOOT_TEST_STORE_ROOT`
@@ -329,13 +333,15 @@ be held. `DIR` is a built release (`DIR/disk/release`, `DIR/keys`). The harness:
 `image-smoke-test` sets `updateSource = "http://10.0.2.2:8074/"` (under QEMU user networking
 10.0.2.2 is the host), but the harness never serves that address.
 
-The release to install must be signed with a key the firmware holds. The only next release that
-`nix/default.nix` builds is `image-smoke-test-rotated` (version `20261031.2`, a new db key), so use
-it with `--rotate`: the harness enrols its certificate beside the old one before the first boot, and
-after the checks it stops QEMU, sets db to the new certificate alone, adds the old one to dbx
-(`virt-fw-vars`), boots again, checks that the kernel loaded only the new db certificate, and boots
-the original disk under the rotated store, which firmware must refuse. `--next` without `--rotate`
-needs a next release signed with the first release's keys. The repository has no output for one.
+The next release comes from `packages.<system>.image-smoke-test-next` (version `20261031.2`, the
+same keys as the first release; [Outputs](outputs.md)), and `--next` takes its path. The firmware
+already holds that release's keys, so no `--rotate` is needed.
+
+`--rotate` takes `image-smoke-test-rotated` instead (`20261031.2`, signed with a second db key). The
+harness enrols that certificate beside the old one before the first boot. After the checks it stops
+QEMU, sets db to the new certificate alone, adds the old one to dbx (`virt-fw-vars`), boots again,
+checks that the kernel loaded only the new db certificate, and boots the original disk under the
+rotated store, which firmware must refuse.
 
 What this test does not prove:
 
