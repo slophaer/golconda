@@ -32,73 +32,95 @@ in
     {
       pkgs,
       system,
+      platform,
       ...
     }:
     let
-      imageSmoke =
+      # The image chain over one system, as a release builds it (lib/image). The signed loader
+      # comes first: the /usr tree carries it (lib/image/loader.nix loaderFragment), and the disk
+      # step checks that the ESP gets the same file. `sbKeys` sign the loader, the UKI and the
+      # verity root hash (the db key: the kernel checks the signature against the firmware db,
+      # docs/design/trust.md); `pcrKeys` sign the PCR 11 policy; `keys` is the smoke's keys/
+      # link, the db certificate scripts/boot-test enrols.
+      imageChain =
+        {
+          config,
+          sbKeys,
+          pcrKeys ? sbKeys,
+          keys ? sbKeys,
+        }:
         let
-          # the base system of examples/server.toml, as lib.mkSystem makes it
-          sys = mkSystem {
-            inherit system;
-            platform = system;
-            config = ../examples/server.toml;
-          };
-          imageId = sys.name;
-          inherit (sys)
-            version
-            usrTree
-            platform
-            pkgs
-            ;
-          args = {
+          sbKey = "${sbKeys}/secureboot/db.key";
+          sbCert = "${sbKeys}/secureboot/db.crt";
+          loader = imageLib.loader {
             inherit
-              imageId
-              version
               pkgs
               platform
+              sbKey
+              sbCert
               ;
             buildSystem = system;
           };
-          initrdTree = imageLib.initrdTree args;
-          keys = imageLib.throwawayKeys {
-            inherit pkgs;
+          sys = mkSystem {
+            inherit system config;
+            platform = system;
+            extra."/system".fragments = [ (imageLib.loaderFragment { inherit loader platform; }) ];
+          };
+          args = {
+            imageId = sys.name;
+            inherit (sys) version platform pkgs;
             buildSystem = system;
           };
-        in
-        rec {
-          erofs = imageLib.erofs (args // { inherit usrTree; });
+          erofs = imageLib.erofs (args // { inherit (sys) usrTree; });
           verity = imageLib.verity (
             args
             // {
               inherit erofs;
-              # the db key signs the root hash too: the kernel checks it against the platform
-              # keyring, which holds the firmware db (docs/design/trust.md)
-              key = "${keys}/secureboot/db.key";
-              cert = "${keys}/secureboot/db.crt";
+              key = sbKey;
+              cert = sbCert;
             }
           );
-          initrd = imageLib.initrd (args // { usrTree = initrdTree; });
+          initrd = imageLib.initrd (args // { usrTree = imageLib.initrdTree args; }); # not sys.usrTree
           uki = imageLib.uki (
             args
             // {
-              inherit initrd verity usrTree;
-              sbKey = "${keys}/secureboot/db.key";
-              sbCert = "${keys}/secureboot/db.crt";
-              pcrKey = "${keys}/pcr/pcr.key";
-              pcrPublicKey = "${keys}/pcr/pcr.pub";
-              # To watch a boot: cmdlineExtra = "systemd.log_level=debug
-              # systemd.log_target=console systemd.journald.forward_to_console=1";
+              inherit
+                initrd
+                verity
+                sbKey
+                sbCert
+                ;
+              inherit (sys) usrTree;
+              pcrKey = "${pcrKeys}/pcr/pcr.key";
+              pcrPublicKey = "${pcrKeys}/pcr/pcr.pub";
+              # No cmdlineExtra: every image boots the production cmdline (image/uki.nix carries
+              # `rw`, so the root is writable before the ssh host key var runs). To watch a boot:
+              # cmdlineExtra = "systemd.log_level=debug systemd.log_target=console
+              # systemd.journald.forward_to_console=1";
             }
           );
           disk = imageLib.disk (
             args
             // {
-              inherit erofs verity uki;
-              # the loader is signed with the UKI's key: one firmware entry point, one signer
-              sbKey = "${keys}/secureboot/db.key";
-              sbCert = "${keys}/secureboot/db.crt";
+              inherit
+                erofs
+                verity
+                uki
+                loader
+                ;
+              inherit (sys) usrTree;
             }
           );
+        in
+        {
+          inherit
+            erofs
+            verity
+            initrd
+            uki
+            loader
+            disk
+            ;
           smoke = imageLib.smoke (
             args
             // {
@@ -113,6 +135,36 @@ in
             }
           );
         };
+
+      throwawayKeys = imageLib.throwawayKeys {
+        inherit pkgs;
+        buildSystem = system;
+      };
+
+      # the base system of examples/server.toml, as lib.mkSystem makes it
+      imageSmoke = imageChain {
+        config = ../examples/server.toml;
+        sbKeys = throwawayKeys;
+      };
+
+      # Boot test image: authorizedKeys for testing SSH login.
+      # The test SSH keypair is a committed test fixture (tests/fixtures/snakeoil-ssh*).
+      # See tests/fixtures/README.md for why both keys are committed.
+      testConfig = version: {
+        "/system" = {
+          name = "boot-test";
+          inherit version;
+          # The update test's release server: 10.0.2.2 is the host under QEMU user
+          # networking, where the test serves the next release's disk.release/ with
+          # `python3 -m http.server 8074` (docs/reference/image.md).
+          updateSource = "http://10.0.2.2:8074/";
+        };
+        "/services/sshd" = {
+          port = 22;
+          # The test SSH public key: committed in tests/fixtures/snakeoil-ssh.pub.
+          authorizedKeys = [ (builtins.readFile ../tests/fixtures/snakeoil-ssh.pub) ];
+        };
+      };
     in
     {
       # the patched Nix daemon repkgs needs (CA + dynamic derivations); builders run it
@@ -130,88 +182,13 @@ in
       image-smoke-initrd = imageSmoke.initrd;
       image-smoke-uki = imageSmoke.uki;
       image-smoke-disk = imageSmoke.disk;
+      image-smoke-loader = imageSmoke.loader;
 
-      # Boot test image: authorizedKeys for testing SSH login.
-      # The test SSH keypair is a committed test fixture (tests/fixtures/snakeoil-ssh*).
-      # See tests/fixtures/README.md for why both keys are committed.
       image-smoke-test =
-        let
-          # The test SSH public key: committed in tests/fixtures/snakeoil-ssh.pub.
-          testSshPubKey = builtins.readFile ../tests/fixtures/snakeoil-ssh.pub;
-          sys = mkSystem {
-            inherit system;
-            platform = system;
-            config = {
-              "/system" = {
-                name = "boot-test";
-                version = "20261031.1";
-                # The update test's release server: 10.0.2.2 is the host under QEMU user
-                # networking, where the test serves the next release's disk.release/ with
-                # `python3 -m http.server 8074` (docs/reference/image.md).
-                updateSource = "http://10.0.2.2:8074/";
-              };
-              "/services/sshd" = {
-                port = 22;
-                authorizedKeys = [ testSshPubKey ];
-              };
-            };
-          };
-          testKeys = imageLib.throwawayKeys {
-            inherit pkgs;
-            buildSystem = system;
-          };
-          testArgs = {
-            imageId = sys.name;
-            inherit (sys) version platform pkgs;
-            buildSystem = system;
-          };
-          testInitrdTree = imageLib.initrdTree testArgs;
-          testErofs = imageLib.erofs (testArgs // { inherit (sys) usrTree; });
-          testVerity = imageLib.verity (
-            testArgs
-            // {
-              erofs = testErofs;
-              key = "${testKeys}/secureboot/db.key"; # the db key, as above
-              cert = "${testKeys}/secureboot/db.crt";
-            }
-          );
-          testInitrd = imageLib.initrd (testArgs // { usrTree = testInitrdTree; }); # not sys.usrTree
-          testUki = imageLib.uki (
-            testArgs
-            // {
-              initrd = testInitrd;
-              verity = testVerity;
-              inherit (sys) usrTree;
-              sbKey = "${testKeys}/secureboot/db.key";
-              sbCert = "${testKeys}/secureboot/db.crt";
-              pcrKey = "${testKeys}/pcr/pcr.key";
-              pcrPublicKey = "${testKeys}/pcr/pcr.pub";
-              # No cmdlineExtra: the test image boots the production cmdline (image/uki.nix
-              # carries `rw`, so the root is writable before the ssh host key var runs).
-            }
-          );
-          testDisk = imageLib.disk (
-            testArgs
-            // {
-              erofs = testErofs;
-              verity = testVerity;
-              uki = testUki;
-              sbKey = "${testKeys}/secureboot/db.key";
-              sbCert = "${testKeys}/secureboot/db.crt";
-            }
-          );
-        in
-        imageLib.smoke (
-          testArgs
-          // {
-            erofs = testErofs;
-            verity = testVerity;
-            initrd = testInitrd;
-            uki = testUki;
-            disk = testDisk;
-            keys = testKeys;
-          }
-        );
+        (imageChain {
+          config = testConfig "20261031.1";
+          sbKeys = throwawayKeys;
+        }).smoke;
 
       # Smoke test for the /usr tree builder: base system + jq via mkSystem.
       usr-tree-smoke =

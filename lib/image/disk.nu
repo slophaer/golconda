@@ -1,8 +1,9 @@
 # disk.nu: systemd-repart over the rendered definitions (lib/image/disk.nix).
 #
 # Structured attrs: definitions (name -> INI text with {esp} {usr} {verity} {sig} {usrUuid}
-# {verityUuid}), usr, verity, sig, roothash, uki, ukiName, systemdBoot, bootEntry,
-# architecture, seed, epoch, loaderConf, loaderConfPath, sbKey, sbCert, release (usr verity sig uki -> file name, `@u` where the UUID goes).
+# {verityUuid}), usr, verity, sig, roothash, uki, ukiName, loader, usrLoader, loaderPaths,
+# loaderConfPath, architecture, seed, epoch, loaderConf, release (usr verity sig
+# uki -> file name, `@u` where the UUID goes).
 
 use common.nu *
 
@@ -18,17 +19,23 @@ export def build [] {
   $env.LD_LIBRARY_PATH = $a.LD_LIBRARY_PATH
   mkdir $out
 
-  # the ESP's content: the signed systemd-boot on the removable-media path, its policy, the UKI
-  # where it looks
+  # The release ships its loader in /usr: the ESP must start with the same bytes
+  if (open --raw $a.loader | hash sha256) != (open --raw $a.usrLoader | hash sha256) {
+    error make { msg: $"($a.loader) is not the loader the /usr tree carries at ($a.usrLoader)" }
+  }
+
+  # the ESP's content: the signed systemd-boot where bootctl puts it (the primary copy and the
+  # removable-media path), its policy where systemd-boot reads it, the UKI where it looks
   let esp = $"($env.NIX_BUILD_TOP)/esp"
-  # loader.conf at the ESP's root: systemd-boot reads \loader\loader.conf and nothing else
-  mkdir $"($esp)/($a.bootEntry | path dirname)" $"($esp)/EFI/Linux" $"($esp)/($a.loaderConfPath | path dirname)"
-  # Secure Boot: the same db key and certificate as the UKI (lib/image/uki.nix); enforcing
-  # firmware starts only a signed loader. A signing failure fails the build.
-  ^systemd-sbsign sign $a.systemdBoot --private-key $a.sbKey --certificate $a.sbCert --output $"($esp)/($a.bootEntry)"
+  mkdir $"($esp)/EFI/Linux"
+  for p in $a.loaderPaths {
+    mkdir $"($esp)/($p | path dirname)"
+    ^cp $a.loader $"($esp)/($p)"
+  }
+  mkdir $"($esp)/($a.loaderConfPath | path dirname)"
   $a.loaderConf | save -f $"($esp)/($a.loaderConfPath)"
   ^cp $a.uki $"($esp)/EFI/Linux/($a.ukiName)"
-  log $"loader: ($a.bootEntry) signed with ($a.sbCert | path basename), ($a.loaderConfPath): (($a.loaderConf | lines | where {|l| not ($l | str starts-with '#') and ($l | str trim) != ''}) | str join ', ')"
+  log $"loader: ($a.loaderPaths | str join ', ') = ($a.usrLoader | path basename) from /usr, ($a.loaderConfPath): (($a.loaderConf | lines | where {|l| not ($l | str starts-with '#') and ($l | str trim) != ''}) | str join ', ')"
 
   # the two partition UUIDs systemd derives from the root hash
   let roothash = (open --raw $a.roothash | str trim)
