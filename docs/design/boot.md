@@ -191,20 +191,20 @@ is a marker of `scripts/boot-test`, which runs the image in QEMU with OVMF; the 
 [Image artifacts: the boot test](../reference/image.md#boot-test-scriptsboot-test). The image
 enforces IPE, so every run uses `--secure-boot`; the last column lists the flags on top of it.
 
-| claim                                                                         | marker                                                                                       | flags              |
-| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------ |
-| boots to `multi-user.target` and `boot-complete.target`                       | `multi-user-reached`, `boot-complete`                                                        | none               |
-| sshd is active; the host key var finished; no firstboot prompt on the console | `sshd-active`, `var-sshd-hostkey`, `no-firstboot-prompt`                                     | none               |
-| root login by ssh, host name from the SMBIOS credential                       | `ssh-login`, `hostname`                                                                      | `--ssh-test`       |
-| no failed unit; varlink answers                                               | `no-failed-units`, `varlinkctl-list-interfaces`                                              | `--ssh-test`       |
-| firmware enforces Secure Boot                                                 | `secure-boot-enabled`                                                                        | `--secure-boot`    |
-| the kernel accepts the verity signature and IPE enforces                      | no marker of its own: the boot reaches `multi-user.target` with `ipe.enforce=1`              | `--secure-boot`    |
-| the host key is sealed to the TPM and unseals after reboot                    | `hostkey-sealed-with-tpm2`, `ssh-after-reboot`, `hostkey-unchanged`                          | `--ssh-test --tpm` |
-| the ESP loader is the one in `/usr`, and `loader.conf` is read                | `loader-matches-usr`, `loader-conf-in-effect`, `boot-update-off`                             | `--ssh-test`       |
-| the loader updates after a good boot, not after a blessed one                 | `loader-update-ran`, `loader-update-not-run`                                                 | `--ssh-test`       |
-| sysupdate installs the next release; it boots; no failed unit                 | `sysupdate-installed`, `boots-next`, `etc-links-stable`, `no-failed-units-after-update`      | `--next`           |
-| the recovery commands in [Boot loader](bootloader.md#recovery) work           | `loader-reinstall`, `set-oneshot-other-slot`, `set-default-other-slot`, `reboot-to-firmware` | `--next`           |
-| a `db` rotation works; the old disk is refused                                | `boots-after-rotation`, `kernel-db-rotated`, `old-loader-refused`                            | `--next --rotate`  |
+| claim                                                                                 | marker                                                                                                   | flags              |
+| ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ------------------ |
+| boots to `multi-user.target` and `boot-complete.target`                               | `multi-user-reached`, `boot-complete`                                                                    | none               |
+| sshd is active; the host key var finished; firstboot finished without a prompt        | `sshd-active`, `var-sshd-hostkey`, `no-firstboot-prompt`                                                 | none               |
+| root login by ssh, host name from the SMBIOS credential                               | `ssh-login`, `hostname`                                                                                  | `--ssh-test`       |
+| no failed unit; varlink answers                                                       | `no-failed-units`, `varlinkctl-list-interfaces`                                                          | `--ssh-test`       |
+| firmware enforces Secure Boot                                                         | `secure-boot-enabled`                                                                                    | `--secure-boot`    |
+| the kernel accepts the verity signature and IPE enforces                              | no marker of its own: the boot reaches `multi-user.target` with `ipe.enforce=1`                          | `--secure-boot`    |
+| the host key is sealed to the TPM and unseals after reboot                            | `hostkey-sealed-with-tpm2`, `ssh-after-reboot`, `hostkey-unchanged`                                      | `--ssh-test --tpm` |
+| the ESP loader is the one in `/usr`, and `loader.conf` is read                        | `loader-matches-usr`, `loader-conf-in-effect`, `boot-update-off`                                         | `--ssh-test`       |
+| the loader updates after a good boot, not after a blessed one                         | `loader-update-ran`, `loader-update-not-run`                                                             | `--ssh-test`       |
+| the release directory is well formed; sysupdate installs it; it boots; no failed unit | `release-index`, `sysupdate-installed`, `boots-next`, `etc-links-stable`, `no-failed-units-after-update` | `--next`           |
+| the recovery commands in [Boot loader](bootloader.md#recovery) work                   | `loader-reinstall`, `set-oneshot-other-slot`, `set-default-other-slot`, `reboot-to-firmware`             | `--next`           |
+| a `db` rotation works; the old disk is refused                                        | `boots-after-rotation`, `kernel-db-rotated`, `old-loader-refused`                                        | `--next --rotate`  |
 
 Not proven:
 
