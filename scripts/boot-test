@@ -34,11 +34,13 @@
 #   systemd-boot reads and the copy in /usr, golconda-loader-update.service ran after the boot
 #   was blessed, and systemd-boot-update.service stayed off.
 # With --next DIR (implies --ssh-test): DIR is the next release's image-smoke output
-#   (DIR/disk/release, DIR/keys). The harness copies the release into the guest over ssh and
-#   installs it with systemd-sysupdate-update.service from /run/sysupdate.d definitions that
-#   read the copy, reboots into it, and checks that golconda-loader-update.service put the new
-#   loader on the ESP, and that no /etc/systemd/system link names the old systemd store path or
-#   dangles (golconda-etc-links.service). Then the recovery checks: bootctl list shows both slots, a damaged loader
+#   (DIR/disk/release, DIR/keys). The harness checks that release directory against
+#   docs/design/releases.md (four SHA256SUMS lines, fixed order, digests match), copies it into
+#   the guest over ssh and installs it with systemd-sysupdate-update.service from
+#   /run/sysupdate.d definitions that read the copy, reboots into it, and checks that
+#   golconda-loader-update.service put the new loader on the ESP, and that no /etc/systemd/system
+#   link names the old systemd store path or dangles (golconda-etc-links.service). Then the
+#   recovery checks: bootctl list shows both slots, a damaged loader
 #   is reinstalled by hand, `bootctl set-oneshot` and `bootctl set-default` boot the other slot
 #   and back, and `bootctl reboot-to-firmware` reaches the firmware's menu.
 # With --next DIR --rotate: DIR is signed with a new db key. Its certificate is enrolled in db
@@ -621,6 +623,35 @@ reboot_guest() {
 
 SCP_OPTS="-F /dev/null -q -o BatchMode=yes -o LogLevel=ERROR -P $SSH_PORT"
 
+# test_release_index: the release directory a server publishes, as docs/design/releases.md states
+# it: four lines in the fixed order usr, verity, signature, UKI; the digest of each file; no line
+# for the index itself.
+test_release_index() {
+  echo ""
+  echo "=== release index ($NEXT_RELEASE/SHA256SUMS) ==="
+  RC=0
+  N=0
+  while read -r digest name; do
+    [ -n "$digest" ] || continue
+    N=$((N + 1))
+    # the release directory holds symlinks into the store, absolute or in $BOOT_TEST_STORE_ROOT
+    got=$(sha256sum "$(real_path "$NEXT_RELEASE/$name")" 2>/dev/null | cut -c1-64) || got=""
+    OK=ok
+    [ "$got" = "$digest" ] || OK="digest mismatch"
+    echo "$N: $name ($OK)"
+    [ "$OK" = ok ] || RC=1
+    case "$N:$name" in
+      1:"$NEXT_NAME".usr.*.raw) ;;
+      2:"$NEXT_NAME".usr-verity.*.raw) ;;
+      3:"$NEXT_NAME".usr-verity-sig.raw) ;;
+      4:"$NEXT_NAME".efi) ;;
+      *) RC=1 ;;
+    esac
+  done < "$NEXT_RELEASE/SHA256SUMS"
+  [ "$N" = 4 ] || RC=1
+  verdict "release-index (4 lines: usr, verity, signature, UKI; digests match)" $RC
+}
+
 # test_etc_links: the links the first boot wrote under /etc/systemd/system named the old
 # release's systemd store path. golconda-etc-links.service rewrote them in this boot's initrd,
 # so no link may name a store path, and none may dangle (docs/design/updates.md).
@@ -655,6 +686,7 @@ test_next() {
   NEXT_NAME=$(basename "$(ls "$NEXT_RELEASE"/*.efi)" .efi)
   NEXT_VERSION=${NEXT_NAME##*_}
   IMAGE_ID=${NEXT_NAME%_*}
+  test_release_index
   OLD_VERSION=$(guest_version)
   OLD_LOADER=$(guest_hash "$ESP_REMOVABLE")
   echo "running $OLD_VERSION, installing $NEXT_VERSION from $NEXT_RELEASE"

@@ -81,6 +81,10 @@ Each line is the lower-case hex digest, two spaces, and the name, as `sha256sum`
 index does not list itself, and v1 ships no `SHA256SUMS.gpg` (`Verify=no`). The names are exactly
 the release names above; the UKI line names the release file without a boot counter.
 
+`scripts/boot-test --next` reads the index of the next release before it installs anything: four
+lines, this order, and every digest against its file. Reordering the lines, renaming a file or
+changing a digest fails the test.
+
 ## Counters and selection
 
 A release starts its UKI at `+3-0`: three tries left, none done (`image/boot-counting.nix`, the same
