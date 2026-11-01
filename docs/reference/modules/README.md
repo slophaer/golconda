@@ -15,7 +15,7 @@ this shape: [design/modules](../../design/modules.md).
 | `/network`       | implicit: networkd `.network` files (DHCP on every wired link by default) and resolved's fallback `dns`                                                                  |
 | `/security`      | implicit: `/usr/lib/sysctl.d/50-golconda.conf`, the kernel hardening settings                                                                                            |
 | `/factory`       | the `/etc` seed under `/usr/share/factory/etc` and the tmpfiles `L` lines that link it                                                                                   |
-| `/vars`          | installs `/usr/lib/golconda/golconda-var-run` (mode `0755`); `mkSystem` always adds it                                                                                   |
+| `/vars`          | installs `/usr/lib/golconda/golconda-var-run` (mode `0755`), the POSIX sh runner for var units (`modules/vars/golconda-var-run`); `mkSystem` always adds it              |
 | `/services/sshd` | OpenSSH as a service with its configuration under `/usr/lib/sshd/` and an ed25519 host key var; keys and certificates only                                               |
 
 ## The composer output
@@ -58,18 +58,17 @@ on one path. `merge.duplicateError` gives the message as a value.
 
 Plain files that modules import. The directory has no `default.nix`, so adios does not load it.
 
-| file               | exports                                                                                                                                                                                                                                   |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fragment.nix`     | `fragment`: `{ name; units; files; sysusers; tmpfiles; packages; links }`, every field optional, no other field; `units`, `unitName`, `targetName`, `unitText`, `unitSuffixes`, `file`, `mode`, `links`, `link`, `linkTarget`, `linkKind` |
-| `merge.nix`        | `merge [ fragment… ]` → the output above without `name`/`version`; `duplicateError` the duplicate check's message or `null`; `labelFragments` the origin labels; `pkgKey` the package key                                                 |
-| `path.nix`         | `usrError`, `relativeError`, `componentError`: the canonical-path checks (plain functions, no `types`); `hasControl`, `hasPrefix`                                                                                                         |
-| `app.nix`          | `app`, `argv`, `files`, `perMachineMarkers`, `envOp`, `env`, `envName`, `unitValue`, `programName`, `credentialRef`, `isCredentialRef`, `binName`, `exe`                                                                                  |
-| `service.nix`      | `service`, `render`, `filesDir`, `sandbox`, `sandboxLines`, `killMode`, `scope`, `credentialId`, `stateDirectory`, `credential`, `credentialArg`                                                                                          |
-| `grammar.nix`      | the patterns of names, paths and the version, one each: the typedefs match them and `lib/schema.nix` exports them                                                                                                                         |
-| `var.nix`          | `var`, `word`, `render`, `adminVar`, `admin`, `unitName`, `credentialId`, `stateDir`                                                                                                                                                      |
-| `ini.nix`          | `render`: an attribute set of sections to INI text (sysupdate definitions); a section name and a key are plain words, and a value holds no line break                                                                                     |
-| `text.nix`         | `lines`: a list of lines to the text of a file, each line ended by a newline                                                                                                                                                              |
-| `golconda-var-run` | POSIX sh runner for var units                                                                                                                                                                                                             |
+| file           | exports                                                                                                                                                                                                                                   |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fragment.nix` | `fragment`: `{ name; units; files; sysusers; tmpfiles; packages; links }`, every field optional, no other field; `units`, `unitName`, `targetName`, `unitText`, `unitSuffixes`, `file`, `mode`, `links`, `link`, `linkTarget`, `linkKind` |
+| `merge.nix`    | `merge [ fragment… ]` → the output above without `name`/`version`; `duplicateError` the duplicate check's message or `null`; `labelFragments` the origin labels; `pkgKey` the package key                                                 |
+| `path.nix`     | `usrError`, `relativeError`, `componentError`: the canonical-path checks (plain functions, no `types`); `hasControl`, `hasPrefix`                                                                                                         |
+| `app.nix`      | `app`, `argv`, `files`, `perMachineMarkers`, `envOp`, `env`, `envName`, `unitValue`, `programName`, `credentialRef`, `isCredentialRef`, `binName`, `exe`                                                                                  |
+| `service.nix`  | `service`, `render`, `filesDir`, `sandbox`, `sandboxLines`, `killMode`, `scope`, `credentialId`, `stateDirectory`, `credential`, `credentialArg`                                                                                          |
+| `grammar.nix`  | the patterns of names, paths and the version, one each: the typedefs match them and `lib/schema.nix` exports them                                                                                                                         |
+| `var.nix`      | `var`, `word`, `render`, `adminVar`, `admin`, `unitName`, `credentialId`, `stateDir`                                                                                                                                                      |
+| `ini.nix`      | `render`: an attribute set of sections to INI text (sysupdate definitions); a section name and a key are plain words, and a value holds no line break                                                                                     |
+| `text.nix`     | `lines`: a list of lines to the text of a file, each line ended by a newline                                                                                                                                                              |
 
 ### `fragment`
 

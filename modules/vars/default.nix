@@ -82,7 +82,7 @@ _: {
 
   impl = _: {
     files."/usr/lib/golconda/golconda-var-run" = {
-      text = builtins.readFile ../lib/golconda-var-run;
+      text = builtins.readFile ./golconda-var-run;
       mode = "0755";
     };
   };

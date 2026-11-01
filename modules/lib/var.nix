@@ -25,7 +25,7 @@
 #   v.admin { name = "foo-cert"; files = [ "cert" ]; }
 #   credentials.cert = v.credentialId "foo-cert" "cert";  # LoadCredentialEncrypted=foo-cert.cert
 #
-# The runner /usr/lib/golconda/golconda-var-run (modules/lib/golconda-var-run)
+# The runner /usr/lib/golconda/golconda-var-run (modules/vars/golconda-var-run)
 # is one file for all vars, so the /vars module installs it (mode 0755).
 # mkSystem adds /vars and /factory to every system; a configuration does not
 # list them. The runner needs /bin/sh, coreutils and systemd-creds in the image.
