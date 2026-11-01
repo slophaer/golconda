@@ -174,9 +174,14 @@ links a deployment's keys anywhere.
 
 Rotation and recovery:
 
-- **The ESP loader**: `golconda-loader-update.service` installs the newly signed loader after the
-  first good boot of a release; a repair by hand is in
-  [Boot loader: Recovery](bootloader.md#recovery).
+- **The ESP loader**: a new `db` key reaches the ESP with the next release. On that release's first
+  good boot, `golconda-loader-update.service` (`modules/base`) copies its signed systemd-boot and
+  `loader.conf` from `/usr` to the ESP and keeps the old loader as the fallback copy. The unit runs
+  only after `systemd-bless-boot.service`, so a release that fails its health gate installs nothing.
+  Running `/usr/lib/golconda/golconda-loader-update` by hand puts a damaged loader back.
+  `scripts/boot-test` checks all of this (`loader-update-ran`, `loader-matches-usr`,
+  `loader-replaced`, `loader-reinstall`). The steps are in
+  [Boot loader: Key rotation](bootloader.md#key-rotation) and [Recovery](bootloader.md#recovery).
 - **An installed machine** with a rotated key: its next UKI and root hash signatures must come from
   the new key, and firmware must hold the new certificate, or Secure Boot and the verity check fail
   ([Execution policy](#execution-policy)). With no local console path, that enrolment is offline
