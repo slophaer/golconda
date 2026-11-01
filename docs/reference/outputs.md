@@ -24,6 +24,7 @@ schema is the flake one, produced by flake-incompat.
 | `configLib`                                                    | no          | TOML configuration loader (see below)                                                                                   |
 | `platforms`                                                    | no          | the platforms table (repkgs `nix/platforms.nix`)                                                                        |
 | `lib.mkSystem`                                                 | no          | the entry point: a TOML document → the composed system and its `/usr` tree ([Configuration](config.md#the-entry-point)) |
+| `lib.mkImage`                                                  | no          | a TOML document and a key directory → the signed image chain ([`lib.mkImage`](#libmkimage))                             |
 
 ## Inputs
 
@@ -35,6 +36,27 @@ Pinned in `npins/sources.json`, read by `nix/sources.nix`:
 - `iets`: the evaluator and linter
 - `pele`: the diagram renderer for the docs build
 - `nixpkgs-dev-only`: developer tooling, used nowhere else
+
+## `lib.mkImage`
+
+```nix
+let
+  image = (import ./default.nix).lib.mkImage {
+    config = ./server.toml;          # what lib.mkSystem takes
+    keys = "/srv/golconda-keys";      # the key directory, below
+    # pcrKeys = "/srv/golconda-pcr";  # pcr/ from another directory; default: keys
+    # system = "x86_64-linux";        # the build host; default: builtins.currentSystem
+  };
+in
+image.disk
+```
+
+It returns `erofs`, `verity`, `initrd`, `uki`, `loader`, `disk` and `release` (the string
+`"${disk}/release"`, the directory sysupdate fetches). The steps are those of the smoke outputs
+([Image artifacts](image.md)). The chain reads four files under `keys`: `secureboot/db.key`,
+`secureboot/db.crt`, `pcr/pcr.key` and `pcr/pcr.pub`. A relative string is an error. A path value
+copies the keys into the store; a string does not, and needs `extra-sandbox-paths` on the daemon
+([Trust: How the private keys reach the build](../design/trust.md#how-the-private-keys-reach-the-build)).
 
 ## `schema`
 
