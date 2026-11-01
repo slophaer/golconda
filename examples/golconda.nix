@@ -1,20 +1,31 @@
-# examples/golconda.nix — a working example that loads server.toml.
+# examples/golconda.nix — the template for a Golconda system configuration, and a working example.
 #
-# Evaluates and builds from within the golconda repository:
+# It loads the server.toml next to it. To use it for your own system, copy it next to your
+# server.toml and replace the `golconda` line as the comment says.
+#
+# Usage:
 #   iets eval -E '(import ./examples/golconda.nix).usrTree.outPath'
 #   nix-build -E '(import ./examples/golconda.nix).usrTree'
 #
-# The result is the /usr tree: base packages, sshd from server.toml,
-# and the image artifacts in /usr/lib/golconda/.
+# The result is the /usr tree: units, files, packages and symlinks. `lib.mkImage` takes the
+# same `config` and signs it into an image (docs/reference/outputs.md).
+#
+# `config` is a TOML file (like server.toml) validated against the schema.
+# `extra` is for Nix-only values: package overrides, custom fragments.
+#
+# See docs/reference/config.md for the full surface.
 let
-  # Import lib/system.nix from this repository.
-  mkSystem = import ../lib/system.nix;
+  # In your own repository, pin Golconda with npins (`npins add git <golconda url> --name
+  # golconda`) and use: golconda = import (import ./npins).golconda;
+  golconda = import ../default.nix;
 in
-mkSystem {
+golconda.lib.mkSystem {
   config = ./server.toml;
   # The build host, explicit so that `iets eval` stays pure: left out, `system` is
   # builtins.currentSystem, which needs `--impure`.
   system = "x86_64-linux";
-  # platform defaults to the build host's.
-  # extra can add Nix-only options.
+  # platform = "aarch64-linux";  # default: the build host's
+  # extra = {                   # Nix-only options, merged into the TOML
+  #   "/services/sshd".package = myOpenSSH;
+  # };
 }

@@ -81,12 +81,14 @@ for editors and external tools.
 
 `lib/system.nix` turns a document into a system:
 `mkSystem { config; platform?; system?; sources?; extra?; }`, exposed as the output `lib.mkSystem`.
-`golconda.nix` at the repository root is the template a user copies next to `server.toml`;
-`examples/golconda.nix` does the same from inside the repository:
+`examples/golconda.nix` is the template: copy it next to your `server.toml` and pin Golconda with
+npins in place of its `import ../default.nix` line. It evaluates from inside the repository as it
+stands. `lib.mkImage` takes the same `config` and signs it into an image
+([Outputs](outputs.md#libmkimage)).
 
 ```nix
 let
-  golconda = import (import ./npins).golconda; # pinned with npins
+  golconda = import (import ./npins).golconda; # pinned with npins; in the repository: import ../default.nix
 in
 golconda.lib.mkSystem {
   config = ./server.toml;
