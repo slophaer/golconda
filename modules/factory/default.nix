@@ -85,7 +85,7 @@ let
       null
   );
 
-  lines = l: concatStringsSep "\n" l + "\n";
+  inherit (import ../lib/text.nix) lines;
 in
 {
   name = "factory";

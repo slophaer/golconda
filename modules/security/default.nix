@@ -9,9 +9,7 @@
 #! disabled in the kernel config).
 _:
 let
-  inherit (builtins) concatStringsSep;
-
-  lines = l: concatStringsSep "\n" l + "\n";
+  inherit (import ../lib/text.nix) lines;
 
   sysctlConf = lines [
     "# Golconda kernel hardening (docs/design/kernel.md)"

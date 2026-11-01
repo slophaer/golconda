@@ -68,6 +68,7 @@ Plain files that modules import. The directory has no `default.nix`, so adios do
 | `grammar.nix`      | the patterns of names, paths and the version, one each: the typedefs match them and `lib/schema.nix` exports them                                                                                                                         |
 | `var.nix`          | `var`, `word`, `render`, `adminVar`, `admin`, `unitName`, `credentialId`, `stateDir`                                                                                                                                                      |
 | `ini.nix`          | `render`: an attribute set of sections to INI text (sysupdate definitions); a section name and a key are plain words, and a value holds no line break                                                                                     |
+| `text.nix`         | `lines`: a list of lines to the text of a file, each line ended by a newline                                                                                                                                                              |
 | `golconda-var-run` | POSIX sh runner for var units                                                                                                                                                                                                             |
 
 ### `fragment`

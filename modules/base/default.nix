@@ -68,7 +68,7 @@ let
   inherit (builtins) concatStringsSep listToAttrs;
   inherit (types) listOf string;
 
-  lines = l: concatStringsSep "\n" l + "\n";
+  inherit (import ../lib/text.nix) lines;
 
   # systemd's fallback NTP pool (from timesyncd.c)
   defaultNtp = [

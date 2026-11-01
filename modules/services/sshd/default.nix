@@ -82,10 +82,9 @@ in
     let
       inherit (builtins)
         attrNames
-        concatStringsSep
         listToAttrs
         ;
-      lines = l: concatStringsSep "\n" l + "\n";
+      inherit (import ../../lib/text.nix) lines;
       optional = cond: x: if cond then x else [ ];
       optionalAttrs = cond: x: if cond then x else { };
 
