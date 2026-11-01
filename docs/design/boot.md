@@ -158,7 +158,7 @@ What happens once, on the first boot of a disk:
 1. systemd-sysusers writes `passwd`, `group`, `shadow` from `/usr/lib/sysusers.d`.
 1. systemd-tmpfiles links each factory file into `/etc` and makes the state directories.
 1. The var units generate the machine-local secrets and seal them to the TPM
-   ([reference: /vars](../reference/modules/generated/vars.md)).
+   ([Trust: Secrets and vars](trust.md#secrets-and-vars)).
 1. The services start; the health units must pass before `boot-complete.target` blesses the entry.
 
 Every later boot runs the same units; `ConditionNeedsUpdate=` and the vars' `done` markers make them
