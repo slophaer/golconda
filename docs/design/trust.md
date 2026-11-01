@@ -72,11 +72,31 @@ unsigned. The boot then stops at switch-root, where IPE denies PID 1's re-exec f
 UKI's own signing certificate at build time and fails on a mismatch. On the machine, the firmware
 `db` must hold that certificate; the boot test enrols it only with `--secure-boot`.
 
+**Without Secure Boot** (`/system.secureBoot = false`, for a host whose firmware has none, such as
+Hetzner Cloud): no firmware fills the platform keyring, so the kernel carries the certificate
+itself. `lib.mkImage` passes the `db` certificate of its keys to `mkSystem`, which builds the kernel
+with `CONFIG_SYSTEM_TRUSTED_KEYS` naming it; the kernel loads it into `.builtin_trusted_keys`, which
+the secondary keyring that dm-verity checks first includes. The kernel of the set changes, so `/usr`
+and the UKI carry the same one, and each key set builds its own kernel. What is lost is the check
+before the kernel: no firmware verifies the loader or the UKI, so whoever can write the ESP can boot
+a kernel that trusts another key. IPE and the `/usr` signature still hold against a changed `/usr`,
+and the vars still seal (to the host key alone, without a TPM). The bootstrap credentials on the ESP
+are accepted there because Secure Boot is off
+([Boot: Bootstrap credentials](boot.md#bootstrap-credentials)).
+
 **Status.** Proven by boot with `--secure-boot`: the kernel loads the `db` certificate into the
 platform keyring, and with `/sys/kernel/security/ipe/success_audit` on, IPE logs
 `rule="op=EXECUTE dmverity_signature=TRUE action=ALLOW"` for files on `/usr` (`dm-0`). With
 `ipe.enforce=1` the boot passes every check and logs no IPE denial; the same image without the `db`
 enrolled stops at switch-root.
+
+Without Secure Boot, proven by boot on OVMF with neither Secure Boot nor a TPM:
+`image-smoke-test-nosb` logs `Secure boot disabled` and
+`Loaded X.509 cert 'Golconda smoke Secure Boot db: …'`, reaches `multi-user.target` with
+`ipe.enforce=1`, and passes the update test (`--next`, over HTTP). On the same firmware the default
+image (`secureBoot = true`) stops at switch-root: IPE logs
+`ipe_op=EXECUTE … comm="systemd" … dev="dm-0" … rule="DEFAULT op=EXECUTE action=DENY"` for PID 1's
+re-exec from `/usr`.
 
 ### 3. CA store
 

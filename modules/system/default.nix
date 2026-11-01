@@ -128,6 +128,11 @@ in
       default = null;
       description = "URL of the update server. Rendered into /usr/lib/sysupdate.d/. When null (default), no sysupdate transfer is configured.";
     };
+    secureBoot = {
+      type = types.bool;
+      default = true;
+      description = "Whether the host's firmware enforces Secure Boot with the image's db key. When false, the kernel carries the db certificate in its built-in keyring and checks the /usr signature itself; the firmware then checks nothing, so whoever can write the ESP can replace the UKI (docs/design/trust.md). For a host without Secure Boot, such as Hetzner Cloud.";
+    };
     fragments = {
       type = types.listOf fragmentT;
       default = [ ];
@@ -160,6 +165,11 @@ in
       }) (sysupdateFragment options)
     )
     // {
-      inherit (options) name version updateSource;
+      inherit (options)
+        name
+        version
+        updateSource
+        secureBoot
+        ;
     };
 }

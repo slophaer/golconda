@@ -14,6 +14,9 @@
 # `platform` defaults to the build host's (builtins.currentSystem).
 # `sources` defaults to ../nix/sources.nix.
 # `extra` is an attrset merged into the options the TOML gave: the only Nix hook.
+# `verityCert` is the certificate that signs /usr (lib.mkImage passes the db certificate of
+# its keys). With `/system.secureBoot = false` the kernel carries it in its built-in keyring;
+# without Secure Boot nothing else would put it in a keyring (docs/design/trust.md).
 #
 # Usage:
 #   let sys = import ./lib/system.nix { config = ./server.toml; };
@@ -27,6 +30,7 @@
   system ? builtins.currentSystem,
   sources ? import ../nix/sources.nix,
   extra ? { },
+  verityCert ? null,
 }:
 let
   inherit (builtins)
@@ -43,9 +47,23 @@ let
   adios = import sources.adios;
   tree = import ../modules { inherit (adios) adios; };
 
-  # Load the repkgs set for this platform.
+  # Load the repkgs set for this platform. The kernel config depends on /system.secureBoot,
+  # read from the options before the tree checks them: the tree needs the set, and the
+  # option's type still checks the value when /system is evaluated.
+  secureBoot = ((mergeDeep loadedOptions extra)."/system" or { }).secureBoot or true;
   setFull = import ../nix/packages.nix {
     inherit sources system platform;
+    kernelConfig =
+      if secureBoot != false then
+        { }
+      else
+        {
+          SYSTEM_TRUSTED_KEYS =
+            if verityCert == null then
+              throw "golconda: /system.secureBoot = false needs the image's keys: the kernel carries the db certificate, so build it with lib.mkImage"
+            else
+              "${verityCert}";
+        };
   };
 
   # The TOML loader: a document in, checked options out (lib/config.nix).

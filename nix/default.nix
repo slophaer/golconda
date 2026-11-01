@@ -88,6 +88,7 @@ let
       sys = mkSystem {
         inherit system config;
         platform = system;
+        verityCert = sbCert;
         extra."/system".fragments = [ (imageLib.loaderFragment { inherit loader platform; }) ];
       };
       args = {
@@ -208,6 +209,20 @@ in
         };
       };
 
+      # The test image for a host without Secure Boot (Hetzner Cloud): the kernel carries
+      # the db certificate (/system.secureBoot = false); scripts/boot-test runs it on plain OVMF.
+      noSecureBootConfig =
+        version:
+        let
+          c = testConfig version;
+        in
+        c
+        // {
+          "/system" = c."/system" // {
+            secureBoot = false;
+          };
+        };
+
       # The key rotation test's new db key: a second throwaway set
       # (docs/design/bootloader.md)
       rotatedKeys = imageLib.throwawayKeys {
@@ -244,6 +259,20 @@ in
         (imageChain {
           inherit system;
           config = testConfig "20261031.1";
+          keys = throwawayKeys;
+        }).smoke;
+
+      # The test image without Secure Boot, and its next release for --next
+      image-smoke-test-nosb =
+        (imageChain {
+          inherit system;
+          config = noSecureBootConfig "20261031.1";
+          keys = throwawayKeys;
+        }).smoke;
+      image-smoke-test-nosb-next =
+        (imageChain {
+          inherit system;
+          config = noSecureBootConfig "20261031.2";
           keys = throwawayKeys;
         }).smoke;
 
