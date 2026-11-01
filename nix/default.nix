@@ -240,6 +240,15 @@ in
           keys = throwawayKeys;
         }).smoke;
 
+      # The next release of the test image with the same throwaway keys: what
+      # scripts/boot-test --next installs and boots, without --rotate.
+      image-smoke-test-next =
+        (imageChain {
+          inherit system;
+          config = testConfig "20261031.2";
+          keys = throwawayKeys;
+        }).smoke;
+
       # The next release of the test image, signed with a new db key: the loader, the UKI and
       # the verity root hash take rotatedKeys; the PCR policy key stays, so a credential sealed
       # by 20261031.1 still unseals. scripts/boot-test --next <this> --rotate installs it and
