@@ -24,6 +24,7 @@
 #   - sshd-active: sshd.service started (Listening on port)
 #   - var-sshd-hostkey: the host key var finished (it needs a writable root)
 #   - boot-complete: boot-complete.target reached
+#   - no-firstboot-prompt: systemd-firstboot.service finished, and no prompt appeared
 #
 # With --ssh-test: logs in with tests/fixtures/snakeoil-ssh and checks
 #   ssh-login, hostname (must be "boot-test", the SMBIOS credential),
@@ -405,19 +406,20 @@ check_markers() {
     FAIL=$((FAIL + 1))
   fi
   
-  # no-firstboot-prompt: must NOT see the interactive prompt
+  # no-firstboot-prompt: systemd-firstboot.service ran to the end and never prompted.
+  # The markers come from a fresh disk's first boot, and the image runs the unit there
+  # (ConditionFirstBoot=; /base only drops the prompt), so a log without it is no
+  # evidence. "Initial Setup" is the unit's description; the console colours the line,
+  # so match across the escape sequence.
   if grep -qi "Please enter" "$SERIAL_LOG" 2>/dev/null; then
     echo "FAIL: no-firstboot-prompt (interactive prompt appeared)"
     FAIL=$((FAIL + 1))
+  elif grep -qi "Finished.*Initial Setup" "$SERIAL_LOG" 2>/dev/null; then
+    echo "PASS: no-firstboot-prompt (systemd-firstboot.service finished without prompting)"
+    PASS=$((PASS + 1))
   else
-    # Positive evidence: firstboot completed without prompting
-    if grep -qi "systemd-firstboot\|First Boot" "$SERIAL_LOG" 2>/dev/null; then
-      echo "PASS: no-firstboot-prompt (firstboot ran without prompting)"
-      PASS=$((PASS + 1))
-    else
-      echo "INFO: no-firstboot-prompt (firstboot masked, did not run)"
-      PASS=$((PASS + 1))
-    fi
+    echo "FAIL: no-firstboot-prompt (systemd-firstboot.service did not finish on the first boot)"
+    FAIL=$((FAIL + 1))
   fi
   
   echo ""
