@@ -62,7 +62,8 @@ about 550 base64 characters; the cmdline is about 1250 bytes of the kernel's 204
 
 Why the `db` key: the platform keyring holds the firmware `db` and nothing else, so no import step
 is needed, and a second key would add nothing: whoever holds the `db` key can already sign a UKI
-with any `usrhash=`. A rotated `db` key needs new images, as it does for the UKI.
+with any `usrhash=`. A rotated `db` key needs new images, as it does for the UKI
+([Boot loader: Key rotation](bootloader.md#key-rotation)).
 
 A signature that does not verify does not stop `systemd-veritysetup`: it logs "Unable to activate
 verity device ... with root hash signature ..., retrying without" at info level and activates `/usr`

@@ -56,6 +56,6 @@ scope is not forgotten, it is refused ([Principles](principles.md)).
 | cloud-init           | provisioning is systemd credentials; a cloud that cannot pass them passes a disk with a `.cred` on the ESP  |
 | Nix on the machine   | the store is a build-time artifact; a configuration change is a new image                                   |
 | overlays, overrides  | duplicates are errors; a module that wants another's result calls it                                        |
-| local login          | no getty, no password; recovery is the other slot or a reflash                                              |
+| local login          | no getty, no password; recovery is the other slot or a reflash ([Recovery](bootloader.md#recovery))         |
 | a second of anything | one libc, toolchain, TLS stack, CA store, init, logger, network stack, shell                                |
 | BIOS, desktops       | UEFI servers only                                                                                           |

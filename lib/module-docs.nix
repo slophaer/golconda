@@ -256,6 +256,7 @@ let
     - [Architecture](design/architecture.md)
     - [Layout](design/layout.md)
     - [Boot](design/boot.md)
+    - [Boot loader](design/bootloader.md)
     - [Updates](design/updates.md)
     - [Recovery](design/recovery.md)
     - [Trust](design/trust.md)

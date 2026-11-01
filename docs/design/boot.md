@@ -104,14 +104,14 @@ finds its own slot and the old UKI still finds the old one. The UKI goes to `EFI
 The cmdline is fixed in the UKI and measured with it:
 `usrhash=<hash> lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=0 console=tty0 console=ttyS0,115200`
 (`image/uki.nix`), plus `rdinit=/init` from the builder. The LSM parameters are described in
-[Kernel](kernel.md). No administrator edits: the ESP carries `EFI/loader/loader.conf` with
-`editor no` (the editor would let anyone at the console change the cmdline) and `timeout 0` (the
-menu does not wait). The UKI under `EFI/Linux` needs no entry line. This is menu policy, not
-protection: an offline disk writer can change the unsigned configuration ([Trust](trust.md)). The
-decided cmdline carries `rw` and neither `ro` nor `systemd.volatile=` (`/` is the state partition;
-the initrd mounts it read-only unless the cmdline says `rw`, and gpt-auto's remount-rw drop-in takes
-effect only when `systemd-remount-fs.service` runs, late in boot). A debug image with other
-parameters is a separate build *(after v1)*.
+[Kernel](kernel.md). No administrator edits: the ESP carries `loader/loader.conf` with `editor no`
+(the editor would let anyone at the console change the cmdline) and `timeout 0` (the menu does not
+wait); see [Boot loader](bootloader.md). The UKI under `EFI/Linux` needs no entry line. This is menu
+policy, not protection: an offline disk writer can change the unsigned configuration
+([Trust](trust.md)). The decided cmdline carries `rw` and neither `ro` nor `systemd.volatile=` (`/`
+is the state partition; the initrd mounts it read-only unless the cmdline says `rw`, and gpt-auto's
+remount-rw drop-in takes effect only when `systemd-remount-fs.service` runs, late in boot). A debug
+image with other parameters is a separate build *(after v1)*.
 
 The ssh host key var unit seals its key in `/etc/credstore.encrypted` before
 `systemd-remount-fs.service` runs, so without `rw` it fails and sshd starts without a host key. `rw`
@@ -129,7 +129,7 @@ enforces nothing yet: it becomes `1` once the verity certificate is in a kernel 
 on either: there is no local login path in v1 ([Trust: Identity](trust.md#identity)). Recovery from
 a machine that no longer answers over ssh is the other slot (boot counting, or a manual choice in
 the systemd-boot menu) or a reflash; [Recovery](recovery.md) states what each path can and cannot
-do.
+do, and [Boot loader: Recovery](bootloader.md#recovery) gives the loader steps.
 
 ## Bootstrap credentials
 
@@ -185,10 +185,12 @@ Firmware PCRs (0–7) are policy-locked with `systemd-pcrlock`.
 ## Secure Boot
 
 Keys are generated once per deployment with `ukify genkey`. The UKI (`lib/image/uki.nu`) and
-systemd-boot (`lib/image/disk.nu`, `systemd-sbsign`) are signed at build time with the same db key
-and certificate, so one enrolled certificate covers the loader and the image it starts. Firmware
-starts nothing else: with OVMFFull and only this certificate enrolled, `bootctl status` in the guest
-says `Secure Boot: enabled (user)`, and the same disk with the unsigned loader on the ESP is refused
+systemd-boot (`lib/image/loader.nu`, `systemd-sbsign`) are signed at build time with the same db key
+and certificate, so one enrolled certificate covers the loader and the image it starts. The signed
+loader ships in `/usr`, and a machine installs it on the ESP after a good boot; the loader update,
+the key rotation and the recovery paths are in [Boot loader](bootloader.md). Firmware starts nothing
+else: with OVMFFull and only this certificate enrolled, `bootctl status` in the guest says
+`Secure Boot: enabled (user)`, and the same disk with the unsigned loader on the ESP is refused
 (`Access Denied -- rejected probably by Secure Boot`).
 
 Enrolment is not part of the image yet: nothing writes `loader/keys/auto`, and a release step does
