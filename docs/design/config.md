@@ -2,8 +2,7 @@
 
 A machine is described by one TOML document. The document sets options of modules; a JSON Schema
 exported from the module tree validates it without Nix; the image carries the resolved document
-beside the schema so two images can be diffed as data. The loader, the schema, the entry point and
-the artifacts exist; the diff tool is *(planned)*.
+beside the schema so two images can be diffed as data. The diff tool is *(planned)*.
 
 ## The model
 
@@ -37,9 +36,10 @@ The entry point that applies this rule is `lib/system.nix`:
 binds the package set of the platform, lists the fragments, composes, and returns the composed
 system and its `/usr` tree derivation. `golconda.nix` at the repository root is the template a user
 copies next to `server.toml` (the analogue of a NixOS `system.nix`). `extra` is the one Nix hook: an
-attribute set merged into the options, for a package override or a fragment written in Nix, so a
-configuration is pure TOML or TOML plus Nix. The interface is in
-[reference/config](../reference/config.md#the-entry-point).
+attribute set merged into the options, for a package override or a fragment that needs a derivation,
+so a configuration is pure TOML or TOML plus Nix. A fragment of plain data (units, files, sysusers
+and tmpfiles lines) needs no Nix: `/system.fragments` takes it in the TOML as an array of tables.
+The interface is in [reference/config](../reference/config.md#the-entry-point).
 
 ## The schema
 
