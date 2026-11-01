@@ -42,6 +42,8 @@ let
     toJSON
     ;
 
+  schemaLib = import ./schema.nix { };
+
   join = concatStringsSep;
   sortStrings = sort (a: b: a < b);
 
@@ -251,16 +253,8 @@ let
     modulePaths:
     let
       sortedPaths = sortStrings (map (m: m.path) modulePaths);
-      # Indent based on depth: /system is depth 1, /services/sshd is depth 2
-      # builtins.split returns a mix of strings and match lists; filter only strings first
-      depth =
-        path:
-        let
-          parts = builtins.split "/" path;
-          strings = filter builtins.isString parts;
-          nonEmpty = filter (x: x != "") strings;
-        in
-        builtins.length nonEmpty - 1;
+      # Indent based on depth: /system is depth 0, /services/sshd is depth 1
+      depth = path: builtins.length (schemaLib.pathComponents path) - 1;
       indent = d: join "" (builtins.genList (_: "  ") d);
       moduleEntry =
         path:
@@ -294,16 +288,7 @@ let
         }) modulePaths
       );
 
-      # Get module from tree by path
-      getModule =
-        path:
-        let
-          splitParts = builtins.split "/" path;
-          strings = filter builtins.isString splitParts;
-          parts = filter (x: x != "") strings;
-          walk = mod: ps: if ps == [ ] then mod else walk mod.modules.${builtins.head ps} (builtins.tail ps);
-        in
-        walk tree parts;
+      getModule = schemaLib.moduleAt tree;
 
       # Generate pages for all discovered modules
       pages = listToAttrs (

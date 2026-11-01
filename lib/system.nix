@@ -88,20 +88,8 @@ let
     attrNames mergedOptions
   );
 
-  serviceFragments = map (
-    path:
-    let
-      # Path like "/services/sshd" -> evaluated.modules.services.modules.sshd
-      # builtins.split returns [ "" [ ] "services" [ ] "sshd" ], filter out non-strings and empty strings
-      parts = builtins.filter (s: builtins.isString s && s != "") (builtins.split "/" path);
-      # parts = [ "services" "sshd" ]
-      modPath = builtins.tail parts; # [ "sshd" ]
-      getModule =
-        parts: mods:
-        if parts == [ ] then mods else getModule (builtins.tail parts) mods.modules.${builtins.head parts};
-    in
-    (getModule modPath evaluated.modules.services) { }
-  ) configuredServices;
+  # "/services/sshd" -> evaluated.modules.services.modules.sshd, called
+  serviceFragments = map (path: schemaLib.moduleAt evaluated path { }) configuredServices;
 
   varsFragment = evaluated.modules.vars { };
   factoryFragment = evaluated.modules.factory { };
@@ -184,16 +172,10 @@ let
         else
           v;
 
-      moduleAt =
-        path:
-        builtins.foldl' (mods: part: mods.modules.${part}) (tree { }) (
-          builtins.filter (s: builtins.isString s && s != "") (builtins.split "/" path)
-        );
-
       rows =
         path: given:
         let
-          declared = (moduleAt path).options or { };
+          declared = (schemaLib.moduleAt (tree { }) path).options or { };
         in
         mapAttrs (
           n: _:

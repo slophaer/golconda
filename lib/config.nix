@@ -36,33 +36,17 @@ let
     concatStringsSep
     elem
     filter
-    foldl'
     head
-    isString
     readFile
-    split
     ;
 
-  # Collect all valid module paths from the tree.
-  collectPaths =
-    prefix: mods:
-    foldl' (
-      acc: name:
-      let
-        mod = mods.${name};
-        path = prefix + "/" + name;
-        # Include this path if it has options
-        thisPaths = if mod ? options && mod.options != { } then [ path ] else [ ];
-        # Recurse into submodules
-        subPaths = if mod ? modules && mod.modules != { } then collectPaths path mod.modules else [ ];
-      in
-      acc ++ thisPaths ++ subPaths
-    ) [ ] (attrNames mods);
+  schemaLib = import ./schema.nix { };
+  moduleAt = schemaLib.moduleAt tree;
 
-  validPaths = filter (p: p != "/pkgs") (collectPaths "" tree.modules);
-
-  moduleAt =
-    p: foldl' (mods: part: mods.modules.${part}) tree (filter (s: isString s && s != "") (split "/" p));
+  # Every module path with options, except /pkgs: the tables a document may have.
+  validPaths = filter (p: p != "/pkgs") (
+    map (m: m.path) (filter (m: schemaLib.hasOptions m.module) (schemaLib.modulesOf tree))
+  );
 
   # The message for a table `given` at module path `p`, or null: an unknown
   # path, or an option name the module does not declare.
