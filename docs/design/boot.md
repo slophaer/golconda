@@ -200,7 +200,9 @@ firmware needs it. Key hierarchy in [Trust](trust.md).
 This is the one place that says how far the work has got; the design pages above say why. Each row
 is a marker of `scripts/boot-test`, which runs the image in QEMU with OVMF; the flags are in
 [Image artifacts: the boot test](../reference/image.md#boot-test-scriptsboot-test). The image
-enforces IPE, so every run uses `--secure-boot`; the last column lists the flags on top of it.
+enforces IPE, so every run of the default image uses `--secure-boot`; the last column lists the
+flags on top of it. The image for a host without Secure Boot (`/system.secureBoot = false`,
+`image-smoke-test-nosb`) runs without it, on OVMF with no Secure Boot and no TPM.
 
 | claim                                                                                 | marker                                                                                                   | flags                        |
 | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------- |
@@ -219,6 +221,8 @@ enforces IPE, so every run uses `--secure-boot`; the last column lists the flags
 | a failed health check costs one try, and the old release boots after the third        | `health-check-broken`, `attempt-[1-3]-unblessed`, `fallback-to-old-slot`, `counter-exhausted`            | `--next --fail-health`       |
 | the guest fetches the release from the update server, with its own definition         | `http-source`, `http-fetch`                                                                              | `--next`                     |
 | `factory-reset.target` deletes the state and keeps the slots and the ESP              | `state-gone`, `machine-id-new`, `first-boot-rerun`, `multi-user-after-reset`, `slots-kept`               | `--factory-reset --ssh-test` |
+| the host name and root's ssh key come from null-key credentials on the ESP            | `hostname`, `esp-authorized-keys`, `ssh-login` with a key only the ESP holds                             | `--ssh-test --esp-creds`     |
+| without Secure Boot, the kernel's built-in key accepts the verity signature           | no marker of its own: `image-smoke-test-nosb` reaches `multi-user.target` with `ipe.enforce=1`           | no `--secure-boot`           |
 
 Not proven:
 

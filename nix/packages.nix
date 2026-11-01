@@ -17,6 +17,9 @@
   sources,
   system,
   platform ? system,
+  # kconfig options merged into linux-kernel's kbuild.config (lib/system.nix: the built-in
+  # verity key for /system.secureBoot = false)
+  kernelConfig ? { },
 }:
 let
   platforms = import "${sources.repkgs}/nix/platforms.nix";
@@ -40,7 +43,10 @@ let
     packages = import ../packages;
     overrides = {
       # The kernel policy: Golconda's kconfig fragment with the IPE boot policy path.
-      linux-kernel.kbuild.configFragments.append = [ kernelConfigFragment ];
+      linux-kernel.kbuild = {
+        configFragments.append = [ kernelConfigFragment ];
+      }
+      // (if kernelConfig == { } then { } else { config.merge = kernelConfig; });
     };
     # Set-wide choices: one TLS stack, one of each (docs/design/principles.md).
     features.tls = "openssl";
