@@ -39,7 +39,8 @@
 #   the guest over ssh and installs it with systemd-sysupdate-update.service from
 #   /run/sysupdate.d definitions that read the copy, reboots into it, and checks that
 #   golconda-loader-update.service put the new loader on the ESP, and that no /etc/systemd/system
-#   link names the old systemd store path or dangles (golconda-etc-links.service). Then the
+#   link names the old systemd store path or dangles (golconda-etc-links.service), and that the
+#   updated system has no failed unit. Then the
 #   recovery checks: bootctl list shows both slots, a damaged loader
 #   is reinstalled by hand, `bootctl set-oneshot` and `bootctl set-default` boot the other slot
 #   and back, and `bootctl reboot-to-firmware` reaches the firmware's menu.
@@ -679,6 +680,17 @@ test_etc_links() {
   verdict "etc-links-stable ($1 links, $2 naming a store path, $3 dangling)" $RC
 }
 
+# test_units_after_update: the updated system starts clean. This is the boot the first boot's
+# /etc links would break, so it is the one that has to have no failed unit.
+test_units_after_update() {
+  echo ""
+  echo "=== systemctl --failed ($NEXT_VERSION) ==="
+  FAILED=$(guest systemctl --failed --no-pager 2>&1) || true
+  echo "$FAILED"
+  RC=0; echo "$FAILED" | grep -q "^0 loaded units listed" || RC=1
+  verdict "no-failed-units-after-update" $RC
+}
+
 # --- --next: install the next release, boot it, check its loader, then recovery ---
 test_next() {
   echo ""
@@ -716,6 +728,7 @@ test_next() {
   RC=0; [ "$V" = "$NEXT_VERSION" ] || RC=1
   verdict "boots-next ($OLD_VERSION -> $V)" $RC
   test_etc_links
+  test_units_after_update
   test_loader "$NEXT_VERSION, its first good boot" 1
   NEW_LOADER=$(guest_hash "$ESP_REMOVABLE")
   if [ "$NEW_LOADER" != "$OLD_LOADER" ]; then
