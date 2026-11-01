@@ -52,7 +52,7 @@ scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-te
 ```
 
 The dev shell carries treefmt, mdbook with the Pele diagram renderer, iets and npins. Building
-repkgs packages needs a Nix daemon with `ca-derivations` and `dynamic-derivations`; see
-[design/packaging](docs/design/packaging.md). Start reading at [README](README.md), then
-[docs/SUMMARY](docs/SUMMARY.md); the module code is small enough to read whole, starting with
-`modules/system/default.nix` and `modules/lib/`.
+anything else needs a Nix daemon with `ca-derivations`, `dynamic-derivations` and the system feature
+`builder-rpc-v0`; [reference/build-host](docs/reference/build-host.md) says how to get one. Start
+reading at [README](README.md), then [docs/SUMMARY](docs/SUMMARY.md); the module code is small
+enough to read whole, starting with `modules/system/default.nix` and `modules/lib/`.

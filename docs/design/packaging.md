@@ -16,6 +16,14 @@ relocation fixes: PT_INTERP via libc with relative sysroot links, and glibc `$OR
 - Evaluation is cheap and typed, so iets lints the whole set on every change.
 - Debug info is split by build-id into `debug` outputs where `systemd-coredump` looks.
 
+## The build host
+
+Every repkgs output is content-addressed, and the lock-file fetchers are dynamic derivations, so the
+daemon that builds them needs `ca-derivations`, `dynamic-derivations` and the system feature
+`builder-rpc-v0`. Relocatable outputs are also why the build host keeps the plain `/nix/store` and
+the image still holds the same paths under `/usr/nix/store`.
+[Build host](../reference/build-host.md) has the `nix.conf` and how to get the first daemon.
+
 ## The platform
 
 The platform is repkgs' record (`nix/platforms.nix` in repkgs), which `nix/packages.nix` returns

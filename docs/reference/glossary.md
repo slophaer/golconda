@@ -7,6 +7,8 @@
   program, argv, env, files. It has nothing systemd-specific; a `service` embeds one.
 - **bootstrap credential**: a systemd credential delivered by SMBIOS, qemu fw_cfg or the ESP at
   first boot (the host name). Not a var: it carries no secret.
+- **build host**: the machine whose Nix daemon builds packages and images, with `ca-derivations`,
+  `dynamic-derivations` and `builder-rpc-v0` ([Build host](build-host.md)).
 - **composer**: the `/system` module. It unions fragments into one system and refuses duplicates.
 - **credential**: a file a service receives from systemd at start (`LoadCredentialEncrypted=`),
   readable as `%d/<name>` in `argv`. The on-disk form is sealed to the TPM in

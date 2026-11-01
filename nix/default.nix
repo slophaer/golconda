@@ -216,7 +216,8 @@ in
       };
     in
     {
-      # the patched Nix daemon repkgs needs (CA + dynamic derivations); builders run it
+      # repkgs' own Nix package (stock Nix with a relocation patch), built by repkgs, so it
+      # needs a daemon with CA and dynamic derivations first (docs/reference/build-host.md)
       inherit (pkgs) nix;
 
       # the kernel: the fork's base with Golconda's config fragment (packages/kernel)
