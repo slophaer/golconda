@@ -42,21 +42,12 @@ let
     ;
   inherit (builtins)
     concatStringsSep
-    isString
-    match
     toJSON
     ;
 
-  # a var name or a file name: one path component, shell-safe
-  word = typedef' "word" (
-    v:
-    if !isString v then
-      "Expected a string"
-    else if match "[A-Za-z0-9_.-]+" v == null then
-      "'${v}' must be one path component of letters, digits, _ . -"
-    else
-      null
-  );
+  # a var name or a file name: one path component, shell-safe; path.nix's
+  # componentError is the one rule (a StateDirectory= entry uses it too)
+  word = typedef' "word" (import ./path.nix).componentError;
 
   var = struct "var" {
     name = word;

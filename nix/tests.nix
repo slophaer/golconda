@@ -993,6 +993,52 @@ let
         }
       )
     ))
+    # one component rule: RuntimeDirectory=.. would be /run itself, a var named . would
+    # share /var/lib/golconda/vars with every var
+    (check "runtimeDirectory, a var name and a var file refuse . and .." (
+      all
+        (
+          c:
+          throws (
+            s.render {
+              name = "x";
+              app.package = standIn;
+              user = "dynamic";
+              sandbox = "strict";
+              runtimeDirectory = c;
+            }
+          )
+          && throws (
+            v.render {
+              name = c;
+              secrets = [ "key" ];
+              script = "";
+            }
+          )
+          && throws (
+            v.render {
+              name = "x";
+              secrets = [ c ];
+              script = "";
+            }
+          )
+          && v.word.verify c == (import ../modules/lib/path.nix).componentError c
+        )
+        [
+          "."
+          ".."
+        ]
+      # a name that only starts with dots is still one component
+      && !throws (
+        s.render {
+          name = "x";
+          app.package = standIn;
+          user = "dynamic";
+          sandbox = "strict";
+          runtimeDirectory = "...x";
+        }
+      )
+    ))
     (check "sandbox is an enum" (
       throws (
         s.render {
