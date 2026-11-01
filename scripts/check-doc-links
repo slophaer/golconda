@@ -1,0 +1,106 @@
+#!/usr/bin/env python3
+"""Check the internal links in the repository's Markdown files.
+
+usage: check-doc-links [ROOT]
+
+A link must point at a file that exists, and a `#anchor` must match a heading
+in the target file. External links (http, https, mailto) are not checked, and
+neither are links into docs/reference/modules/generated/, because the module
+pages there are written by scripts/docs and a clone does not have them. The
+generated directory is not scanned either. Anchors follow the GitHub and
+mdbook rule: lower-case, punctuation dropped, spaces to dashes, and a repeated
+heading gets -1, -2 and so on.
+
+It also fails when a page under docs/ is not listed in docs/SUMMARY.md, because
+mdbook builds such a page but nothing links to it.
+
+Exit status 1 when any link is broken or any page is unlisted. This is checks.docs-links in
+nix/checks.nix, run by scripts/lint.
+"""
+import os
+import re
+import sys
+
+ROOT = sys.argv[1] if len(sys.argv) > 1 else "."
+
+LINK = re.compile(r"\]\(([^)\s]+)\)")
+HEAD = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
+FENCE = re.compile(r"^\s*(```|~~~)")
+SKIP_DIRS = {".git", ".direnv", ".review", "book", "generated", "node_modules", "npins"}
+
+
+def slug(text):
+    text = text.strip().lower()
+    text = re.sub(r"`", "", text)
+    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
+    text = re.sub(r"[^\w\s-]", "", text)
+    return re.sub(r"\s+", "-", text)
+
+
+def read_outside_fences(path):
+    """Yield the lines of a file that are not inside a code fence."""
+    in_fence = False
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            if FENCE.match(line):
+                in_fence = not in_fence
+            elif not in_fence:
+                yield line
+
+
+def anchors(path):
+    seen = {}
+    out = set()
+    for line in read_outside_fences(path):
+        m = HEAD.match(line)
+        if m:
+            s = slug(m.group(2))
+            n = seen.get(s, 0)
+            seen[s] = n + 1
+            out.add(s if n == 0 else f"{s}-{n}")
+    return out
+
+
+def pages():
+    for base, dirs, files in os.walk(ROOT):
+        dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
+        for name in sorted(files):
+            if name.endswith(".md"):
+                yield os.path.normpath(os.path.join(base, name))
+
+
+cache = {}
+total = 0
+bad = 0
+listed = set()
+for page in pages():
+    for line in read_outside_fences(page):
+        for target in LINK.findall(line):
+            if target.startswith(("http://", "https://", "mailto:")):
+                continue
+            path, _, anchor = target.partition("#")
+            dest = os.path.normpath(os.path.join(os.path.dirname(page), path)) if path else page
+            if "generated" in dest.split(os.sep):
+                continue
+            total += 1
+            if os.path.basename(page) == "SUMMARY.md":
+                listed.add(dest)
+            if not os.path.exists(dest):
+                print(f"missing file   {page}: {target}")
+                bad += 1
+            elif anchor and dest.endswith(".md"):
+                if dest not in cache:
+                    cache[dest] = anchors(dest)
+                if anchor not in cache[dest]:
+                    print(f"missing anchor {page}: {target}")
+                    bad += 1
+
+summary = os.path.normpath(os.path.join(ROOT, "docs", "SUMMARY.md"))
+if os.path.exists(summary):
+    for page in pages():
+        if page.startswith(os.path.dirname(summary) + os.sep) and page != summary and page not in listed:
+            print(f"unlisted page  {page}: add it to docs/SUMMARY.md")
+            bad += 1
+
+print(f"{total} links checked, {bad} broken")
+sys.exit(1 if bad else 0)
