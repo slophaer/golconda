@@ -227,6 +227,5 @@ in
     stripUsrPrefix
     versionToEpoch
     renderOsRelease
-    allowedDirs
     ;
 }
