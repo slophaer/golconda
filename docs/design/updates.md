@@ -78,7 +78,9 @@ The unit `golconda-etc-links.service` runs `/usr/libexec/golconda-etc-links /sys
 after `/sysroot/usr` is mounted and before switch-root. It rewrites each link whose target is an
 absolute store path to `/usr/lib/systemd/system/<unit>`: a stable path that exists in every release.
 Masks, links inside `/etc` and relative links stay as they are, so an administrator's unit is not
-bypassed.
+bypassed. The script exits 1 and names the link when it cannot rewrite one, so the unit fails. The
+unit is pulled in by `Wants=`, so switch-root still goes on, and the failed unit is what tells the
+operator.
 
 The unit is wanted by `initrd-switch-root.target`, not `initrd.target`: only then is it in the same
 job transaction as `initrd-switch-root.service`, and `Before=` makes switch-root wait for it. A unit
