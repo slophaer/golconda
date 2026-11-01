@@ -28,6 +28,7 @@ let
   inherit (builtins) isString match;
 
   path = import ./path.nix;
+  grammar = import ./grammar.nix;
 
   # A value the renderer puts on one line of a unit: no control character. A
   # newline would end the directive and start another.
@@ -46,7 +47,7 @@ let
     v:
     if !isString v then
       "Expected a string"
-    else if match "[A-Za-z_][A-Za-z0-9_]*" v == null then
+    else if match grammar.envName v == null then
       "'${v}' is not an environment variable name: letters, digits and _, not starting with a digit"
     else
       null
@@ -65,7 +66,7 @@ let
           v:
           if !isString v then
             "Expected a string"
-          else if match "[A-Za-z0-9_=:/.,+-]*" v == null then
+          else if match grammar.credentialPrefix v == null then
             "'${v}' is not a credential prefix: letters, digits and _ = : / . , + -"
           else
             null
@@ -194,7 +195,7 @@ let
     v:
     if !isString v then
       "Expected a string"
-    else if match "[A-Za-z0-9_@.+-]+" v == null then
+    else if match grammar.programName v == null then
       "'${v}' is not a program name: letters, digits and _ @ . + - (it becomes /usr/bin/<program>)"
     else
       null

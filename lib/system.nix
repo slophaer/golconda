@@ -95,18 +95,6 @@ let
   # The system options from the config (name, version, fragments, updateSource).
   systemOptions = mergedOptions."/system" or { };
 
-  # The image id becomes os-release ID=, the artifact file name stem and the
-  # sysupdate MatchPattern: one grammar that is safe in all
-  # three, checked before anything renders it.
-  checkImageName =
-    name:
-    if name == null then
-      true
-    else if match "[A-Za-z0-9][A-Za-z0-9._-]*" name != null then
-      true
-    else
-      throw "golconda: /system.name '${name}' is not an image id: use letters, digits and _ . - and start with a letter or digit (the id is os-release ID=, the artifact file name stem and the sysupdate match pattern)";
-
   # The composed system: /system with all fragments.
   composedRaw =
     (tree {
@@ -138,8 +126,10 @@ let
     else
       throw "golconda: /system.updateSource '${source}' is neither a URL (https://…) nor an absolute path";
 
-  # Forcing composed (any field, including name) runs the name and source checks.
-  composed = builtins.seq (checkImageName (systemOptions.name or null)) (
+  # Forcing composed (any field) runs the name and source checks: reading the name
+  # runs its option type, the image id grammar (modules/lib/grammar.nix), which is
+  # os-release ID=, the artifact file name stem and the sysupdate match pattern.
+  composed = builtins.seq composedRaw.name (
     builtins.seq (checkUpdateSource (systemOptions.updateSource or null)) composedRaw
   );
 
