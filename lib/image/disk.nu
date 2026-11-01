@@ -1,8 +1,8 @@
 # disk.nu: systemd-repart over the rendered definitions (lib/image/disk.nix).
 #
 # Structured attrs: definitions (name -> INI text with {esp} {usr} {verity} {sig} {usrUuid}
-# {verityUuid}), usr, verity, sig, roothash, uki, ukiName, loader, usrLoader, loaderPaths,
-# loaderConfPath, architecture, seed, epoch, loaderConf, release (usr verity sig
+# {verityUuid}), usr, verity, sig, roothash, uki, ukiName, loader, usrLoader, usrLoaderConf,
+# loaderPaths, loaderConfPath, architecture, seed, epoch, loaderConf, release (usr verity sig
 # uki -> file name, `@u` where the UUID goes).
 
 use common.nu *
@@ -19,9 +19,13 @@ export def build [] {
   $env.LD_LIBRARY_PATH = $a.LD_LIBRARY_PATH
   mkdir $out
 
-  # The release ships its loader in /usr: the ESP must start with the same bytes
+  # The machine installs its loader from /usr (golconda-loader-update, modules/base): the ESP
+  # must start with the same bytes, or the first good boot rewrites a loader nobody tested
   if (open --raw $a.loader | hash sha256) != (open --raw $a.usrLoader | hash sha256) {
     error make { msg: $"($a.loader) is not the loader the /usr tree carries at ($a.usrLoader)" }
+  }
+  if (open --raw $a.usrLoaderConf) != $a.loaderConf {
+    error make { msg: $"($a.usrLoaderConf) is not image/loader.nix's loader.conf" }
   }
 
   # the ESP's content: the signed systemd-boot where bootctl puts it (the primary copy and the

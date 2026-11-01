@@ -1,0 +1,66 @@
+#!/bin/sh
+# golconda-loader-update: put this release's signed systemd-boot and loader.conf on the ESP.
+#
+# golconda-loader-update.service runs it after systemd-bless-boot.service has marked a counted
+# boot good, so only a release that booted and passed the health gate installs its loader. An
+# administrator runs it by hand to reinstall a damaged loader (docs/design/bootloader.md).
+#
+# It compares content, not versions: a release signed with a new db key carries the same
+# systemd-boot version in other bytes, which `bootctl update` skips. The firmware has just
+# accepted this release's UKI, and the image builder signs the loader in /usr with the same key
+# (lib/image/loader.nix), so the loader it writes is one this firmware starts.
+#
+# Each file is copied beside its destination, flushed and renamed over it. The previous primary
+# copy stays as EFI/systemd/systemd-boot-fallback<arch>.efi, the name bootctl uses, for a start
+# from the firmware's boot menu.
+set -eu
+
+src=
+for f in /usr/lib/systemd/boot/efi/systemd-boot*.efi.signed; do src=$f; done
+if [ ! -f "$src" ]; then
+  echo "no signed systemd-boot in /usr/lib/systemd/boot/efi" >&2
+  exit 1
+fi
+conf=/usr/lib/golconda/loader.conf
+name=${src##*/}
+name=${name%.signed} # systemd-bootx64.efi
+arch=${name#systemd-boot}
+arch=${arch%.efi} # x64
+# the removable-media name (lib/image/disk.nix removableMediaName)
+case $arch in
+  x64) removable=BOOTX64.EFI ;;
+  aa64) removable=BOOTAA64.EFI ;;
+  riscv64) removable=BOOTRISCV64.EFI ;;
+  *)
+    echo "no removable-media name for $arch" >&2
+    exit 1
+    ;;
+esac
+esp=$(bootctl --print-esp-path)
+
+same() {
+  [ -f "$2" ] && [ "$(sha256sum <"$1")" = "$(sha256sum <"$2")" ]
+}
+
+# put SRC DEST: DEST gets SRC's content, or stays as it is when it has it already
+put() {
+  if same "$1" "$2"; then
+    echo "$2: up to date"
+    return 0
+  fi
+  mkdir -p "${2%/*}"
+  cp "$1" "$2.new"
+  sync
+  mv -f "$2.new" "$2"
+  sync
+  echo "$2: installed from $1"
+}
+
+primary=$esp/EFI/systemd/$name
+if [ -f "$primary" ] && ! same "$src" "$primary"; then
+  put "$primary" "$esp/EFI/systemd/systemd-boot-fallback$arch.efi"
+fi
+put "$src" "$primary"
+# the file firmware starts: last, so an interrupted run leaves it whole
+put "$src" "$esp/EFI/BOOT/$removable"
+put "$conf" "$esp/loader/loader.conf"

@@ -22,8 +22,9 @@
 #                   symlink to its step's output, and SHA256SUMS, the index a url-file source reads
 #
 # The loader is the file the /usr tree carries (lib/image/loader.nix loaderFragment), signed with
-# the UKI's db key: disk.nu fails unless usrTree has the same bytes at the same name, so the ESP
-# starts with the loader the release ships.
+# the UKI's db key: disk.nu fails unless usrTree has the same bytes at the same name, and unless
+# its /usr/lib/golconda/loader.conf is loaderConf. So the ESP starts as the machine's
+# golconda-loader-update would leave it (modules/base, docs/design/bootloader.md).
 #
 # systemd-repart --empty=create --size=auto --offline=yes --seed=<from the version>: no loop
 # device, no root; the usr slots are 10 GiB each (image/repart.nix), so the file is sparse and
@@ -171,8 +172,9 @@ rec {
         inherit ukiName;
         release = releaseNames { inherit imageId version; };
         loader = "${loader}/${loaderLib.loaderFileName platform}";
-        # the same file in the /usr tree
+        # the same file in the /usr tree, and the loader.conf /base put there
         usrLoader = "${usrTree}/${removePrefix "/usr/" (loaderLib.loaderUsrPath platform)}";
+        usrLoaderConf = "${usrTree}/${removePrefix "/usr/" image.loader.usrConfPath}";
         # bootctl's layout: the primary copy, and the removable-media path firmware starts
         loaderPaths = [
           "EFI/systemd/systemd-boot${uefi}.efi"
