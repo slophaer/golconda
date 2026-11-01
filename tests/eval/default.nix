@@ -39,6 +39,7 @@ let
     ./console.nix
     ./secure-boot.nix
     ./index.nix
+    ./hwdb.nix
   ];
   tests = builtins.concatLists areas;
 in

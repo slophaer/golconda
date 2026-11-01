@@ -8,6 +8,7 @@
 #   loader   systemd-boot signed with the UKI's key, for /usr and the ESP   (loader.nix)
 #   disk     GPT with the ESP and the A/B slots, systemd-repart; signs SHA256SUMS (disk.nix)
 #   index    the release key's public half, the keyring of the signed index (index.nix)
+#   hwdb     the compiled hardware database for /usr/lib/udev (hwdb.nix; mkSystem adds it)
 # and the smoke's throwaway keys (throwawayKeys). The pure parts (ukiName, repartDefinitions,
 # versionToEpoch) are exported for nix/tests.nix.
 #
@@ -23,6 +24,7 @@ in
 // (import ./loader.nix { })
 // (import ./disk.nix { })
 // (import ./index.nix { })
+// (import ./hwdb.nix { })
 // (import ./smoke.nix { })
 // {
   inherit (common) versionToEpoch uuidOfHex hexOf;

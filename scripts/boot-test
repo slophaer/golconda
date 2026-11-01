@@ -691,6 +691,18 @@ test_ssh() {
 
   test_loader "first boot" 1
 
+  # the hardware database is compiled into /usr (lib/image/hwdb.nix), so nothing writes one
+  # to /etc and lookups answer: the IMDS entry for Hetzner Cloud's DMI vendor
+  echo ""
+  echo "=== hwdb ==="
+  RC=0
+  Q=$(guest systemd-hwdb query dmi:bvnHetzner: 2>&1) || RC=1
+  echo "$Q"
+  echo "$Q" | grep -q "^IMDS_VENDOR=hetzner-cloud$" || RC=1
+  guest test -e /usr/lib/udev/hwdb.bin || RC=1
+  guest test ! -e /etc/udev/hwdb.bin || RC=1
+  verdict "hwdb (/usr/lib/udev/hwdb.bin answers, none in /etc)" $RC
+
   # the signed index's keyring is the key set's release key and nothing else: systemd's own vendor
   # keyring (image vendors' keys) is not in the image (packages/systemd)
   echo ""
