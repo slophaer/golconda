@@ -36,6 +36,8 @@ let
   #                                         (the kernel checks that signature against the
   #                                         firmware db, docs/design/trust.md)
   #   pcr/pcr.key, pcr/pcr.pub              sign the PCR 11 policy; pcr.pub is the UKI's .pcrpkey
+  #   release/index.key, release/index.pgp  sign SHA256SUMS (OpenPGP, armored secret); the binary
+  #                                         public key is the image's keyring for Verify=yes
   # `pcrKeys` (default `keys`) is a second directory in the same layout, read for pcr/ only: a
   # db key rotation keeps the PCR key (image-smoke-test-rotated).
   #
@@ -54,6 +56,7 @@ let
       config,
       keys,
       pcrKeys ? keys,
+      indexKeys ? keys,
       system ? builtins.currentSystem,
     }:
     let
@@ -85,11 +88,24 @@ let
           ;
         buildSystem = system;
       };
+      # the release key: its public half is the image's keyring, its secret half signs SHA256SUMS
+      indexDir = absolute indexKeys;
+      indexKeyring = imageLib.indexKeyring {
+        inherit pkgs;
+        buildSystem = system;
+        publicKey = "${indexDir}/release/index.pgp";
+      };
       sys = mkSystem {
         inherit system config;
         platform = system;
         verityCert = sbCert;
-        extra."/system".fragments = [ (imageLib.loaderFragment { inherit loader platform; }) ];
+        extra."/system".fragments = [
+          (imageLib.loaderFragment { inherit loader platform; })
+          (imageLib.indexFragment {
+            keyring = indexKeyring;
+            inherit pkgs;
+          })
+        ];
       };
       args = {
         imageId = sys.name;
@@ -134,6 +150,7 @@ let
             loader
             ;
           inherit (sys) usrTree;
+          indexKey = "${indexDir}/release/index.key";
         }
       );
     in
@@ -163,10 +180,11 @@ let
       );
     };
 
-  # mkImage { config; keys; pcrKeys ? keys; system ? builtins.currentSystem; } →
+  # mkImage { config; keys; pcrKeys ? keys; indexKeys ? keys; system ? builtins.currentSystem; } →
   #   { erofs; verity; initrd; uki; loader; disk; release; }
   # `config` is what lib.mkSystem takes (a TOML path or options); `keys` is the directory
-  # above, in the layout above. No smoke: it would link the private keys into its output.
+  # above, in the layout above. `indexKeys` names a second directory, read for release/ only (the
+  # release key that signs SHA256SUMS), for a key set made before it had one. No smoke: it would link the private keys into its output.
   mkImage = args: builtins.removeAttrs (imageChain args) [ "smoke" ];
 in
 {
@@ -295,6 +313,8 @@ in
           config = testConfig "20261031.2";
           keys = rotatedKeys;
           pcrKeys = throwawayKeys;
+          # the running image trusts only its own release key: a db rotation keeps it
+          indexKeys = throwawayKeys;
         }).smoke;
 
       # Smoke test for the /usr tree builder: base system + jq via mkSystem.

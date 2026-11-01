@@ -1636,7 +1636,7 @@ let
       && hasInfix "Path=https://updates.example/t/" usr
       && hasInfix "MatchPattern=t_@v.usr.@u.raw" usr
       && hasInfix "ProtectVersion=%A" usr
-      && hasInfix "Verify=no" usr
+      && hasInfix "Verify=yes" usr
       && result.files ? "/usr/lib/sysupdate.d/40-uki.transfer"
       # systemd 257+ wants the .transfer suffix and warns on .conf
       && !(builtins.any (n: hasPrefix "/usr/lib/sysupdate.d/" n && hasSuffix ".conf" n) names)
@@ -4418,8 +4418,38 @@ let
         !(tryEval (deepSeq (trusted (sysWith { secureBoot = false; } null)) true)).success
       ))
     ];
+
+  # The signed index: every transfer verifies SHA256SUMS.gpg (Verify=yes), against the keyring
+  # the image carries at systemd's vendor path, and the image carries gpg, which systemd-pull
+  # runs. The disk step signs the index with the release key (docs/design/releases.md).
+  indexTests =
+    let
+      transfers = (import ../image).sysupdate {
+        imageId = "x";
+        updateSource = "https://u.example/";
+      };
+      keyring = derivation {
+        name = "keyring-stand-in";
+        system = "x";
+        builder = "x";
+      };
+      frag = imageLib.indexFragment {
+        inherit keyring;
+        pkgs = fixturePkgs;
+      };
+    in
+    [
+      (check "index: every transfer verifies the signed index" (
+        all (n: transfers.${n}.Transfer.Verify == true) (attrNames transfers)
+      ))
+      (check "index: the keyring is at systemd's vendor path, and gpg is in /usr" (
+        frag.links."/usr/lib/systemd/import-pubring.pgp".target == "${keyring}/import-pubring.pgp"
+        && any (p: (p.pname or "") == "gnupg") frag.packages
+        && elem keyring frag.packages
+      ))
+    ];
 in
-assert all (t: t) (tests ++ grammarTests ++ consoleTests ++ secureBootTests);
+assert all (t: t) (tests ++ grammarTests ++ consoleTests ++ secureBootTests ++ indexTests);
 assert
   attrNames system.units == [
     "golconda-etc-links.service"

@@ -43,9 +43,9 @@ updateSource = "https://updates.example.com/web/"
 port = 22
 ```
 
-No `authorizedKeys`: the key comes from the ESP in step 4, so one image serves every machine. Serve
-the update source over HTTPS: sysupdate does not verify a signature on the index in v1
-(`Verify=no`), and without Secure Boot a UKI served by someone else would boot.
+No `authorizedKeys`: the key comes from the ESP in step 4, so one image serves every machine.
+sysupdate checks the release key's signature on the index, which matters here: without Secure Boot,
+nothing else would stop a UKI served by someone else. HTTPS still hides what the machine fetches.
 
 ## 3. Build
 

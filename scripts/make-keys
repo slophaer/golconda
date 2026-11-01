@@ -4,6 +4,7 @@
 # The layout is the one lib.mkImage reads (nix/default.nix, docs/design/trust.md):
 #   secureboot/db.key, secureboot/db.crt   systemd-boot, the UKI and the verity root hash
 #   pcr/pcr.key, pcr/pcr.pub               the PCR 11 policy and its public half
+#   release/index.key, release/index.pgp   SHA256SUMS (OpenPGP: armored secret, binary public)
 #
 # DIR must be absolute: lib.mkImage takes the key directory as a string path and
 # refuses a relative one. DIR must not exist with anything in it, and is made
@@ -41,6 +42,11 @@ esac
 
 command -v openssl >/dev/null 2>&1 || {
   echo "make-keys: openssl is not on PATH" >&2
+  exit 1
+}
+# systemd-pull checks the release index with gpg only (image/sysupdate.nix)
+command -v gpg >/dev/null 2>&1 || {
+  echo "make-keys: gpg is not on PATH" >&2
   exit 1
 }
 
@@ -85,11 +91,27 @@ run_openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 3650 \
 run_openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$stage/pcr/pcr.key"
 run_openssl pkey -in "$stage/pcr/pcr.key" -pubout -out "$stage/pcr/pcr.pub"
 
-mv "$stage/secureboot" "$stage/pcr" "$dir"
+# the release key, in a scratch home that goes with its agent (a short path: the agent's socket)
+mkdir "$stage/release" "$stage/g"
+gpg_run() {
+  if ! GNUPGHOME="$stage/g" gpg --batch "$@" 2>"$stage/gpg.log"; then
+    echo "make-keys: gpg failed:" >&2
+    cat "$stage/gpg.log" >&2
+    exit 1
+  fi
+}
+gpg_run --passphrase '' --quick-gen-key "golconda release index $(date -u +%Y%m%d) <index@golconda.invalid>" ed25519 sign never
+gpg_run --export --output "$stage/release/index.pgp"
+gpg_run --pinentry-mode loopback --passphrase '' --armor --export-secret-keys --output "$stage/release/index.key"
+index_fpr=$(GNUPGHOME="$stage/g" gpg --batch --with-colons --list-keys | awk -F: '$1 == "fpr" { print $10; exit }')
+GNUPGHOME="$stage/g" gpgconf --kill gpg-agent 2>/dev/null || true
+
+mv "$stage/secureboot" "$stage/pcr" "$stage/release" "$dir"
 trap - EXIT HUP INT TERM
 rm -rf "$stage"
 chmod 600 "$dir/secureboot/db.key" "$dir/secureboot/db.crt" \
-  "$dir/pcr/pcr.key" "$dir/pcr/pcr.pub"
+  "$dir/pcr/pcr.key" "$dir/pcr/pcr.pub" "$dir/release/index.key" "$dir/release/index.pgp"
+chmod 700 "$dir/secureboot" "$dir/pcr" "$dir/release"
 
 fingerprint=$(openssl x509 -in "$dir/secureboot/db.crt" -outform der | sha256sum | cut -d ' ' -f 1)
 cat <<EOF
@@ -98,6 +120,9 @@ deployment key set: $dir
   $dir/secureboot/db.crt  (0600)  the certificate for those signatures; enrol it in the firmware db
   $dir/pcr/pcr.key        (0600)  signs the PCR 11 policy (.pcrsig) in each UKI
   $dir/pcr/pcr.pub        (0600)  the public half, embedded in each UKI as .pcrpkey
+  $dir/release/index.key  (0600)  signs each release's SHA256SUMS (OpenPGP, Ed25519)
+  $dir/release/index.pgp  (0600)  the public half, the image's keyring for Verify=yes
 db.crt sha256 (DER): $fingerprint
+release key fingerprint: $index_fpr
 keep the private keys out of the store: docs/reference/release.md
 EOF

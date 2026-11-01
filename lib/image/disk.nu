@@ -86,5 +86,33 @@ export def build [] {
     | str join "\n"
     | $"($in)\n"
     | save -f $"($release)/SHA256SUMS"
+  sign-index $release $a.indexKey $a.epoch
   log $"release: (ls $release | get name | path basename | str join ' ')"
+}
+
+# SHA256SUMS.gpg: a detached binary OpenPGP signature of SHA256SUMS with the release key, what
+# systemd-pull checks for Verify=yes (image/sysupdate.nix). The signature time is the version's
+# epoch, or the key's creation time when the key is newer: Ed25519 is deterministic, so a rebuild
+# gives the same bytes. The signature is checked against the public half before it is kept.
+def sign-index [release: string, key: string, epoch: int] {
+  let home = $"($env.TMPDIR? | default /tmp)/gnupg-index"
+  mkdir $home
+  ^chmod 700 $home
+  with-env {GNUPGHOME: $home} {
+    ^gpg --batch --pinentry-mode loopback --passphrase '' --import $key e> /dev/null
+    let sec = (^gpg --batch --with-colons --list-secret-keys | lines | where {|l| $l starts-with "sec:" })
+    if ($sec | length) != 1 {
+      error make {msg: $"($key): expected one secret key, found ($sec | length)"}
+    }
+    let created = ($sec | first | split row ':' | get 5 | into int)
+    let at = ([$epoch ($created + 1)] | math max)
+    ^gpg --batch --yes --pinentry-mode loopback --passphrase '' --faked-system-time $"($at)!" --detach-sign --output $"($release)/SHA256SUMS.gpg" $"($release)/SHA256SUMS"
+    let v = (^gpg --batch --verify $"($release)/SHA256SUMS.gpg" $"($release)/SHA256SUMS" | complete)
+    if $v.exit_code != 0 {
+      error make {msg: $"SHA256SUMS.gpg does not verify: ($v.stderr)"}
+    }
+    ^gpgconf --kill gpg-agent
+  }
+  rm -rf $home
+  log "release: SHA256SUMS.gpg"
 }

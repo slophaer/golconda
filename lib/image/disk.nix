@@ -9,7 +9,7 @@
 #   {esp} {usr} {verity} {sig} {usrUuid} {verityUuid}, which disk.nu fills in.
 #   Rendered with modules/lib/ini.nix.
 #
-# disk { erofs; verity; uki; loader; usrTree; imageId; version; platform; buildSystem; pkgs; }
+# disk { erofs; verity; uki; loader; usrTree; indexKey; imageId; version; platform; buildSystem; pkgs; }
 #   → derivation with
 #   disk.raw        GPT: ESP (the signed systemd-boot of lib/image/loader.nix as
 #                   EFI/systemd/systemd-boot<arch>.efi and EFI/BOOT/BOOT<ARCH>.EFI, loader.conf
@@ -19,7 +19,8 @@
 #   release/        the release under the names image/sysupdate.nix's sources match
 #                   (releaseNames): <id>_<v>.usr.<uuid>.raw, <id>_<v>.usr-verity.<uuid>.raw with
 #                   the hash-derived UUIDs, <id>_<v>.usr-verity-sig.raw, <id>_<v>.efi, each a
-#                   symlink to its step's output, and SHA256SUMS, the index a url-file source reads
+#                   symlink to its step's output, SHA256SUMS, the index a url-file source reads,
+#                   and SHA256SUMS.gpg, its signature with the release key (indexKey)
 #
 # The loader is the file the /usr tree carries (lib/image/loader.nix loaderFragment), signed with
 # the UKI's db key: disk.nu fails unless usrTree has the same bytes at the same name, and unless
@@ -141,6 +142,7 @@ rec {
       pkgs,
       loader,
       usrTree,
+      indexKey,
     }:
     let
       stem = "${imageId}_${version}";
@@ -156,6 +158,7 @@ rec {
         pkgs.systemd # systemd-repart
         pkgs.dosfstools # mkfs.vfat
         pkgs.mtools # mcopy, mmd: how repart fills a vfat offline
+        pkgs.gnupg # gpg, gpg-agent: SHA256SUMS.gpg
       ];
       libs = [
         pkgs.util-linux # systemd-repart: libfdisk, libblkid, libmount
@@ -185,6 +188,8 @@ rec {
         architecture = platform.names.systemd;
         seed = common.uuidOfHex (common.hexOf "${stem}.disk");
         epoch = common.versionToEpoch version;
+        # the release key's secret half (release/index.key), which signs SHA256SUMS
+        inherit indexKey;
       };
     };
 }

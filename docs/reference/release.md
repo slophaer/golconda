@@ -7,7 +7,7 @@ certificate in the firmware. The key layout and the reason for each key are in
 
 | step                        | needs                                                                                  |
 | --------------------------- | -------------------------------------------------------------------------------------- |
-| 1. make the key set         | `openssl` with `-addext` (OpenSSL 1.1.1 or later)                                      |
+| 1. make the key set         | `openssl` with `-addext` (OpenSSL 1.1.1 or later), and `gpg` (GnuPG 2.2 or later)      |
 | 2. keep it out of the store | `extra-sandbox-paths` on the build daemon, and build users that can read the directory |
 | 3. build                    | a build host with the daemon of [Build host](build-host.md)                            |
 | 4. serve `release/`         | an update source, and `/system.updateSource` on the machine                            |
@@ -31,6 +31,8 @@ certificate's SHA-256 fingerprint. It never prints key material.
 | `secureboot/db.crt` | the certificate for those signatures; the firmware `db` must hold it |
 | `pcr/pcr.key`       | signs the PCR 11 policy (`.pcrsig`) in each UKI                      |
 | `pcr/pcr.pub`       | the public half, embedded in each UKI as `.pcrpkey`                  |
+| `release/index.key` | signs each release's `SHA256SUMS` (OpenPGP Ed25519, armored secret)  |
+| `release/index.pgp` | the public half (binary), the image's keyring for `Verify=yes`       |
 
 `db.crt` is a self-signed PEM X.509 certificate, valid for 3650 days, with `CA:TRUE`,
 `digitalSignature`, `keyCertSign`, `cRLSign` and `codeSigning`. `systemd-sbsign` takes a PEM
@@ -82,8 +84,10 @@ iets build -E '((import ./default.nix).lib.mkImage {
 ```
 
 `config` is what `lib.mkSystem` takes: a TOML path or an option set. `pcrKeys` (default: `keys`)
-names a second directory, read for `pcr/` only. `system` (default: `builtins.currentSystem`) is the
-build host. The expression returns seven attributes, `erofs` to `disk` plus `release`, listed in
+names a second directory, read for `pcr/` only, and `indexKeys` (default: `keys`) one read for
+`release/` only: a key set made before it had a release key gets one from a second `make-keys` run.
+`system` (default: `builtins.currentSystem`) is the build host. The expression returns seven
+attributes, `erofs` to `disk` plus `release`, listed in
 [Outputs: `lib.mkImage`](outputs.md#libmkimage). `disk` needs every other step; its output holds
 `disk.raw`, `disk.json` and `release/`. The command prints the output path.
 
@@ -103,8 +107,9 @@ machine with that option set fetches the release from it
 
 Verification: `scripts/boot-test --next` serves `release/` on `127.0.0.1:8074` (`10.0.2.2:8074` in
 the guest) and rewrites no transfer file. The markers `http-source` and `http-fetch` show that the
-guest read its own `Type=url-file` definition and fetched each file over HTTP. **Unverified:** the
-index a server publishes, and its signature (`Verify=no` in v1).
+guest read its own `Type=url-file` definition and fetched each file over HTTP, and `index-signed`
+that it fetched `SHA256SUMS.gpg`; with `BOOT_TEST_TAMPER_INDEX=1` the index the server sends has one
+byte more than its signature covers, and the update installs nothing.
 
 ## 5. Enrol the certificate in the firmware
 
@@ -125,8 +130,8 @@ release's `disk.raw` after an enrolment in firmware setup would test it.
 
 ## 6. Rotate a key
 
-A `db` rotation signs the next loader, UKIs and verity root hashes with a new key. The PCR key does
-not change, so make a second set with `scripts/make-keys` and keep the first:
+A `db` rotation signs the next loader, UKIs and verity root hashes with a new key. The PCR key and
+the release key do not change, so make a second set with `scripts/make-keys` and keep the first:
 
 ```nix
 let
@@ -136,6 +141,7 @@ in
   config = ./server.toml;
   keys = "/srv/golconda-keys-2"; # the new db key
   pcrKeys = "/srv/golconda-keys"; # the old set: the PCR key stays
+  indexKeys = "/srv/golconda-keys"; # and the release key: the running image trusts only it
 }).disk
 ```
 

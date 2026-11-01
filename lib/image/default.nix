@@ -6,7 +6,8 @@
 #   initrd   a minimal /usr tree as a zstd cpio, systemd as PID 1           (initrd.nix)
 #   uki      kernel + initrd + cmdline, Secure Boot and PCR 11 signed       (uki.nix)
 #   loader   systemd-boot signed with the UKI's key, for /usr and the ESP   (loader.nix)
-#   disk     GPT with the ESP and the A/B slots, systemd-repart             (disk.nix)
+#   disk     GPT with the ESP and the A/B slots, systemd-repart; signs SHA256SUMS (disk.nix)
+#   index    the release key's public half, the keyring of the signed index (index.nix)
 # and the smoke's throwaway keys (throwawayKeys). The pure parts (ukiName, repartDefinitions,
 # versionToEpoch) are exported for nix/tests.nix.
 #
@@ -21,6 +22,7 @@ in
 // (import ./uki.nix { })
 // (import ./loader.nix { })
 // (import ./disk.nix { })
+// (import ./index.nix { })
 // (import ./smoke.nix { })
 // {
   inherit (common) versionToEpoch uuidOfHex hexOf;
@@ -44,6 +46,7 @@ in
       tools = [
         pkgs.openssl
         pkgs.openssh # ssh-keygen for the test CA
+        pkgs.gnupg # the release key (release/index.key, .pgp)
       ];
       attrs = if variant == null then { } else { inherit variant; };
     };

@@ -37,13 +37,12 @@ the service is `systemd-sysupdate-update.service`.
 
 `/system.updateSource` is the URL of the release directory. The composer renders it as `Path=` into
 `/usr/lib/sysupdate.d/*.transfer`, so the source is part of the image and never a per-machine file
-in `/etc`. When it is null (the default) no transfer definition, timer link or update runs. In v1
-the transfers carry `Verify=no` (rendered: `image/sysupdate.nix`), so sysupdate checks no manifest.
-What authenticates the bytes instead is the signature: firmware checks each new UKI, and the kernel
-checks its verity signature when the `db` certificate is in the platform keyring
-([Trust: Verity key](trust.md#2-verity-key)). Both depend on an enrolled deployment key, which is
-manual ([Boot: Secure Boot](boot.md#secure-boot)), so an update is unauthenticated on a machine
-without it. A signed `SHA256SUMS` manifest is *(after v1)*.
+in `/etc`. When it is null (the default) no transfer definition, timer link or update runs. The
+transfers carry `Verify=yes` (rendered: `image/sysupdate.nix`): sysupdate checks the release's
+signed index before it writes a payload
+([Releases: The signed index](releases.md#the-signed-index)). After that, firmware checks each new
+UKI, and the kernel checks its verity signature against the `db` certificate
+([Trust: Verity key](trust.md#2-verity-key)).
 
 ## Versions
 

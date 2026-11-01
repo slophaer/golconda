@@ -44,7 +44,14 @@ let
 
   transfer = {
     ProtectVersion = "%A";
-    Verify = false; # v1: trust is verity-sig + Secure Boot, no SHA256SUMS.gpg (docs/design/updates.md)
+    # systemd-pull fetches SHA256SUMS.gpg beside SHA256SUMS and runs gpg on it against
+    # /usr/lib/systemd/import-pubring.pgp (lib/image/index.nix); the disk step signs the index
+    # with the release key (docs/design/releases.md). OpenPGP is the only signature systemd 262
+    # verifies here, so the image carries GnuPG and libgcrypt beside OpenSSL. Replace it with the
+    # PKCS#7 manifest of systemd PR #44292 (https://github.com/systemd/systemd/pull/44292,
+    # UAPI.16 manifests with an inline PKCS#7 signature, checked against x509 certificates) once
+    # a release has it: the db key could sign the index, and GnuPG would leave the image.
+    Verify = true;
   };
 
   # one partition transfer: the artifact from the source, the slot found and labelled by `label`
