@@ -1,7 +1,9 @@
 # keys.nu: throwaway key pairs for the smoke (lib/image/default.nix throwawayKeys).
 #
 # Output: secureboot/db.{key,crt} (it signs the UKI, the verity root hash and the loader),
-# and pcr/pcr.key with pcr/pcr.pub (the public key ukify embeds as .pcrpkey).
+# pcr/pcr.key with pcr/pcr.pub (the public key ukify embeds as .pcrpkey), and
+# release/index.key with release/index.pgp: the OpenPGP key that signs the release's SHA256SUMS
+# (armored secret key; binary public key, the image's keyring).
 
 use common.nu *
 
@@ -23,4 +25,22 @@ export def build [] {
   ^openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out $"($out)/pcr/pcr.key" e> /dev/null
   ^openssl pkey -in $"($out)/pcr/pcr.key" -pubout -out $"($out)/pcr/pcr.pub"
   log "pcr/pcr.key, .pub"
+  index-key $"($out)/release" $"Golconda smoke release index($suffix)"
+}
+
+# An Ed25519 OpenPGP signing key without a passphrase, made in a scratch home that is removed
+# with its agent: release/index.key (armored secret) and release/index.pgp (binary public)
+def index-key [dir: string, name: string] {
+  mkdir $dir
+  let home = $"($env.TMPDIR? | default /tmp)/gnupg-keys"
+  mkdir $home
+  ^chmod 700 $home
+  with-env {GNUPGHOME: $home} {
+    ^gpg --batch --passphrase '' --quick-gen-key $"($name) <index@golconda.invalid>" ed25519 sign never e> /dev/null
+    ^gpg --batch --export --output $"($dir)/index.pgp"
+    ^gpg --batch --pinentry-mode loopback --passphrase '' --armor --export-secret-keys --output $"($dir)/index.key"
+    ^gpgconf --kill gpg-agent
+  }
+  rm -rf $home
+  log "release/index.key, .pgp"
 }

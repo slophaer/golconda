@@ -81,8 +81,36 @@ release because the root hash is.
 ```
 
 Each line is the lower-case hex digest, two spaces, and the name, as `sha256sum` writes it. The
-index does not list itself, and v1 ships no `SHA256SUMS.gpg` (`Verify=no`). The names are exactly
-the release names above; the UKI line names the release file without a boot counter.
+index does not list itself. The names are exactly the release names above; the UKI line names the
+release file without a boot counter.
+
+## The signed index
+
+`SHA256SUMS.gpg` is a detached binary OpenPGP signature of `SHA256SUMS`, made by the disk step with
+the key set's release key (`release/index.key`, Ed25519). Every transfer has `Verify=yes`, so
+`systemd-pull` fetches the signature with the index and runs `gpg --verify` against
+`/usr/lib/systemd/import-pubring.pgp`, the key's public half in the running image. A payload whose
+digest the signed index does not list is never written. The signature time is the version's epoch
+(or the key's creation time, if that is later), so a rebuild gives the same bytes.
+
+Why OpenPGP: it is the one signature systemd 262's `systemd-pull` checks, and it checks it only by
+running `gpg`. The image therefore carries GnuPG 2.4 and libgcrypt beside OpenSSL, a second crypto
+library against [one of each](principles.md). systemd PR
+[#44292](https://github.com/systemd/systemd/pull/44292) (UAPI.16 manifests with an inline PKCS#7
+signature, checked against x509 certificates) is the way out: once a systemd release has it, the
+`db` key's openssl tooling could sign the manifest and GnuPG would leave the image.
+
+What the signature adds: the verity signature and the signed UKI already tie each payload to the
+`db` key, so with Secure Boot an attacker on the network could only serve another signed release or
+none. Without Secure Boot (`/system.secureBoot = false`) nothing checks a UKI before it runs, so the
+signed index is what stops a UKI from someone else.
+
+The running image trusts only the release key it carries, so a release signed with another key
+installs nothing (`gpg: Can't check signature: No public key`). A `db` rotation therefore keeps the
+release key (`indexKeys`, as it keeps `pcrKeys`). To change the release key itself, take two
+releases: one signed with the old key whose image carries the new public key, then the next signed
+with the new key. The signature does not stop a replay of an older signed index: sysupdate installs
+only versions newer than the running one, and the A/B slots keep the newest two.
 
 `scripts/boot-test --next` reads the index of the next release before it installs anything: four
 lines, this order, and every digest against its file. Reordering the lines, renaming a file or

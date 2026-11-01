@@ -220,15 +220,14 @@ flags on top of it. The image for a host without Secure Boot (`/system.secureBoo
 | a `db` rotation works; the old disk is refused                                        | `boots-after-rotation`, `kernel-db-rotated`, `old-loader-refused`                                        | `--next --rotate`            |
 | a failed health check costs one try, and the old release boots after the third        | `health-check-broken`, `attempt-[1-3]-unblessed`, `fallback-to-old-slot`, `counter-exhausted`            | `--next --fail-health`       |
 | the guest fetches the release from the update server, with its own definition         | `http-source`, `http-fetch`                                                                              | `--next`                     |
+| the image's keyring is the release key; the guest checks the signed index             | `index-keyring` (`--ssh-test`), `index-signed`, `sysupdate-installed`                                    | `--next`                     |
+| a changed index installs nothing                                                      | `sysupdate-installed` fails with `BOOT_TEST_TAMPER_INDEX=1`                                              | `--next`                     |
 | `factory-reset.target` deletes the state and keeps the slots and the ESP              | `state-gone`, `machine-id-new`, `first-boot-rerun`, `multi-user-after-reset`, `slots-kept`               | `--factory-reset --ssh-test` |
 | the host name and root's ssh key come from null-key credentials on the ESP            | `hostname`, `esp-authorized-keys`, `ssh-login` with a key only the ESP holds                             | `--ssh-test --esp-creds`     |
 | without Secure Boot, the kernel's built-in key accepts the verity signature           | no marker of its own: `image-smoke-test-nosb` reaches `multi-user.target` with `ipe.enforce=1`           | no `--secure-boot`           |
 
 Not proven:
 
-- **The update server's own index.** The guest fetches each file by name from the directory the host
-  serves. It does not read a published index, and in v1 it does not verify the signature of one
-  (`Verify=no`).
 - **Enrolment on real firmware.** The harness enrols keys offline in the variable store.
 - **Hardware.** Only QEMU with OVMF on x86_64 has run. aarch64 is postponed after v1
   ([Scope](scope.md)), because no aarch64 package can be built here.

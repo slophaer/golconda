@@ -14,14 +14,14 @@ its first 128 bits, usr-verity: its last); the source pattern reads it with `@u`
 gives the slot it writes that UUID, so the new UKI's `usrhash=` finds the new slot. The disk step
 writes the release under these names (`release/`, `releaseNames` in `lib/image/disk.nix`).
 
-| artifact         | file name                                                    | sysupdate transfer                                                   |
-| ---------------- | ------------------------------------------------------------ | -------------------------------------------------------------------- |
-| `/usr` image     | `<id>_<version>.usr.<uuid>.raw`                              | `Type=partition`, `MatchPartitionType=usr`                           |
-| verity hash tree | `<id>_<version>.usr-verity.<uuid>.raw`                       | `MatchPartitionType=usr-verity`                                      |
-| verity signature | `<id>_<version>.usr-verity-sig.raw`                          | `MatchPartitionType=usr-verity-sig`                                  |
-| UKI              | `<id>_<version>.efi` → installed as `<id>_<version>+3-0.efi` | `Type=regular-file`, `/EFI/Linux` on the ESP (`PathRelativeTo=boot`) |
-| index            | `SHA256SUMS`, what a `url-file` source lists                 | —                                                                    |
-| manifest         | `SHA256SUMS.gpg` *(after v1; `Verify=no` in v1)*             | —                                                                    |
+| artifact         | file name                                                     | sysupdate transfer                                                   |
+| ---------------- | ------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `/usr` image     | `<id>_<version>.usr.<uuid>.raw`                               | `Type=partition`, `MatchPartitionType=usr`                           |
+| verity hash tree | `<id>_<version>.usr-verity.<uuid>.raw`                        | `MatchPartitionType=usr-verity`                                      |
+| verity signature | `<id>_<version>.usr-verity-sig.raw`                           | `MatchPartitionType=usr-verity-sig`                                  |
+| UKI              | `<id>_<version>.efi` → installed as `<id>_<version>+3-0.efi`  | `Type=regular-file`, `/EFI/Linux` on the ESP (`PathRelativeTo=boot`) |
+| index            | `SHA256SUMS`, what a `url-file` source lists                  | —                                                                    |
+| index signature  | `SHA256SUMS.gpg`, the release key's signature of `SHA256SUMS` | `Verify=yes` on every transfer                                       |
 
 Each partition transfer finds its slots by GPT label (`image/sysupdate.nix` `slots`, the target
 `MatchPattern=`): an installed slot is `usr_<version>`, `usr-verity_<version>` or
@@ -404,9 +404,9 @@ candidate is blessed.
 What this test does not prove:
 
 - **The production transfer.** The test serves a release over plain `http` from the host. It proves
-  the image's `url-file` source and the HTTP fetch, but not HTTPS, a signed manifest (`Verify=no`
-  checks no signature), a real update server with redirects or authentication, the update timer, or
-  a machine whose network is not QEMU's user-mode network.
+  the image's `url-file` source and the HTTP fetch, but not HTTPS, a real update server with
+  redirects or authentication, the update timer, or a machine whose network is not QEMU's user-mode
+  network.
 
 ### The factory reset test
 

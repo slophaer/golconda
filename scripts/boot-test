@@ -75,6 +75,8 @@
 #   (slots-kept). The reset rewrites the root partition only; the ESP and the /usr slots stay.
 #   It prints the serial log of the reset boot. The mode is two boots (the first boot and the
 #   reset boot), so give a --timeout large enough, such as 480, and do not combine it with --next.
+# BOOT_TEST_TAMPER_INDEX=1 (with --next): serve SHA256SUMS with one byte added, so its signature
+#   (SHA256SUMS.gpg) no longer matches; the update must fail (the signed index's negative control).
 # BOOT_TEST_HTTP_PORT: the host port for the release HTTP server (default 8074). The test image's
 #   updateSource is http://10.0.2.2:8074/, so another port needs an image built for it.
 # BOOT_TEST_STORE_ROOT: the root of a chroot store (nix --store 'local?root=DIR'); a symlink
@@ -416,6 +418,13 @@ start_http_server() {
     fi
   done
 
+  # the negative control of the signed index: one byte more in SHA256SUMS, the signature unchanged
+  if [ "${BOOT_TEST_TAMPER_INDEX:-0}" = 1 ]; then
+    chmod u+w "$HTTP_ROOT/SHA256SUMS"
+    printf '\n' >> "$HTTP_ROOT/SHA256SUMS"
+    echo "BOOT_TEST_TAMPER_INDEX=1: served SHA256SUMS has one byte more than its signature covers"
+  fi
+
   echo "Serving $NEXT_RELEASE on http://127.0.0.1:$HTTP_PORT/ (the guest uses http://10.0.2.2:$HTTP_PORT/)"
   python3 -m http.server "$HTTP_PORT" --bind 127.0.0.1 --directory "$HTTP_ROOT" \
     > "$HTTP_LOG" 2>&1 &
@@ -682,6 +691,17 @@ test_ssh() {
 
   test_loader "first boot" 1
 
+  # the signed index's keyring is the key set's release key and nothing else: systemd's own vendor
+  # keyring (image vendors' keys) is not in the image (packages/systemd)
+  echo ""
+  echo "=== /usr/lib/systemd/import-pubring.pgp ==="
+  RC=0
+  WANT=$(sha256sum "$(real_path "$KEYS_DIR/release/index.pgp")" 2>/dev/null | cut -c1-64) || WANT=""
+  GOT=$(guest sha256sum /usr/lib/systemd/import-pubring.pgp 2>/dev/null | cut -c1-64) || GOT=""
+  echo "image: ${GOT:-missing}; key set: ${WANT:-missing}"
+  [ -n "$WANT" ] && [ "$GOT" = "$WANT" ] || RC=1
+  verdict "index-keyring (the image's keyring is the key set's release/index.pgp)" $RC
+
   if [ "$SECURE_BOOT" = 1 ]; then
     echo ""
     echo "=== secure boot state ==="
@@ -942,10 +962,16 @@ test_next() {
   RC_FETCH=0
   echo "$JOURNAL" | grep -q "Successfully installed 'http://10.0.2.2:$HTTP_PORT/" || RC_FETCH=1
   verdict "http-fetch (the journal names the release over http, not a local file)" $RC_FETCH
+  # Verify=yes: systemd-pull fetches the index's signature and gpg checks it before any payload
+  RC_SIG=0
+  grep -q '"GET /SHA256SUMS.gpg HTTP/1.[01]" 200' "$HTTP_LOG" || RC_SIG=1
+  verdict "index-signed (the guest fetched SHA256SUMS.gpg)" $RC_SIG
   verdict "sysupdate-installed ($NEXT_VERSION)" $RC
   if [ "$RC" != 0 ]; then
     echo "HTTP server log (last 20 lines):"
     tail -20 "$HTTP_LOG" 2>/dev/null || true
+    echo "sysupdate journal (gpg lines):"
+    echo "$JOURNAL" | grep -i "gpg\|signature\|verif" | tail -10 || true
   fi
 
   echo "Rebooting into $NEXT_VERSION..."
