@@ -31,18 +31,20 @@ flowchart TD
   out --> usr["/usr tree builder"]
 ```
 
-That is the whole tree today: one service. A second service is a new directory under
-`modules/services/`.
+The tree has one service module. A second service is a new directory under `modules/services/`.
 
 ## A fragment
 
 A fragment is what a module returns: `units`, `files`, `sysusers`, `tmpfiles`, `packages`, `links`
-and an optional `name` (the module's path, for the package origins), every field optional and typed
-(korora, `modules/lib/fragment.nix`); an unknown field is a type error. The fields are exactly what
-the `/usr` tree builder installs, nothing is interpreted on the way: a unit is text under
-`/usr/lib/systemd/system/`, a file is text with a mode under `/usr`, a sysusers or tmpfiles line is
-a line, a package is a closure root, a link is a symlink of `/usr`
-([Layout: The symlink map](layout.md#the-symlink-map)).
+and an optional `name` (the module's path, for the package origins). Every field is optional and
+typed (korora, `modules/lib/fragment.nix`); an unknown field is a type error. The fields are exactly
+what the `/usr` tree builder installs, and nothing is interpreted on the way:
+
+- a unit is text under `/usr/lib/systemd/system/`;
+- a file is text with a mode under `/usr`;
+- a sysusers or tmpfiles line is a line;
+- a package is a closure root;
+- a link is a symlink of `/usr` ([Layout: The symlink map](layout.md#the-symlink-map)).
 
 A unit stays text with a typed name (a stem and one of the seven suffixes) and at least one section
 header. A typed INI model would add a second place where systemd's semantics are spelled out; the
@@ -50,17 +52,22 @@ renderers produce the text and the tests read it.
 
 ## How packages enter the tree
 
-The repkgs sets enter the tree once, as the options of `/pkgs`: `target`, the set of the platform
-the image runs on (`nix/default.nix` passes it from `nix/packages.nix`), and `build`, the build
-host's set for tools that run on the builder (default: the target's `buildPkgs`, the same packages
-when not cross). `/pkgs` returns `{ target; build; pkgs; }`. A module that needs a package declares
-`inputs.pkgs.path = "/pkgs"` and reads `results.pkgs.pkgs.openssh`; a package-valued option defaults
-from there, so a configuration can still replace the package but never has to pass one. This is
-adios' own mechanism (a module declares its inputs and receives their results), and it carries one
-rule: a module never imports repkgs and never reads a set it did not declare; a second kind of set
-is a second module path, never a second argument. No option takes a function, the schema stays
-platform-independent, and `/pkgs.target` is the one option that is not configuration data: the TOML
-loader refuses it.
+The repkgs sets enter the tree once, as the options of `/pkgs`:
+
+- `target` is the set of the platform the image runs on (`nix/default.nix` passes it from
+  `nix/packages.nix`);
+- `build` is the build host's set, for tools that run on the builder. It defaults to the target's
+  `buildPkgs`, which is the same set when the build is not a cross build.
+
+`/pkgs` returns `{ target; build; pkgs; }`. A module that needs a package declares
+`inputs.pkgs.path = "/pkgs"` and reads `results.pkgs.pkgs.openssh`. A package-valued option defaults
+from there, so a configuration can replace the package but never has to pass one.
+
+This is adios' own mechanism: a module declares its inputs and receives their results. It carries
+one rule. A module never imports repkgs and never reads a set it did not declare; a second kind of
+set is a second module path, never a second argument. No option takes a function, so the schema
+stays platform-independent. `/pkgs.target` is the one option that is not configuration data, and the
+TOML loader refuses it.
 
 The composer records which fragment brought each package (`packageOrigins`: `/base`, `/network`,
 `/security`, a fragment's own `name`, or its index), and the `/usr` tree writes it as
@@ -69,8 +76,8 @@ The composer records which fragment brought each package (`packageOrigins`: `/ba
 ## The base system
 
 `/base`, `/network` and `/security` are implicit: `/system` declares them as inputs and merges their
-fragments before the configured ones, so a system with no fragments still boots with systemd, D-Bus,
-a shell, coreutils, the kernel, DHCP on every wired link, time sync and a bounded journal
+fragments before the configured ones. A system with no fragments still boots with systemd, D-Bus, a
+shell, coreutils, the kernel, DHCP on every wired link, time sync and a bounded journal
 ([Architecture: What every image contains](architecture.md#what-every-image-contains)). They have
 options (`/base.ntp`, `/base.journalMaxUse`, `/network.networks`, `/network.dns`,
 `/network.defaultDhcp`; `/security` has none) but no switch: there is nothing to turn off.
@@ -107,12 +114,15 @@ directive the type lacks adds the field, with its type, or does without.
 ### Sandbox tiers
 
 A service names one of three tiers, `strict`, `default` or `trusted`, each a fixed set of
-`systemd.exec` hardening directives ([reference](../reference/modules/README.md#sandbox-tiers)). A
-new service takes `default` unless it has a reason; `strict` is for a daemon that needs no
-capability and no device; `trusted` adds no directive and needs the reason in the module's doc
-comment (sshd: it spawns user sessions that must see the real system). The tiers are not a free-form
-`systemd.exec` surface on purpose: a hardening line that is right for one service and wrong for
-another is a new tier, not an option.
+`systemd.exec` hardening directives ([reference](../reference/modules/README.md#sandbox-tiers)).
+
+- `default` is what a new service takes unless it has a reason.
+- `strict` is for a daemon that needs no capability and no device.
+- `trusted` adds no directive and needs its reason in the module's doc comment (sshd: it spawns user
+  sessions that must see the real system).
+
+The tiers are not a free-form `systemd.exec` surface on purpose: a hardening line that is right for
+one service and wrong for another is a new tier, not an option.
 
 ### User services
 
@@ -123,22 +133,27 @@ seals credentials for the system manager only (a per-user credstore would need
 
 ### Vars
 
-A var is a fragment too ([Trust: Secrets and vars](trust.md#secrets-and-vars)): `render var` returns
-a oneshot unit that generates the secret on first boot and seals it to the TPM, and the manifest
-that names the credential; `admin adminVar` returns the manifest only. A service that consumes a var
-names its credential id in `credentials` and orders itself after the var's unit.
+A var is a fragment too ([Trust: Secrets and vars](trust.md#secrets-and-vars)). `render var` returns
+a oneshot unit and the manifest that names the credential; the unit generates the secret on first
+boot and seals it to the TPM. `admin adminVar` returns the manifest only. A service that consumes a
+var names its credential id in `credentials` and orders itself after the var's unit.
 
 ## The composer
 
 `/system` takes `name`, `version`, `updateSource` and `fragments`. It merges `/base`, `/network` and
 `/security` first, then the configured fragments, then the sysupdate definitions it renders from
-`updateSource`. Attribute-set fields are unioned and a key that appears twice throws with the key's
-name; list fields are concatenated; `packages` is one list with each package once, and
-`packageOrigins` says which fragments brought it; the symlinks of the packages' `bin` lists go into
-the same map as the fragments' own links, and one duplicate check covers the whole map. A module
-that returns several fragments unions them with the same `merge`, so a duplicate inside one module
-is the same error as one between modules. The output is the only thing the `/usr` tree builder
-reads.
+`updateSource`. The merge follows four rules:
+
+- Attribute-set fields are unioned, and a key that appears twice throws with the key's name.
+- List fields are concatenated.
+- `packages` is one list with each package once, and `packageOrigins` says which fragments brought
+  it.
+- The symlinks of the packages' `bin` lists go into the same map as the fragments' own links, and
+  one duplicate check covers the whole map.
+
+A module that returns several fragments unions them with the same `merge`, so a duplicate inside one
+module is the same error as one between modules. The output is the only thing the `/usr` tree
+builder reads.
 
 A service is on when its fragment is in `fragments`; there is no `enable` flag. How a TOML document
 puts a fragment there is in [Configuration](config.md#from-document-to-image).
