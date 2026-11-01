@@ -37,7 +37,8 @@
 #   (DIR/disk/release, DIR/keys). The harness copies the release into the guest over ssh and
 #   installs it with systemd-sysupdate-update.service from /run/sysupdate.d definitions that
 #   read the copy, reboots into it, and checks that golconda-loader-update.service put the new
-#   loader on the ESP. Then the recovery checks: bootctl list shows both slots, a damaged loader
+#   loader on the ESP, and that no /etc/systemd/system link names the old systemd store path or
+#   dangles (golconda-etc-links.service). Then the recovery checks: bootctl list shows both slots, a damaged loader
 #   is reinstalled by hand, `bootctl set-oneshot` and `bootctl set-default` boot the other slot
 #   and back, and `bootctl reboot-to-firmware` reaches the firmware's menu.
 # With --next DIR --rotate: DIR is signed with a new db key. Its certificate is enrolled in db
@@ -620,6 +621,33 @@ reboot_guest() {
 
 SCP_OPTS="-F /dev/null -q -o BatchMode=yes -o LogLevel=ERROR -P $SSH_PORT"
 
+# test_etc_links: the links the first boot wrote under /etc/systemd/system named the old
+# release's systemd store path. golconda-etc-links.service rewrote them in this boot's initrd,
+# so no link may name a store path, and none may dangle (docs/design/updates.md).
+test_etc_links() {
+  echo ""
+  echo "=== /etc/systemd/system links after the update ==="
+  COUNTS=$(
+    guest '
+      n=0; s=0; d=0
+      for f in /etc/systemd/system/* /etc/systemd/system/*/*; do
+        [ -L "$f" ] || continue
+        n=$((n + 1))
+        case "$(readlink "$f")" in *nix/store*) s=$((s + 1)) ;; esac
+        [ -e "$f" ] || d=$((d + 1))
+      done
+      echo "$n $s $d"'
+  ) || COUNTS="0 0 0"
+  echo "links, store-path targets, dangling: $COUNTS"
+  # shellcheck disable=SC2086
+  set -- $COUNTS
+  RC=0
+  [ "${1:-0}" -gt 0 ] || RC=1
+  [ "${2:-1}" = 0 ] || RC=1
+  [ "${3:-1}" = 0 ] || RC=1
+  verdict "etc-links-stable ($1 links, $2 naming a store path, $3 dangling)" $RC
+}
+
 # --- --next: install the next release, boot it, check its loader, then recovery ---
 test_next() {
   echo ""
@@ -655,6 +683,7 @@ test_next() {
   V=$(guest_version)
   RC=0; [ "$V" = "$NEXT_VERSION" ] || RC=1
   verdict "boots-next ($OLD_VERSION -> $V)" $RC
+  test_etc_links
   test_loader "$NEXT_VERSION, its first good boot" 1
   NEW_LOADER=$(guest_hash "$ESP_REMOVABLE")
   if [ "$NEW_LOADER" != "$OLD_LOADER" ]; then
