@@ -33,10 +33,10 @@ Firmware starts `EFI/BOOT/BOOTX64.EFI`: Golconda writes no `Boot####` variable, 
 to the removable-media path. `aa64` and `riscv64` use their own names (`removableMediaName`).
 
 `loader.conf` is at the root of the ESP because systemd-boot reads `\loader\loader.conf` and nothing
-else (`src/boot/boot.c`, systemd 262.1). Before this change the image wrote
-`EFI/loader/loader.conf`, which systemd-boot never read: `bootctl status` in the guest said
-`config: /boot//loader/loader.conf: No such file or directory`, and the menu ran with systemd-boot's
-defaults, the editor on. Now it says `config: /boot//loader/loader.conf`.
+else (`src/boot/boot.c`, systemd 262.1). A file at `EFI/loader/loader.conf` is never read:
+`bootctl status` says `config: /boot//loader/loader.conf: No such file or directory`, and the menu
+runs with systemd-boot's defaults, the editor on. With the file in place `bootctl status` says
+`config: /boot//loader/loader.conf`.
 
 ## The loader on a running machine
 
@@ -74,12 +74,16 @@ running UKI under the current `db` and `dbx`, and the image builder signs that r
 the same key. A loader written by this unit is one this firmware starts, as long as `db` and `dbx`
 do not change before the next boot.
 
-**Why not `systemd-boot-update.service`.** systemd's unit runs `bootctl --graceful update`, which is
-wrong for Golconda in three ways: it compares the version strings, so it skips a loader that was
-signed again with a new key (same version, other bytes); it runs before `sysinit.target`, so a
-candidate would install its loader before its health gate; and it does nothing unless `EFI/systemd/`
-exists, which the image did not create. A drop-in turns it off
-(`ConditionPathExists=!/usr/lib/golconda/golconda-loader-update`), so the ESP has one writer.
+**Why not `systemd-boot-update.service`.** systemd's unit runs `bootctl --graceful update`. That is
+wrong for Golconda in three ways:
+
+- It compares version strings, so it skips a loader signed again with a new key: the version is the
+  same and the bytes differ.
+- It runs before `sysinit.target`, so a candidate would install its loader before its health gate.
+- It does nothing unless `EFI/systemd/` exists, and the image does not create that directory.
+
+A drop-in turns it off (`ConditionPathExists=!/usr/lib/golconda/golconda-loader-update`), so the ESP
+has one writer.
 
 ## Key rotation
 
@@ -109,32 +113,22 @@ the old entry, the boot after step 5 stopped: systemd-boot logged
 firmware, which found no other bootable option. A blessed entry has no counter, so systemd-boot does
 not fall back from it by itself.
 
-**Proven by boot** (`scripts/boot-test --secure-boot --next <rotated release> --rotate`,
-[Image artifacts: the boot test](../reference/image.md#boot-test-scriptsboot-test)). 20261031.1 (old
-key) installs 20261031.2 (`image-smoke-test-rotated`, new key) with
-`systemd-sysupdate-update.service`; 20261031.2 boots through the old loader and its first good boot
-replaces both ESP copies with the new loader and keeps the old one as the fallback. After step 5 the
-kernel logs only the new certificate from `UEFI:db`, 20261031.2 boots with Secure Boot enabled, and
-the original disk with the same variable store is refused by firmware (`Access Denied`, no kernel).
-The test leaves out step 4: it has two releases, not three.
-
 ## Recovery
 
-| situation                                          | path                                                                                                                                                                                                                                                               | proven      |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------- |
-| a new release fails its health gate                | boot counting: three attempts, then the other slot ([Boot](boot.md#boot-health))                                                                                                                                                                                   | update test |
-| see what is on the ESP                             | `bootctl list` (both slots, counters, cmdlines), `bootctl status` (loader, `config:` line)                                                                                                                                                                         | boot test   |
-| boot the other slot once                           | `bootctl set-oneshot <id>_<version>.efi`, reboot; the next boot returns to the default                                                                                                                                                                             | boot test   |
-| boot the other slot until told otherwise           | `bootctl set-default <id>_<version>.efi`; undo with `bootctl set-default ''`                                                                                                                                                                                       | boot test   |
-| the loader on the ESP is damaged, the machine runs | `/usr/lib/golconda/golconda-loader-update` puts the running release's loader back                                                                                                                                                                                  | boot test   |
-| reach the firmware menu from a running machine     | `bootctl reboot-to-firmware true`, reboot. The systemd-boot entry "Reboot Into Firmware Interface" does the same at the console; the menu shows after `bootctl set-timeout-oneshot 10` (not tested)                                                                | boot test   |
-| the loader does not start any more                 | at the console, the firmware's boot menu: start `EFI/systemd/systemd-boot-fallbackx64.efi`, or a UKI under `EFI/Linux` as a file; then run `golconda-loader-update` or install a release                                                                           | no          |
-| the ESP is lost                                    | write the ESP partition of the release's `disk.raw` again, from another machine; it carries the loader, `loader.conf` and that release's UKI                                                                                                                       | no          |
-| the `db` key leaks                                 | rotate it, with the old certificate in `dbx` (above)                                                                                                                                                                                                               | boot test   |
-| the `db` private key is lost                       | running machines keep booting: the signatures they hold stay valid. No new release can be signed for them. Enrol a new key with the KEK (an authenticated write) or in firmware setup, then install a release signed with it (a rotation without step 3's overlap) | no          |
+| situation                                          | path                                                                                                                                                                                                                                                               |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| a new release fails its health gate                | boot counting: three attempts, then the other slot ([Boot](boot.md#boot-health))                                                                                                                                                                                   |
+| see what is on the ESP                             | `bootctl list` (both slots, counters, cmdlines), `bootctl status` (loader, `config:` line)                                                                                                                                                                         |
+| boot the other slot once                           | `bootctl set-oneshot <id>_<version>.efi`, reboot; the next boot returns to the default                                                                                                                                                                             |
+| boot the other slot until told otherwise           | `bootctl set-default <id>_<version>.efi`; undo with `bootctl set-default ''`                                                                                                                                                                                       |
+| the loader on the ESP is damaged, the machine runs | `/usr/lib/golconda/golconda-loader-update` puts the running release's loader back                                                                                                                                                                                  |
+| reach the firmware menu from a running machine     | `bootctl reboot-to-firmware true`, reboot. The systemd-boot entry "Reboot Into Firmware Interface" does the same at the console; the menu shows after `bootctl set-timeout-oneshot 10`                                                                             |
+| the loader does not start any more                 | at the console, the firmware's boot menu: start `EFI/systemd/systemd-boot-fallbackx64.efi`, or a UKI under `EFI/Linux` as a file; then run `golconda-loader-update` or install a release                                                                           |
+| the ESP is lost                                    | write the ESP partition of the release's `disk.raw` again, from another machine; it carries the loader, `loader.conf` and that release's UKI                                                                                                                       |
+| the `db` key leaks                                 | rotate it, with the old certificate in `dbx` (above)                                                                                                                                                                                                               |
+| the `db` private key is lost                       | running machines keep booting: the signatures they hold stay valid. No new release can be signed for them. Enrol a new key with the KEK (an authenticated write) or in firmware setup, then install a release signed with it (a rotation without step 3's overlap) |
 
-The firmware path needs the console. On QEMU the boot test reaches OVMF's boot menu ("Please select
-boot device", "EFI Firmware Setup") over the serial line; it does not drive the menu.
+The firmware path needs the console.
 
 ## What is not possible
 
@@ -159,4 +153,3 @@ boot device", "EFI Firmware Setup") over the serial line; it does not drive the 
   it fails as above.
 - **PCR policy key rotation is not covered.** A credential sealed to the old PCR key does not unseal
   under a UKI signed with a new one ([Trust: Rollback weakness](trust.md#rollback-weakness)).
-- Only `x86_64` with OVMF is tested.
