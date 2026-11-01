@@ -1182,7 +1182,7 @@ let
       && elem "version" sys.required
       && sys.additionalProperties == false
       && sys.properties.name.pattern == "^[A-Za-z0-9][A-Za-z0-9._-]*$"
-      && sys.properties.version.pattern == "^[0-9]{8}\\.[0-9]+$"
+      && sys.properties.version.pattern == "^[0-9]{8}\\.(0|[1-9][0-9]*)$"
     ))
     (check "schema: a fragment file is text or { text; mode; }" (
       let
@@ -1285,6 +1285,21 @@ let
       !(any versionAccepted invalidVersions)
     ))
 
+    (check "version format: a revision with a leading zero is refused (two spellings, one epoch)" (
+      let
+        versionLib = import ../lib/version.nix { };
+      in
+      !(any versionAccepted [
+        "20261031.01"
+        "20261031.00"
+        "20261031.0086399"
+      ])
+      && hasInfix "leading zero" (versionLib.error "20261031.01")
+      && all versionAccepted [
+        "20261031.0"
+        "20261031.10"
+      ]
+    ))
     (check "version format: leap day and the last second of a day are accepted" (
       all versionAccepted [
         "20240229.0"

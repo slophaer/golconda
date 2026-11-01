@@ -149,9 +149,9 @@ let
     };
 
     version = {
-      description = "Image version: YYYYMMDD.N, such as 20261031.1.";
+      description = "Image version: YYYYMMDD.N, such as 20261031.1; N has no leading zero.";
       type = "string";
-      pattern = "^[0-9]{8}\\.[0-9]+$";
+      pattern = "^[0-9]{8}\\.(0|[1-9][0-9]*)$";
     };
 
     file = {
