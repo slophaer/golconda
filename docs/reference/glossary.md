@@ -44,5 +44,6 @@
   cmdline and the PCR signature; one per slot on the ESP.
 - **var**: a value the image names but never contains. Class `local`: a oneshot unit generates it on
   the machine on first boot and seals it; class `admin`: the deploy host pushes it and the machine
-  seals it. Declared with the helpers in `modules/lib/var.nix` ([/vars](modules/generated/vars.md)).
+  seals it. Declared with the helpers in `modules/lib/var.nix`
+  ([/vars](../reference/modules/README.md)).
 - **verity**: dm-verity, block-level integrity of a read-only partition against a root hash.

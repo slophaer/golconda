@@ -28,12 +28,12 @@ by systemd-sysupdate. The machine runs systemd and nothing that duplicates it, a
 ## Status
 
 The module tree, the composer, the `/usr` tree builder, the schema, the TOML loader and the entry
-point (`golconda.nix`) exist and are tested. The image chain (erofs, verity, initrd, UKI, disk)
-builds. `scripts/boot-test` boots the disk in QEMU and checks what it can; the one table of what
-that covers, and what nobody has run yet, is [What is proven](docs/design/boot.md#what-is-proven).
-The docs mark each designed thing *(planned)*, and each deferred one *(after v1)*;
-[Scope](docs/design/scope.md) says what is v1, after v1 and out of scope, and
-[Comparison](docs/design/comparison.md) says what you give up against NixOS.
+point (`examples/golconda.nix`) exist and are tested. The image chain (erofs, verity, initrd, UKI,
+disk) builds. `scripts/boot-test` boots the disk in QEMU and checks what it can; the one table of
+what that covers, and what nobody has run yet, is
+[What is proven](docs/design/boot.md#what-is-proven). The docs mark each designed thing *(planned)*,
+and each deferred one *(after v1)*; [Scope](docs/design/scope.md) says what is v1, after v1 and out
+of scope, and [Comparison](docs/design/comparison.md) says what you give up against NixOS.
 
 ## Quick start
 

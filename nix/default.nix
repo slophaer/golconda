@@ -362,7 +362,7 @@ in
   # The same pages by file name (services-sshd.md, index.md, types.md); scripts/docs writes these.
   docs-pages = docsFromSchema.files;
 
-  # Generated SUMMARY.md content.
+  # The module-pages lines of docs/SUMMARY.md (the file is committed; scripts/docs checks them).
   docs-summary = docsFromSchema.summary;
 
   # Module paths discovered from modules/ directory.

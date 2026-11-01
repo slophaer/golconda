@@ -1402,7 +1402,7 @@ let
         "vars.md"
       ]
     ))
-    (check "module-docs: the generated SUMMARY links every module page" (
+    (check "module-docs: SUMMARY.md links every module page" (
       let
         inherit (docs) summary;
         # index.md is not linked directly in SUMMARY; module pages are
