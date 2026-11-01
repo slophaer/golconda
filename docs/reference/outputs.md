@@ -60,6 +60,8 @@ It returns `erofs`, `verity`, `initrd`, `uki`, `loader`, `disk` and `release` (t
 `secureboot/db.crt`, `pcr/pcr.key` and `pcr/pcr.pub`. A relative string is an error. A path value
 copies the keys into the store; a string does not, and needs `extra-sandbox-paths` on the daemon
 ([Trust: How the private keys reach the build](../design/trust.md#how-the-private-keys-reach-the-build)).
+The procedure around it, from making the key set to enrolling the certificate, is in
+[Making a release](release.md).
 
 ## `schema`
 

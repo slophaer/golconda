@@ -40,4 +40,5 @@
 - [Commands](reference/cli.md)
 - [Build host](reference/build-host.md)
 - [Outputs and inputs](reference/outputs.md)
+- [Making a release](reference/release.md)
 - [Glossary](reference/glossary.md)
