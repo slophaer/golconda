@@ -277,6 +277,7 @@ let
   summarySuffix = ''
     - [Configuration](reference/config.md)
     - [Commands](reference/cli.md)
+    - [Build host](reference/build-host.md)
     - [Outputs and inputs](reference/outputs.md)
     - [Glossary](reference/glossary.md)
   '';
