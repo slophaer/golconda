@@ -1,0 +1,71 @@
+[upstream]
+url = "https://github.com/bus1/dbus-broker"
+purl = "pkg:github/bus1/dbus-broker"
+
+# Main source: dbus-broker main branch at pinned commit (unreleased v38 with Rust parts)
+[[source]]
+key = "default"
+url = "https://github.com/bus1/dbus-broker/archive/{commit}.tar.gz"
+hash = "sha256-Uj3qv7RO+S+Sq86UwEuIt975p8FZsX0izNBwIQbnVVc="
+
+# Subproject wraps: meson cannot download these (wrap_mode=nodownload), so they are
+# copied into subprojects/ before meson.configure
+
+[[source]]
+key = "c-stdaux"
+url = "https://github.com/c-util/c-stdaux/archive/refs/tags/v{c-stdaux-version}.tar.gz"
+hash = "sha256-MsnuEyVCmOIr/q6I1qyPsNXp48jxIEcXoYLHbOAZtW0="
+
+[[source]]
+key = "c-list"
+url = "https://github.com/c-util/c-list/archive/refs/tags/v{c-list-version}.tar.gz"
+hash = "sha256-fp3EAqcbFCLaT2EstLSzwP2X13pi2EFpFAullhoCtpw="
+
+[[source]]
+key = "c-rbtree"
+url = "https://github.com/c-util/c-rbtree/archive/refs/tags/v{c-rbtree-version}.tar.gz"
+hash = "sha256-dTMeawhPLRtHvMXfXCrT5iCdoh7qS3v+raC6c+t+X38="
+
+[[source]]
+key = "c-dvar"
+url = "https://github.com/c-util/c-dvar/archive/refs/tags/v{c-dvar-version}.tar.gz"
+hash = "sha256-OlV6yR1tNWFN+rxPPGmbfbh7WyB6FwORyZR1V553iYE="
+
+[[source]]
+key = "c-ini"
+url = "https://github.com/c-util/c-ini/archive/refs/tags/v{c-ini-version}.tar.gz"
+hash = "sha256-wa7aNl20hkb/83c4AkQ/0YFDdmBs4XGW+WLUtBWIC98="
+
+[[source]]
+key = "c-shquote"
+url = "https://github.com/c-util/c-shquote/archive/refs/tags/v{c-shquote-version}.tar.gz"
+hash = "sha256-z6hpQ/kpCYAngMNfxLkfsxaGtvP4yBMigX1lGpIIzMQ="
+
+[[source]]
+key = "c-utf8"
+url = "https://github.com/c-util/c-utf8/archive/refs/tags/v{c-utf8-version}.tar.gz"
+hash = "sha256-9vBYylbt1ypJwIAQJd/oiAueh+4VYcn/KzofQuhUea0="
+
+[[source]]
+key = "sys"
+url = "https://github.com/bus1/sys/archive/{sys-commit}.tar.gz"
+hash = "sha256-Bt1R1OXZWFUB+YE4eviL6pTaLNd6IYYuLJJKGuBKhDU="
+
+[[source]]
+key = "libc"
+url = "https://github.com/rust-lang/libc/archive/refs/tags/{libc-version}.tar.gz"
+hash = "sha256-U/93hwEMHItiIwMq3hWXpxg1IhvGOG0N1cKiYOtXNwM="
+
+[pin]
+version = "37"
+date = "2026-10-31"
+commit = "2956b5d381deeea709c53d02f10e799e50e44f4b"
+c-stdaux-version = "1.5.0"
+c-list-version = "3.1.0"
+c-rbtree-version = "3.2.0"
+c-dvar-version = "1.2.0"
+c-ini-version = "1.1.0"
+c-shquote-version = "1.1.0"
+c-utf8-version = "1.1.0"
+sys-commit = "0c178dc6f0cab5fc24cdaecdcd248582a72004c2"
+libc-version = "0.2.191"

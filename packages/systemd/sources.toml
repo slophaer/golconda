@@ -1,0 +1,12 @@
+[upstream]
+url = "https://github.com/systemd/systemd"
+purl = "pkg:github/systemd/systemd"
+
+[[source]]
+key = "default"
+url = "https://github.com/systemd/systemd/archive/refs/tags/v{version}.tar.gz"
+hash = "sha256-BE94QT8jd0lTp8u/ZCi2KraeiuXJeJhnwgPhmFYKUew="
+
+[pin]
+version = "262.1"
+date = "2026-10-31"

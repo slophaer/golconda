@@ -1,0 +1,10 @@
+[upstream]
+purl = 'pkg:generic/libmnl?url=https://www.netfilter.org/projects/libmnl/files/&regex=libmnl-([0-9.]+)\.tar\.bz2'
+
+[[source]]
+key = "default"
+url = "https://www.netfilter.org/projects/libmnl/files/libmnl-{version}.tar.bz2"
+hash = "sha256-40HYwDADxBjWFE7MC5rmqQ66TKT9U6x2gdY8HUzf5Nc="
+
+[pin]
+version = "1.0.5"

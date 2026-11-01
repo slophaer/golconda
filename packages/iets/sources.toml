@@ -1,0 +1,11 @@
+[upstream]
+frozen = "numtide/iets main, pinned to the commit Golconda's npins uses (v0.2.0 is older)"
+
+[[source]]
+key = "default"
+url = "https://github.com/numtide/iets/archive/e171eb868c8558ff61e407f671f58f3e48c24728.tar.gz"
+hash = "sha256-EtfSeZgBLJweh+QCfD/qyvcpRyNFZ7TWTRyLyZSoZxo="
+
+[pin]
+version = "0.2.0"
+sys = ["zstd"]

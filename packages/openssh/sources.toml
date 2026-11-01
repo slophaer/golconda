@@ -1,0 +1,10 @@
+[upstream]
+purl = 'pkg:generic/openssh?url=https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/&regex=openssh-([0-9.]+p[0-9]+)\.tar\.gz'
+
+[[source]]
+key = "default"
+url = "https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-{version}.tar.gz"
+hash = "sha256-gTZ3rUjrS4XsLfeqqelWHxYgDuQEY0rWEMrzZdCRs7U="
+
+[pin]
+version = "10.6p1"

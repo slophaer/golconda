@@ -1,0 +1,12 @@
+[upstream]
+purl = "pkg:gitlab/cryptsetup/cryptsetup"
+
+[[source]]
+key = "default"
+url = "https://www.kernel.org/pub/linux/utils/cryptsetup/v{major}.{minor}/cryptsetup-{version}.tar.xz"
+hash = "sha256-kpwAEV8mcRnWEorKSvWSWcCq/2V1AIP42+aUvu8EoSA="
+
+[pin]
+version = "2.7.5"
+major = "2"
+minor = "7"

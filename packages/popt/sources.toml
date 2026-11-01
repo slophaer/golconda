@@ -1,0 +1,10 @@
+[upstream]
+purl = "pkg:generic/popt?url=http://ftp.rpm.org/popt/releases/popt-1.x/"
+
+[[source]]
+key = "default"
+url = "http://ftp.rpm.org/popt/releases/popt-1.x/popt-{version}.tar.gz"
+hash = "sha256-Xni0/E6W/wyBDMiSKIbhLaI4ng7BFPxWTSmWn1nSNzo="
+
+[pin]
+version = "1.19"

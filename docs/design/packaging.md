@@ -4,6 +4,19 @@ Packages are repkgs packages: a `package.nix` naming a build system and a `sourc
 upstream. Golconda adds its own under `packages/` and sets a few set-wide features; it has no
 builder of its own.
 
+## Where a package lives
+
+- **In `packages/`**: every package the image needs that upstream repkgs lacks (systemd,
+  dbus-broker, openssh, cryptsetup and the rest). They go into the set through its `packages`
+  argument, so another package finds them by name. A package's own test goes in
+  `tests/packages/<name>/test.nu` and builds as `packages.<system>.tests-<name>`.
+- **In the fork**: changes to the build system (relocation, `wrap`, `prefix`, `kbuild`) and to the
+  toolchain packages (glibc, crt-interp, jig). The fork also keeps the packages its own tests need:
+  automake and libtool for the aclocal test; bc, elfutils and `linux-kernel` for `kbuild`.
+
+The fork's branch is meant to hold only what upstream should take. A package goes upstream from
+`packages/` when it is general.
+
 ## Why repkgs
 
 Golconda pins a fork of repkgs (branch `golconda`; see

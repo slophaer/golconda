@@ -1,0 +1,10 @@
+[upstream]
+purl = "pkg:github/erofs/erofs-utils"
+
+[[source]]
+key = "default"
+url = "https://github.com/erofs/erofs-utils/archive/refs/tags/v{version}.tar.gz"
+hash = "sha256-p9ijvkiKk5RPcZnJjKuqEN3pWDPpFwIxJ6SgQFlcvAk="
+
+[pin]
+version = "1.9.4"
