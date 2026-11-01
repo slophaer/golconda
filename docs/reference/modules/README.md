@@ -15,7 +15,7 @@ this shape: [design/modules](../../design/modules.md).
 | `/network`       | implicit: networkd `.network` files (DHCP on every wired link by default) and resolved's fallback `dns`                                                                  |
 | `/security`      | implicit: `/usr/lib/sysctl.d/50-golconda.conf`, the kernel hardening settings                                                                                            |
 | `/factory`       | the `/etc` seed under `/usr/share/factory/etc` and the tmpfiles `L` lines that link it                                                                                   |
-| `/vars`          | installs `/usr/lib/golconda/golconda-var-run` (mode `0755`); add once when any var is used                                                                               |
+| `/vars`          | installs `/usr/lib/golconda/golconda-var-run` (mode `0755`); `mkSystem` always adds it                                                                                   |
 | `/services/sshd` | OpenSSH as a service with its configuration under `/usr/lib/sshd/` and an ed25519 host key var; keys and certificates only                                               |
 
 ## The composer output
@@ -186,33 +186,58 @@ set instead.
 ### `/base`, `/network` and `/security`
 
 `/system` declares all three as inputs and merges their fragments first; a configuration never lists
-them. `/base` returns the packages systemd, dbus-broker, dash, uutils-coreutils, tpm2-tss (only
-systemd's dlopen reaches it), e2fsprogs (`mkfs.ext4` for the root partition) and linux-kernel; the
-`dbus.socket` unit, written as a file because dbus-broker does not ship it, and the `dbus.service`
-alias; the `.wants` links for `dbus.socket`, `systemd-networkd` (service and socket),
-`systemd-resolved` and `systemd-timesyncd`; `/usr/bin/sh` → dash; `/usr/bin` links for the
-util-linux and e2fsprogs executables that mount units, fsck and udev rules exec; the `farm` links
-for systemd's own directories (`/usr/lib/systemd`, `/usr/lib/udev`, `/usr/lib/sysusers.d`,
-`/usr/lib/tmpfiles.d`); one `dlopen` link per soname systemd opens at run time;
-`timesyncd.conf.d/golconda.conf` from `ntp`, `journald.conf.d/golconda.conf` from `journalMaxUse`,
-`/usr/lib/locale.conf` (`LANG=C.UTF-8`), `/usr/lib/repart.d/30-root.conf` (the root partition repart
-makes at first boot, from `image/repart.nix`); the tmpfiles lines `L /bin`, `L /sbin` and `L /lib`
-(merged `/usr` on the root partition); and the `messagebus` user; the boot health unit
-`golconda-health-network.service`, which fails unless
-`systemd-networkd-wait-online --any --operational-state=routable` succeeds. It is pulled in by a
+them.
+
+`/base` returns:
+
+- **packages**: systemd, dbus-broker, dash, uutils-coreutils, tpm2-tss (only systemd's dlopen
+  reaches it), e2fsprogs (`mkfs.ext4` for the root partition), cacert, tzdata and linux-kernel.
+- **units**: `golconda-health-network.service`, `golconda-loader-update.service` and
+  `golconda-etc-links.service`; `dbus.socket` is a file, because dbus-broker does not ship it.
+- **links**:
+  - `.wants` links for `dbus.socket`, `systemd-networkd` (service and socket), `systemd-resolved`
+    and `systemd-timesyncd`, with the `dbus.service` alias;
+  - `/usr/bin/sh` → dash, and `/usr/bin` links for the util-linux and e2fsprogs executables that
+    mount units, fsck and udev rules exec;
+  - `farm` links for systemd's own directories (`/usr/lib/systemd`, `/usr/lib/udev`,
+    `/usr/lib/sysusers.d`, `/usr/lib/tmpfiles.d`);
+  - one `dlopen` link per soname systemd opens at run time.
+- **files**:
+  - `timesyncd.conf.d/golconda.conf` from `ntp` and `journald.conf.d/golconda.conf` from
+    `journalMaxUse`;
+  - `/usr/lib/locale.conf` (`LANG=C.UTF-8`);
+  - `/usr/lib/repart.d/30-root.conf`, the root partition repart makes at first boot (from
+    `image/repart.nix`);
+  - `/usr/lib/golconda/golconda-loader-update` and `loader.conf`, and
+    `/usr/libexec/golconda-etc-links`;
+  - thirteen unit drop-ins, `/usr/lib/systemd/system/<unit>.d/golconda.conf` (for example
+    `systemd-firstboot.service` runs without prompts, and `ldconfig.service` and `modprobe@.service`
+    skip without their binary).
+- **tmpfiles**: `L /bin`, `L /sbin` and `L /lib` (merged `/usr` on the root partition), and
+  `L /etc/ssl/cert.pem` and `L /etc/ssl/certs/ca-certificates.crt` into the one CA bundle.
+- **sysusers**: the `messagebus` user.
+
+The two health and loader units explain themselves in the design pages:
+`golconda-health-network.service` fails unless
+`systemd-networkd-wait-online --any --operational-state=routable` succeeds; it is pulled in by a
 `boot-complete.target.requires/` link and is `Before=boot-complete.target`, so a candidate without a
-routable link is not blessed ([design/boot](../../design/boot.md#boot-health)). `/security` returns
-`/usr/lib/sysctl.d/50-golconda.conf`. `/network` returns one `.network` file per entry of `networks`
-under `/usr/lib/systemd/network/`, with `default-dhcp` (`Match Type=ether`, `DHCP=yes`,
-`IPv6AcceptRA=yes`) unless `defaultDhcp = false`, and `resolved.conf.d/golconda-dns.conf` when `dns`
-is set.
+routable link is not blessed ([design/boot](../../design/boot.md#boot-health)).
+
+`/security` returns `/usr/lib/sysctl.d/50-golconda.conf`.
+
+`/network` returns:
+
+- one `.network` file per entry of `networks`, under `/usr/lib/systemd/network/`;
+- `99-default-dhcp.network` (`Match Type=ether`, `DHCP=yes`, `IPv6AcceptRA=yes`) unless
+  `defaultDhcp = false`;
+- `resolved.conf.d/golconda-dns.conf` when `dns` is set.
 
 ### `/factory`
 
 One fragment: the files under `/usr/share/factory/etc` and the tmpfiles lines that link them into
 `/etc`. The factory knows no service: a service's user and directories are in its own fragment, and
-only `/etc` content is here (`pam.d/sshd`, which sshd refuses to start without; a configuration with
-`/services/sshd` adds `/factory` once).
+only `/etc` content is here (`pam.d/sshd`, which sshd refuses to start without). `mkSystem` always
+adds `/factory`.
 
 | option       | type                             | rendered as                                                                                            |
 | ------------ | -------------------------------- | ------------------------------------------------------------------------------------------------------ |
