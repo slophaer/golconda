@@ -5,6 +5,7 @@
 #   verity   the hash tree, root hash and the signed usr-verity-sig partition (verity.nix)
 #   initrd   a minimal /usr tree as a zstd cpio, systemd as PID 1           (initrd.nix)
 #   uki      kernel + initrd + cmdline, Secure Boot and PCR 11 signed       (uki.nix)
+#   loader   systemd-boot signed with the UKI's key, for /usr and the ESP   (loader.nix)
 #   disk     GPT with the ESP and the A/B slots, systemd-repart             (disk.nix)
 # and the smoke's throwaway keys (throwawayKeys). The pure parts (ukiName, repartDefinitions,
 # versionToEpoch) are exported for nix/tests.nix.
@@ -18,6 +19,7 @@ in
 // (import ./verity.nix { })
 // (import ./initrd.nix { })
 // (import ./uki.nix { })
+// (import ./loader.nix { })
 // (import ./disk.nix { })
 // (import ./smoke.nix { })
 // {

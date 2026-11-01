@@ -2792,13 +2792,41 @@ let
     (check "image: loader.conf goes where systemd-boot reads it" (
       (import ../image).loader.confPath == "loader/loader.conf"
     ))
-    (check "image: the disk builder signs the loader with the UKI's key" (
+    (check "image: the loader is signed with the UKI's key, and the disk takes it from /usr" (
       let
-        args = builtins.functionArgs imageLib.disk;
+        loaderArgs = builtins.functionArgs imageLib.loader;
+        diskArgs = builtins.functionArgs imageLib.disk;
       in
-      # the disk step takes the same sbKey/sbCert as lib/image/uki.nix and hands them to the
-      # builder (disk.nu runs systemd-sbsign); a call without them does not type-check
-      args ? sbKey && args ? sbCert && args ? pkgs && args ? uki
+      # lib/image/loader.nix takes the same sbKey/sbCert as lib/image/uki.nix; the disk step
+      # takes the signed file and the /usr tree it checks the file against, and signs nothing
+      loaderArgs ? sbKey
+      && loaderArgs ? sbCert
+      && diskArgs ? loader
+      && diskArgs ? usrTree
+      && !(diskArgs ? sbKey)
+    ))
+    (check "image: the loader fragment puts the signed loader where bootctl looks" (
+      let
+        platform = {
+          names.uefi = "x64";
+        };
+        loader = {
+          type = "derivation";
+          outPath = "/loader-out";
+        };
+        frag = imageLib.loaderFragment { inherit loader platform; };
+        p = "/usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed";
+      in
+      # bootctl prefers <name>.efi.signed to the unsigned <name>.efi beside it
+      # (bootctl-install.c install_binaries); the store path enters the /usr closure
+      attrNames frag.links == [ p ]
+      &&
+        frag.links.${p} == {
+          target = "/loader-out/systemd-bootx64.efi.signed";
+          kind = "explicit";
+        }
+      && frag.packages == [ loader ]
+      && imageLib.loaderUsrPath platform == p
     ))
     (check "image: the cmdline template has usrhash and rw, and no ro or volatile" (
       let

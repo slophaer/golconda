@@ -9,23 +9,21 @@
 #   {esp} {usr} {verity} {sig} {usrUuid} {verityUuid}, which disk.nu fills in.
 #   Rendered with modules/lib/ini.nix.
 #
-# disk { erofs; verity; uki; imageId; version; platform; buildSystem; pkgs; sbKey; sbCert; }
+# disk { erofs; verity; uki; loader; usrTree; imageId; version; platform; buildSystem; pkgs; }
 #   → derivation with
-#   disk.raw        GPT: ESP (systemd-boot as EFI/BOOT/BOOT<ARCH>.EFI, signed with the UKI's
-#                   Secure Boot key and certificate; loader.conf with the boot policy at
-#                   loader/loader.conf, where systemd-boot reads it; the UKI in EFI/Linux/),
-#                   usr-a, usr-a-verity, usr-a-verity-sig filled from the images,
-#                   the B slots empty, no root partition
+#   disk.raw        GPT: ESP (the signed systemd-boot of lib/image/loader.nix as
+#                   EFI/systemd/systemd-boot<arch>.efi and EFI/BOOT/BOOT<ARCH>.EFI, loader.conf
+#                   at loader/loader.conf, the UKI in EFI/Linux/), usr-a, usr-a-verity,
+#                   usr-a-verity-sig filled from the images, the B slots empty, no root partition
 #   disk.json       systemd-repart's own listing (--json=pretty) of what it made
-#
-# The loader is signed with the same db key and certificate as the UKI (image/default.nix
-# keys; lib/image/uki.nix): enforcing firmware starts nothing else. loader.conf is written from
-# image/loader.nix, so the policy is one string the tests can read.
 #   release/        the release under the names image/sysupdate.nix's sources match
 #                   (releaseNames): <id>_<v>.usr.<uuid>.raw, <id>_<v>.usr-verity.<uuid>.raw with
 #                   the hash-derived UUIDs, <id>_<v>.usr-verity-sig.raw, <id>_<v>.efi, each a
 #                   symlink to its step's output, and SHA256SUMS, the index a url-file source reads
-
+#
+# The loader is the file the /usr tree carries (lib/image/loader.nix loaderFragment), signed with
+# the UKI's db key: disk.nu fails unless usrTree has the same bytes at the same name, so the ESP
+# starts with the loader the release ships.
 #
 # systemd-repart --empty=create --size=auto --offline=yes --seed=<from the version>: no loop
 # device, no root; the usr slots are 10 GiB each (image/repart.nix), so the file is sparse and
@@ -38,6 +36,7 @@ let
     listToAttrs
     replaceStrings
     stringLength
+    substring
     ;
   common = import ./common.nix { };
   image = import ../../image;
@@ -73,6 +72,12 @@ let
       label
     else
       throw "golconda: partition label '${label}' is longer than GPT's 36 characters";
+  removePrefix =
+    p: s:
+    if substring 0 (stringLength p) s == p then
+      substring (stringLength p) (stringLength s - stringLength p) s
+    else
+      throw "golconda: '${s}' does not start with '${p}'";
   # The UEFI removable-media boot path's file name, by the platform's uefi name
   removableMediaName =
     uefi:
@@ -84,7 +89,7 @@ let
     .${uefi} or (throw "golconda: no removable-media boot name for uefi arch ${uefi}");
 in
 rec {
-  # The ESP's systemd-boot policy: image/loader.nix
+  # The ESP's systemd-boot policy: image/loader.nix, the one text /base installs in /usr too
   loaderConf = image.loader.conf;
   inherit slotLabel;
 
@@ -133,12 +138,13 @@ rec {
       platform,
       buildSystem,
       pkgs,
-      sbKey,
-      sbCert,
+      loader,
+      usrTree,
     }:
     let
       stem = "${imageId}_${version}";
       ukiName = (import ./uki.nix { }).ukiName { inherit imageId version; };
+      loaderLib = import ./loader.nix { };
       uefi = platform.names.uefi;
     in
     common.nuDerivation {
@@ -164,10 +170,16 @@ rec {
         uki = "${uki}/${ukiName}";
         inherit ukiName;
         release = releaseNames { inherit imageId version; };
-        systemdBoot = "${pkgs.systemd}/lib/systemd/boot/efi/systemd-boot${uefi}.efi";
-        bootEntry = "EFI/BOOT/${removableMediaName uefi}";
+        loader = "${loader}/${loaderLib.loaderFileName platform}";
+        # the same file in the /usr tree
+        usrLoader = "${usrTree}/${removePrefix "/usr/" (loaderLib.loaderUsrPath platform)}";
+        # bootctl's layout: the primary copy, and the removable-media path firmware starts
+        loaderPaths = [
+          "EFI/systemd/systemd-boot${uefi}.efi"
+          "EFI/BOOT/${removableMediaName uefi}"
+        ];
         loaderConfPath = image.loader.confPath;
-        inherit loaderConf sbKey sbCert;
+        inherit loaderConf;
         architecture = platform.names.systemd;
         seed = common.uuidOfHex (common.hexOf "${stem}.disk");
         epoch = common.versionToEpoch version;
