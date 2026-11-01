@@ -41,11 +41,27 @@ iets eval --json -E '(import ./default.nix).configLib.validPaths'
 | `/base`          | `ntp`, `journalMaxUse`                                                                                              |
 | `/factory`       | `timezone`, `extraFiles`                                                                                            |
 | `/network`       | `networks`, `dns`, `defaultDhcp`                                                                                    |
-| `/system`        | `name`, `version`, `updateSource`, `fragments` (Nix only: a fragment is a Nix value)                                |
+| `/system`        | `name`, `version`, `updateSource`, `fragments` (a list of tables; `packages` in a fragment is Nix only)             |
 | `/services/sshd` | `package` (Nix only), `port`, `authorizedKeys`, `trustedUserCAKeys`, `principals`, `revokedKeys`, `hostCertificate` |
 
 The option types, defaults and descriptions are on the generated module pages
 ([Modules](modules/README.md)).
+
+A `/network.networks` entry takes the required table `match`, plus the optional tables `network`,
+`link`, `dhcpv4`, `address` and `route`, one for each section of a `.network` file. Any other key,
+including a capitalised `Network`, is refused by name when the document is evaluated.
+
+A fragment of `units`, `files`, `sysusers`, `tmpfiles` and `links` is plain data and loads from
+TOML, as an array of tables:
+
+```toml
+[["/system".fragments]]
+name = "motd"
+files = { "/usr/lib/motd" = "hello\n" }
+tmpfiles = ["d /var/lib/motd 0755 root root -"]
+```
+
+Only `packages` needs Nix, because a package is a derivation.
 
 ## Validation
 
