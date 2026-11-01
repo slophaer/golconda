@@ -122,9 +122,7 @@ let
 
   # A StateDirectory= entry: one directory name under /var/lib, so a space or
   # a .. cannot add a second directory or leave /var/lib.
-  stateDirectory = typedef' "stateDirectory" (
-    v: if !isString v then "Expected a string" else path.componentError v
-  );
+  stateDirectory = typedef' "stateDirectory" path.componentError;
 
   # How the unit's processes are killed on stop (KillMode=). `process` is for
   # a daemon whose children must outlive it, such as sshd's sessions.
@@ -164,7 +162,7 @@ let
       credentials = optionalAttr (attrsOf credentialId);
       # StateDirectory= entries under /var/lib, one name each; default [ ]
       state = optionalAttr (listOf stateDirectory);
-      # RuntimeDirectory= under /run, one component; default none
+      # RuntimeDirectory= under /run, one component (not . or ..); default none
       runtimeDirectory = optionalAttr word;
       # KillMode=; default control-group (systemd's own)
       killMode = optionalAttr killMode;
