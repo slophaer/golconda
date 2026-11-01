@@ -167,6 +167,10 @@ package {
       with-env {DESTDIR: $destdir} { x meson install --no-rebuild }
       # Copy /usr subtree to $out
       ^cp -r $"($destdir)/usr/." $c.out
+      # systemd's vendor keyring holds image vendors' OpenPGP keys, and systemd-pull trusts it
+      # beside every other keyring: the image ships its release key at that path instead
+      # (lib/image/index.nix), so only that key signs an index the machine accepts
+      rm -f $"($c.out)/lib/systemd/import-pubring.pgp"
       # Move /etc to share/factory/etc (sample configs, tmpfiles C copies them)
       # These become sources for tmpfiles C directive in the image.
       if ($"($destdir)/etc" | path exists) {
