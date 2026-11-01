@@ -19,6 +19,10 @@
 # It only rewrites a link when the target is absolute and the target's file name
 # exists below <root>/usr/lib/systemd/system. Masks (/dev/null), links inside
 # /etc and relative links stay as they are.
+#
+# Each rewrite is printed. A link it cannot read or rewrite is named on stderr,
+# the other links are still rewritten, and the script exits 1, so the unit
+# fails and the journal says which link failed.
 set -u
 
 root="${1:-${GOLCONDA_ROOT:-}}"
@@ -32,6 +36,7 @@ ln=/usr/bin/ln
 [ -x "$ln" ] || ln=ln
 etc="$root/etc/systemd/system"
 unitdir="$root/usr/lib/systemd/system"
+failed=0
 
 [ -d "$etc" ] || exit 0
 
@@ -39,7 +44,11 @@ rewrite() {
   link="$1"
   [ -L "$link" ] || return 0
 
-  target="$("$readlink" "$link")" || return 0
+  if ! target="$("$readlink" "$link")"; then
+    echo "golconda-etc-links: cannot read the link $link" >&2
+    failed=1
+    return 0
+  fi
   case "$target" in
     /dev/null|/etc/*|/run/*|/usr/local/*) return 0 ;; # a mask or an admin unit: leave it
     /*) ;;
@@ -52,7 +61,12 @@ rewrite() {
   stable="/usr/lib/systemd/system/$name"
   [ "$target" = "$stable" ] && return 0
 
-  "$ln" -sfn "$stable" "$link" 2>/dev/null || true
+  if "$ln" -sfn "$stable" "$link"; then
+    echo "golconda-etc-links: $link: $target -> $stable"
+  else
+    echo "golconda-etc-links: cannot rewrite $link from $target to $stable" >&2
+    failed=1
+  fi
 }
 
 # The directories PID 1 and `systemctl enable` write: the unit directory itself
@@ -64,3 +78,5 @@ for dir in "$etc" "$etc"/*.wants "$etc"/*.requires "$etc"/*.upholds; do
     rewrite "$link"
   done
 done
+
+exit "$failed"
