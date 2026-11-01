@@ -599,6 +599,36 @@ let
     };
   };
 
+  # The walk of a module tree, the one copy: lib/config.nix, lib/module-docs.nix and
+  # lib/system.nix use these. A tree is loaded (`f.modules { }`) or evaluated; both
+  # nest a submodule under `modules.<name>`.
+
+  # The components of a module path: "/services/sshd" -> [ "services" "sshd" ].
+  pathComponents = p: filter (c: isString c && c != "") (builtins.split "/" p);
+
+  # The module at path `p` ("/services/sshd") of `tree`.
+  moduleAt = tree: p: foldl' (mod: part: mod.modules.${part}) tree (pathComponents p);
+
+  # Every module under `tree`, parent before child, in name order: [ { path; module; } ].
+  modulesOf =
+    tree:
+    let
+      go =
+        prefix: mods:
+        builtins.concatMap (
+          name:
+          let
+            module = mods.${name};
+            path = "${prefix}/${name}";
+          in
+          [ { inherit path module; } ] ++ go path (module.modules or { })
+        ) (attrNames mods);
+    in
+    go "" (tree.modules or { });
+
+  # A module that declares options: it has a table in the configuration and in the schema.
+  hasOptions = mod: (mod.options or { }) != { };
+
   # Check if a value is plain data (serialisable to JSON).
   isPlainData =
     v:
@@ -785,35 +815,6 @@ let
       "x-golconda-inputs" = if path == null then null else inputs;
     };
 
-  # Walk the module tree recursively, building the properties object.
-  # Path is the current module path (list of strings).
-  walkModules =
-    ctx: path: mods:
-    foldl' (
-      acc: name:
-      let
-        mod = mods.${name};
-        fullPath = path ++ [ name ];
-        pathStr = "/" + builtins.concatStringsSep "/" fullPath;
-        # This module's schema (if it has options)
-        thisSchema =
-          if mod ? options && mod.options != { } then
-            {
-              ${pathStr} = moduleToSchema {
-                path = pathStr;
-                file = ctx.files.${pathStr} or null;
-                inherit (ctx) root;
-              } mod;
-            }
-          else
-            { };
-        # Recurse into submodules
-        subSchemas =
-          if mod ? modules && mod.modules != { } then walkModules ctx fullPath mod.modules else { };
-      in
-      acc // thisSchema // subSchemas
-    ) { } (attrNames mods);
-
   # The main export function.
   toJsonSchemaWith =
     {
@@ -831,7 +832,16 @@ let
           }) files
         );
       };
-      allModules = walkModules ctx [ ] tree.modules;
+      allModules = listToAttrs (
+        map (m: {
+          name = m.path;
+          value = moduleToSchema {
+            inherit (m) path;
+            file = ctx.files.${m.path} or null;
+            inherit (ctx) root;
+          } m.module;
+        }) (filter (m: hasOptions m.module) (modulesOf tree))
+      );
     in
     {
       "$schema" = "https://json-schema.org/draft/2020-12/schema";
@@ -859,5 +869,9 @@ in
     parseTypeName
     parseTypeArgs
     isPlainData
+    pathComponents
+    moduleAt
+    modulesOf
+    hasOptions
     ;
 }
