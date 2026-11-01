@@ -91,15 +91,30 @@ A `db` key rotation signs the loader, the UKI and the verity root hash with a ne
 key ([Trust](trust.md#2-verity-key)). The PCR policy key is a separate key and does not change.
 
 1. Make the new key pair and keep the old one.
+
 1. Add the new certificate to `db`, beside the old one. A release signed with a key that is not in
    `db` is refused: firmware rejects its UKI, each attempt counts down, and after three the older
    slot boots.
-1. Build the next release with the new key (`sbKeys` of the image chain in `nix/default.nix`) and
-   install it as usual. The old loader starts the new UKI, because both certificates are in `db`. At
-   the first good boot `golconda-loader-update.service` installs the new loader: the systemd-boot
-   version is the same and the bytes are not. The old loader stays as the fallback copy.
+
+1. Build the next release with the new key and install it as usual:
+
+   ```nix
+   (import ./default.nix).lib.mkImage {
+     config = ./server.toml;
+     keys = "/srv/golconda-keys-2"; # the new db key, in a new directory
+     pcrKeys = "/srv/golconda-keys"; # the old directory: the PCR key stays
+   }
+   ```
+
+   `keys` is a string, so the private keys stay out of the store; the layout and the sandbox setup
+   are in [Trust: Deployment keys](trust.md#deployment-keys). The old loader starts the new UKI,
+   because both certificates are in `db`. At the first good boot `golconda-loader-update.service`
+   installs the new loader: the systemd-boot version is the same and the bytes are not. The old
+   loader stays as the fallback copy.
+
 1. Install one more release signed with the new key, so the other slot holds no UKI signed with the
    old key. Clear any loader variable that names an old entry: `bootctl set-default ''`.
+
 1. Replace `db` with the new certificate alone and add the old certificate to `dbx`.
 
 How the variables are written depends on the machine. Firmware setup can enrol a certificate; with
