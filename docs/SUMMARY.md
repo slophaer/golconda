@@ -1,0 +1,42 @@
+# Summary
+
+[Golconda](index.md)
+
+# Design
+
+- [Principles](design/principles.md)
+- [Scope](design/scope.md)
+- [Architecture](design/architecture.md)
+- [Layout](design/layout.md)
+- [Boot](design/boot.md)
+- [Boot loader](design/bootloader.md)
+- [Updates](design/updates.md)
+- [Recovery](design/recovery.md)
+- [Trust](design/trust.md)
+- [Kernel](design/kernel.md)
+- [Modules](design/modules.md)
+- [Configuration](design/config.md)
+- [Packaging](design/packaging.md)
+- [Comparison](design/comparison.md)
+
+# Reference
+
+- [Walkthrough](reference/walkthrough.md)
+- [Partitions and paths](reference/layout.md)
+- [Image artifacts](reference/image.md)
+- [Modules](reference/modules/README.md)
+  - [`/base`](reference/modules/generated/base.md)
+  - [`/factory`](reference/modules/generated/factory.md)
+  - [`/network`](reference/modules/generated/network.md)
+  - [`/pkgs`](reference/modules/generated/pkgs.md)
+  - [`/security`](reference/modules/generated/security.md)
+  - [`/services`](reference/modules/generated/services.md)
+    - [`/services/sshd`](reference/modules/generated/services-sshd.md)
+  - [`/system`](reference/modules/generated/system.md)
+  - [`/vars`](reference/modules/generated/vars.md)
+  - [Types](reference/modules/generated/types.md)
+- [Configuration](reference/config.md)
+- [Commands](reference/cli.md)
+- [Build host](reference/build-host.md)
+- [Outputs and inputs](reference/outputs.md)
+- [Glossary](reference/glossary.md)
