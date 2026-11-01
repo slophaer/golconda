@@ -47,10 +47,10 @@ The interface is in [reference/config](../reference/config.md#the-entry-point).
 (`iets eval --json -E '(import ./default.nix).schema'`). Each module path is an object whose
 properties are its options, with the type, default and description from the module. Option types
 come from the korora type name (`string`, `int`, `bool`, `listOf`, `attrsOf`, `union`); Golconda's
-own types (fragment, app, service, sandbox, word, …) are in a registry and export their schema
-directly; a struct or enum korora does not expose is `x-golconda-opaque` with its name. The
-reference pages under `docs/reference/modules/generated/` are generated from the same schema and the
-modules' doc comments, so the docs cannot drift from the options.
+own types (fragment, app, service, sandbox, word, …) are in a registry (`lib/schema/registry-*.nix`)
+and export their schema directly; a struct or enum korora does not expose is `x-golconda-opaque`
+with its name. The reference pages under `docs/reference/modules/generated/` are generated from the
+same schema and the modules' doc comments, so the docs cannot drift from the options.
 
 **Upstream ask.** korora's struct type does not expose `members` and its enum type does not expose
 `elems`, so the generator cannot walk them. Two one-line additions to `types/types.nix` in the adios

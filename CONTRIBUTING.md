@@ -22,8 +22,8 @@
 - **Module doc comments.** Every module's Nix file starts with `#! ` lines (hash-bang-space) that
   document what the module does, in two to five lines of Markdown. These mirror Rust's `//!` module
   docs. The test `module-docs: every module file has a #! doc comment` enforces this.
-- **Type descriptions.** Every type in the registry (`lib/schema.nix`) must have a `description`
-  field. The test `module-docs: every registry type has a description` enforces this.
+- **Type descriptions.** Every type in the registry (`lib/schema/registry-*.nix`) must have a
+  `description` field. The test `module-docs: every registry type has a description` enforces this.
 - **No typed store paths.** A `/nix/store` string in `modules/` or `lib/` is a relocation bug (the
   image's store is `/usr/nix/store`); paths come from derivations. `scripts/lint` fails on one; mark
   a legitimate mention `store-path-ok`.
