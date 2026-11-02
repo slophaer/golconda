@@ -8,11 +8,21 @@
 {
   # modules/factory
   etcFiles = {
-    description = "Path under /etc -> file: the factory files, seeded into /etc with tmpfiles L lines. The names sysusers, PID 1 and the bootstrap credentials write are refused.";
+    description = "Path under /etc -> file: factory files seeded with tmpfiles L lines. Machine-owned names and generated static links are reserved.";
     type = "object";
     propertyNames = {
       type = "string";
       pattern = pattern "etcPath";
+      not.enum = [
+        "passwd"
+        "group"
+        "shadow"
+        "gshadow"
+        "machine-id"
+        "hostname"
+        "localtime"
+        "os-release"
+      ];
     };
     additionalProperties = {
       "$ref" = "#/$defs/file";
