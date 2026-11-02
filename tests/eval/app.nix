@@ -259,7 +259,7 @@ in
       ];
       result = compose [ { inherit packages; } ];
     in
-    # farmOf includes /base packages; check the requested packages are there
+    # farmOf calls the composer alone (no components): the requested packages are there
     elem a (farmOf packages)
     && elem b (farmOf packages)
     # the links include these with the right targets

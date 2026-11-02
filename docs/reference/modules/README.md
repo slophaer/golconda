@@ -7,32 +7,32 @@ this shape: [design/modules](../../design/modules.md).
 
 ## Modules
 
-| path             | role                                                                                                                                                                     |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `/system`        | the composer: `name`, `version`, `updateSource`, `fragments` → the output below                                                                                          |
-| `/pkgs`          | the repkgs sets, passed once as `target` (and `build`); returns `{ target; build; pkgs }` to the modules that declare the input                                          |
-| `/base`          | implicit, merged first: systemd, dbus-broker, dash, uutils coreutils, tpm2-tss, e2fsprogs, the kernel, the base units, `C.UTF-8`, `ntp`, `journalMaxUse` (details below) |
-| `/network`       | implicit: networkd `.network` files (DHCP on every wired link by default) and resolved's fallback `dns`                                                                  |
-| `/security`      | implicit: `/usr/lib/sysctl.d/50-golconda.conf`, the kernel hardening settings                                                                                            |
-| `/factory`       | the `/etc` seed under `/usr/share/factory/etc` and the tmpfiles `L` lines that link it                                                                                   |
-| `/vars`          | installs `/usr/lib/golconda/golconda-var-run` (mode `0755`), the POSIX sh runner for var units (`modules/vars/golconda-var-run`); `mkSystem` always adds it              |
-| `/services/sshd` | OpenSSH as a service with its configuration under `/usr/lib/sshd/` and an ed25519 host key var; keys and certificates only                                               |
+| path             | role                                                                                                                                                                       |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/system`        | the composer: `name`, `version`, `updateSource`, `fragments`, and `components` from `mkSystem` → the output below                                                          |
+| `/pkgs`          | the repkgs sets, passed once as `target` (and `build`); returns `{ target; build; pkgs }` to the modules that declare the input                                            |
+| `/base`          | built in, composed first: systemd, dbus-broker, dash, uutils coreutils, tpm2-tss, e2fsprogs, the kernel, the base units, `C.UTF-8`, `ntp`, `journalMaxUse` (details below) |
+| `/network`       | built in: networkd `.network` files (DHCP on every wired link by default) and resolved's fallback `dns`                                                                    |
+| `/security`      | built in: `/usr/lib/sysctl.d/50-golconda.conf`, the kernel hardening settings                                                                                              |
+| `/factory`       | built in: the `/etc` seed under `/usr/share/factory/etc` and the `L` lines that link it                                                                                    |
+| `/vars`          | installs `/usr/lib/golconda/golconda-var-run` (mode `0755`), the POSIX sh runner for var units (`modules/vars/golconda-var-run`); built in                                 |
+| `/services/sshd` | OpenSSH as a service with its configuration under `/usr/lib/sshd/` and an ed25519 host key var; keys and certificates only                                                 |
 
 ## The composer output
 
 `/system` returns
 `{ name; version; updateSource; units; files; sysusers; tmpfiles; packages; packageOrigins; links }`:
 
-| field            | shape                                                                            | installed as                                                                                    |
-| ---------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `units`          | `{ unitName = text; }`                                                           | `/usr/lib/systemd/system/<name>`; user units are `files`                                        |
-| `files`          | `{ path = { text; mode; }; }`                                                    | the path, a canonical path under `/usr/`                                                        |
-| `sysusers`       | `[ line ]`                                                                       | `/usr/lib/sysusers.d/golconda.conf`                                                             |
-| `tmpfiles`       | `[ line ]`                                                                       | `/usr/lib/tmpfiles.d/golconda.conf`                                                             |
-| `packages`       | `[ drv ]`                                                                        | the closure in `/usr/nix/store`, each package once                                              |
-| `packageOrigins` | `{ "name-version" = [ origin ]; }`                                               | `/usr/lib/golconda/packages.json`: `/base`, `/network`, a fragment's `name` or `fragments[<i>]` |
-| `origins`        | `{ packages; files; links; units; sysusers; tmpfiles }`, each key → `[ origin ]` | `/usr/lib/golconda/attribution.json`; `packageOrigins` is `origins.packages`                    |
-| `links`          | `{ path = { target; kind; }; }`                                                  | every symlink of `/usr`: `/usr/bin`, expanded directories, dlopen sonames, `.wants`             |
+| field            | shape                                                                            | installed as                                                                                   |
+| ---------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `units`          | `{ unitName = text; }`                                                           | `/usr/lib/systemd/system/<name>`; user units are `files`                                       |
+| `files`          | `{ path = { text; mode; }; }`                                                    | the path, a canonical path under `/usr/`                                                       |
+| `sysusers`       | `[ line ]`                                                                       | `/usr/lib/sysusers.d/golconda.conf`                                                            |
+| `tmpfiles`       | `[ line ]`                                                                       | `/usr/lib/tmpfiles.d/golconda.conf`                                                            |
+| `packages`       | `[ drv ]`                                                                        | the closure in `/usr/nix/store`, each package once                                             |
+| `packageOrigins` | `{ "name-version" = [ origin ]; }`                                               | `/usr/lib/golconda/packages.json`: a component's path, a fragment's `name` or `fragments[<i>]` |
+| `origins`        | `{ packages; files; links; units; sysusers; tmpfiles }`, each key → `[ origin ]` | `/usr/lib/golconda/attribution.json`; `packageOrigins` is `origins.packages`                   |
+| `links`          | `{ path = { target; kind; }; }`                                                  | every symlink of `/usr`: `/usr/bin`, expanded directories, dlopen sonames, `.wants`            |
 
 Units, files and links are installed into one `/usr` tree, so a path that two of them claim is an
 error that names both claims and both origins (a module's `name`, or `fragments[<i>]`). Each kind
@@ -44,7 +44,7 @@ installs to one place:
 
 The system and the image builder write some paths themselves, and a fragment cannot claim them:
 
-- `lib/system.nix` writes `/usr/lib/golconda/config.json` and `schema.json`;
+- `lib/system.nix` writes `/usr/lib/golconda/config.json`, `schema.json` and `modules.json`;
 - `lib/usr-tree.nix` writes `/usr/lib/golconda/attribution.json`;
 - `lib/usr-tree/main.nu` writes `/usr/lib/golconda/packages.json`, `/usr/lib/golconda/sbom.json`,
   `/usr/lib/os-release`, `/usr/lib/sysusers.d/golconda.conf` and

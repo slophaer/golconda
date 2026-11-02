@@ -6,8 +6,8 @@
 #! [boot.md](../../../design/boot.md#bootstrap-credentials).
 #!
 #! Every var unit executes this runner (`modules/lib/var.nix`). One file for
-#! all vars, so one module installs it. `mkSystem` adds `/vars` and `/factory`
-#! to every system; a configuration does not list them, and the composer
+#! all vars, so one module installs it. `/vars` and `/factory` are built-in
+#! components (`lib/components.nix`): every system has them, and the composer
 #! refuses a second copy.
 #!
 #! ## Helpers (`modules/lib/var.nix`)

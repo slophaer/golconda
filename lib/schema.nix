@@ -123,6 +123,7 @@ let
   # The walk of a module tree is lib/tree.nix; these names stay here for the callers
   # (lib/config.nix, lib/system.nix) that read them from the schema library.
   inherit (import ./tree.nix { }) pathComponents moduleAt modulesOf;
+  inherit (import ./components.nix { }) internalOptions;
 
   # A module that declares options: it has a table in the configuration and in the schema.
   hasOptions = mod: (mod.options or { }) != { };
@@ -283,7 +284,8 @@ let
     }:
     mod:
     let
-      opts = mod.options or { };
+      # options mkSystem sets, never a document (lib/components.nix): not in the schema
+      opts = removeAttrs (mod.options or { }) (internalOptions.${toString path} or [ ]);
       relFile = if file == null then null else relativeTo root file;
       declaredIn =
         name:

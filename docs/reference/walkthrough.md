@@ -59,9 +59,10 @@ lists the valid paths: `/base`, `/factory`, `/network`, `/services/sshd`, `/syst
 
 ## 3. The composer
 
-`mkSystem` binds the platform's package set to `/pkgs.target`, calls `/services/sshd` for its
-fragment, adds `/vars` and `/factory`, and hands the list to `/system`, which merges `/base`,
-`/network` and `/security` first. The result is one attribute set:
+`mkSystem` binds the platform's package set to `/pkgs.target`, selects the components
+(`lib/components.nix`: the built-ins `/base`, `/network`, `/security`, `/factory` and `/vars`, then
+`/services/sshd` because the document has its table), calls each for its fragment, and hands the
+list to `/system`, which unions them. The result is one attribute set:
 
 ```sh
 iets eval --json -E 'builtins.attrNames (import ./examples/golconda.nix).composed'

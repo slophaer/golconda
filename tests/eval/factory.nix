@@ -147,12 +147,18 @@ in
     && factoryThrows { extraFiles."a/../shadow" = "x"; }
     && factoryThrows { extraFiles."motd" = 1; }
   ))
+  (check "factory: valid options compose (factoryThrows has teeth)" (
+    !(factoryThrows { })
+    && !(factoryThrows {
+      timezone = "Europe/Berlin";
+      extraFiles."motd" = "hi\n";
+    })
+  ))
+  # /factory is a built-in component: compose always has one
   (check "factory: a second module at a factory path is a composer error" (filesThrow [
-    factory
     { files."${factoryDir}/pam.d/sshd" = "x"; }
   ]))
   (check "factory: two factories are a composer error" (filesThrow [
-    factory
     (factoryOf { })
   ]))
 ]

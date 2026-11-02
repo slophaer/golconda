@@ -42,6 +42,7 @@ let
     ./secure-boot.nix
     ./index.nix
     ./hwdb.nix
+    ./components.nix
   ];
   tests = builtins.concatLists areas;
 in

@@ -114,17 +114,20 @@ inside an option. `extraFragments` appends to the resulting fragment list before
 `mkImage` uses this additive route so its loader and keyring do not discard the configured workload.
 Duplicate claims still fail rather than override one another.
 
-`mkSystem` binds `/pkgs.target` to the platform's set, turns every `/services/*` table into that
-module's fragment, adds `/vars` and `/factory`, composes, and returns:
+`mkSystem` binds `/pkgs.target` to the platform's set, selects the components (the built-ins, then
+every optional component the document has a table for; an empty table selects one with its defaults;
+[design/modules](../design/modules.md#which-modules-a-system-has)), composes, and returns:
 
-| field             | content                                                                    |
-| ----------------- | -------------------------------------------------------------------------- |
-| `composed`        | the composer output ([Modules](modules/README.md#the-composer-output))     |
-| `usrTree`         | the `/usr` tree derivation with the artifacts in `/usr/lib/golconda/`      |
-| `config`          | the normalized options by module path, derivations replaced by their names |
-| `platform`        | the elaborated platform record                                             |
-| `version`, `name` | from `/system`                                                             |
-| `pkgs`            | the platform's packages                                                    |
+| field             | content                                                                                               |
+| ----------------- | ----------------------------------------------------------------------------------------------------- |
+| `composed`        | the composer output ([Modules](modules/README.md#the-composer-output))                                |
+| `usrTree`         | the `/usr` tree derivation with the artifacts in `/usr/lib/golconda/`                                 |
+| `config`          | the normalized options of every included component and `/system`, derivations replaced by their names |
+| `inventory`       | every module's role and inputs; for a component, `included` and `reason`                              |
+| `artifacts`       | the files `mkSystem` adds to `/usr/lib/golconda/`                                                     |
+| `platform`        | the elaborated platform record                                                                        |
+| `version`, `name` | from `/system`                                                                                        |
+| `pkgs`            | the platform's packages                                                                               |
 
 ```sh
 iets eval -E '(import ./examples/golconda.nix).usrTree.outPath'

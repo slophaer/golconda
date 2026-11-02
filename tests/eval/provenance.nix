@@ -132,12 +132,8 @@ in
       sch = schemaLib.toJsonSchema (f.modules { });
     in
     sch.properties."/services/sshd"."x-golconda-inputs" == [ "/pkgs" ]
-    &&
-      sch.properties."/system"."x-golconda-inputs" == [
-        "/base"
-        "/network"
-        "/security"
-      ]
+    # the composer reads no module: mkSystem passes it the selected components
+    && sch.properties."/system"."x-golconda-inputs" == [ ]
   ))
   (check "provenance: /base's links and units are attributed to /base" (
     let

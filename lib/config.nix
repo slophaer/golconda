@@ -18,7 +18,8 @@
 # list of valid module paths. An option name must be one the module declares:
 # adios applies only declared options and ignores the rest, so a misspelt
 # name would silently keep the default; it throws with the valid names.
-# `/pkgs` is never a table: the repkgs set is not data.
+# `/pkgs` is never a table: the repkgs set is not data. Nor is `/system.components`:
+# mkSystem selects the components (lib/components.nix).
 #
 # The loader does not apply the options. lib/system.nix (mkSystem) is the one
 # entry point that does: it binds /pkgs, runs `checkOptions` again over what an
@@ -41,6 +42,7 @@ let
     ;
 
   treeLib = import ./tree.nix { };
+  inherit (import ./components.nix { }) internalOptions;
   moduleAt = treeLib.moduleAt tree;
 
   # Every module path with options, except /pkgs: the tables a document may have.
@@ -52,7 +54,11 @@ let
   # path, or an option name the module does not declare.
   optionError =
     p: given:
-    if !(elem p validPaths) then
+    if builtins.any (o: given ? ${o}) (internalOptions.${p} or [ ]) then
+      "golconda: ${p} sets ${
+        concatStringsSep ", " (filter (o: given ? ${o}) internalOptions.${p})
+      }, which is not configuration: mkSystem sets it (lib/components.nix); add a module's table to include the module"
+    else if !(elem p validPaths) then
       "golconda: unknown module path '${p}' in config; valid paths: ${concatStringsSep ", " validPaths}"
     else
       let

@@ -3,20 +3,18 @@
 # A function of the harness (./harness.nix); it returns a list of checks.
 {
   check,
-  compose,
+  composeWith,
   fixturePkgs,
   hasInfix,
   hasPrefix,
   sshd,
   sshdConfig,
   sshdDir,
-  sshdTree,
   standIn,
   system,
   throws,
   types,
   unit,
-  withPkgs,
   ...
 }:
 let
@@ -28,7 +26,8 @@ let
     ;
 
   # 1a. sshd with certificates: a user CA, principals, a KRL and a host certificate
-  certTree = withPkgs {
+  # a component enters by its table (lib/components.nix)
+  certSshd = composeWith {
     "/services/sshd" = {
       trustedUserCAKeys = [ "ssh-ed25519 AAAA user-ca" ];
       principals.root = [ "alice@example.com" ];
@@ -36,11 +35,14 @@ let
       hostCertificate = true;
     };
   };
-  certSshd = compose [ (certTree.modules.services.modules.sshd { }) ];
   certUnit = certSshd.units."sshd.service";
   certConfig = certSshd.files."${sshdDir}/sshd_config".text;
   sshdOptions = attrNames (import ../../modules/services/sshd/default.nix { inherit types; }).options;
-  sshdThrows = opts: throws (compose [ ((sshdTree opts).modules.services.modules.sshd { }) ]);
+  sshdThrows =
+    opts:
+    throws (composeWith {
+      "/services/sshd" = opts;
+    });
 in
 [
   (check "sshd: LoadCredentialEncrypted" (hasInfix "LoadCredentialEncrypted=sshd-hostkey.key\n" unit))
@@ -75,6 +77,9 @@ in
   (check "sshd: the package's other tools are in the farm" (
     system.links."/usr/bin/ssh-keygen".target == "${fixturePkgs.openssh}/bin/ssh-keygen"
     && system.links ? "/usr/bin/ssh"
+  ))
+  (check "sshd: valid options compose (sshdThrows has teeth)" (
+    !(sshdThrows { }) && !(sshdThrows { port = 2222; })
   ))
   (check "sshd: the program must be one of the package's executables" (sshdThrows {
     package = standIn;

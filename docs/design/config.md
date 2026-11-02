@@ -25,15 +25,17 @@ path, and nothing in it can name a derivation or a function.
 
 ## From document to image
 
-A document turns a module on by naming it: a table `["/services/sshd"]` means the sshd fragment is
-in `/system.fragments`; a service with no table is off. `/base`, `/network` and `/security` are on
-in every image, and `/factory` and `/vars` are added once to every system. So there is no `enable`
-flag at either level: in Nix a service is on when its fragment is listed, in TOML when its table
-exists.
+A document turns a module on by naming it: a table `["/services/sshd"]`, empty for the defaults,
+puts the sshd component in the system; a service with no table is off. The built-in components
+(`/base`, `/network`, `/security`, `/factory`, `/vars`) are in every system. There is no `enable`
+flag. A fragment written in Nix (`/system.fragments`) is the escape hatch: one named after a
+component is refused, but such a fragment can carry anything, so `/usr/lib/golconda/modules.json`
+lists the selected modules, with why, and every fragment that is not a module
+([Modules](modules.md#which-modules-a-system-has)).
 
 The entry point that applies this rule is `lib/system.nix`:
 `mkSystem { config; platform?; extra?; }` takes the document (a path, or options already loaded),
-binds the package set of the platform, lists the fragments, composes, and returns the composed
+binds the package set of the platform, selects the components, composes, and returns the composed
 system and its `/usr` tree derivation. `golconda.nix` at the repository root is the template a user
 copies next to `server.toml` (the analogue of a NixOS `system.nix`). `extra` is the one Nix hook: an
 attribute set merged into the options, for a package override or a fragment that needs a derivation,
@@ -61,13 +63,14 @@ pin would fix it: `mkStruct' { } // { inherit members; }` in `struct`, and
 
 Every image carries `/usr/lib/golconda/`:
 
-| file            | content                                                                                       |
-| --------------- | --------------------------------------------------------------------------------------------- |
-| `config.json`   | the resolved options by module path, after type-checking, derivations replaced by their names |
-| `schema.json`   | the JSON Schema the image was built against                                                   |
-| `sbom.json`     | CycloneDX SBOM from the closure's `sources.toml` purls                                        |
-| `packages.json` | every package with its version, store path and the fragments that brought it                  |
-| `vars.d/*.json` | one manifest per var: class, files, credential ids                                            |
+| file            | content                                                                                     |
+| --------------- | ------------------------------------------------------------------------------------------- |
+| `config.json`   | the resolved options of every included component, after type-checking, derivations as names |
+| `modules.json`  | every module's role and inputs; for a component, whether it is included and why             |
+| `schema.json`   | the JSON Schema the image was built against                                                 |
+| `sbom.json`     | CycloneDX SBOM from the closure's `sources.toml` purls                                      |
+| `packages.json` | every package with its version, store path and the fragments that brought it                |
+| `vars.d/*.json` | one manifest per var: class, files, credential ids                                          |
 
 The sysupdate transfers from `/system.updateSource` are beside them in `/usr/lib/sysupdate.d/`.
 There is no `etc.manifest`: `/etc` is symlinks into the factory and `find /etc -type f` lists the

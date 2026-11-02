@@ -10,12 +10,12 @@ says why they have the shape they have.
 flowchart TD
   subgraph tree["/ (adios tree, modules/)"]
     pkgs["/pkgs: the repkgs set"]
-    base["/base: what every image contains (implicit)"]
-    net["/network: networkd (implicit)"]
-    sec["/security: sysctl hardening (implicit)"]
-    factory["/factory: the /etc seed"]
-    vars["/vars: the var runner"]
-    sshd["/services/sshd"]
+    base["/base: what every image contains (built in)"]
+    net["/network: networkd (built in)"]
+    sec["/security: sysctl hardening (built in)"]
+    factory["/factory: the /etc seed (built in)"]
+    vars["/vars: the var runner (built in)"]
+    sshd["/services/sshd (optional: its table)"]
     system["/system: the composer"]
   end
   pkgs -.->|input| base
@@ -69,14 +69,47 @@ set is a second module path, never a second argument. No option takes a function
 stays platform-independent. `/pkgs.target` is the one option that is not configuration data, and the
 TOML loader refuses it.
 
-The composer records which fragment brought each package (`packageOrigins`: `/base`, `/network`,
-`/security`, a fragment's own `name`, or its index), and the `/usr` tree writes it as
-`/usr/lib/golconda/packages.json`, so "why is this here" has an answer without a second declaration.
+The composer records which fragment brought each package (`packageOrigins`: a component's module
+path such as `/base` or `/services/sshd`, another fragment's own `name`, or its index), and the
+`/usr` tree writes it as `/usr/lib/golconda/packages.json`, so "why is this here" has an answer
+without a second declaration.
+
+## Which modules a system has
+
+Every module has one role, and one function decides which modules enter a system
+(`lib/components.nix`):
+
+| role      | what it is                                        | in the system                    |
+| --------- | ------------------------------------------------- | -------------------------------- |
+| component | returns a fragment for the image                  | built in, or when it has a table |
+| provider  | gives data to the modules that read it (`/pkgs`)  | never: it has no fragment        |
+| composer  | `/system`, which unions the components' fragments | always                           |
+| group     | holds children and has no `impl` (`/services`)    | never: its children may be       |
+
+A built-in component (`/base`, `/network`, `/security`, `/factory`, `/vars`) is in every system; its
+table only configures it. An optional component (`/services/sshd`) is in the system when the
+document has its table, and an empty table selects it with its defaults:
+
+```toml
+["/services/sshd"]
+```
+
+There is no `enable` option and no second list: removing the table removes the component.
+
+An input (`inputs.pkgs.path = "/pkgs"`) is a different edge. It says whose result a module reads,
+and it never selects anything: reading `/pkgs` installs nothing, and `/system` reads no module at
+all. `mkSystem` evaluates each selected component once and passes the fragments to `/system` as
+`components`, each named by its module path, so the attribution names the module and never an index.
+`/usr/lib/golconda/modules.json` records the result: every module's role and inputs, for a component
+whether it is included and why (`builtin` or `config`), and the origins of the fragments that are
+not modules (`/system.fragments`, `/image/hwdb`). The image is those components plus those
+fragments. A Nix fragment can carry anything, even a component's units under another name; the list
+names it, so a tool shows it and does not claim to know its contents.
 
 ## The base system
 
-`/base`, `/network` and `/security` are implicit: `/system` declares them as inputs and merges their
-fragments before the configured ones. A system with no fragments still boots with:
+`/base`, `/network` and `/security` are built in, and composed first. A system with no table still
+boots with:
 
 - systemd;
 - D-Bus;
@@ -149,8 +182,9 @@ var names its credential id in `credentials` and orders itself after the var's u
 
 ## The composer
 
-`/system` takes `name`, `version`, `updateSource` and `fragments`. It merges `/base`, `/network` and
-`/security` first, then the configured fragments, then the sysupdate definitions it renders from
+`/system` takes `name`, `version`, `updateSource` and `fragments`, and from `mkSystem` the selected
+components' fragments as `components` ([Which modules a system has](#which-modules-a-system-has)).
+It merges the components first, then `fragments`, then the sysupdate definitions it renders from
 `updateSource`. The merge follows four rules:
 
 - Attribute-set fields are unioned, and a key that appears twice throws with the key's name.
@@ -164,8 +198,10 @@ A module that returns several fragments unions them with the same `merge`, so a 
 module is the same error as one between modules. The output is the only thing the `/usr` tree
 builder reads.
 
-A service is on when its fragment is in `fragments`; there is no `enable` flag. How a TOML document
-puts a fragment there is in [Configuration](config.md#from-document-to-image).
+A service is on when the document has its table; there is no `enable` flag. `fragments` is for a
+fragment written in Nix that is not a module; one named after a component is refused. Such a
+fragment can still carry anything, so `modules.json` lists it beside the modules. How a TOML
+document becomes an image is in [Configuration](config.md#from-document-to-image).
 
 ## `/factory`
 
