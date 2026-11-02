@@ -1,5 +1,10 @@
 # Public image composition must keep configured fragments alongside image-owned links.
-{ check, f, ... }:
+{
+  check,
+  f,
+  hasInfix,
+  ...
+}:
 let
   marker = "/usr/lib/custom-marker";
   config = {
@@ -67,7 +72,7 @@ let
   };
 in
 [
-  (check "images: release fixtures require the configured workload" (
+  (check "images: release fixtures require the configured workload on every boot" (
     builtins.all
       (
         name:
@@ -81,6 +86,12 @@ in
           link.path == "/usr/lib/systemd/system/boot-complete.target.requires/custom-workload.service"
           && link.target == "../custom-workload.service"
         ) tree.links
+        && builtins.any (
+          link:
+          link.path == "/usr/lib/systemd/system/multi-user.target.wants/custom-workload.service"
+          && link.target == "../custom-workload.service"
+        ) tree.links
+        && hasInfix "\nBefore=boot-complete.target multi-user.target\n" tree.units."custom-workload.service"
       )
       [
         "image-smoke-test"

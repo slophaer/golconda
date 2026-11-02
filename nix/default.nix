@@ -72,7 +72,7 @@ in
               units."custom-workload.service" = ''
                 [Unit]
                 Description=Configured fragment regression test
-                Before=boot-complete.target
+                Before=boot-complete.target multi-user.target
 
                 [Service]
                 Type=oneshot
@@ -80,6 +80,10 @@ in
                 RemainAfterExit=yes
               '';
               links."/usr/lib/systemd/system/boot-complete.target.requires/custom-workload.service" = {
+                target = "../custom-workload.service";
+                kind = "explicit";
+              };
+              links."/usr/lib/systemd/system/multi-user.target.wants/custom-workload.service" = {
                 target = "../custom-workload.service";
                 kind = "explicit";
               };
