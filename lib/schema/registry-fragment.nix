@@ -13,7 +13,11 @@
   fragment = {
     description = "A module fragment with units, files, sysusers, tmpfiles, packages and links.";
     type = "object";
+    additionalProperties = false;
     properties = {
+      name = {
+        type = "string";
+      };
       units = {
         "$ref" = "#/$defs/units";
       };
@@ -68,6 +72,7 @@
           };
         };
         required = [ "text" ];
+        additionalProperties = false;
       }
     ];
   };
@@ -125,6 +130,7 @@
         "$ref" = "#/$defs/linkKind";
       };
     };
+    additionalProperties = false;
     required = [
       "target"
       "kind"

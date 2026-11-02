@@ -7,6 +7,7 @@
   hasInfix,
   hasPrefix,
   schemaLib,
+  types,
   ...
 }:
 let
@@ -136,15 +137,68 @@ in
     && schema.properties."/system".properties ? version
     && schema.properties."/system".properties ? fragments
   ))
-  (check "schema: sshd has no wrap option and /pkgs.target is the set" (
+  (check "schema: computed defaults do not require input and preserve null defaults" (
     let
       schema = schemaLib.toJsonSchema (f.modules { });
+      sshd = schema.properties."/services/sshd";
+      dns = schema.properties."/network".properties.dns;
+      synthetic = schemaLib.moduleToSchema { } {
+        options.computed = {
+          type = types.string;
+          defaultFunc = _: "computed";
+        };
+      };
+    in
+    !(elem "package" (sshd.required or [ ]))
+    && !(synthetic ? required)
+    && dns ? default
+    && dns.default == null
+  ))
+  (check "schema: nullable values and optional fields are distinct" (
+    schemaLib.typeToSchema (types.option types.string) == {
+      anyOf = [
+        { type = "string"; }
+        { type = "null"; }
+      ];
+    }
+    && schemaLib.typeToSchema (types.optionalAttr types.string) == { type = "string"; }
+    &&
+      schemaLib.optionToSchema {
+        type = types.string;
+        example = null;
+      } null == {
+        type = "string";
+        examples = [ null ];
+      }
+  ))
+  (check "schema: strict objects list their fields before closing" (
+    let
+      reg = schemaLib.typeRegistry;
+    in
+    reg.fragment.properties.name.type == "string"
+    && all (name: reg.${name}.additionalProperties == false) [
+      "fragment"
+      "link"
+      "app"
+      "credentialRef"
+      "service"
+      "adminVar"
+    ]
+    && (elemAt reg.file.anyOf 1).additionalProperties == false
+    && all (branch: branch.additionalProperties == false) reg.envOp.oneOf
+  ))
+  (check "schema: public inputs exclude /pkgs but module docs retain its options" (
+    let
+      schema = schemaLib.toJsonSchema (f.modules { });
+      modules = schemaLib.moduleSchemas (f.modules { });
     in
     !(schema.properties."/services/sshd".properties ? wrap)
     && schema.properties."/services/sshd".properties.package."x-golconda" == "package"
-    && schema.properties."/pkgs".properties.target."x-golconda" == "set"
-    && schema.properties."/pkgs".properties.build."x-golconda" == "set"
+    && !(schema.properties ? "/pkgs")
+    && modules."/pkgs".properties.target."x-golconda" == "set"
+    && modules."/pkgs".properties.build."x-golconda" == "set"
     && hasInfix "| `target` | set | none |" docs.pages."/pkgs"
+    && hasInfix "not configuration data" docs.pages."/pkgs"
   ))
   (check "schema: parseTypeName handles nested generics" (
     let

@@ -25,7 +25,7 @@ let
   docComments = import ../../lib/doc-comments.nix { };
   modulePaths = moduleDocs.discoverModulePaths ../../modules;
   docs = moduleDocs.toMarkdown {
-    schema = schemaLib.toJsonSchema (f.modules { });
+    moduleSchemas = schemaLib.moduleSchemas (f.modules { });
     inherit modulePaths docComments;
     inherit (schemaLib) typeRegistry;
     tree = f.modules { };

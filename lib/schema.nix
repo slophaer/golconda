@@ -193,7 +193,14 @@ let
         type = "object";
         additionalProperties = typeToSchemaByName (head parsed.args);
       }
-    else if (baseName == "option" || baseName == "optionalAttr") && parsed.args != [ ] then
+    else if baseName == "option" && parsed.args != [ ] then
+      {
+        anyOf = [
+          (typeToSchemaByName (head parsed.args))
+          { type = "null"; }
+        ];
+      }
+    else if baseName == "optionalAttr" && parsed.args != [ ] then
       typeToSchemaByName (head parsed.args)
     else if baseName == "union" && parsed.args != [ ] then
       { anyOf = map typeToSchemaByName parsed.args; }
@@ -248,15 +255,11 @@ let
   # x-golconda-declaredIn value, or null.
   optionToSchema =
     opt: declaredIn:
-    filterNulls (
-      (typeToSchema opt.type)
-      // {
-        "x-golconda-declaredIn" = declaredIn;
-        description = opt.description or null;
-        default = if opt ? default && isPlainData opt.default then opt.default else null;
-        examples = if opt ? example && isPlainData opt.example then [ opt.example ] else null;
-      }
-    );
+    typeToSchema opt.type
+    // (if declaredIn == null then { } else { "x-golconda-declaredIn" = declaredIn; })
+    // (if opt ? description then { inherit (opt) description; } else { })
+    // (if opt ? default && isPlainData opt.default then { inherit (opt) default; } else { })
+    // (if opt ? example && isPlainData opt.example then { examples = [ opt.example ]; } else { });
 
   # path string under root, or null when it is outside it
   relativeTo =
@@ -300,8 +303,8 @@ let
       inputs = sort (a: b: a < b) (
         filter (p: p != null) (map (i: i.path or null) (attrValues (mod.inputs or { })))
       );
-      # An option without a default is required: the evaluator throws on it.
-      required = filter (n: !(opts.${n} ? default)) (attrNames opts);
+      # Literal and computed defaults both make input optional.
+      required = filter (n: !(opts.${n} ? default || opts.${n} ? defaultFunc)) (attrNames opts);
     in
     filterNulls {
       type = "object";
@@ -313,8 +316,8 @@ let
       "x-golconda-inputs" = if path == null then null else inputs;
     };
 
-  # The main export function.
-  toJsonSchemaWith =
+  # Internal docs and public inputs share the same per-module generation.
+  moduleSchemasWith =
     {
       files ? [ ],
       root ? null,
@@ -330,35 +333,40 @@ let
           }) files
         );
       };
-      allModules = listToAttrs (
-        map (m: {
-          name = m.path;
-          value = moduleToSchema {
-            inherit (m) path;
-            file = ctx.files.${m.path} or null;
-            inherit (ctx) root;
-          } m.module;
-        }) (filter (m: hasOptions m.module) (modulesOf tree))
-      );
     in
-    {
-      "$schema" = "https://json-schema.org/draft/2020-12/schema";
-      "$id" = "https://golconda.dev/schema.json";
-      title = "Golconda configuration";
-      description = "Configuration options for Golconda modules: one table per module path.";
-      type = "object";
-      properties = allModules;
-      required = [ "/system" ];
-      additionalProperties = false;
-      # every #/$defs/... reference resolves here (units, links, file, app, ...)
-      "$defs" = typeRegistry;
-    };
+    listToAttrs (
+      map (m: {
+        name = m.path;
+        value = moduleToSchema {
+          inherit (m) path;
+          file = ctx.files.${m.path} or null;
+          inherit (ctx) root;
+        } m.module;
+      }) (filter (m: hasOptions m.module) (modulesOf tree))
+    );
+  moduleSchemas = moduleSchemasWith { };
+
+  # /pkgs supplies Nix-only package sets, never a public configuration table.
+  toJsonSchemaWith = context: tree: {
+    "$schema" = "https://json-schema.org/draft/2020-12/schema";
+    "$id" = "https://golconda.dev/schema.json";
+    title = "Golconda configuration";
+    description = "Configuration options for Golconda modules: one table per module path.";
+    type = "object";
+    properties = builtins.removeAttrs (moduleSchemasWith context tree) [ "/pkgs" ];
+    required = [ "/system" ];
+    additionalProperties = false;
+    # every #/$defs/... reference resolves here (units, links, file, app, ...)
+    "$defs" = typeRegistry;
+  };
   toJsonSchema = toJsonSchemaWith { };
 in
 {
   inherit
     toJsonSchemaWith
     toJsonSchema
+    moduleSchemasWith
+    moduleSchemas
     typeToSchema
     typeToSchemaByName
     optionToSchema
