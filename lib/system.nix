@@ -1,6 +1,6 @@
 # lib/system.nix: the entry point for one Golconda system.
 #
-# mkSystem { config; platform?; sources?; extra?; } → {
+# mkSystem { config; platform?; sources?; extra?; extraFragments?; } → {
 #   composed;   # the composer output (units, files, links, packages, …)
 #   usrTree;    # the /usr derivation
 #   config;     # config.json: module path -> option -> { value?; explicit; }
