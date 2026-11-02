@@ -1,0 +1,275 @@
+[
+  {
+    "name": "system identity",
+    "accepted": true,
+    "value": { "/system": { "name": "test", "version": "20261031.1" } }
+  },
+  {
+    "name": "SSH computed package default",
+    "accepted": true,
+    "value": { "/system": { "name": "test", "version": "20261031.1" }, "/services/sshd": {} }
+  },
+  {
+    "name": "missing system table",
+    "accepted": false,
+    "value": {}
+  },
+  {
+    "name": "missing image name",
+    "accepted": false,
+    "value": { "/system": { "version": "20261031.1" } }
+  },
+  {
+    "name": "missing image version",
+    "accepted": false,
+    "value": { "/system": { "name": "test" } }
+  },
+  {
+    "name": "unknown module",
+    "accepted": false,
+    "value": { "/system": { "name": "test", "version": "20261031.1" }, "/unknown": {} }
+  },
+  {
+    "name": "misspelled option",
+    "accepted": false,
+    "value": { "/system": { "name": "test", "version": "20261031.1", "versoin": "20261031.1" } }
+  },
+  {
+    "name": "internal package table",
+    "accepted": false,
+    "value": { "/system": { "name": "test", "version": "20261031.1" }, "/pkgs": {} }
+  },
+  {
+    "name": "named fragment",
+    "accepted": true,
+    "value": { "/system": { "name": "test", "version": "20261031.1", "fragments": [{ "name": "marker", "files": { "/usr/lib/marker": "present" } }] } }
+  },
+  {
+    "name": "unknown fragment field",
+    "accepted": false,
+    "value": { "/system": { "name": "test", "version": "20261031.1", "fragments": [{ "naem": "marker" }] } }
+  },
+  {
+    "name": "nullable DNS and update source",
+    "accepted": true,
+    "value": { "/system": { "name": "test", "version": "20261031.1", "updateSource": null }, "/network": { "dns": null } }
+  },
+  {
+    "name": "static network",
+    "accepted": true,
+    "value": { "/system": { "name": "test", "version": "20261031.1" }, "/network": { "defaultDhcp": false, "networks": { "lan-1": { "match": { "Name": "eth0" }, "network": { "Address": "10.0.0.1/24", "IPv6AcceptRA": false } } } } }
+  },
+  {
+    "name": "slash network name without default DHCP",
+    "accepted": false,
+    "value": { "/system": { "name": "test", "version": "20261031.1" }, "/network": { "defaultDhcp": false, "networks": { "a/b": { "match": { "Name": "eth0" } } } } }
+  },
+  {
+    "name": "empty network name",
+    "accepted": false,
+    "value": { "/system": { "name": "test", "version": "20261031.1" }, "/network": { "networks": { "": { "match": {} } } } }
+  },
+  {
+    "name": "dot network name",
+    "accepted": false,
+    "value": { "/system": { "name": "test", "version": "20261031.1" }, "/network": { "networks": { ".": { "match": {} } } } }
+  },
+  {
+    "name": "dot-dot network name",
+    "accepted": false,
+    "value": { "/system": { "name": "test", "version": "20261031.1" }, "/network": { "networks": { "..": { "match": {} } } } }
+  },
+  {
+    "name": "unknown network section",
+    "accepted": false,
+    "value": { "/system": { "name": "test", "version": "20261031.1" }, "/network": { "networks": { "lan": { "match": {}, "Network": {} } } } }
+  },
+  {
+    "name": "extra factory file",
+    "accepted": true,
+    "value": { "/system": { "name": "test", "version": "20261031.1" }, "/factory": { "extraFiles": { "motd": "Welcome\n" } } }
+  },
+  {
+    "name": "reserved factory localtime",
+    "accepted": false,
+    "value": { "/system": { "name": "test", "version": "20261031.1" }, "/factory": { "extraFiles": { "localtime": "override" } } }
+  },
+  {
+    "name": "reserved factory OS identity",
+    "accepted": false,
+    "value": { "/system": { "name": "test", "version": "20261031.1" }, "/factory": { "extraFiles": { "os-release": "override" } } }
+  },
+  {
+    "name": "reserved factory password file",
+    "accepted": false,
+    "value": { "/system": { "name": "test", "version": "20261031.1" }, "/factory": { "extraFiles": { "shadow": "override" } } }
+  },
+  {
+    "name": "dotted local filename",
+    "definition": "var",
+    "accepted": true,
+    "value": { "name": "foo", "secrets": ["bar.key"], "publics": ["key.pub"], "script": "" }
+  },
+  {
+    "name": "dotted local name collision",
+    "definition": "var",
+    "accepted": false,
+    "value": { "name": "foo.bar", "secrets": ["key"], "script": "" }
+  },
+  {
+    "name": "dotted dependency",
+    "definition": "var",
+    "accepted": false,
+    "value": { "name": "foo", "secrets": ["key"], "after": ["foo.bar"], "script": "" }
+  },
+  {
+    "name": "optional local field absent",
+    "definition": "var",
+    "accepted": true,
+    "value": { "name": "foo", "secrets": [], "script": "" }
+  },
+  {
+    "name": "optional local field is not nullable",
+    "definition": "var",
+    "accepted": false,
+    "value": { "name": "foo", "secrets": [], "script": "", "publics": null }
+  },
+  {
+    "name": "local var struct allows extra fields",
+    "definition": "var",
+    "accepted": true,
+    "value": { "name": "foo", "secrets": [], "script": "", "extra": true }
+  },
+  {
+    "name": "dotted admin filename",
+    "definition": "adminVar",
+    "accepted": true,
+    "value": { "name": "foo", "files": ["bar.key"] }
+  },
+  {
+    "name": "dotted admin name",
+    "definition": "adminVar",
+    "accepted": false,
+    "value": { "name": "foo.bar", "files": ["key"] }
+  },
+  {
+    "name": "unknown admin field",
+    "definition": "adminVar",
+    "accepted": false,
+    "value": { "name": "foo", "files": ["key"], "script": "" }
+  },
+  {
+    "name": "file record",
+    "definition": "file",
+    "accepted": true,
+    "value": { "text": "hello", "mode": "0644" }
+  },
+  {
+    "name": "unknown file field",
+    "definition": "file",
+    "accepted": false,
+    "value": { "text": "hello", "mdoe": "0644" }
+  },
+  {
+    "name": "relative link target",
+    "definition": "link",
+    "accepted": true,
+    "value": { "target": "../sshd.service", "kind": "explicit" }
+  },
+  {
+    "name": "unknown link field",
+    "definition": "link",
+    "accepted": false,
+    "value": { "target": "../sshd.service", "kind": "explicit", "typo": true }
+  },
+  {
+    "name": "credential reference",
+    "definition": "credentialRef",
+    "accepted": true,
+    "value": { "credential": "key", "prefix": "-oKey=" }
+  },
+  {
+    "name": "unknown credential reference field",
+    "definition": "credentialRef",
+    "accepted": false,
+    "value": { "credential": "key", "typo": true }
+  },
+  {
+    "name": "set environment",
+    "definition": "envOp",
+    "accepted": true,
+    "value": { "set": "value" }
+  },
+  {
+    "name": "unset environment",
+    "definition": "envOp",
+    "accepted": true,
+    "value": { "unset": true }
+  },
+  {
+    "name": "unknown environment field",
+    "definition": "envOp",
+    "accepted": false,
+    "value": { "set": "value", "extra": true }
+  },
+  {
+    "name": "update URL",
+    "definition": "updateSource",
+    "accepted": true,
+    "value": "https://updates.example/release/"
+  },
+  {
+    "name": "absolute update path",
+    "definition": "updateSource",
+    "accepted": true,
+    "value": "/srv/releases"
+  },
+  {
+    "name": "update path root preserves existing rule",
+    "definition": "updateSource",
+    "accepted": true,
+    "value": "/"
+  },
+  {
+    "name": "update URL separator preserves existing rule",
+    "definition": "updateSource",
+    "accepted": true,
+    "value": "://"
+  },
+  {
+    "name": "relative update path",
+    "definition": "updateSource",
+    "accepted": false,
+    "value": "releases/"
+  },
+  {
+    "name": "space in update URL",
+    "definition": "updateSource",
+    "accepted": false,
+    "value": "https://example/a b"
+  },
+  {
+    "name": "tab in update URL",
+    "definition": "updateSource",
+    "accepted": false,
+    "value": "https://example/a\tb"
+  },
+  {
+    "name": "line break in update URL",
+    "definition": "updateSource",
+    "accepted": false,
+    "value": "https://example/a\nb"
+  },
+  {
+    "name": "control in update path",
+    "definition": "updateSource",
+    "accepted": false,
+    "value": "/srv/a\u007fb"
+  },
+  {
+    "name": "conflicting environment operations",
+    "definition": "envOp",
+    "accepted": false,
+    "value": { "set": "value", "unset": true }
+  }
+]
