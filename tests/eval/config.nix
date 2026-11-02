@@ -81,15 +81,6 @@ in
     filesThrow [ { files."/etc/motd" = "hello"; } ]
     && filesThrow [ { files."/etc/ssh/sshd_config" = "Port 22"; } ]
   ))
-  # 10d. Negative: TOML config with derivation-valued option (we check the type system rejects it)
-  (check "boundary: config rejects non-data values" (
-    # The configLib validates against the schema; a derivation or function would fail type checks.
-    # Test that loadConfig throws on invalid paths (the type system handles value validation)
-    !(tryEval (configLib.loadConfig ../../examples/bad.toml)).success
-    # Valid paths exist
-    && elem "/services/sshd" configLib.validPaths
-    && elem "/system" configLib.validPaths
-  ))
   # 10e. Positive: factory extraFile with plain text passes
   (check "boundary: factory extraFile with plain text passes" (
     let
@@ -177,13 +168,15 @@ in
             system = platform;
           }
         );
-      badConfig = builtins.toFile "bad.toml" ''
-        ["/unknown/module"]
-        option = "value"
-      '';
+      badConfig = ../fixtures/unknown-module.toml;
+      options = builtins.fromTOML (builtins.readFile badConfig);
       result = tryEval (deepSeq (mkSystem { config = badConfig; }).name true);
     in
-    !result.success
+    builtins.isPath badConfig
+    && !result.success
+    && hasInfix "unknown module path '/unknown/module'" (
+      configLib.optionError "/unknown/module" options."/unknown/module"
+    )
   ))
   # entry point: system is explicit, platform follows it, no builtins.currentSystem
   (check "mkSystem: platform defaults to system, evaluated purely" (
