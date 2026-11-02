@@ -45,18 +45,26 @@ let
     toJSON
     ;
 
-  # a var name or a file name: one path component, shell-safe; path.nix's
-  # componentError is the one rule (a StateDirectory= entry uses it too)
+  # Filenames keep dots; var names reserve them for the credential separator.
   word = typedef' "word" (import ./path.nix).componentError;
+  varName = typedef' "varName" (
+    v:
+    if !builtins.isString v then
+      "Expected a string"
+    else if builtins.match (import ./grammar.nix).varName v == null then
+      "'${v}' is not a var name: use letters, digits, _ and - (dots separate credential filenames)"
+    else
+      null
+  );
 
   var = struct "var" {
-    name = word;
+    name = varName;
     # files the script writes that are sealed as credentials <name>.<file>
     secrets = listOf word;
     # files kept readable in /var/lib/golconda/vars/<name>/pub; default [ ]
     publics = optionalAttr (listOf word);
     # names of vars that must run first; their pub/ directories are readable; default [ ]
-    after = optionalAttr (listOf word);
+    after = optionalAttr (listOf varName);
     # POSIX sh, run in the (empty) runtime directory with the image's tools on PATH
     script = string;
     # tools the script needs; default [ ]
@@ -71,7 +79,7 @@ let
   # Nothing else: a script or a package would be the local class.
   adminVar =
     (struct "adminVar" {
-      name = word;
+      name = varName;
       files = listOf word;
     }).override
       { unknown = false; };
@@ -169,6 +177,7 @@ in
     var
     adminVar
     word
+    varName
     render
     admin
     unitName
