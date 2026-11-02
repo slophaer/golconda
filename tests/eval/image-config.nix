@@ -67,6 +67,29 @@ let
   };
 in
 [
+  (check "images: release fixtures require the configured workload" (
+    builtins.all
+      (
+        name:
+        let
+          tree = f.packages.x86_64-linux.${name}.erofs.usrTree;
+        in
+        tree.files."/usr/lib/golconda/test-workload".text == "configured-workload\n"
+        && tree.units ? "custom-workload.service"
+        && builtins.any (
+          link:
+          link.path == "/usr/lib/systemd/system/boot-complete.target.requires/custom-workload.service"
+          && link.target == "../custom-workload.service"
+        ) tree.links
+      )
+      [
+        "image-smoke-test"
+        "image-smoke-test-next"
+        "image-smoke-test-rotated"
+        "image-smoke-test-nosb"
+        "image-smoke-test-nosb-next"
+      ]
+  ))
   (check "mkImage: retains configured fragments and image links from an attrset" (keepsMarker config))
   (check "mkImage: retains configured fragments and image links from TOML" (
     keepsMarker ../fixtures/image-fragments.toml
