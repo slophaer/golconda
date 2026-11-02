@@ -124,9 +124,21 @@ in
       description = "Image version (YYYYMMDD.N). Each release must sort higher than the previous; systemd-sysupdate compares with strverscmp.";
     };
     updateSource = {
-      type = types.option types.string;
+      type = types.option (
+        types.typedef' "updateSource" (
+          source:
+          if !isString source then
+            "Expected a string"
+          else if builtins.length (builtins.split "[[:space:][:cntrl:]]" source) > 1 then
+            "updateSource must not contain whitespace or a control character: it is a sysupdate Path= value"
+          else if builtins.substring 0 1 source == "/" || match ".*://.*" source != null then
+            null
+          else
+            "updateSource must be a URL (https://…) or an absolute path"
+        )
+      );
       default = null;
-      description = "URL of the update server. Rendered into /usr/lib/sysupdate.d/. When null (default), no sysupdate transfer is configured.";
+      description = "URL or absolute path of the update server. Rendered into /usr/lib/sysupdate.d/. When null (default), no sysupdate transfer is configured.";
     };
     secureBoot = {
       type = types.bool;

@@ -13,6 +13,34 @@ let
   inherit (builtins) all any;
 in
 [
+  (check "updateSource: direct module calls validate transfer paths" (
+    let
+      accepts =
+        updateSource:
+        (builtins.tryEval (
+          builtins.deepSeq
+            (composeWith {
+              "/system" = {
+                name = "t";
+                version = "20261031.1";
+                inherit updateSource;
+              };
+            }).files
+            true
+        )).success;
+    in
+    all accepts [
+      null
+      "https://example.com/releases/"
+      "/srv/releases"
+    ]
+    && !(any accepts [
+      "relative/path"
+      "https://example.com/\n[Evil]"
+      "/srv/has space"
+      42
+    ])
+  ))
   # 7. Version format: YYYYMMDD.N
   (check "version format: YYYYMMDD.N accepted" (
     all versionAccepted [
