@@ -45,6 +45,15 @@ let
       { };
 in
 [
+  (check "checks: native package tests are required outputs" (
+    builtins.all
+      (name: f.checks.x86_64-linux.${name}.drvPath == f.packages.x86_64-linux.${name}.drvPath)
+      [
+        "tests-gnupg"
+        "tests-btrfs-progs"
+        "tests-uutils-coreutils"
+      ]
+  ))
   (check "pkgs: /pkgs returns the set and its pkgs, nothing else" (
     pkgsResult.target.pkgs == stubSet.pkgs
     && pkgsResult.pkgs.openssh == openssh
@@ -102,7 +111,7 @@ in
     && hasInfix "VERSION_ID=20261031.1" osX86
     && hasInfix "IMAGE_VERSION=20261031.1" osArm
   ))
-  (check "cross: x86_64 and aarch64 sets differ in jq drvPath" (
+  (check "cross: package sets expose target CPU and UEFI names" (
     let
       x86Set = import ../../nix/packages.nix {
         inherit sources;
@@ -121,8 +130,7 @@ in
     # CPU differs
     && x86Set.platform.cpu == "x86_64"
     && armSet.platform.cpu == "aarch64"
-    # The sets are for different targets (jq.drvPath would differ, but we cannot
-    # instantiate without ca-derivations; check the platform record instead)
+    # Pure platform metadata; derivation identity is not checked here.
     && x86Set.platform.names.uefi == "x64"
     && armSet.platform.names.uefi == "aa64"
   ))
