@@ -13,7 +13,8 @@
 # `config` is a path to a TOML file or an attrset already loaded.
 # `platform` defaults to the build host's (builtins.currentSystem).
 # `sources` defaults to ../nix/sources.nix.
-# `extra` is an attrset merged into the options the TOML gave: the only Nix hook.
+# `extra` overrides individual options from the configuration.
+# `extraFragments` adds image-owned fragments after those overrides, before composition.
 # `verityCert` is the certificate that signs /usr (lib.mkImage passes the db certificate of
 # its keys). With `/system.secureBoot = false` the kernel carries it in its built-in keyring;
 # without Secure Boot nothing else would put it in a keyring (docs/design/trust.md).
@@ -30,6 +31,7 @@
   system ? builtins.currentSystem,
   sources ? import ../nix/sources.nix,
   extra ? { },
+  extraFragments ? [ ],
   verityCert ? null,
 }:
 let
@@ -131,6 +133,7 @@ let
         "/system" = systemOptions // {
           fragments =
             (systemOptions.fragments or [ ])
+            ++ extraFragments
             ++ serviceFragments
             ++ [
               varsFragment

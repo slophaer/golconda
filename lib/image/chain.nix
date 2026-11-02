@@ -81,7 +81,7 @@ let
     inherit system config;
     platform = system;
     verityCert = sbCert;
-    extra."/system".fragments = [
+    extraFragments = [
       (imageLib.loaderFragment { inherit loader platform; })
       (imageLib.indexFragment {
         keyring = indexKeyring;

@@ -6,7 +6,7 @@
 # indexFragment { keyring; pkgs; } → a /system fragment that links the keyring to
 #   /usr/lib/systemd/import-pubring.pgp (systemd's vendor keyring path) and puts gnupg in /usr:
 #   systemd-pull runs `gpg --verify` on SHA256SUMS.gpg for every transfer with Verify=yes
-#   (image/sysupdate.nix). Give it to mkSystem as extra."/system".fragments.
+#   (image/sysupdate.nix). Give it to mkSystem through extraFragments.
 #
 # The disk step (lib/image/disk.nu) signs the release's SHA256SUMS with the secret half.
 _:
