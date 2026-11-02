@@ -164,6 +164,25 @@ in
     { files."/usr/lib/foo/config" = "a"; }
     { files."/usr/lib/foo/config" = "b"; }
   ]))
+  (check "composer: the fixed sbin alias rejects files with bin guidance" (
+    let
+      frags = [
+        {
+          name = "/services/alias-test";
+          files."/usr/bin/x" = "first";
+          files."/usr/sbin/x" = "second";
+        }
+      ];
+      msg = merge.duplicateError frags;
+    in
+    filesThrow frags
+    && msg != null
+    && hasInfix "/usr/sbin/x" msg
+    && hasInfix "/services/alias-test" msg
+    && hasInfix "/usr/bin" msg
+    && filesThrow [ { files."/usr/sbin" = "x"; } ]
+    && !(filesThrow [ { files."/usr/sbin-extra/x" = "x"; } ])
+  ))
   (check "composer concatenates lists" (
     let
       result =

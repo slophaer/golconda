@@ -212,6 +212,41 @@ in
     !(tryEval (deepSeq (compose frags).links true)).success
     && hasInfix "farm link to /nix/store/a-1/lib/security from fragments[0], dlopen link to /nix/store/b-1/lib/security from fragments[1]" msg
   ))
+  (check "links: the fixed sbin alias rejects every link kind" (
+    builtins.all
+      (
+        kind:
+        builtins.all
+          (
+            path:
+            let
+              frags = [
+                {
+                  links.${path} = {
+                    target = "${standIn}/bin/jq";
+                    inherit kind;
+                  };
+                }
+              ];
+              msg = merge.duplicateError frags;
+            in
+            !(tryEval (deepSeq (compose frags).links true)).success
+            && msg != null
+            && hasInfix path msg
+            && hasInfix "/usr/bin" msg
+          )
+          [
+            "/usr/sbin"
+            "/usr/sbin/x"
+          ]
+      )
+      [
+        "explicit"
+        "farm"
+        "dlopen"
+        "package"
+      ]
+  ))
   (check "links: distinct paths from every kind are no duplicate" (
     let
       tool = withBin "tool-1" [ "foo" ];
