@@ -81,9 +81,32 @@ in
       };
     in
     result.files ? "/usr/lib/systemd/network/50-static.network"
-    && hasInfix "Name=eth0" result.files."/usr/lib/systemd/network/50-static.network".text
-    && hasInfix "Address=10.0.0.1/24" result.files."/usr/lib/systemd/network/50-static.network".text
+    &&
+      result.files."/usr/lib/systemd/network/50-static.network".text
+      == "[Match]\nName=eth0\n\n[Network]\nAddress=10.0.0.1/24\n"
     && !(result.files ? "/usr/lib/systemd/network/99-default-dhcp.network")
+  ))
+  (check "network: names must be single components even without default DHCP" (
+    builtins.all
+      (
+        name:
+        !(tryEval (
+          deepSeq
+            (composeWith {
+              "/network" = {
+                defaultDhcp = false;
+                networks.${name}.match.Name = "eth0";
+              };
+            }).files
+            true
+        )).success
+      )
+      [
+        "a/b"
+        ""
+        "."
+        ".."
+      ]
   ))
   (check "network: an explicit network sorts before the default DHCP file" (
     let
@@ -204,11 +227,14 @@ in
   ))
   (check "schema: a network is a closed object with match required" (
     let
-      net =
-        (schemaLib.toJsonSchema (f.modules { }))
-        .properties."/network".properties.networks.additionalProperties;
+      schema = schemaLib.toJsonSchema (f.modules { });
+      networks = schema.properties."/network".properties.networks;
+      net = schema."$defs".network;
     in
-    net.additionalProperties == false
+    networks.propertyNames.pattern
+    == (import ../../modules/lib/grammar.nix).anchored (import ../../modules/lib/grammar.nix).component
+    && networks.additionalProperties."$ref" == "#/$defs/network"
+    && net.additionalProperties == false
     && net.required == [ "match" ]
     &&
       attrNames net.properties == [
