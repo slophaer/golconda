@@ -65,10 +65,10 @@ one-of-each decision is a feature value there, and a package that cannot honour 
 
 Some packages compile absolute paths into their binaries: systemd looks for generators in
 `/usr/lib/systemd/system-generators`, dbus-broker reads policy from `/usr/share/dbus-1`, sshd its
-privilege-separation directory. These are built with `prefix = "/usr"` in the repkgs spec and
-reached through the symlink farm: their directories are `farm` links the builder expands file by
-file ([Layout: The symlink map](layout.md#the-symlink-map)). Prefixed packages in the image:
-systemd, dbus-broker, openssh.
+privilege-separation directory. Their recipes set the relevant prefix or configure flags to `/usr`;
+not every build system uses a `prefix` attribute. The image supplies those paths through explicit
+links and directory farms ([Layout: The symlink map](layout.md#the-symlink-map)). Examples include
+systemd, dbus-broker, openssh, linux-pam, and GnuPG.
 
 Everything else is relocatable and lives only in the store. A package that cannot be relocated and
 cannot take a prefix is not packaged.
@@ -104,8 +104,16 @@ series, monolithic (no modules, so no kmod), built with `LLVM=1`.
 | systemd (with repart, sysupdate, cryptsetup, TPM2, PKCS#11, PAM), dbus-broker, dash, uutils coreutils, the kernel | clang/lld, nushell, cpython, perl, rust, GNU coreutils |
 | openssh, linux-pam (no setuid helpers), p11-kit, tpm2-tss (ESYS only), iproute2 (minimal)                         | ukify, dosfstools, erofs-utils                         |
 | e2fsprogs (first-boot `mkfs.ext4`), lvm2 (device-mapper only), libtasn1, libmnl, json-c, popt                     | automake, libtool                                      |
+| tzdata (zoneinfo), cacert (CA bundle), GnuPG and its libraries (signed update indexes)                            |                                                        |
 
-Missing: tzdata. No zoneinfo package is in the image, so `/factory`'s `/etc/localtime` link to
-`/usr/share/zoneinfo/UTC` dangles (a v1 gap; packaging tzdata is a fork task).
+`/base` includes tzdata and links `/usr/share/zoneinfo` to its zoneinfo directory. `/factory` points
+`/etc/localtime` at the configured zone there. Release images add GnuPG through the index fragment;
+the base tree alone does not need it. btrfs-progs has a package and tests but is not in the image.
 
-A new daemon is a packaging job on the fork first ([Comparison](comparison.md)).
+GnuPG and libgcrypt remain an intentional exception to the single crypto-stack preference: systemd's
+signed-index path uses OpenPGP. Keep them until that path supports a suitable replacement.
+
+A new daemon starts as a recipe in `packages/` ([Comparison](comparison.md)). Only a missing build
+system or toolchain feature needs a fork change. Track such changes in
+[the fork's patch series](../../patches/repkgs/README.md); relocation and toolchain maintenance
+remain external costs even when a local recipe is small.

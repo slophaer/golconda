@@ -235,6 +235,11 @@ The machine's own identity is its host key, a local var, plus a host certificate
 revocation list, both admin vars; sshd reads them from its credentials directory, never from the
 image.
 
+Bootstrap in 2 stages. First boot with plain `authorizedKeys` and without settings that require
+admin credentials. Push the host certificate and revocation list through the admin-var route. Then
+deploy the configuration that enables `hostCertificate` and `revokedKeys`. These credentials are
+mandatory once enabled: a missing file must stop sshd rather than disable revocation checks.
+
 After v1: operators as `/usr/lib/userdb/*.user` records with `run0` gated by polkit on a few action
 ids (a root-less image), and one CA for SSH and X.509 with TPM device attestation (workload
 identity). Both are designed, not built.

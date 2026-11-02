@@ -80,10 +80,10 @@ for editors and external tools.
 ## The entry point
 
 `lib/system.nix` turns a document into a system:
-`mkSystem { config; platform?; system?; sources?; extra?; }`, exposed as the output `lib.mkSystem`.
-`examples/golconda.nix` is the template: copy it next to your `server.toml` and pin Golconda with
-npins in place of its `import ../default.nix` line. It evaluates from inside the repository as it
-stands. `lib.mkImage` takes the same `config` and signs it into an image
+`mkSystem { config; platform?; system?; sources?; extra?; extraFragments?; }`, exposed as the output
+`lib.mkSystem`. `examples/golconda.nix` is the template: copy it next to your `server.toml` and pin
+Golconda with npins in place of its `import ../default.nix` line. It evaluates from inside the
+repository as it stands. `lib.mkImage` takes the same `config` and signs it into an image
 ([Outputs](outputs.md#libmkimage)).
 
 ```nix
@@ -100,13 +100,19 @@ golconda.lib.mkSystem {
 }
 ```
 
-| argument   | meaning                                                                                                            |
-| ---------- | ------------------------------------------------------------------------------------------------------------------ |
-| `config`   | a path to a TOML file, or an attribute set of options already loaded                                               |
-| `platform` | the target platform, default `system`                                                                              |
-| `system`   | the build host, default `builtins.currentSystem`, which `iets eval` refuses unless `--impure`: pass it explicitly  |
-| `sources`  | the pins, default `nix/sources.nix`                                                                                |
-| `extra`    | Nix-only options merged into the TOML's, one module path at a time (a package override, a fragment written in Nix) |
+| argument         | meaning                                                                                                            |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `config`         | a path to a TOML file, or an attribute set of options already loaded                                               |
+| `platform`       | the target platform, default `system`                                                                              |
+| `system`         | the build host, default `builtins.currentSystem`, which `iets eval` refuses unless `--impure`: pass it explicitly  |
+| `sources`        | the pins, default `nix/sources.nix`                                                                                |
+| `extra`          | Nix-only options merged into the TOML's, one module path at a time (a package override, a fragment written in Nix) |
+| `extraFragments` | Additional fragments appended after `extra` replaces options; used by the image chain for its loader and keyring   |
+
+`extra` replaces individual option values, including lists and nested objects; it does not merge
+inside an option. `extraFragments` appends to the resulting fragment list before composition.
+`mkImage` uses this additive route so its loader and keyring do not discard the configured workload.
+Duplicate claims still fail rather than override one another.
 
 `mkSystem` binds `/pkgs.target` to the platform's set, turns every `/services/*` table into that
 module's fragment, adds `/vars` and `/factory`, composes, and returns:
