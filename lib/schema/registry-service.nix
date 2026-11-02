@@ -67,6 +67,7 @@
         description = "Targets that pull in this unit.";
       };
     };
+    additionalProperties = false;
     required = [
       "name"
       "app"

@@ -1,7 +1,7 @@
-# Markdown reference pages from the JSON Schema that lib/schema.nix exports,
+# Markdown reference pages from the internal module schemas in lib/schema.nix,
 # plus module doc comments, types documentation, and the module list for SUMMARY.md.
 #
-# `toMarkdown { schema; modulePaths; docComments; typeRegistry; }` returns
+# `toMarkdown { moduleSchemas; modulePaths; docComments; typeRegistry; tree; }` returns
 #   pages      module path ("/services/sshd") -> Markdown
 #   index      Markdown listing every module
 #   types      Markdown for the types page
@@ -20,7 +20,7 @@
 #     modulePaths = (import ./tree.nix { }).modulePaths ../modules;
 #   in
 #   toMarkdown {
-#     schema = schemaLib.toJsonSchema (tree { });
+#     moduleSchemas = schemaLib.moduleSchemas (tree { });
 #     inherit modulePaths docComments;
 #     typeRegistry = schemaLib.typeRegistry;
 #   }
@@ -218,14 +218,18 @@ let
   # The main export function.
   toMarkdown =
     {
-      schema,
+      moduleSchemas ? (import ./schema.nix { }).moduleSchemas tree,
+      schema ? {
+        properties = { };
+      },
       modulePaths,
       docComments,
       typeRegistry,
       tree,
     }:
     let
-      mods = schema.properties or { };
+      # Keep existing schema callers working without hiding internal modules.
+      mods = moduleSchemas // (schema.properties or { });
       allPaths = map (m: m.path) modulePaths;
       sortedPaths = sortStrings allPaths;
 

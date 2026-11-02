@@ -28,6 +28,7 @@
       };
     };
     required = [ "package" ];
+    additionalProperties = false;
   };
 
   argv = {
@@ -62,12 +63,14 @@
           "$ref" = "#/$defs/unitValue";
         };
         required = [ "set" ];
+        additionalProperties = false;
       }
       {
         properties.unset = {
           const = true;
         };
         required = [ "unset" ];
+        additionalProperties = false;
       }
     ];
   };
@@ -108,6 +111,7 @@
       };
     };
     required = [ "credential" ];
+    additionalProperties = false;
   };
 
   credentialPrefix = {

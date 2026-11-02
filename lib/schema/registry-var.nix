@@ -60,6 +60,27 @@
     ];
   };
 
+  adminVar = {
+    description = "An admin-supplied var: named files pushed as sealed credentials, with no generator.";
+    type = "object";
+    properties = {
+      name = {
+        "$ref" = "#/$defs/varName";
+      };
+      files = {
+        type = "array";
+        items = {
+          "$ref" = "#/$defs/word";
+        };
+      };
+    };
+    required = [
+      "name"
+      "files"
+    ];
+    additionalProperties = false;
+  };
+
   varName = {
     description = "A var name: letters, digits, _ and -. Dots separate credential filenames.";
     type = "string";
