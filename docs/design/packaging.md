@@ -92,8 +92,11 @@ x86_64 `defconfig` with virtio, a serial console and the initramfs path. The pac
 x86_64 support because its ORC unwinder config is architecture-specific.
 
 `golconda.config` adds dm-verity with signed root hashes, erofs, TPM drivers, EFI, LSMs, nftables,
-WireGuard and systemd requirements. A comment above each option says why. `nix/packages.nix` passes
-the fragment and the typed config as JSON in the build environment. Store references stay intact.
+WireGuard and systemd requirements. A comment above each option says why. The package owns its typed
+base and make flags. `nix/packages.nix` passes only the fragment and the options the system
+requires, such as the built-in verity key, as JSON fields in the build environment. Store references
+stay intact. A fragment may change a base option. A fragment that contradicts a required option
+fails the build.
 
 The local `kbuild.nu` uses repkgs' existing package-local phase interface. It merges the fragment
 with `merge_config.sh` and verifies that the requested settings survive `olddefconfig`. A wrong

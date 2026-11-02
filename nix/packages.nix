@@ -17,8 +17,8 @@
   sources,
   system,
   platform ? system,
-  # kconfig options merged into the local kernel config (lib/system.nix: the built-in
-  # verity key for /system.secureBoot = false)
+  # kconfig options the system requires (lib/system.nix: the built-in verity key for
+  # /system.secureBoot = false); kbuild.nu fails if the policy fragment contradicts one
   kernelConfig ? { },
 }:
 let
@@ -42,9 +42,10 @@ let
     inherit system platform;
     packages = import ../packages;
     overrides = {
-      # Package-local phases read this data from structured attrs. No kernel builder in repkgs.
+      # The system's required options and the policy fragment, read by packages/kernel/kbuild.nu.
+      # The package owns its base config and make flags; this replaces only these two fields.
       linux-kernel.env.merge = {
-        GOLCONDA_KERNEL_CONFIG = builtins.toJSON ((import ../packages/kernel/config.nix) // kernelConfig);
+        GOLCONDA_KERNEL_EXTRA_CONFIG = builtins.toJSON kernelConfig;
         GOLCONDA_KERNEL_FRAGMENTS = builtins.toJSON [ kernelConfigFragment ];
       };
     };

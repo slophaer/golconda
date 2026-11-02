@@ -88,6 +88,23 @@ in
   (check "tpm2-tss: the device TCTI exports Tss2_Tcti_Info for systemd (no --enable-nodl)" (
     !(elem "--enable-nodl" pkgs.tpm2-tss.drvAttrs.spec.autotools.flags)
   ))
+  (check "kernel: the package owns the base; env.merge adds the extra config and fragment only" (
+    let
+      own = pkgs.linux-kernel.args.env;
+      final = pkgs.linux-kernel.drvAttrs.spec.env;
+    in
+    attrNames final == attrNames own
+    && final.GOLCONDA_KERNEL_CONFIG == own.GOLCONDA_KERNEL_CONFIG
+    && final.GOLCONDA_KERNEL_EXTRA_CONFIG == "{}"
+    && final.GOLCONDA_KERNEL_FRAGMENTS != own.GOLCONDA_KERNEL_FRAGMENTS
+  ))
+  (check "kernel: GOLCONDA_KERNEL_MAKE survives env.merge" (
+    let
+      make = pkgs.linux-kernel.drvAttrs.spec.env.GOLCONDA_KERNEL_MAKE;
+    in
+    make == pkgs.linux-kernel.args.env.GOLCONDA_KERNEL_MAKE
+    && elem "CC=clang" (builtins.fromJSON (builtins.unsafeDiscardStringContext make))
+  ))
   (check "kernel: the policy fragment reaches the package-local builder" (
     let
       fragments = builtins.fromJSON (
