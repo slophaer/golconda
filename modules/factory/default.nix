@@ -35,6 +35,8 @@ let
     "gshadow"
     "machine-id"
     "hostname"
+    "localtime"
+    "os-release"
   ];
 
   # A path under /etc: relative, plain components, none of the denied names.
@@ -45,7 +47,7 @@ let
     else if match grammar.etcPath v == null then
       "'${v}' is not a path under /etc: relative components of letters, digits and _ . + -, none . or .."
     else if elem v denied then
-      "'${v}' is not a factory file: sysusers or PID 1 or bootstrap credentials write it on the machine (modules/factory)"
+      "'${v}' is reserved: sysusers, PID 1, bootstrap credentials or generated factory links own it (modules/factory)"
     else
       null
   );

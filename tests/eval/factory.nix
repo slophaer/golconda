@@ -81,6 +81,21 @@ in
   (check "factory: extraFiles refuse the names sysusers and PID 1 and bootstrap own" (
     all (n: factoryThrows { extraFiles.${n} = "x"; }) neverSeeded
   ))
+  (check "factory: extraFiles cannot replace generated static links" (
+    factoryThrows { extraFiles.localtime = "x"; } && factoryThrows { extraFiles."os-release" = "x"; }
+  ))
+  (check "factory: generated static links each appear once with the configured timezone" (
+    let
+      r = factoryOf {
+        timezone = "Europe/Berlin";
+        extraFiles.motd = "Welcome\n";
+      };
+      linesFor = path: builtins.filter (hasPrefix "L ${path} ") r.tmpfiles;
+    in
+    linesFor "/etc/localtime" == [ "L /etc/localtime - - - - /usr/share/zoneinfo/Europe/Berlin" ]
+    && linesFor "/etc/os-release" == [ "L /etc/os-release - - - - ../usr/lib/os-release" ]
+    && r.files."${factoryDir}/motd" == "Welcome\n"
+  ))
   (check "factory: the L lines and the static links" (
     elem "L /etc/localtime - - - - /usr/share/zoneinfo/UTC" factory.tmpfiles
     && elem "L /etc/os-release - - - - ../usr/lib/os-release" factory.tmpfiles
