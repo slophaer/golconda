@@ -118,6 +118,21 @@ in
     touch $out
   '';
 
+  # the kernel's package-local kbuild phases (packages/kernel/kbuild.nu) on a stub tree: no
+  # Linux build, the real Nu module against the repkgs builder library
+  kernel-builder =
+    pkgs.runCommand "check-kernel-builder"
+      {
+        nativeBuildInputs = [
+          pkgs.nushell
+          pkgs.gnumake
+        ];
+      }
+      ''
+        nu --no-config-file --include-path ${sources.repkgs}/builder ${src}/tests/kernel/test.nu
+        touch $out
+      '';
+
   # nixpkgs is dev tooling only: the dev pin is referenced nowhere but nix/dev and nix/checks.nix
   boundary = pkgs.runCommand "check-boundary" { } ''
     cd ${src}

@@ -128,7 +128,7 @@ in
       # needs a daemon with CA and dynamic derivations first (docs/reference/build-host.md)
       inherit (pkgs) nix;
 
-      # Golconda's kernel recipe and policy fragment, built by repkgs' generic kbuild.
+      # Golconda's kernel recipe, local kbuild phases and policy fragment.
       # nix/packages.nix applies the fragment to every `pkgs.linux-kernel`.
       kernel = pkgs.linux-kernel;
     }

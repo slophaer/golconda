@@ -17,7 +17,7 @@
   sources,
   system,
   platform ? system,
-  # kconfig options merged into linux-kernel's kbuild.config (lib/system.nix: the built-in
+  # kconfig options merged into the local kernel config (lib/system.nix: the built-in
   # verity key for /system.secureBoot = false)
   kernelConfig ? { },
 }:
@@ -42,11 +42,11 @@ let
     inherit system platform;
     packages = import ../packages;
     overrides = {
-      # The kernel policy: Golconda's kconfig fragment with the IPE boot policy path.
-      linux-kernel.kbuild = {
-        configFragments.append = [ kernelConfigFragment ];
-      }
-      // (if kernelConfig == { } then { } else { config.merge = kernelConfig; });
+      # Package-local phases read this data from structured attrs. No kernel builder in repkgs.
+      linux-kernel.env.merge = {
+        GOLCONDA_KERNEL_CONFIG = builtins.toJSON ((import ../packages/kernel/config.nix) // kernelConfig);
+        GOLCONDA_KERNEL_FRAGMENTS = builtins.toJSON [ kernelConfigFragment ];
+      };
     };
     # Set-wide choices: one TLS stack, one of each (docs/design/principles.md).
     features.tls = "openssl";

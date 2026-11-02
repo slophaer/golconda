@@ -31,7 +31,7 @@ let
     let
       k = builtins.head (filter (p: (p.pname or "") == "linux-kernel") sys.composed.packages);
     in
-    k.spec.kbuild.config.SYSTEM_TRUSTED_KEYS or null;
+    (builtins.fromJSON k.spec.env.GOLCONDA_KERNEL_CONFIG).SYSTEM_TRUSTED_KEYS or null;
   cert = "/srv/keys/secureboot/db.crt";
 in
 [
@@ -41,8 +41,9 @@ in
   (check "secureBoot: false puts the db certificate into the kernel's built-in keyring" (
     trusted (sysWith { secureBoot = false; } cert) == cert
     &&
-      (sysWith { secureBoot = false; } cert).pkgs.linux-kernel.spec.kbuild.config.SYSTEM_TRUSTED_KEYS
-      == cert
+      (builtins.fromJSON
+        (sysWith { secureBoot = false; } cert).pkgs.linux-kernel.spec.env.GOLCONDA_KERNEL_CONFIG
+      ).SYSTEM_TRUSTED_KEYS == cert
   ))
   (check "secureBoot: false without the image's keys is an error" (
     !(tryEval (deepSeq (trusted (sysWith { secureBoot = false; } null)) true)).success

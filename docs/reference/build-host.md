@@ -28,7 +28,7 @@ system-features = builder-rpc-v0 big-parallel kvm nixos-test benchmark
 - `ca-derivations` and `dynamic-derivations`: needed, see above.
 - `builder-rpc-v0`: needed by the fetch producers. No other derivation in this repo or in the pinned
   repkgs names a system feature: a grep for `requiredSystemFeatures` finds only that one. The kernel
-  (`packages/kernel`, the fork's `kbuild`) asks for none.
+  (`packages/kernel` and its local `kbuild.nu`) asks for none.
 - `recursive-nix`, `big-parallel`, `kvm`, `nixos-test`, `benchmark`: the README lists them, and
   nothing here requires them. repkgs `docs/design.md` says the producers use no recursive Nix.
   Keeping them costs nothing; whether a build fails without them is **unverified**.
