@@ -12,7 +12,8 @@ builder of its own.
   `tests/packages/<name>/test.nu` and builds as `packages.<system>.tests-<name>`.
 - **In the fork**: changes to the build system (relocation, `wrap`, `prefix`, `kbuild`) and to the
   toolchain packages (glibc, crt-interp, jig). The fork also keeps the packages its own tests need:
-  automake and libtool for the aclocal test; bc, elfutils and `linux-kernel` for `kbuild`.
+  automake and libtool for the aclocal test. The general build tools bc and elfutils also stay there.
+  The kernel recipe and its policy belong to Golconda.
 
 The fork's branch is meant to hold only what upstream should take. A package goes upstream from
 `packages/` when it is general.
@@ -84,18 +85,20 @@ Dash is the only shell in the image; systemd units run dash scripts. At build ti
 are the toolchain, nushell drives the repkgs builders, Python is needed for meson, systemd's jinja2
 templates and ukify, Perl for OpenSSL's Configure and some autotools, Rust for iets and dbus-broker.
 
-## The kernel: base in the fork, policy here
+## The kernel belongs to Golconda
 
-The fork's `linux-kernel` is a small bootable base: x86_64 `defconfig`, virtio, the serial console,
-devtmpfs and the initramfs path, enough to boot in QEMU and pass the fork's own smoke test. Golconda
-owns every policy choice as a kconfig fragment, `packages/kernel/golconda.config`: dm-verity with
-signed root hashes, erofs, the TPM drivers, EFI, the LSMs (built in, not forced on), nftables,
-WireGuard, the systemd requirements, and the hardening that costs nothing at run time. A comment
-above each option says why. `nix/packages.nix` appends the file through the set's override path
-(`overrides.linux-kernel.kbuild.configFragments.append`); the fork merges it onto the base with
-`merge_config.sh` and fails the build when a line does not survive `olddefconfig`. A wrong option
-name is a build error, not a silent loss. The result is `packages.<system>.kernel`: the latest LTS
-series, monolithic (no modules, so no kmod), built with `LLVM=1`.
+`packages/kernel/` owns the recipe, source pin and policy. Its typed base starts from x86_64
+`defconfig` with virtio, a serial console and the initramfs path. The package only advertises
+x86_64 support because its ORC unwinder config is architecture-specific.
+
+`golconda.config` adds dm-verity with signed root hashes, erofs, TPM drivers, EFI, LSMs, nftables,
+WireGuard and systemd requirements. A comment above each option says why. `nix/packages.nix` appends
+the fragment through `overrides.linux-kernel.kbuild.configFragments.append`.
+
+Repkgs supplies the generic `kbuild` module, not the OS kernel package. It merges the fragment with
+`merge_config.sh` and verifies that the requested settings survive `olddefconfig`. A wrong option
+name is a build error, not a silent loss. The result is `packages.<system>.kernel`: Linux 6.18 LTS,
+monolithic (no modules, so no kmod), built with `LLVM=1`.
 
 ## What is packaged
 

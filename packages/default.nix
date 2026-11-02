@@ -2,7 +2,8 @@
 # A name that exists in repkgs replaces the in-tree package. Every package the image needs and
 # upstream repkgs lacks lives here; the repkgs fork keeps only build-system work.
 {
-  # init, IPC and the core system
+  # kernel, init, IPC and the core system
+  linux-kernel = ./kernel;
   systemd = ./systemd;
   dbus-broker = ./dbus-broker;
   tpm2-tss = ./tpm2-tss;

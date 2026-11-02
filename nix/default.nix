@@ -128,8 +128,8 @@ in
       # needs a daemon with CA and dynamic derivations first (docs/reference/build-host.md)
       inherit (pkgs) nix;
 
-      # the kernel: the repkgs fork's linux-kernel (a small bootable base) with Golconda's kconfig
-      # fragment, which the override in nix/packages.nix applies to every `pkgs.linux-kernel`
+      # Golconda's kernel recipe and policy fragment, built by repkgs' generic kbuild.
+      # nix/packages.nix applies the fragment to every `pkgs.linux-kernel`.
       kernel = pkgs.linux-kernel;
     }
     # tests-<name>: a package's own test from tests/packages/ (they moved with the packages)

@@ -26,6 +26,15 @@ let
     ;
 in
 [
+  (check "kernel: Golconda owns the package recipe" (
+    let
+      local = import ../../packages;
+    in
+    local ? linux-kernel && pkgs.linux-kernel.dir == local.linux-kernel
+  ))
+  (check "kernel: the ORC config only advertises x86_64" (
+    pkgs.linux-kernel.args.platforms.cpu == [ "x86_64" ]
+  ))
   # 12. The kernel config fragment (packages/kernel/golconda.config)
   (check "kernel: the fragment is KEY=VALUE lines, comments and 'is not set' lines, no name twice" (
     let
