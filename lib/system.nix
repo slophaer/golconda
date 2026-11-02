@@ -39,20 +39,18 @@ let
     attrNames
     isAttrs
     isPath
-    isString
-    length
     mapAttrs
-    match
-    split
     ;
 
   adios = import sources.adios;
   tree = import ../modules { inherit (adios) adios; };
+  unloaded = tree { };
+  treeLib = import ./tree.nix { };
 
   # Load the repkgs set for this platform. The kernel config depends on /system.secureBoot,
   # read from the options before the tree checks them: the tree needs the set, and the
   # option's type still checks the value when /system is evaluated.
-  secureBoot = ((mergeDeep loadedOptions extra)."/system" or { }).secureBoot or true;
+  secureBoot = ((mergeModuleOptions loadedOptions extra)."/system" or { }).secureBoot or true;
   setFull = import ../nix/packages.nix {
     inherit sources system platform;
     kernelConfig =
@@ -69,7 +67,7 @@ let
   };
 
   # The TOML loader: a document in, checked options out (lib/config.nix).
-  configLib = import ./config.nix { tree = tree { }; };
+  configLib = import ./config.nix { tree = unloaded; };
 
   # Load configuration: a path is TOML, an attrset is already loaded options.
   loadedOptions =
@@ -80,9 +78,9 @@ let
     else
       throw "golconda: config must be a path to a TOML file or an attrset of options";
 
-  # Merge extra into the loaded options. Each module path is merged recursively:
+  # Merge option names at each module path; nested values replace rather than recurse.
   # extra."/system".name overrides just that field, not the whole /system entry.
-  mergeDeep =
+  mergeModuleOptions =
     a: b:
     builtins.mapAttrs (k: av: if b ? ${k} && isAttrs av && isAttrs b.${k} then av // b.${k} else av) a
     // builtins.removeAttrs b (attrNames a);
@@ -92,7 +90,7 @@ let
   # checks what an attrset config and `extra` give, so every route into the
   # tree is checked. mkSystem is the one place that binds /pkgs.target: it is
   # always the platform's set, never from the document or `extra`.
-  mergedOptions = configLib.checkOptions (mergeDeep loadedOptions extra) // {
+  mergedOptions = configLib.checkOptions (mergeModuleOptions loadedOptions extra) // {
     "/pkgs".target = setFull.set;
   };
 
@@ -107,7 +105,7 @@ let
   );
 
   # "/services/sshd" -> evaluated.modules.services.modules.sshd, called
-  serviceFragments = map (path: schemaLib.moduleAt evaluated path { }) configuredServices;
+  serviceFragments = map (path: treeLib.moduleAt evaluated path { }) configuredServices;
 
   varsFragment = evaluated.modules.vars { };
 
@@ -145,34 +143,16 @@ let
     }).modules.system
       { };
 
-  # updateSource is the Path= of every sysupdate transfer: one URL or absolute
-  # path, never several lines.
-  inherit (import ../modules/lib/path.nix) hasPrefix;
-  checkUpdateSource =
-    source:
-    if !isString source then
-      true # the option type reports a non-string
-    else if length (split "[[:space:][:cntrl:]]" source) > 1 then
-      throw "golconda: /system.updateSource '${source}' must not contain whitespace or a line break: it is the Path= of every sysupdate transfer, and a line break would add an INI directive"
-    else if hasPrefix "/" source || match ".*://.*" source != null then
-      true
-    else
-      throw "golconda: /system.updateSource '${source}' is neither a URL (https://…) nor an absolute path";
-
-  # Forcing composed (any field) runs the name and source checks: reading the name
-  # runs its option type, the image id grammar (modules/lib/grammar.nix), which is
-  # os-release ID=, the artifact file name stem and the sysupdate match pattern.
-  composed = builtins.seq composedRaw.name (
-    builtins.seq (checkUpdateSource (systemOptions.updateSource or null)) composedRaw
-  );
+  # Reading the name forces the option types, including the image-id and transfer-path rules.
+  composed = builtins.seq composedRaw.name composedRaw;
 
   # The schema for this tree.
   schemaLib = import ./schema.nix { };
-  moduleFiles = (import ./module-docs.nix { }).discoverModulePaths ../modules;
+  moduleFiles = treeLib.modulePaths ../modules;
   schema = schemaLib.toJsonSchemaWith {
     files = moduleFiles;
     root = toString ../.;
-  } (tree { });
+  } unloaded;
 
   # The normalized configuration: one row per option of every configured module,
   # { value?; explicit; }, for config.json. `explicit` is true when the TOML (or `extra`)
@@ -196,7 +176,7 @@ let
       rows =
         path: given:
         let
-          declared = (schemaLib.moduleAt (tree { }) path).options or { };
+          declared = (treeLib.moduleAt unloaded path).options or { };
         in
         mapAttrs (
           n: _:
