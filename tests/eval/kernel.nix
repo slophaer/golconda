@@ -42,6 +42,29 @@ in
       ]
     && builtins.pathExists ../../packages/kernel/kbuild.nu
   ))
+  (check "kernel: vmlinux carries full DWARF 5 (Linux 6.18 \"Debug information\" choice)" (
+    let
+      base = builtins.fromJSON (
+        builtins.unsafeDiscardStringContext pkgs.linux-kernel.drvAttrs.spec.env.GOLCONDA_KERNEL_CONFIG
+      );
+      conf = readFile ../../packages/kernel/golconda.config;
+      names = [
+        "DEBUG_KERNEL"
+        "DEBUG_INFO"
+        "DEBUG_INFO_NONE"
+        "DEBUG_INFO_DWARF5"
+        "DEBUG_INFO_REDUCED"
+        "DEBUG_INFO_SPLIT"
+      ];
+    in
+    base.DEBUG_KERNEL or null == "y"
+    && base.DEBUG_INFO or null == "y"
+    && base.DEBUG_INFO_DWARF5 or null == "y"
+    && base.DEBUG_INFO_REDUCED or null == "n"
+    && base.DEBUG_INFO_SPLIT or null == "n"
+    # the fragment must not change the choice
+    && all (n: !(hasInfix "CONFIG_${n}=" conf) && !(hasInfix "# CONFIG_${n} is not set" conf)) names
+  ))
   (check "kernel: the ORC config only advertises x86_64" (
     pkgs.linux-kernel.args.platforms.cpu == [ "x86_64" ]
   ))
