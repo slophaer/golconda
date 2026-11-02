@@ -23,6 +23,7 @@ let
     ./composer.nix
     ./schema.nix
     ./schema-patterns.nix
+    ./schema-fixtures.nix
     ./system.nix
     ./module-docs.nix
     ./config.nix
