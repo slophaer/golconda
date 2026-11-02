@@ -38,7 +38,7 @@ let
       modulePaths = (import ../lib/tree.nix { }).modulePaths ../modules;
     in
     docsLib.toMarkdown {
-      schema = schemaLib.toJsonSchema (tree { });
+      moduleSchemas = schemaLib.moduleSchemas (tree { });
       inherit modulePaths docComments;
       inherit (schemaLib) typeRegistry;
       tree = tree { };
@@ -49,6 +49,13 @@ let
       path = pkgs.writeText name text;
     }) md.files
   );
+
+  schemaFile =
+    let
+      schemaLib = import ../lib/schema.nix { };
+      tree = import ../modules { inherit (import sources.adios) adios; };
+    in
+    pkgs.writeText "schema.json" (builtins.toJSON (schemaLib.toJsonSchema (tree { })));
 
   # The module-pages lines that docs/SUMMARY.md must contain
   generatedSummary = pkgs.writeText "summary-modules.md" md.summary;
@@ -128,13 +135,24 @@ in
     touch $out
   '';
 
-  # schema export produces valid JSON; evaluated at check eval time, not build time,
-  # because the sandbox cannot fetch the sources. The schema JSON is written to $out.
-  schema =
+  # Export at evaluation time; the sandbox cannot fetch module sources.
+  schema = schemaFile;
+
+  schema-parity =
     let
-      schemaLib = import ../lib/schema.nix { };
-      tree = import ../modules { inherit (import sources.adios) adios; };
-      schemaJson = builtins.toJSON (schemaLib.toJsonSchema (tree { }));
+      fixtures = pkgs.writeText "schema-fixtures.json" (
+        builtins.toJSON (
+          import ../tests/schema {
+            inherit sources;
+            platform = double;
+          }
+        )
+      );
     in
-    pkgs.writeText "schema.json" schemaJson;
+    pkgs.runCommand "check-schema-parity"
+      { nativeBuildInputs = [ (pkgs.python3.withPackages (p: [ p.jsonschema ])) ]; }
+      ''
+        python3 ${src}/tests/schema/validate.py ${schemaFile} ${fixtures}
+        touch $out
+      '';
 }

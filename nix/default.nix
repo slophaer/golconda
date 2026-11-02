@@ -20,7 +20,7 @@ let
       modulePaths = (import ../lib/tree.nix { }).modulePaths ../modules;
     in
     moduleDocs.toMarkdown {
-      schema = schemaLib.toJsonSchema (tree { });
+      moduleSchemas = schemaLib.moduleSchemas (tree { });
       inherit modulePaths docComments;
       inherit (schemaLib) typeRegistry;
       tree = tree { };
