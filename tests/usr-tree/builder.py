@@ -120,18 +120,21 @@ class BuilderTests(unittest.TestCase):
         self.attrs["files"] = {"/usr/lib/systemd/system/demo.service": file()}
         self.rejects("/usr/lib/systemd/system/demo.service")
         self.assertTrue((self.out / "lib/systemd/system/demo.service").is_symlink())
+        self.assertEqual((self.out / "lib/systemd/system/demo.service").read_bytes(), b"sentinel")
 
     def test_unit_cannot_replace_farm_file(self):
         self.farm()
         self.attrs["units"] = {"demo.service": "[Unit]\n"}
         self.rejects("/usr/lib/systemd/system/demo.service")
         self.assertTrue((self.out / "lib/systemd/system/demo.service").is_symlink())
+        self.assertEqual((self.out / "lib/systemd/system/demo.service").read_bytes(), b"sentinel")
 
     def test_different_farm_sources_collide(self):
         self.farm()
         self.farm("/usr/lib/systemd/system", "b/lib/systemd/system")
         self.rejects("/usr/lib/systemd/system/demo.service")
         self.assertIn("/a/", os.readlink(self.out / "lib/systemd/system/demo.service"))
+        self.assertEqual((self.out / "lib/systemd/system/demo.service").read_bytes(), b"sentinel")
 
     def test_farm_cannot_follow_parent_link(self):
         self.attrs["links"] = [link("/usr/lib/alias", "/usr/lib/real")]
@@ -164,6 +167,7 @@ class BuilderTests(unittest.TestCase):
                 ]
                 self.rejects(f"/usr/lib/{name}")
                 self.assertTrue((self.out / "lib" / name).is_symlink())
+                self.assertEqual((self.out / "lib" / name).read_bytes(), b"sentinel")
                 self.assertEqual((FIXTURES / "metadata" / name / "lib" / name).read_bytes(), b"sentinel")
 
     def test_identical_overlapping_farms_succeed(self):
