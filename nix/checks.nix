@@ -103,6 +103,14 @@ in
     touch $out
   '';
 
+  usr-tree-builder = import ../tests/usr-tree { inherit pkgs src; };
+
+  boot-log = pkgs.runCommand "check-boot-log" { } ''
+    sh ${src}/tests/boot-log/test.sh
+    sh ${src}/tests/boot-log/cli.sh
+    touch $out
+  '';
+
   # nixpkgs is dev tooling only: the dev pin is referenced nowhere but nix/dev and nix/checks.nix
   boundary = pkgs.runCommand "check-boundary" { } ''
     cd ${src}

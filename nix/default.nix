@@ -236,11 +236,12 @@ in
     );
 
   checks =
-    { platform }:
-    import ./checks.nix {
+    { platform, set }:
+    (import ./checks.nix {
       inherit sources self;
       double = platform.name;
-    };
+    })
+    // import ../tests/packages { inherit sources set; };
 
   # `iets fmt` / `nix fmt`: treefmt with every tool pinned (nix/dev/).
   formatter = { platform }: (dev platform.name).treefmt;
