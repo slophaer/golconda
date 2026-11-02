@@ -6,7 +6,7 @@ serial_marker_present() {
     multi-user-reached) pattern='Reached target[[:space:]]+(Multi-User System|multi-user[.]target)([[:space:].]|$)' ;;
     sshd-active) pattern='sshd.*Listening|Started.*sshd|Started.*OpenSSH' ;;
     var-sshd-hostkey) pattern='Finished.*Generate var sshd-hostkey' ;;
-    boot-complete) pattern='Reached target[[:space:]]+(Boot Complete|boot-complete[.]target)([[:space:].]|$)' ;;
+    boot-complete) pattern='Reached target[[:space:]]+(Boot Complete|Boot Completion Check|boot-complete[.]target)([[:space:].]|$)' ;;
     no-firstboot-prompt)
       if grep -qi 'Please enter' "$2" 2>/dev/null; then
         return 1
