@@ -61,8 +61,11 @@ in
   # A section header line of a unit, such as [Unit].
   sectionHeader = "\\[[A-Za-z]+]";
 
-  # One path component of a name: a var name, a StateDirectory= entry.
+  # One path component of a filename or a StateDirectory= entry.
   component = "([A-Za-z0-9_.-]*[A-Za-z0-9_-][A-Za-z0-9_.-]*|\\.\\.\\.+)";
+
+  # Dots separate a var name from its credential filename.
+  varName = "[A-Za-z0-9_-]+";
 
   # Canonical paths, without the control-character rule: components that are
   # not empty, . or .., one separator between them, none at the end.

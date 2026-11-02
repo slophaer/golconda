@@ -85,6 +85,46 @@ in
       }) true
     )).success
   ))
+  (check "var: names and dependencies reserve dots for credential ids" (
+    throws (
+      v.render {
+        name = "foo.bar";
+        secrets = [ "key" ];
+        script = "";
+      }
+    )
+    && !(tryEval (
+      deepSeq (v.admin {
+        name = "foo.bar";
+        files = [ "key" ];
+      }) true
+    )).success
+    && throws (
+      v.render {
+        name = "foo";
+        secrets = [ "bar.key" ];
+        after = [ "foo.bar" ];
+        script = "";
+      }
+    )
+  ))
+  (check "var: filenames retain dots without ambiguous ownership" (
+    let
+      local = v.render {
+        name = "foo";
+        secrets = [ "bar.key" ];
+        publics = [ "key.pub" ];
+        script = "";
+      };
+      admin = v.admin {
+        name = "foo";
+        files = [ "bar.key" ];
+      };
+    in
+    (builtins.fromJSON local.files."/usr/lib/golconda/vars.d/foo.json").credentials == [ "foo.bar.key" ]
+    &&
+      (builtins.fromJSON admin.files."/usr/lib/golconda/vars.d/foo.json").credentials == [ "foo.bar.key" ]
+  ))
   (check "var file names are one component" (
     throws (
       v.render {

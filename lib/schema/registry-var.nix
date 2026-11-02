@@ -10,7 +10,7 @@
     type = "object";
     properties = {
       name = {
-        "$ref" = "#/$defs/word";
+        "$ref" = "#/$defs/varName";
       };
       secrets = {
         type = "array";
@@ -29,7 +29,7 @@
       after = {
         type = "array";
         items = {
-          "$ref" = "#/$defs/word";
+          "$ref" = "#/$defs/varName";
         };
         description = "Vars that must run first.";
       };
@@ -58,6 +58,12 @@
       "secrets"
       "script"
     ];
+  };
+
+  varName = {
+    description = "A var name: letters, digits, _ and -. Dots separate credential filenames.";
+    type = "string";
+    pattern = pattern "varName";
   };
 
   word = {

@@ -152,6 +152,11 @@ in
           ];
         }
         {
+          s = reg.varName;
+          t = v.varName.verify;
+          xs = component;
+        }
+        {
           s = reg.word;
           t = v.word.verify;
           xs = component;
