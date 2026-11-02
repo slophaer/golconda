@@ -108,6 +108,13 @@ in
   (check "linux-pam: pam_unix reads shadow itself (the set has no unix_chkpwd helper)" (
     pkgs.linux-pam.drvAttrs.spec.meson.defs."pam_unix-try-getspnam" == true
   ))
+  (check "openssh: /usr through `prefix`, not a raw --prefix flag (repkgs rejects those)" (
+    let
+      spec = pkgs.openssh.drvAttrs.spec;
+    in
+    (spec.prefix or null) == "/usr"
+    && !(builtins.any (f: match "--prefix(=.*)?" f != null) spec.autotools.flags)
+  ))
   (check "tpm2-tss: the device TCTI exports Tss2_Tcti_Info for systemd (no --enable-nodl)" (
     !(elem "--enable-nodl" pkgs.tpm2-tss.drvAttrs.spec.autotools.flags)
   ))

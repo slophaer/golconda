@@ -7,8 +7,8 @@
 package {
   name = "openssh";
   uses = [ "autotools" ];
+  prefix = "/usr";
   autotools.flags = [
-    "--prefix=/usr"
     "--sbindir=/usr/bin"
     "--sysconfdir=/etc/ssh"
     "--libexecdir=/usr/lib/ssh"
