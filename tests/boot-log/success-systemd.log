@@ -1,0 +1,5 @@
+[[0;32m  OK  [0m] Finished [0;1;39mInitial Setup[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mGenerate var sshd-hostkey[0m.
+[[0;32m  OK  [0m] Started [0;1;39msshd[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mMulti-User System[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mBoot Completion Check[0m.

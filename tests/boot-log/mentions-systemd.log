@@ -1,0 +1,9 @@
+[  OK  ] Finished Initial Setup.
+[  OK  ] Finished Generate var sshd-hostkey.
+[  OK  ] Started OpenSSH server daemon.
+[  OK  ] Reached target Multi-User System.
+         Starting Boot Completion Check...
+Dependency failed for Boot Completion Check.
+systemd[1]: Job boot-complete.target queued.
+[  OK  ] Reached target First Boot Complete.
+[  OK  ] Reached target Boot Completion Checker.

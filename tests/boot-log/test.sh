@@ -23,11 +23,12 @@ expect_status() {
   fi
 }
 
-for fixture in success-human success-units; do
+# The systemd fixture keeps the coloured success lines observed in P12.
+for fixture in success-human success-units success-systemd; do
   SERIAL_LOG=$FIXTURES/$fixture.log
   expect_status 0 "$fixture markers" check_markers
 done
-for fixture in dependency-failed multi-user-only mentions prompt empty; do
+for fixture in dependency-failed multi-user-only mentions mentions-systemd prompt empty; do
   SERIAL_LOG=$FIXTURES/$fixture.log
   expect_status 1 "$fixture markers" check_markers
 done
@@ -57,6 +58,11 @@ sleep() {
     cat "$FIXTURES/success-human.log" > "$SERIAL_LOG"
   fi
 }
+SERIAL_LOG=$FIXTURES/success-systemd.log
+POLLS=0
+DELAYED_SUCCESS=0
+expect_status 0 "real systemd boot completion wait" wait_for_boot
+
 SERIAL_LOG=$WORK/wait.log
 cat "$FIXTURES/multi-user-only.log" > "$SERIAL_LOG"
 POLLS=0
@@ -67,7 +73,7 @@ if [ "$POLLS" -eq 0 ]; then
   ERRORS=$((ERRORS + 1))
 fi
 
-for fixture in multi-user-only dependency-failed empty; do
+for fixture in multi-user-only dependency-failed mentions-systemd empty; do
   cat "$FIXTURES/$fixture.log" > "$SERIAL_LOG"
   POLLS=0
   DELAYED_SUCCESS=0

@@ -67,14 +67,14 @@ FAKE_FIXTURES=$ROOT/tests/boot-log
 BOOT_TEST_TMPDIR=$WORK/runs
 export PATH FAKE_FIRMWARE FAKE_FIXTURES BOOT_TEST_TMPDIR
 ERRORS=0
-for mode in delayed dependency-failed multi-user-only empty exited-after-poll; do
+for mode in delayed success-systemd mentions-systemd dependency-failed multi-user-only empty exited-after-poll; do
   FAKE_MODE=$mode
   FAKE_STOPPED=$WORK/stopped-$mode
   FAKE_RELEASE=$WORK/release-$mode
   FAKE_TIMEOUT_PID=$WORK/timeout-pid-$mode
   export FAKE_MODE FAKE_STOPPED FAKE_RELEASE FAKE_TIMEOUT_PID
   expected=1
-  [ "$mode" != delayed ] || expected=0
+  case "$mode" in delayed|success-systemd) expected=0 ;; esac
   actual=0
   sh "$ROOT/scripts/boot-test" "$WORK/disk.raw" --keys "$WORK/keys" --timeout 3 \
     > "$WORK/$mode.out" 2>&1 || actual=$?
