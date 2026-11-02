@@ -15,14 +15,21 @@ in
   (check "hwdb: mkSystem links the compiled hwdb.bin into /usr/lib/udev" (
     link != null && link.kind == "explicit" && builtins.match ".*/hwdb.bin" link.target != null
   ))
-  (check "hwdb: the selection keeps naming, IMDS, TPM2 and vsock, and no desktop input data" (
-    all (f: elem f imageLib.hwdbFiles) [
-      "20-net-ifname.hwdb"
-      "40-imds.hwdb"
-      "60-tpm2.hwdb"
-      "70-vsock.hwdb"
-    ]
-    && !(elem "60-keyboard.hwdb" imageLib.hwdbFiles)
-    && !(elem "20-usb-vendor-model.hwdb" imageLib.hwdbFiles)
-  ))
+  (check
+    "hwdb: the selection keeps naming, IMDS, TPM2, vsock and PCI/USB names, no desktop input data"
+    (
+      all (f: elem f imageLib.hwdbFiles) [
+        "20-net-ifname.hwdb"
+        "40-imds.hwdb"
+        "60-tpm2.hwdb"
+        "70-vsock.hwdb"
+        "20-pci-vendor-model.hwdb"
+        "20-pci-classes.hwdb"
+        "20-usb-vendor-model.hwdb"
+        "20-usb-classes.hwdb"
+      ]
+      && !(elem "60-keyboard.hwdb" imageLib.hwdbFiles)
+      && !(elem "20-OUI.hwdb" imageLib.hwdbFiles)
+    )
+  )
 ]

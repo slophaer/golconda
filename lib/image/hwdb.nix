@@ -12,9 +12,11 @@
 # boot (ConditionNeedsUpdate=/etc). With /usr/lib/udev/hwdb.bin present the service does nothing.
 # Without any, every hwdb lookup fails with no error: the udev properties are missing.
 #
-# Why these files: the full database is 13.9 MB, nearly all of it vendor and model names (PCI,
-# USB, OUI) and desktop input quirks (keyboards, mice, touchpads, sensors, cameras). A server
-# needs its names for nothing; the selection is 13 KB.
+# Why these files: the full database is 13.9 MB. The selection is 8.0 MB: the PCI and USB vendor,
+# model and class names (ID_VENDOR_FROM_DATABASE, ID_MODEL_FROM_DATABASE: what udevadm info,
+# networkctl and lsusb-style tools show for a device) and the few entries a server acts on. Left
+# out: MAC address vendors (20-OUI, 3 MB of names for nothing a server reads) and the desktop
+# input quirks (keyboards, mice, touchpads, sensors, cameras).
 _:
 let
   common = import ./common.nix { };
@@ -26,6 +28,10 @@ let
     "60-tpm2.hwdb" # TPM2 device properties
     "70-vsock.hwdb" # vsock on Hyper-V
     "82-net-auto-link-local.hwdb" # which links get IPv4 link-local addresses
+    "20-pci-classes.hwdb" # PCI class names
+    "20-pci-vendor-model.hwdb" # PCI vendor and device names
+    "20-usb-classes.hwdb" # USB class names
+    "20-usb-vendor-model.hwdb" # USB vendor and product names
   ];
 in
 {
