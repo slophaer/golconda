@@ -11,7 +11,8 @@
 # same `config` and signs it into an image (docs/reference/outputs.md).
 #
 # `config` is a TOML file (like server.toml) validated against the schema.
-# `extra` is for Nix-only values: package overrides, custom fragments.
+# `extra` is for Nix-only values: package overrides. Your own units and files are a module in
+# modules/ beside server.toml, mounted under /local (docs/reference/config.md).
 #
 # See docs/reference/config.md for the full surface.
 let

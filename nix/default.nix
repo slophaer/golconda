@@ -62,33 +62,12 @@ in
       # The test SSH keypair is a committed test fixture (tests/fixtures/snakeoil-ssh*).
       # See tests/fixtures/README.md for why both keys are committed.
       testConfig = version: {
+        # the configured workload is a downstream module (tests/fixtures/image-workload/modules)
+        golconda.modules = ../tests/fixtures/image-workload/modules;
+        "/local/test-workload" = { };
         "/system" = {
           name = "boot-test";
           inherit version;
-          fragments = [
-            {
-              name = "test-workload";
-              files."/usr/lib/golconda/test-workload".text = "configured-workload\n";
-              units."custom-workload.service" = ''
-                [Unit]
-                Description=Configured fragment regression test
-                Before=boot-complete.target multi-user.target
-
-                [Service]
-                Type=oneshot
-                ExecStart=/usr/bin/sh -ec 'test "$$(/usr/bin/cat /usr/lib/golconda/test-workload)" = configured-workload'
-                RemainAfterExit=yes
-              '';
-              links."/usr/lib/systemd/system/boot-complete.target.requires/custom-workload.service" = {
-                target = "../custom-workload.service";
-                kind = "explicit";
-              };
-              links."/usr/lib/systemd/system/multi-user.target.wants/custom-workload.service" = {
-                target = "../custom-workload.service";
-                kind = "explicit";
-              };
-            }
-          ];
           # The update test's release server: 10.0.2.2 is the host under QEMU user
           # networking, where the test serves the next release's disk.release/ with
           # `python3 -m http.server 8074` (docs/reference/image.md).
@@ -202,9 +181,12 @@ in
               version = "20261031.1";
             };
           };
-          extra = {
-            "/system".fragments = [ { packages = [ pkgs.jq ]; } ];
-          };
+          extraFragments = [
+            {
+              name = "/smoke/jq";
+              packages = [ pkgs.jq ];
+            }
+          ];
         }).usrTree;
 
       # Smoke test for /base alone: no extra fragments, just the base packages.
@@ -238,21 +220,20 @@ in
                   version = "20261031.1";
                 };
               };
-              extra = {
-                "/system".fragments = [
-                  {
-                    packages =
-                      let
-                        crossSet = import ./packages.nix {
-                          inherit sources;
-                          inherit system;
-                          platform = "aarch64-linux";
-                        };
-                      in
-                      [ crossSet.pkgs.jq ];
-                  }
-                ];
-              };
+              extraFragments = [
+                {
+                  name = "/smoke/jq";
+                  packages =
+                    let
+                      crossSet = import ./packages.nix {
+                        inherit sources;
+                        inherit system;
+                        platform = "aarch64-linux";
+                      };
+                    in
+                    [ crossSet.pkgs.jq ];
+                }
+              ];
             }).usrTree;
         }
       else

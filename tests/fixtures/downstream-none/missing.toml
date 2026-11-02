@@ -1,0 +1,7 @@
+# [golconda] names a directory that does not exist: an error.
+[golconda]
+modules = "nowhere"
+
+["/system"]
+name = "missing"
+version = "20261102.1"

@@ -7,8 +7,9 @@
 #! It selects nothing itself: `mkSystem` (`lib/components.nix`) passes the
 #! fragments of the selected components as `components`, the built-ins
 #! (`/base`, `/network`, `/security`, `/factory`, `/vars`) first, then each
-#! optional component the configuration has a table for. A system with no
-#! table still has systemd, dbus-broker, dash, coreutils and the kernel.
+#! optional component the configuration has a table for, then the build's own
+#! named fragments (`/image/hwdb`). A system with no table still has systemd,
+#! dbus-broker, dash, coreutils and the kernel.
 #!
 #! Output: `{ name; version; units; files; sysusers; tmpfiles; packages; packageOrigins; origins; links }`,
 #! every file as `{ text; mode; }` and `links` one map, path under `/usr` ->
@@ -21,8 +22,8 @@
 #!
 #! `packageOrigins` answers "why is this package here": package key (its
 #! name-version) -> the origins that brought it: a component's module path
-#! (`"/base"`, `"/services/sshd"`), another fragment's own `name`, or
-#! `"fragments[<i>]"`. `packages` stays one deduped list.
+#! (`"/base"`, `"/services/sshd"`) or a build fragment's `name`
+#! (`"/image/hwdb"`). `packages` stays one deduped list.
 #!
 #! `origins` does the same for everything a fragment emits: `{ packages; files;
 #! links; units; sysusers; tmpfiles; }`, each a map from the key (package key,
@@ -137,21 +138,16 @@ in
       default = true;
       description = "Whether the host's firmware enforces Secure Boot with the image's db key. When false, the kernel carries the db certificate in its built-in keyring and checks the /usr signature itself; the firmware then checks nothing, so whoever can write the ESP can replace the UKI (docs/design/trust.md). For a host without Secure Boot, such as Hetzner Cloud.";
     };
-    fragments = {
-      type = types.listOf fragmentT;
-      default = [ ];
-      description = "Fragments to merge. Each module returns a fragment; the composer unions them, erroring on duplicate keys.";
-    };
     components = {
       type = types.listOf fragmentT;
       default = [ ];
-      description = "The fragments of the selected components, each named by its module path. mkSystem passes them (lib/components.nix); not configuration data, and the TOML loader refuses it.";
+      description = "The fragments to merge, each with a `name`: the selected components (named by their module paths) and the build's own fragments. mkSystem passes them (lib/components.nix); not configuration data, and the TOML loader refuses it.";
     };
   };
 
   impl =
     { options, ... }:
-    # the selected components first, then the declared fragments
+    # the selected components and the build's fragments, then the sysupdate definitions
     merge.withOrigins (
       map (
         fragment:
@@ -161,9 +157,8 @@ in
             inherit fragment;
           }
         else
-          throw "golconda: /system.components: a component fragment needs its module path as `name` (lib/components.nix sets it)"
+          throw "golconda: /system.components: a fragment needs a `name`, its origin (lib/components.nix sets a component's module path)"
       ) options.components
-      ++ merge.labelFragments options.fragments
       ++ map (fragment: {
         origin = "/system";
         inherit fragment;

@@ -128,14 +128,21 @@ in
     !(schema.properties."/services/sshd".properties ? PasswordAuthentication)
     && !(schema.properties."/services/sshd".properties ? UsePAM)
   ))
-  (check "schema: system module has name, version, fragments" (
+  (check "schema: system module has name and version, and no fragments (a module is the only route)" (
     let
       schema = schemaLib.toJsonSchema (f.modules { });
     in
     schema.properties ? "/system"
     && schema.properties."/system".properties ? name
     && schema.properties."/system".properties ? version
-    && schema.properties."/system".properties ? fragments
+    && !(schema.properties."/system".properties ? fragments)
+  ))
+  (check "schema: the project table [golconda] is in the schema, beside the module paths" (
+    let
+      schema = schemaLib.toJsonSchema (f.modules { });
+    in
+    schema.properties.golconda.properties ? modules
+    && schema.properties.golconda.additionalProperties == false
   ))
   (check "schema: computed defaults do not require input and preserve null defaults" (
     let

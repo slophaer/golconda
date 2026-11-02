@@ -132,12 +132,13 @@ in
   (check "module-docs: every registry type has a description" (
     all (t: schemaLib.typeRegistry.${t} ? description) (builtins.attrNames schemaLib.typeRegistry)
   ))
-  (check "module-docs: /system fragments option has a description" (
+  (check "module-docs: /system options have a description" (
     let
       schema = schemaLib.toJsonSchema (f.modules { });
-      fragments = schema.properties."/system".properties.fragments;
     in
-    fragments ? description && fragments.description != ""
+    builtins.all (o: o ? description && o.description != "") (
+      builtins.attrValues schema.properties."/system".properties
+    )
   ))
   (check "module-docs: vars page shows doc comment" (
     hasInfix "Installs the var runner" docs.pages."/vars"

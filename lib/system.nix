@@ -6,8 +6,7 @@
 #   config;     # config.json: module path -> option -> { value?; explicit; }, for every
 #               # included component and /system
 #   inventory;  # module path -> { role; inputs; included?; reason?; } (lib/components.nix)
-#   fragments;  # the origins of the fragments that are not modules: /system.fragments
-#               # (a fragment's `name` or fragments[<i>]) and mkSystem's own (/image/hwdb)
+#   fragments;  # the names of the build's own fragments: /image/hwdb and extraFragments
 #               # modules.json is { modules = inventory; fragments; }
 #   artifacts;  # the files mkSystem adds to /usr/lib/golconda/
 #   platform;   # the elaborated platform record
@@ -20,7 +19,6 @@
 # `platform` defaults to the build host's (builtins.currentSystem).
 # `sources` defaults to ../nix/sources.nix.
 # `extra` overrides individual options from the configuration.
-# `extraFragments` adds image-owned fragments after those overrides, before composition.
 # `verityCert` is the certificate that signs /usr (lib.mkImage passes the db certificate of
 # its keys). With `/system.secureBoot = false` the kernel carries it in its built-in keyring;
 # without Secure Boot nothing else would put it in a keyring (docs/design/trust.md).
@@ -29,8 +27,14 @@
 #   let sys = import ./lib/system.nix { config = ./server.toml; };
 #   in sys.usrTree
 #
-# Nix-only values (a package override, a fragment written in Nix) come through
-# `extra`, so a configuration can be pure TOML or TOML + Nix.
+# Nix-only option values (a package override) come through `extra`. A downstream
+# repository adds modules, never bare fragments: the document's optional `[golconda]`
+# table names its module directory (default `modules/` beside the document), mounted
+# under /local (lib/config.nix readProject).
+#
+# `extraFragments` are the build's own fragments (lib/image: the loader, the update
+# index, the initrd's tools), each with a `name`; they are not configuration, and
+# modules.json lists them beside the modules.
 {
   config,
   platform ? system,
@@ -49,7 +53,12 @@ let
     ;
 
   adios = import sources.adios;
-  tree = import ../modules { inherit (adios) adios; };
+  # The downstream repository's parts, from the document's [golconda] table.
+  project = (import ./config.nix { tree = null; }).readProject config;
+  tree = import ../modules {
+    inherit (adios) adios;
+    local = project.modules;
+  };
   unloaded = tree { };
   treeLib = import ./tree.nix { };
 
@@ -80,7 +89,7 @@ let
     if isPath config then
       (configLib.loadConfig config).options
     else if isAttrs config then
-      config
+      removeAttrs config [ "golconda" ]
     else
       throw "golconda: config must be a path to a TOML file or an attrset of options";
 
@@ -104,13 +113,13 @@ let
   # component the configuration has a table for (lib/components.nix).
   componentsLib = import ./components.nix { };
   inventory = componentsLib.inventory (tree { }) mergedOptions;
-  # The configuration's fragments, then the image's own (extraFragments, added after them)
-  listedFragments = (systemOptions.fragments or [ ]) ++ extraFragments;
-  # A fragment written in Nix can carry anything, so modules.json lists these beside the
-  # modules: the image is the selected components plus these, nothing else.
-  fragments =
-    map (l: l.origin) ((import ../modules/lib/merge.nix).labelFragments listedFragments)
-    ++ [ hwdbFragment.name ];
+  # The image's own fragments, each named: modules.json lists them beside the modules, so
+  # the image is the selected components plus these, nothing else.
+  imageFragments = [ hwdbFragment ] ++ extraFragments;
+  fragments = map (
+    fr:
+    fr.name or (throw "golconda: mkSystem extraFragments: every fragment needs a `name`, its origin")
+  ) imageFragments;
 
   # /usr/lib/udev/hwdb.bin, compiled at build time by the build host's systemd-hwdb from the
   # target's sources (lib/image/hwdb.nix): the image has no writable place for it before udev runs
@@ -123,18 +132,13 @@ let
     };
   };
   # The system options from the config (name, version, fragments, updateSource).
-  systemOptions = mergedOptions."/system" or { };
 
   # The composed system: /system with the selected components, the hwdb and the
   # listed fragments.
   composedRaw = componentsLib.compose {
     modules = tree;
-    options = mergedOptions // {
-      "/system" = systemOptions // {
-        fragments = listedFragments;
-      };
-    };
-    extra = [ hwdbFragment ];
+    options = mergedOptions;
+    extra = imageFragments;
   };
 
   # Reading the name forces the option types, including the image-id and transfer-path rules.
@@ -142,7 +146,18 @@ let
 
   # The schema for this tree.
   schemaLib = import ./schema.nix { };
-  moduleFiles = treeLib.modulePaths ../modules;
+  # Golconda's module files, and the downstream repository's under /local, each relative to
+  # its own repository (declaredIn)
+  moduleFiles =
+    treeLib.modulePaths ../modules
+    ++ (
+      if project.modules == null then
+        [ ]
+      else
+        map (m: m // { root = toString (dirOf project.modules); }) (
+          treeLib.modulePathsAt "/local" project.modules
+        )
+    );
   schema = schemaLib.toJsonSchemaWith {
     files = moduleFiles;
     root = toString ../.;

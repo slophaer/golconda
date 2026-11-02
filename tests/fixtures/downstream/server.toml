@@ -1,0 +1,7 @@
+# A downstream repository: modules/ beside this file is mounted under /local.
+["/system"]
+name = "downstream"
+version = "20261102.1"
+
+["/local/motd"]
+text = "hello\n"

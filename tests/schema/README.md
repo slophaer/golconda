@@ -22,5 +22,10 @@ Nix's `tryEval` cannot catch a missing-attribute evaluator error. The fixture ru
 required system identity fields before it forces composition. Other invalid values must fail the
 actual option types or composition; loader name checks alone do not suffice.
 
+A fragment is no longer configuration (a downstream module returns it), so the fragment rows are
+library rows of the `fragment` type. Where a fragment may write (under `/usr`, canonical, no control
+characters) is the composer's rule, checked in `tests/eval/composer.nix`, not a type the schema
+pairs with.
+
 The local `var` struct allows unknown fields today. The fixture table keeps that behavior distinct
 from strict types such as `adminVar`, `fragment`, `file`, and `link`.

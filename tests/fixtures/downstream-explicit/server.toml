@@ -1,0 +1,7 @@
+# The module directory named in [golconda]; /local/motd has no table, so it is not included.
+[golconda]
+modules = "site"
+
+["/system"]
+name = "explicit"
+version = "20261102.1"

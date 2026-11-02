@@ -6,6 +6,7 @@
   compose,
   f,
   hasInfix,
+  named,
   openssh,
   s,
   standIn,
@@ -31,7 +32,7 @@ let
           "/system" = {
             name = "farm";
             version = "20261031.1";
-            fragments = [ { inherit packages; } ];
+            components = named [ { inherit packages; } ];
           };
         };
       }).modules.system

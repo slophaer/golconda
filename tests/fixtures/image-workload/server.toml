@@ -1,0 +1,6 @@
+# The image tests' document: modules/ beside it is mounted under /local.
+["/system"]
+name = "fragment-test"
+version = "20261031.1"
+
+["/local/marker"]
