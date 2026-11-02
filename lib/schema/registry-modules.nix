@@ -29,7 +29,7 @@
     };
   };
   timezone = {
-    description = "An IANA zone name, such as UTC or Europe/Berlin: /etc/localtime links to /usr/share/zoneinfo/<timezone>.";
+    description = "An IANA zone name, such as UTC or Europe/Berlin: /etc/localtime links to `/usr/share/zoneinfo/<timezone>`.";
     type = "string";
     pattern = pattern "timezone";
   };
@@ -45,6 +45,13 @@
     description = "Image version: YYYYMMDD.N, such as 20261031.1; N has no leading zero.";
     type = "string";
     pattern = pattern "version";
+  };
+
+  updateSource = {
+    description = "An update source: a URL or absolute path, with no whitespace or control character.";
+    type = "string";
+    pattern = "^(/|.*://)";
+    not.pattern = "[\\u0000-\\u0020\\u007f]";
   };
 
   # modules/network/default.nix
