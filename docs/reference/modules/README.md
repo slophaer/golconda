@@ -125,7 +125,8 @@ What a program needs to run, with nothing systemd-specific. Embedded in `service
 An argument with a newline is a type error (it would end the `ExecStart=` line). A file text that
 contains `%d/`, `$CREDENTIALS_DIRECTORY`, `/etc/credstore`, `-----BEGIN` or `PRIVATE KEY` is a type
 error that names the file: an app file holds no per-machine value (`perMachineMarkers` in
-`app.nix`); a secret is a credential, referenced from `argv`. An unknown field is a type error.
+`app.nix`); a secret is a credential, referenced from `argv`. This scan catches some common
+mistakes; it cannot prove that text contains no secret. An unknown field is a type error.
 
 ### `service`
 
@@ -168,6 +169,16 @@ An unknown field is a type error.
 The sets are `sandboxLines` in `service.nix`; which directives the user manager honours is verified
 on a running system.
 
+### Var names
+
+Local and admin var names, including local `after` references, use letters, digits, `_`, and `-`.
+Dots separate the var name from its file in a credential ID, so a var name cannot contain a dot.
+Filenames can contain dots: var `sshd-hostkey` and file `key.pub` form `sshd-hostkey.key.pub`.
+
+Renaming an existing var changes its credential IDs and persistent state paths. Migrate its
+credentials and state before deploying the renamed configuration; do not treat a rename as a
+cosmetic change.
+
 ### `merge`
 
 `merge [ fragmentA fragmentB ]` unions `units`, `files` and `links`, normalises every file to
@@ -178,11 +189,13 @@ package's `bin` list (kind `package`) into the same map as the fragments' links.
 
 One duplicate check covers it all. Each fragment claims paths in `/usr`: its units, files, links and
 its packages' `/usr/bin` links. A path claimed twice throws, whatever the kinds, and the message
-names both claims and both origins. The one exception is a `package` link that repeats a `package`
-link to the same target: the same package from two fragments, or a module that merges its own
-fragments with `merge`, so its `links` already hold its packages' `/usr/bin` links and the composer
-derives them again. `merge.duplicateError fragments` returns the message or `null`, so a test can
-read what the error says.
+names both claims and both origins. `/usr/sbin` is the builder's alias to `bin`; fragments must use
+`/usr/bin` instead. The builder also checks paths inside expanded farms and rejects writes through
+symlink parents or over existing files. Shared real directories and identical-source farm entries
+remain valid. The composer permits repeated `package` links to the same target. This covers the same
+package from 2 fragments. It also covers a module whose own `merge` call already derived the
+package's `/usr/bin` links. `merge.duplicateError fragments` returns the message or `null`, so a
+test can read what the error says.
 
 Error message examples:
 `golconda: /usr/lib/foo.conf defined twice: file from /services/a, file from /services/b`;
@@ -258,10 +271,10 @@ One fragment: the files under `/usr/share/factory/etc` and the tmpfiles lines th
 only `/etc` content is here (`pam.d/sshd`, which sshd refuses to start without). `mkSystem` always
 adds `/factory`.
 
-| option       | type                             | rendered as                                                                                            |
-| ------------ | -------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `timezone`   | zone name, default `"UTC"`       | `L /etc/localtime - - - - /usr/share/zoneinfo/<timezone>`                                              |
-| `extraFiles` | attrs path under `/etc` → `file` | more seeds; a built-in path or `passwd`, `group`, `shadow`, `gshadow`, `machine-id`, `hostname` throws |
+| option       | type                             | rendered as                                                                                                                       |
+| ------------ | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `timezone`   | zone name, default `"UTC"`       | `L /etc/localtime - - - - /usr/share/zoneinfo/<timezone>`                                                                         |
+| `extraFiles` | attrs path under `/etc` → `file` | more seeds; a built-in path or `passwd`, `group`, `shadow`, `gshadow`, `machine-id`, `hostname`, `localtime`, `os-release` throws |
 
 Built-in seeds:
 
