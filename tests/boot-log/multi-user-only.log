@@ -1,0 +1,4 @@
+[  OK  ] Finished Initial Setup.
+[  OK  ] Finished Generate var sshd-hostkey.
+[  OK  ] Started OpenSSH server daemon.
+[  OK  ] Reached target Multi-User System.

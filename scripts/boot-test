@@ -17,7 +17,7 @@
 #   or the path to golconda-throwaway-keys directly).
 #
 # QEMU runs in the background; the checks run while the guest is up, then the
-# harness stops it. Without --ssh-test the harness waits for multi-user.target.
+# harness stops it. The harness waits for every required serial success marker.
 #
 # Markers checked (each prints PASS/FAIL, only on positive evidence):
 #   - multi-user-reached: multi-user.target reached
@@ -105,6 +105,9 @@ if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
   export BOOT_TEST_TMPDIR
   exec nix-shell -I "nixpkgs=$DEV_PIN" -p qemu OVMF swtpm openssh python3 python3Packages.virt-firmware --run "$0 $*"
 fi
+
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+. "$SCRIPT_DIR/boot-test-log.sh"
 
 # --- argument parsing ---
 # the host port for the guest's sshd: set BOOT_TEST_SSH_PORT when another VM uses 10022
@@ -504,95 +507,12 @@ qemu_running() {
   kill -0 "$QEMU_PID" 2>/dev/null
 }
 
-# wait until multi-user.target is reached or QEMU exits (the timeout ends it)
-wait_for_boot() {
-  while qemu_running; do
-    if grep -qi "Reached target.*Multi.User" "$SERIAL_LOG" 2>/dev/null; then
-      return 0
-    fi
-    sleep 1
-  done
-  return 1
-}
-
 stop_qemu() {
   if qemu_running; then
     kill "$QEMU_PID" 2>/dev/null || true
   fi
   wait "$QEMU_PID" 2>/dev/null || true
   echo "QEMU stopped"
-}
-
-# --- check markers (positive evidence only) ---
-check_markers() {
-  PASS=0
-  FAIL=0
-  
-  echo ""
-  echo "=== Marker checks (serial log) ==="
-  
-  # multi-user-reached: look for "Reached target Multi-User System"
-  if grep -qi "Reached target.*Multi.User" "$SERIAL_LOG" 2>/dev/null; then
-    echo "PASS: multi-user-reached"
-    PASS=$((PASS + 1))
-  else
-    echo "FAIL: multi-user-reached (not found in log)"
-    FAIL=$((FAIL + 1))
-  fi
-  
-  # sshd-active: look for sshd listening
-  if grep -qi "sshd.*Listening\|Started.*sshd\|Started.*OpenSSH" "$SERIAL_LOG" 2>/dev/null; then
-    echo "PASS: sshd-active"
-    PASS=$((PASS + 1))
-  else
-    echo "FAIL: sshd-active (not found in log)"
-    FAIL=$((FAIL + 1))
-  fi
-  
-  # var-sshd-hostkey: the host key var generated and sealed. This is the proof that
-  # the root was writable when the unit ran (docs/design/boot.md). The serial console
-  # colours the unit name, so match across the escape sequence.
-  if grep -qi "Finished.*Generate var sshd-hostkey" "$SERIAL_LOG" 2>/dev/null; then
-    echo "PASS: var-sshd-hostkey"
-    PASS=$((PASS + 1))
-  else
-    echo "FAIL: var-sshd-hostkey (not found in log)"
-    FAIL=$((FAIL + 1))
-  fi
-
-  # boot-complete: boot-complete.target reached
-  if grep -qi "Reached target.*Boot Complete\|boot-complete.target" "$SERIAL_LOG" 2>/dev/null; then
-    echo "PASS: boot-complete"
-    PASS=$((PASS + 1))
-  else
-    echo "FAIL: boot-complete (not found in log)"
-    FAIL=$((FAIL + 1))
-  fi
-  
-  # no-firstboot-prompt: systemd-firstboot.service ran to the end and never prompted.
-  # The markers come from a fresh disk's first boot, and the image runs the unit there
-  # (ConditionFirstBoot=; /base only drops the prompt), so a log without it is no
-  # evidence. "Initial Setup" is the unit's description; the console colours the line,
-  # so match across the escape sequence.
-  if grep -qi "Please enter" "$SERIAL_LOG" 2>/dev/null; then
-    echo "FAIL: no-firstboot-prompt (interactive prompt appeared)"
-    FAIL=$((FAIL + 1))
-  elif grep -qi "Finished.*Initial Setup" "$SERIAL_LOG" 2>/dev/null; then
-    echo "PASS: no-firstboot-prompt (systemd-firstboot.service finished without prompting)"
-    PASS=$((PASS + 1))
-  else
-    echo "FAIL: no-firstboot-prompt (systemd-firstboot.service did not finish on the first boot)"
-    FAIL=$((FAIL + 1))
-  fi
-  
-  echo ""
-  echo "=== Summary ==="
-  echo "PASS: $PASS, FAIL: $FAIL"
-  
-  if [ "$FAIL" -gt 0 ]; then
-    return 1
-  fi
-  return 0
 }
 
 # --- SSH tests ---
@@ -1312,9 +1232,8 @@ main() {
 
   start_qemu
   FIRST_SERIAL_LOG=$SERIAL_LOG
-  wait_for_boot || true
-
   RESULT=0
+  wait_for_boot || RESULT=1
   if [ "$SSH_TEST" = 1 ]; then
     PASS=0
     FAIL=0

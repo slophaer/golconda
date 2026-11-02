@@ -1,0 +1,7 @@
+[  OK  ] Finished Initial Setup.
+[  OK  ] Finished Generate var sshd-hostkey.
+[  OK  ] Started OpenSSH server daemon.
+[  OK  ] Reached target Multi-User System.
+systemd[1]: Starting boot-complete.target.
+systemd[1]: Job boot-complete.target queued.
+[  OK  ] Reached target unrelated.target - Not Boot Complete.
