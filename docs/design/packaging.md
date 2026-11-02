@@ -111,7 +111,9 @@ series, monolithic (no modules, so no kmod), built with `LLVM=1`.
 the base tree alone does not need it. btrfs-progs has a package and tests but is not in the image.
 
 GnuPG and libgcrypt remain an intentional exception to the single crypto-stack preference: systemd's
-signed-index path uses OpenPGP. Keep them until that path supports a suitable replacement.
+signed-index path uses OpenPGP. systemd PR [#44292](https://github.com/systemd/systemd/pull/44292)
+adds UAPI.16 manifests with inline PKCS#7 signatures. Once a released systemd supports that path, it
+could replace GnuPG ([Signed index](releases.md#the-signed-index)).
 
 A new daemon starts as a recipe in `packages/` ([Comparison](comparison.md)). Only a missing build
 system or toolchain feature needs a fork change. Track such changes in

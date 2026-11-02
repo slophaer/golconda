@@ -235,10 +235,21 @@ The machine's own identity is its host key, a local var, plus a host certificate
 revocation list, both admin vars; sshd reads them from its credentials directory, never from the
 image.
 
-Bootstrap in 2 stages. First boot with plain `authorizedKeys` and without settings that require
-admin credentials. Push the host certificate and revocation list through the admin-var route. Then
-deploy the configuration that enables `hostCertificate` and `revokedKeys`. These credentials are
-mandatory once enabled: a missing file must stop sshd rather than disable revocation checks.
+A single deployment is possible if an independent provisioning path supplies the credentials before
+sshd needs them. The revocation list has no dependency on the machine's host key. A host certificate
+does: the machine first generates its key, then the CA signs its public half.
+
+If SSH is the only delivery channel, bootstrap with plain `authorizedKeys` and leave
+`hostCertificate` and `revokedKeys` off. Push the credentials, then enable those settings. This
+avoids needing the SSH connection that the missing revocation list would prevent. It is a delivery
+constraint, not a rule that every deployment needs 2 images.
+
+The ESP helper can supply named credentials before boot, but uses null-key encryption. That route is
+unavailable with Secure Boot and TPM2 together
+([Bootstrap credentials](boot.md#bootstrap-credentials)). An enrollment service ordered before sshd
+could instead generate the host key, obtain its certificate and install the revocation list in one
+first-boot flow. That service is not implemented. Do not make revocation checking optional to bypass
+the delivery constraint.
 
 After v1: operators as `/usr/lib/userdb/*.user` records with `run0` gated by polkit on a few action
 ids (a root-less image), and one CA for SSH and X.509 with TPM device attestation (workload
