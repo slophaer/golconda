@@ -200,6 +200,18 @@ in
     && hasInfix "| `target` | set | none |" docs.pages."/pkgs"
     && hasInfix "not configuration data" docs.pages."/pkgs"
   ))
+  (check "schema: updateSource typedef keeps its input constraint" (
+    let
+      source = schemaLib.typeToSchemaByName "updateSource";
+    in
+    (source.type or null) == "string"
+    && source.pattern == "^(/|.*://)"
+    && source.not.pattern == "[\\u0000-\\u0020\\u007f]"
+    && !(source ? "x-golconda-opaque")
+  ))
+  (check "schema: timezone description quotes its path placeholder" (
+    hasInfix "`/usr/share/zoneinfo/<timezone>`" schemaLib.typeRegistry.timezone.description
+  ))
   (check "schema: parseTypeName handles nested generics" (
     let
       p = schemaLib.parseTypeName "attrsOf<listOf<string>>";
