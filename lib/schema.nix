@@ -123,7 +123,7 @@ let
   # The walk of a module tree is lib/tree.nix; these names stay here for the callers
   # (lib/config.nix, lib/system.nix) that read them from the schema library.
   inherit (import ./tree.nix { }) pathComponents moduleAt modulesOf;
-  inherit (import ./components.nix { }) internalOptions;
+  inherit (import ./components.nix { }) internalOptions roleOf;
 
   # A module that declares options: it has a table in the configuration and in the schema.
   hasOptions = mod: (mod.options or { }) != { };
@@ -321,30 +321,29 @@ let
   # Internal docs and public inputs share the same per-module generation.
   moduleSchemasWith =
     {
+      # [ { path; filePath; root?; } ]: a file's own `root` (a downstream repository's)
+      # wins over `root`
       files ? [ ],
       root ? null,
     }:
     tree:
     let
-      ctx = {
-        inherit root;
-        files = listToAttrs (
-          map (m: {
-            name = m.path;
-            value = m.filePath;
-          }) files
-        );
-      };
+      ctx = listToAttrs (
+        map (m: {
+          name = m.path;
+          value = m;
+        }) files
+      );
     in
     listToAttrs (
       map (m: {
         name = m.path;
         value = moduleToSchema {
           inherit (m) path;
-          file = ctx.files.${m.path} or null;
-          inherit (ctx) root;
+          file = ctx.${m.path}.filePath or null;
+          root = ctx.${m.path}.root or root;
         } m.module;
-      }) (filter (m: hasOptions m.module) (modulesOf tree))
+      }) (filter (m: hasOptions m.module || roleOf m.path m.module == "component") (modulesOf tree))
     );
   moduleSchemas = moduleSchemasWith { };
 
@@ -355,7 +354,18 @@ let
     title = "Golconda configuration";
     description = "Configuration options for Golconda modules: one table per module path.";
     type = "object";
-    properties = builtins.removeAttrs (moduleSchemasWith context tree) [ "/pkgs" ];
+    properties = builtins.removeAttrs (moduleSchemasWith context tree) [ "/pkgs" ] // {
+      # the project table (lib/config.nix): not a module
+      golconda = {
+        description = "Where the downstream repository's modules are, relative to this file. Optional; default \"modules\", used when it exists.";
+        type = "object";
+        properties.modules = {
+          type = "string";
+          description = "The module directory, mounted under /local.";
+        };
+        additionalProperties = false;
+      };
+    };
     required = [ "/system" ];
     additionalProperties = false;
     # every #/$defs/... reference resolves here (units, links, file, app, ...)

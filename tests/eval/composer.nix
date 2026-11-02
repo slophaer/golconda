@@ -9,6 +9,7 @@
   fr,
   hasInfix,
   merge,
+  named,
   s,
   standIn,
   stubSet,
@@ -110,7 +111,7 @@ in
         options."/system" = {
           name = "dup";
           version = "20261031.1";
-          fragments = [
+          components = named [
             { units."a.service" = "[Unit]\n"; }
             { units."a.service" = "[Service]\n"; }
           ];
@@ -192,7 +193,7 @@ in
             "/system" = {
               name = "cat";
               version = "20261031.1";
-              fragments = [
+              components = named [
                 { sysusers = [ "a" ]; }
                 { sysusers = [ "b" ]; }
               ];
@@ -220,6 +221,8 @@ in
     && filesThrow [ { files."/usr//x" = "x"; } ]
     && filesThrow [ { files."/usr/lib/x/" = "x"; } ]
     && filesThrow [ { files."/usr/lib/x\ny" = "x"; } ]
+    # outside /usr: /etc content goes through /factory
+    && filesThrow [ { files."/etc/motd" = "x"; } ]
     # positive: the canonical spelling of the same paths is accepted
     && !(filesThrow [ { files."/usr/lib/x" = "x"; } ])
   ))

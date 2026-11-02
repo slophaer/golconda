@@ -13,8 +13,8 @@ or a key goes wrong. The boot chain itself is in [Boot](boot.md), the keys in [T
 
 - **in `/usr`**, at `/usr/lib/systemd/boot/efi/systemd-boot<arch>.efi.signed`, beside the unsigned
   file the systemd farm links. `loaderFragment` adds it to the system as a closure root and an
-  explicit link (`extraFragments` of `mkSystem`, added without replacing configured fragments). The
-  name is the one bootctl prefers to the unsigned file.
+  explicit link (`extraFragments` of `mkSystem`, a named fragment beside the components). The name
+  is the one bootctl prefers to the unsigned file.
 - **on the ESP**, written by the disk step (`lib/image/disk.nix`). The step fails unless the `/usr`
   tree carries the same bytes at that path, and unless its `/usr/lib/golconda/loader.conf` is the
   disk's `loader.conf`. A fresh disk is therefore already in the state the machine keeps.

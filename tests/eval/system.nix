@@ -103,7 +103,6 @@ in
         "/system" = {
           name = "t";
           version = "20261031.1";
-          fragments = [ ];
           updateSource = "https://updates.example/t/";
         };
       };
@@ -125,7 +124,6 @@ in
         "/system" = {
           name = "t";
           version = "20261031.1";
-          fragments = [ ];
           updateSource = "https://updates.example/t/";
         };
       };

@@ -133,8 +133,10 @@ let
     };
 
   # the composer as mkSystem drives it (lib/components.nix): the built-in components, the
-  # optional ones with a table, then `fragments`
+  # optional ones with a table, then `fragments` as the build's own fragments, each named
+  # by its `name` or `fragments[<i>]`
   componentsLib = import ../../lib/components.nix { };
+  named = fragments: map (l: l.fragment // { name = l.origin; }) (merge.labelFragments fragments);
   compose =
     fragments:
     componentsLib.compose {
@@ -144,9 +146,9 @@ let
         "/system" = {
           name = "t";
           version = "20261031.1";
-          inherit fragments;
         };
       };
+      extra = named fragments;
     };
   # compose with extra module options (for /network, /factory, etc.)
   composeWith =
@@ -158,7 +160,6 @@ let
         "/system" = {
           name = "t";
           version = "20261031.1";
-          fragments = [ ];
         };
       }
       // extraOpts;
@@ -282,6 +283,7 @@ in
     mkSystemFixture
     moduleDocs
     modulePaths
+    named
     openssh
     pamSshd
     pkgs

@@ -1,4 +1,4 @@
-# Public image composition must keep configured fragments alongside image-owned links.
+# Public image composition must keep configured modules alongside image-owned links.
 {
   check,
   f,
@@ -7,20 +7,15 @@
 }:
 let
   marker = "/usr/lib/custom-marker";
+  # the marker is a downstream module (tests/fixtures/image-workload/modules)
+  modules = ../fixtures/image-workload/modules;
   config = {
+    golconda = { inherit modules; };
     "/system" = {
       name = "fragment-test";
       version = "20261031.1";
-      fragments = [
-        {
-          name = "custom-marker";
-          files.${marker} = {
-            text = "custom workload\n";
-            mode = "0644";
-          };
-        }
-      ];
     };
+    "/local/marker" = { };
   };
   image =
     config:
@@ -53,22 +48,18 @@ let
       (linkAt "/usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed").target
       == "${i.loader}/systemd-bootx64.efi.signed"
     && keyring.target == "${expectedKeyring}/import-pubring.pgp";
-  replacement = f.lib.mkSystem {
+  additive = f.lib.mkSystem {
     inherit config;
     system = "x86_64-linux";
-    extra."/system".fragments = [
-      { files."/usr/lib/replacement-marker".text = "replacement"; }
-    ];
     extraFragments = [
-      { files."/usr/lib/additive-marker".text = "additive"; }
+      {
+        name = "/image/additive";
+        files."/usr/lib/additive-marker".text = "additive";
+      }
     ];
   };
   duplicateConfig = config // {
-    "/system" = config."/system" // {
-      fragments = config."/system".fragments ++ [
-        { files."/usr/lib/systemd/import-pubring.pgp".text = "collision"; }
-      ];
-    };
+    "/local/collision" = { };
   };
 in
 [
@@ -101,14 +92,14 @@ in
         "image-smoke-test-nosb-next"
       ]
   ))
-  (check "mkImage: retains configured fragments and image links from an attrset" (keepsMarker config))
-  (check "mkImage: retains configured fragments and image links from TOML" (
-    keepsMarker ../fixtures/image-fragments.toml
+  (check "mkImage: retains configured modules and image links from an attrset" (keepsMarker config))
+  (check "mkImage: retains configured modules and image links from TOML" (
+    keepsMarker ../fixtures/image-workload/server.toml
   ))
-  (check "mkSystem: replaces configured fragments before additive fragments" (
-    !(replacement.composed.files ? ${marker})
-    && replacement.composed.files."/usr/lib/replacement-marker".text == "replacement"
-    && replacement.composed.files."/usr/lib/additive-marker".text == "additive"
+  (check "mkSystem: extraFragments are named and added beside the configured modules" (
+    additive.composed.files ? ${marker}
+    && additive.composed.files."/usr/lib/additive-marker".text == "additive"
+    && builtins.elem "/image/additive" additive.fragments
   ))
   (check "mkImage: rejects a user claim on its keyring destination" (
     !(builtins.tryEval (builtins.deepSeq (image duplicateConfig).erofs.usrTree.links true)).success

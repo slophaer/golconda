@@ -49,9 +49,9 @@ in
             inherit version;
           };
         };
-        extra."/system".fragments = [
+        extraFragments = [
           {
-            name = "initrd";
+            name = "/image/initrd";
             packages = [
               pkgs.lvm2 # dmsetup and the dm udev rules (initrd.nu substitutes {prefix})
               pkgs.cryptsetup # veritysetup, for the initrd's own checks

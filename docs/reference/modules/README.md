@@ -9,7 +9,7 @@ this shape: [design/modules](../../design/modules.md).
 
 | path             | role                                                                                                                                                                       |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/system`        | the composer: `name`, `version`, `updateSource`, `fragments`, and `components` from `mkSystem` → the output below                                                          |
+| `/system`        | the composer: `name`, `version`, `updateSource`, and `components` from `mkSystem` → the output below                                                                       |
 | `/pkgs`          | the repkgs sets, passed once as `target` (and `build`); returns `{ target; build; pkgs }` to the modules that declare the input                                            |
 | `/base`          | built in, composed first: systemd, dbus-broker, dash, uutils coreutils, tpm2-tss, e2fsprogs, the kernel, the base units, `C.UTF-8`, `ntp`, `journalMaxUse` (details below) |
 | `/network`       | built in: networkd `.network` files (DHCP on every wired link by default) and resolved's fallback `dns`                                                                    |
@@ -23,20 +23,20 @@ this shape: [design/modules](../../design/modules.md).
 `/system` returns
 `{ name; version; updateSource; units; files; sysusers; tmpfiles; packages; packageOrigins; links }`:
 
-| field            | shape                                                                            | installed as                                                                                   |
-| ---------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `units`          | `{ unitName = text; }`                                                           | `/usr/lib/systemd/system/<name>`; user units are `files`                                       |
-| `files`          | `{ path = { text; mode; }; }`                                                    | the path, a canonical path under `/usr/`                                                       |
-| `sysusers`       | `[ line ]`                                                                       | `/usr/lib/sysusers.d/golconda.conf`                                                            |
-| `tmpfiles`       | `[ line ]`                                                                       | `/usr/lib/tmpfiles.d/golconda.conf`                                                            |
-| `packages`       | `[ drv ]`                                                                        | the closure in `/usr/nix/store`, each package once                                             |
-| `packageOrigins` | `{ "name-version" = [ origin ]; }`                                               | `/usr/lib/golconda/packages.json`: a component's path, a fragment's `name` or `fragments[<i>]` |
-| `origins`        | `{ packages; files; links; units; sysusers; tmpfiles }`, each key → `[ origin ]` | `/usr/lib/golconda/attribution.json`; `packageOrigins` is `origins.packages`                   |
-| `links`          | `{ path = { target; kind; }; }`                                                  | every symlink of `/usr`: `/usr/bin`, expanded directories, dlopen sonames, `.wants`            |
+| field            | shape                                                                            | installed as                                                                        |
+| ---------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `units`          | `{ unitName = text; }`                                                           | `/usr/lib/systemd/system/<name>`; user units are `files`                            |
+| `files`          | `{ path = { text; mode; }; }`                                                    | the path, a canonical path under `/usr/`                                            |
+| `sysusers`       | `[ line ]`                                                                       | `/usr/lib/sysusers.d/golconda.conf`                                                 |
+| `tmpfiles`       | `[ line ]`                                                                       | `/usr/lib/tmpfiles.d/golconda.conf`                                                 |
+| `packages`       | `[ drv ]`                                                                        | the closure in `/usr/nix/store`, each package once                                  |
+| `packageOrigins` | `{ "name-version" = [ origin ]; }`                                               | `/usr/lib/golconda/packages.json`: a component's path or a build fragment's `name`  |
+| `origins`        | `{ packages; files; links; units; sysusers; tmpfiles }`, each key → `[ origin ]` | `/usr/lib/golconda/attribution.json`; `packageOrigins` is `origins.packages`        |
+| `links`          | `{ path = { target; kind; }; }`                                                  | every symlink of `/usr`: `/usr/bin`, expanded directories, dlopen sonames, `.wants` |
 
 Units, files and links are installed into one `/usr` tree, so a path that two of them claim is an
-error that names both claims and both origins (a module's `name`, or `fragments[<i>]`). Each kind
-installs to one place:
+error that names both claims and both origins (a module path, or a build fragment's `name`). Each
+kind installs to one place:
 
 - a unit at `/usr/lib/systemd/system/<name>`;
 - a file or link at its path;
@@ -183,9 +183,9 @@ cosmetic change.
 
 `merge [ fragmentA fragmentB ]` unions `units`, `files` and `links`, normalises every file to
 `{ text; mode; }`, concatenates `sysusers` and `tmpfiles`, returns `packages` with each package
-once, and records in `packageOrigins` which fragments (by `name`, or `fragments[<i>]`) brought each.
-The output's `links` is one map: the composer derives `/usr/bin/<name>` for every name in a
-package's `bin` list (kind `package`) into the same map as the fragments' links.
+once, and records in `packageOrigins` which fragments (by `name`) brought each. The output's `links`
+is one map: the composer derives `/usr/bin/<name>` for every name in a package's `bin` list (kind
+`package`) into the same map as the fragments' links.
 
 One duplicate check covers it all. Each fragment claims paths in `/usr`: its units, files, links and
 its packages' `/usr/bin` links. A path claimed twice throws, whatever the kinds, and the message
@@ -199,7 +199,7 @@ test can read what the error says.
 
 Error message examples:
 `golconda: /usr/lib/foo.conf defined twice: file from /services/a, file from /services/b`;
-`golconda: /usr/bin/jq defined twice: package jq-1.7 from fragments[0], explicit link to <store path>/bin/jq from fragments[1]`;
+`golconda: /usr/bin/jq defined twice: package jq-1.7 from /local/a, explicit link to <store path>/bin/jq from /local/b`;
 `golconda: /usr/lib/os-release defined twice: file from lib/usr-tree/main.nu, file from /services/a`.
 
 ### `/pkgs`

@@ -42,7 +42,7 @@ iets eval --json -E '(import ./default.nix).configLib.validPaths'
 | `/base`          | `ntp`, `journalMaxUse`                                                                                              |
 | `/factory`       | `timezone`, `extraFiles`                                                                                            |
 | `/network`       | `networks`, `dns`, `defaultDhcp`                                                                                    |
-| `/system`        | `name`, `version`, `updateSource`, `fragments` (a list of tables; `packages` in a fragment is Nix only)             |
+| `/system`        | `name`, `version`, `updateSource`                                                                                   |
 | `/services/sshd` | `package` (Nix only), `port`, `authorizedKeys`, `trustedUserCAKeys`, `principals`, `revokedKeys`, `hostCertificate` |
 
 The option types, defaults and descriptions are on the generated module pages
@@ -52,17 +52,54 @@ A `/network.networks` entry takes the required table `match`, plus the optional 
 `link`, `dhcpv4`, `address` and `route`, one for each section of a `.network` file. Any other key,
 including a capitalised `Network`, is refused by name when the document is evaluated.
 
-A fragment of `units`, `files`, `sysusers`, `tmpfiles` and `links` is plain data and loads from
-TOML, as an array of tables:
+## Your own modules
 
-```toml
-[["/system".fragments]]
-name = "motd"
-files = { "/usr/lib/motd" = "hello\n" }
-tmpfiles = ["d /var/lib/motd 0755 root root -"]
+Units, files or lines of your own are a module. Put it in `modules/` beside the document; it is
+mounted under `/local` and selected by its table, as any optional module:
+
+```
+my-servers/
+├── server.toml
+└── modules/
+    └── motd/default.nix      # → /local/motd
 ```
 
-Only `packages` needs Nix, because a package is a derivation.
+```nix
+# modules/motd/default.nix
+{ types, ... }:
+{
+  name = "motd";
+  options.text = {
+    type = types.string;
+    default = "Welcome\n";
+    description = "The message of the day.";
+  };
+  impl =
+    { options, ... }:
+    {
+      files."/usr/lib/motd" = {
+        inherit (options) text;
+        mode = "0644";
+      };
+    };
+}
+```
+
+```toml
+["/local/motd"]
+text = "hello\n"
+```
+
+The optional `[golconda]` table names another directory, relative to the document:
+
+```toml
+[golconda]
+modules = "site"
+```
+
+The default `modules/` is used when it exists; a directory the table names must exist. The module
+gets a schema entry with the file it is declared in, a row in `modules.json`, and the attribution of
+what it emits. The generated module pages cover Golconda's own tree only.
 
 ## Validation
 
@@ -100,19 +137,18 @@ golconda.lib.mkSystem {
 }
 ```
 
-| argument         | meaning                                                                                                            |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `config`         | a path to a TOML file, or an attribute set of options already loaded                                               |
-| `platform`       | the target platform, default `system`                                                                              |
-| `system`         | the build host, default `builtins.currentSystem`, which `iets eval` refuses unless `--impure`: pass it explicitly  |
-| `sources`        | the pins, default `nix/sources.nix`                                                                                |
-| `extra`          | Nix-only options merged into the TOML's, one module path at a time (a package override, a fragment written in Nix) |
-| `extraFragments` | Additional fragments appended after `extra` replaces options; used by the image chain for its loader and keyring   |
+| argument         | meaning                                                                                                                                 |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `config`         | a path to a TOML file, or an attribute set of options already loaded                                                                    |
+| `platform`       | the target platform, default `system`                                                                                                   |
+| `system`         | the build host, default `builtins.currentSystem`, which `iets eval` refuses unless `--impure`: pass it explicitly                       |
+| `sources`        | the pins, default `nix/sources.nix`                                                                                                     |
+| `extra`          | Nix-only options merged into the TOML's, one module path at a time (a package override)                                                 |
+| `extraFragments` | the build's own fragments, each with a `name` (`lib/image`: the loader, the update index, the initrd's tools); listed in `modules.json` |
 
 `extra` replaces individual option values, including lists and nested objects; it does not merge
-inside an option. `extraFragments` appends to the resulting fragment list before composition.
-`mkImage` uses this additive route so its loader and keyring do not discard the configured workload.
-Duplicate claims still fail rather than override one another.
+inside an option. `extraFragments` adds the image's own fragments (`mkImage`'s loader and keyring)
+beside the components; a duplicate claim still fails rather than overrides.
 
 `mkSystem` binds `/pkgs.target` to the platform's set, selects the components (the built-ins, then
 every optional component the document has a table for; an empty table selects one with its defaults;
@@ -124,6 +160,7 @@ every optional component the document has a table for; an empty table selects on
 | `usrTree`         | the `/usr` tree derivation with the artifacts in `/usr/lib/golconda/`                                 |
 | `config`          | the normalized options of every included component and `/system`, derivations replaced by their names |
 | `inventory`       | every module's role and inputs; for a component, `included` and `reason`                              |
+| `fragments`       | the names of the build's own fragments (`/image/hwdb` and `extraFragments`)                           |
 | `artifacts`       | the files `mkSystem` adds to `/usr/lib/golconda/`                                                     |
 | `platform`        | the elaborated platform record                                                                        |
 | `version`, `name` | from `/system`                                                                                        |
@@ -141,6 +178,7 @@ route into the tree is checked.
 
 ## Nix escapes
 
-TOML covers the common path. Nix stays necessary for a custom module (a service not in the tree), a
-package not in repkgs, and logic (a value shared between options, a conditional). A document cannot
-name a derivation or a function.
+TOML covers the common path. Nix stays necessary for a custom module (in `modules/` beside the
+document, [Your own modules](#your-own-modules)), a package not in repkgs, and logic (a value shared
+between options, a conditional), which lives in a module too. A document cannot name a derivation or
+a function.

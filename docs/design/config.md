@@ -28,19 +28,20 @@ path, and nothing in it can name a derivation or a function.
 A document turns a module on by naming it: a table `["/services/sshd"]`, empty for the defaults,
 puts the sshd component in the system; a service with no table is off. The built-in components
 (`/base`, `/network`, `/security`, `/factory`, `/vars`) are in every system. There is no `enable`
-flag. A fragment written in Nix (`/system.fragments`) is the escape hatch: one named after a
-component is refused, but such a fragment can carry anything, so `/usr/lib/golconda/modules.json`
-lists the selected modules, with why, and every fragment that is not a module
-([Modules](modules.md#which-modules-a-system-has)).
+flag, and no other route in: a downstream repository adds a module, never a bare fragment. Its
+`modules/` directory beside the document is mounted under `/local`, so `/local/motd` is a component
+like `/services/sshd`, with typed options, a schema entry and a table that selects it. The optional
+`[golconda]` table names another directory (`modules = "site"`). `/usr/lib/golconda/modules.json`
+therefore lists every module in the image, with why, and the build's own named fragments
+(`/image/hwdb`) ([Modules](modules.md#which-modules-a-system-has)).
 
 The entry point that applies this rule is `lib/system.nix`:
 `mkSystem { config; platform?; extra?; }` takes the document (a path, or options already loaded),
 binds the package set of the platform, selects the components, composes, and returns the composed
 system and its `/usr` tree derivation. `golconda.nix` at the repository root is the template a user
 copies next to `server.toml` (the analogue of a NixOS `system.nix`). `extra` is the one Nix hook: an
-attribute set merged into the options, for a package override or a fragment that needs a derivation,
-so a configuration is pure TOML or TOML plus Nix. A fragment of plain data (units, files, sysusers
-and tmpfiles lines) needs no Nix: `/system.fragments` takes it in the TOML as an array of tables.
+attribute set merged into the options, for a package override, so a configuration is pure TOML or
+TOML plus Nix. Anything more, units or files of your own, is a module in the downstream `modules/`.
 The interface is in [reference/config](../reference/config.md#the-entry-point).
 
 ## The schema

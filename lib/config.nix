@@ -29,7 +29,13 @@
 #   let cfg = import ./lib/config.nix { tree = f.modules { }; };
 #   in cfg.loadConfig ./config.toml
 #
-# `tree` is the evaluated tree (f.modules { }), for path and option validation.
+# The one table that is not a module, `[golconda]`, says where the downstream repository's
+# parts are, relative to the document: `modules` (default "modules", mounted under /local).
+# A default directory that does not exist means none; a path the table names must exist.
+# `readProject path` reads it without the tree: mkSystem needs it to build the tree.
+#
+# `tree` is the evaluated tree (f.modules { }), for path and option validation. `readProject`
+# does not use it.
 { tree }:
 let
   inherit (builtins)
@@ -38,16 +44,70 @@ let
     elem
     filter
     head
+    isString
+    pathExists
     readFile
+    removeAttrs
     ;
 
+  # The project table: its keys and their default directories.
+  projectDefaults = {
+    modules = "modules";
+  };
+
+  # { modules; }: each a path or null. `dir` is the document's directory; `given` its
+  # `golconda` table.
+  resolveProject =
+    dir: given:
+    let
+      unknown = filter (k: !(projectDefaults ? ${k})) (attrNames given);
+      resolve =
+        key:
+        if given ? ${key} then
+          let
+            v = given.${key};
+            d = if isString v then dir + "/${v}" else v;
+          in
+          if !(isString v) && !(builtins.isPath v) || (isString v && dir == null) then
+            throw "golconda: golconda.${key} must be a path relative to the configuration (a Nix path in an attrset configuration)"
+          else if pathExists d then
+            d
+          else
+            throw "golconda: golconda.${key} names '${toString v}', which does not exist"
+        else if dir != null && pathExists (dir + "/${projectDefaults.${key}}") then
+          dir + "/${projectDefaults.${key}}"
+        else
+          null;
+    in
+    if unknown != [ ] then
+      throw "golconda: [golconda] has no key ${concatStringsSep ", " unknown}; valid keys: ${concatStringsSep ", " (attrNames projectDefaults)}"
+    else
+      builtins.mapAttrs (k: _: resolve k) projectDefaults;
+
+  # The project of a TOML file (a path) or of options already loaded (an attrset, where
+  # `golconda.modules` is a path and nothing has a default).
+  readProject =
+    config:
+    if builtins.isPath config then
+      resolveProject (dirOf config) ((builtins.fromTOML (readFile config)).golconda or { })
+    else if builtins.isAttrs config then
+      resolveProject null (config.golconda or { })
+    else
+      # mkSystem refuses any other config with its own message
+      builtins.mapAttrs (_: _: null) projectDefaults;
+
   treeLib = import ./tree.nix { };
-  inherit (import ./components.nix { }) internalOptions;
+  inherit (import ./components.nix { }) internalOptions roleOf;
   moduleAt = treeLib.moduleAt tree;
 
-  # Every module path with options, except /pkgs: the tables a document may have.
+  # Every module path with options, and every component, except /pkgs: the tables a document may have.
+  # A component is a table even with no options: its table selects it.
   validPaths = filter (p: p != "/pkgs") (
-    map (m: m.path) (filter (m: (m.module.options or { }) != { }) (treeLib.modulesOf tree))
+    map (m: m.path) (
+      filter (m: (m.module.options or { }) != { } || roleOf m.path m.module == "component") (
+        treeLib.modulesOf tree
+      )
+    )
   );
 
   # The message for a table `given` at module path `p`, or null: an unknown
@@ -89,7 +149,8 @@ let
     text:
     let
       toml = builtins.fromTOML text;
-      options = checkOptions toml;
+      # [golconda] is the project table, not a module (readProject)
+      options = checkOptions (removeAttrs toml [ "golconda" ]);
     in
     if toml ? "/pkgs" then
       throw "golconda: /pkgs is not configuration: the repkgs set comes from nix (nix/default.nix), not from the document"
@@ -105,6 +166,7 @@ in
     loadConfig
     loadConfigText
     optionError
+    readProject
     validPaths
     ;
 }

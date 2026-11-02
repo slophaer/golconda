@@ -193,44 +193,84 @@ in
     in
     agrees sys && !sys.inventory."/services/sshd".included && !(sys.composed.units ? "sshd.service")
   ))
-  (check "mkSystem: a fragment that is not a module is listed in modules.json" (
+  (check "mkSystem: the build's own fragments are named and listed in modules.json" (
     let
-      sys = mkSystem (
-        head
-        // {
-          "/system" = head."/system" // {
-            fragments = [
-              { name = "local"; }
-              { }
-            ];
-          };
-        }
-      );
+      sys = import ../../lib/system.nix {
+        inherit sources platform;
+        system = platform;
+        config = head;
+        extraFragments = [ { name = "/image/test"; } ];
+      };
     in
     sys.fragments == [
-      "local"
-      "fragments[1]"
       "/image/hwdb"
+      "/image/test"
     ]
     && agrees sys
-  ))
-  (check "mkSystem: a component as a listed fragment is refused (it enters by its table)" (
-    throws
-      (mkSystem (
-        head
-        // {
-          "/system" = head."/system" // {
-            fragments = [ sshd ];
-          };
-        }
-      )).composed.units
     &&
       throws
-        (composeWith {
-          "/system" = head."/system" // {
-            fragments = [ sshd ];
-          };
-        }).units
+        (import ../../lib/system.nix {
+          inherit sources platform;
+          system = platform;
+          config = head;
+          extraFragments = [ { } ];
+        }).composed.units
+  ))
+  (check "config: /system has no fragments option: a component enters by its table" (
+    !(tryEval (
+      configLib.loadConfigText ''
+        [["/system".fragments]]
+        name = "x"
+      ''
+    )).success
+    &&
+      throws
+        (mkSystem (
+          head
+          // {
+            "/system" = head."/system" // {
+              fragments = [ sshd ];
+            };
+          }
+        )).composed.units
+  ))
+  (check "downstream: modules/ beside the document is mounted under /local and selected by its table"
+    (
+      let
+        sys = mkSystem ../fixtures/downstream/server.toml;
+      in
+      agrees sys
+      && sys.inventory."/local".role == "group"
+      && sys.inventory."/local/motd".reason == "config"
+      && sys.composed.files."/usr/lib/motd".text == "hello\n"
+      && elem "/local/motd" (originsOf sys.composed)
+      &&
+        sys.config."/local/motd".text == {
+          value = "hello\n";
+          explicit = true;
+        }
+    )
+  )
+  (check "downstream: a module's schema has its options and the file it is declared in" (
+    let
+      sys = mkSystem ../fixtures/downstream/server.toml;
+      sch = fromJSON sys.artifacts."/usr/lib/golconda/schema.json".text;
+    in
+    sch.properties."/local/motd".properties.text."x-golconda-declaredIn".file
+    == "modules/motd/default.nix"
+  ))
+  (check "downstream: [golconda] names the module directory; without a table the module is out" (
+    let
+      sys = mkSystem ../fixtures/downstream-explicit/server.toml;
+    in
+    agrees sys
+    && sys.inventory."/local/motd".included == false
+    && !(sys.composed.files ? "/usr/lib/motd")
+  ))
+  (check "downstream: no modules/ beside the document, no /local; a named directory must exist" (
+    !((mkSystem ../fixtures/downstream-none/server.toml).inventory ? "/local")
+    && throws (mkSystem ../fixtures/downstream-none/missing.toml).inventory
+    && !(tryEval (configLib.readProject { golconda.nope = 1; })).success
   ))
   (check
     "mkSystem: config.json has a row for every included component and /system, no internal option"
@@ -247,7 +287,6 @@ in
     let
       sch = schemaLib.toJsonSchema (f.modules { });
     in
-    !(sch.properties."/system".properties ? components)
-    && sch.properties."/system".properties ? fragments
+    !(sch.properties."/system".properties ? components) && sch.properties."/system".properties ? name
   ))
 ]

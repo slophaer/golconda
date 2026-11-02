@@ -3,6 +3,7 @@
 #
 #   modulePaths root        the module files, found the way adios finds them:
 #                           [ { path = "/services/sshd"; filePath = <default.nix>; } ]
+#   modulePathsAt prefix dir  the same for a directory mounted at `prefix` (/local)
 #   pathComponents p        "/services/sshd" -> [ "services" "sshd" ]
 #   moduleAt tree p         the module at path p of a loaded or evaluated tree
 #   modulesOf tree          every module of that tree, parent before child:
@@ -105,10 +106,12 @@ let
 
   # The module files under `root`, the directory passed to `adios.lib.importModules`.
   modulePaths = root: walk "" root;
+  modulePathsAt = walk;
 in
 {
   inherit
     modulePaths
+    modulePathsAt
     pathComponents
     moduleAt
     modulesOf

@@ -101,10 +101,10 @@ and it never selects anything: reading `/pkgs` installs nothing, and `/system` r
 all. `mkSystem` evaluates each selected component once and passes the fragments to `/system` as
 `components`, each named by its module path, so the attribution names the module and never an index.
 `/usr/lib/golconda/modules.json` records the result: every module's role and inputs, for a component
-whether it is included and why (`builtin` or `config`), and the origins of the fragments that are
-not modules (`/system.fragments`, `/image/hwdb`). The image is those components plus those
-fragments. A Nix fragment can carry anything, even a component's units under another name; the list
-names it, so a tool shows it and does not claim to know its contents.
+whether it is included and why (`builtin` or `config`), and the names of the build's own fragments
+(`/image/hwdb`, and the loader and update index of a signed image). The image is those components
+plus those fragments, nothing else: `/system` has no other list, and a downstream repository adds a
+module under `/local`, never a bare fragment.
 
 ## The base system
 
@@ -182,10 +182,10 @@ var names its credential id in `credentials` and orders itself after the var's u
 
 ## The composer
 
-`/system` takes `name`, `version`, `updateSource` and `fragments`, and from `mkSystem` the selected
-components' fragments as `components` ([Which modules a system has](#which-modules-a-system-has)).
-It merges the components first, then `fragments`, then the sysupdate definitions it renders from
-`updateSource`. The merge follows four rules:
+`/system` takes `name`, `version` and `updateSource`, and from `mkSystem` the selected components'
+fragments and the build's own as `components`, each named
+([Which modules a system has](#which-modules-a-system-has)). It merges them, then the sysupdate
+definitions it renders from `updateSource`. The merge follows four rules:
 
 - Attribute-set fields are unioned, and a key that appears twice throws with the key's name.
 - List fields are concatenated.
@@ -198,10 +198,8 @@ A module that returns several fragments unions them with the same `merge`, so a 
 module is the same error as one between modules. The output is the only thing the `/usr` tree
 builder reads.
 
-A service is on when the document has its table; there is no `enable` flag. `fragments` is for a
-fragment written in Nix that is not a module; one named after a component is refused. Such a
-fragment can still carry anything, so `modules.json` lists it beside the modules. How a TOML
-document becomes an image is in [Configuration](config.md#from-document-to-image).
+A service is on when the document has its table; there is no `enable` flag. How a TOML document
+becomes an image is in [Configuration](config.md#from-document-to-image).
 
 ## `/factory`
 
