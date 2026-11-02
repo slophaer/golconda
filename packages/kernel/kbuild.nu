@@ -3,10 +3,13 @@
 use core.nu *
 
 # Keep build data in structured attributes, not generated Nushell source.
+# config: the package's typed base. extra: typed options the system requires (nix/packages.nix),
+# merged over the base and never overridden by a fragment
 def kernel-options []: nothing -> record {
   let values = (ctx).spec.env
   {
     config: ($values.GOLCONDA_KERNEL_CONFIG | from json)
+    extra: ($values.GOLCONDA_KERNEL_EXTRA_CONFIG | from json)
     fragments: ($values.GOLCONDA_KERNEL_FRAGMENTS | from json)
     make: ($values.GOLCONDA_KERNEL_MAKE | from json)
   }
@@ -66,17 +69,21 @@ export def configure []: nothing -> nothing {
   x make ...(make-flags) defconfig
   let fragments = $o.fragments
   let overridden = (fragment-lines $fragments | each {|l| fragment-name $l } | uniq)
+  let config = ($o.config | merge $o.extra)
   let typed_file = $"($c.build)/kernel.config"
-  if ($o.config | is-not-empty) {
-    ($o.config | items {|name, value| config-line $name $value } | str join "\n") + "\n" | save -f $typed_file
+  if ($config | is-not-empty) {
+    ($config | items {|name, value| config-line $name $value } | str join "\n") + "\n" | save -f $typed_file
   }
-  let files = ((if ($o.config | is-not-empty) { [$typed_file] } else { [] }) ++ $fragments)
+  let files = ((if ($config | is-not-empty) { [$typed_file] } else { [] }) ++ $fragments)
   if ($files | is-not-empty) {
     x sh $"($c.src)/scripts/kconfig/merge_config.sh" -m $"($c.src)/.config" ...$files
     x make ...(make-flags) olddefconfig
-    let typed = ($o.config | columns | where { $in not-in $overridden } | reduce -f {} {|n, acc| $acc | insert $n ($o.config | get $n) })
-    if ($typed | is-not-empty) { verify-config $typed $"($c.src)/.config" }
+    # a fragment may change a base option; the extra options are checked last, even where a
+    # fragment names them, so a contradicting fragment fails the build
+    let base = ($o.config | reject -o ...($overridden ++ ($o.extra | columns)))
+    if ($base | is-not-empty) { verify-config $base $"($c.src)/.config" }
     if ($fragments | is-not-empty) { verify-fragments (fragment-lines $fragments) $"($c.src)/.config" }
+    if ($o.extra | is-not-empty) { verify-config $o.extra $"($c.src)/.config" }
   }
 }
 

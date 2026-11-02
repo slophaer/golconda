@@ -31,8 +31,12 @@ let
     let
       k = builtins.head (filter (p: (p.pname or "") == "linux-kernel") sys.composed.packages);
     in
-    (builtins.fromJSON k.spec.env.GOLCONDA_KERNEL_CONFIG).SYSTEM_TRUSTED_KEYS or null;
+    (extraOf k.spec.env).SYSTEM_TRUSTED_KEYS or null;
+  # the JSON keeps the certificate's store context (the build needs the file): drop it to read
+  extraOf =
+    env: builtins.fromJSON (builtins.unsafeDiscardStringContext env.GOLCONDA_KERNEL_EXTRA_CONFIG);
   cert = "/srv/keys/secureboot/db.crt";
+  storeCert = "${builtins.toFile "db.crt" "test certificate"}";
 in
 [
   (check "secureBoot: on by default, and the kernel has no built-in key" (
@@ -41,9 +45,15 @@ in
   (check "secureBoot: false puts the db certificate into the kernel's built-in keyring" (
     trusted (sysWith { secureBoot = false; } cert) == cert
     &&
-      (builtins.fromJSON
-        (sysWith { secureBoot = false; } cert).pkgs.linux-kernel.spec.env.GOLCONDA_KERNEL_CONFIG
-      ).SYSTEM_TRUSTED_KEYS == cert
+      (extraOf (sysWith { secureBoot = false; } cert).pkgs.linux-kernel.spec.env).SYSTEM_TRUSTED_KEYS
+      == cert
+  ))
+  (check "secureBoot: false with a store certificate keeps its context in the kernel's env" (
+    let
+      env = (sysWith { secureBoot = false; } storeCert).pkgs.linux-kernel.spec.env;
+    in
+    trusted (sysWith { secureBoot = false; } storeCert) == storeCert
+    && builtins.hasContext env.GOLCONDA_KERNEL_EXTRA_CONFIG
   ))
   (check "secureBoot: false without the image's keys is an error" (
     !(tryEval (deepSeq (trusted (sysWith { secureBoot = false; } null)) true)).success
