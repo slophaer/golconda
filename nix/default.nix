@@ -65,6 +65,26 @@ in
         "/system" = {
           name = "boot-test";
           inherit version;
+          fragments = [
+            {
+              name = "test-workload";
+              files."/usr/lib/golconda/test-workload".text = "configured-workload\n";
+              units."custom-workload.service" = ''
+                [Unit]
+                Description=Configured fragment regression test
+                Before=boot-complete.target
+
+                [Service]
+                Type=oneshot
+                ExecStart=/usr/bin/sh -ec 'test "$$(/usr/bin/cat /usr/lib/golconda/test-workload)" = configured-workload'
+                RemainAfterExit=yes
+              '';
+              links."/usr/lib/systemd/system/boot-complete.target.requires/custom-workload.service" = {
+                target = "../custom-workload.service";
+                kind = "explicit";
+              };
+            }
+          ];
           # The update test's release server: 10.0.2.2 is the host under QEMU user
           # networking, where the test serves the next release's disk.release/ with
           # `python3 -m http.server 8074` (docs/reference/image.md).
