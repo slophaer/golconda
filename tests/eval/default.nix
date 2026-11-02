@@ -27,6 +27,7 @@ let
     ./module-docs.nix
     ./config.nix
     ./image.nix
+    ./image-config.nix
     ./sysupdate.nix
     ./boot.nix
     ./factory.nix
