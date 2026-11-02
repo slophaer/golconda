@@ -201,7 +201,7 @@ in
         }).modules.system
           { };
     in
-    # /base adds its own sysusers; check that the fragments' sysusers are there
+    # the composer alone (no components): the fragments' sysusers are there
     elem "a" result.sysusers && elem "b" result.sysusers
   ))
   # 7. Composer output includes links from services and vars

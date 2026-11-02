@@ -3,7 +3,13 @@
 # mkSystem { config; platform?; sources?; extra?; extraFragments?; } → {
 #   composed;   # the composer output (units, files, links, packages, …)
 #   usrTree;    # the /usr derivation
-#   config;     # config.json: module path -> option -> { value?; explicit; }
+#   config;     # config.json: module path -> option -> { value?; explicit; }, for every
+#               # included component and /system
+#   inventory;  # module path -> { role; inputs; included?; reason?; } (lib/components.nix)
+#   fragments;  # the origins of the fragments that are not modules: /system.fragments
+#               # (a fragment's `name` or fragments[<i>]) and mkSystem's own (/image/hwdb)
+#               # modules.json is { modules = inventory; fragments; }
+#   artifacts;  # the files mkSystem adds to /usr/lib/golconda/
 #   platform;   # the elaborated platform record
 #   version;    # YYYYMMDD.N from /system
 #   name;       # image id from /system
@@ -94,20 +100,17 @@ let
     "/pkgs".target = setFull.set;
   };
 
-  # Evaluate the module tree with the merged options.
-  evaluated = tree { options = mergedOptions; };
-
-  # Gather fragments from service modules that have options set in the config.
-  # A service is enabled when its path appears in the config (e.g., /services/sshd).
-  # Implicit modules (/vars, /factory, /network) are always included.
-  configuredServices = builtins.filter (p: builtins.match "/services/.*" p != null) (
-    attrNames mergedOptions
-  );
-
-  # "/services/sshd" -> evaluated.modules.services.modules.sshd, called
-  serviceFragments = map (path: treeLib.moduleAt evaluated path { }) configuredServices;
-
-  varsFragment = evaluated.modules.vars { };
+  # Which modules enter the system, and why: the built-in components, then each optional
+  # component the configuration has a table for (lib/components.nix).
+  componentsLib = import ./components.nix { };
+  inventory = componentsLib.inventory (tree { }) mergedOptions;
+  # The configuration's fragments, then the image's own (extraFragments, added after them)
+  listedFragments = (systemOptions.fragments or [ ]) ++ extraFragments;
+  # A fragment written in Nix can carry anything, so modules.json lists these beside the
+  # modules: the image is the selected components plus these, nothing else.
+  fragments =
+    map (l: l.origin) ((import ../modules/lib/merge.nix).labelFragments listedFragments)
+    ++ [ hwdbFragment.name ];
 
   # /usr/lib/udev/hwdb.bin, compiled at build time by the build host's systemd-hwdb from the
   # target's sources (lib/image/hwdb.nix): the image has no writable place for it before udev runs
@@ -119,29 +122,20 @@ let
       inherit (setFull.pkgs) systemd;
     };
   };
-  factoryFragment = evaluated.modules.factory { };
-
   # The system options from the config (name, version, fragments, updateSource).
   systemOptions = mergedOptions."/system" or { };
 
-  # The composed system: /system with all fragments.
-  composedRaw =
-    (tree {
-      options = mergedOptions // {
-        "/system" = systemOptions // {
-          fragments =
-            (systemOptions.fragments or [ ])
-            ++ extraFragments
-            ++ serviceFragments
-            ++ [
-              varsFragment
-              factoryFragment
-              hwdbFragment
-            ];
-        };
+  # The composed system: /system with the selected components, the hwdb and the
+  # listed fragments.
+  composedRaw = componentsLib.compose {
+    modules = tree;
+    options = mergedOptions // {
+      "/system" = systemOptions // {
+        fragments = listedFragments;
       };
-    }).modules.system
-      { };
+    };
+    extra = [ hwdbFragment ];
+  };
 
   # Reading the name forces the option types, including the image-id and transfer-path rules.
   composed = builtins.seq composedRaw.name composedRaw;
@@ -154,7 +148,7 @@ let
     root = toString ../.;
   } unloaded;
 
-  # The normalized configuration: one row per option of every configured module,
+  # The normalized configuration: one row per option of every included component and /system,
   # { value?; explicit; }, for config.json. `explicit` is true when the TOML (or `extra`)
   # set the option, false when the default applies; an option with a computed default
   # (defaultFunc) has no `value` then. Derivations render as their name, so the JSON is data.
@@ -192,17 +186,17 @@ let
             }
           else
             { explicit = false; }
-        ) (declared // given);
+        ) (removeAttrs (declared // given) (componentsLib.internalOptions.${path} or [ ]));
     in
     builtins.listToAttrs (
       map
         (path: {
           name = path;
-          value = rows path mergedOptions.${path};
+          value = rows path (mergedOptions.${path} or { });
         })
         (
-          # /pkgs: its set is not configuration data
-          builtins.filter (p: p != "/pkgs") (attrNames mergedOptions)
+          # every included component and /system; /pkgs: its set is not configuration data
+          builtins.filter (p: p == "/system" || (inventory.${p}.included or false)) (attrNames inventory)
         )
     );
 
@@ -215,19 +209,29 @@ let
     name = "${composed.name}-${composed.version}";
   };
 
+  # The files mkSystem adds to /usr/lib/golconda/ (modules/lib/merge.nix reserves the paths).
+  artifacts = {
+    "/usr/lib/golconda/config.json" = {
+      text = builtins.toJSON normalizedConfig;
+      mode = "0644";
+    };
+    "/usr/lib/golconda/schema.json" = {
+      text = builtins.toJSON schema;
+      mode = "0644";
+    };
+    "/usr/lib/golconda/modules.json" = {
+      text = builtins.toJSON {
+        modules = inventory;
+        inherit fragments;
+      };
+      mode = "0644";
+    };
+  };
+
   # The usr tree with the image artifacts.
   usrTreeDrv = usrTreeLib.usrTree {
     composerOutput = composed // {
-      files = composed.files // {
-        "/usr/lib/golconda/config.json" = {
-          text = builtins.toJSON normalizedConfig;
-          mode = "0644";
-        };
-        "/usr/lib/golconda/schema.json" = {
-          text = builtins.toJSON schema;
-          mode = "0644";
-        };
-      };
+      files = composed.files // artifacts;
     };
     inherit (setFull) platform;
     inherit (composed) version;
@@ -236,7 +240,12 @@ let
 
 in
 {
-  inherit composed;
+  inherit
+    artifacts
+    composed
+    fragments
+    inventory
+    ;
   usrTree = usrTreeDrv;
   config = normalizedConfig;
   inherit (setFull) platform pkgs;

@@ -39,13 +39,14 @@ flowchart LR
 
 ## What every image contains
 
-The `/base` module is implicit: the composer merges it first, and a configuration cannot leave it
-out. It brings systemd, dbus-broker, dash (as `/usr/bin/sh`), uutils coreutils, tpm2-tss, e2fsprogs
-and the kernel; the units for networkd, resolved, timesyncd and the D-Bus socket; `C.UTF-8` as the
-only locale; the timesyncd pool and the journal size (the full list is in
-[Modules](../reference/modules/README.md#base-network-and-security)). `/network` is implicit too:
+The `/base` module is a built-in component: every system has it, composed first, and a configuration
+cannot leave it out. It brings systemd, dbus-broker, dash (as `/usr/bin/sh`), uutils coreutils,
+tpm2-tss, e2fsprogs and the kernel; the units for networkd, resolved, timesyncd and the D-Bus
+socket; `C.UTF-8` as the only locale; the timesyncd pool and the journal size (the full list is in
+[Modules](../reference/modules/README.md#base-network-and-security)). `/network` is built in too:
 DHCP on every wired link unless the document says otherwise. So is `/security`: the sysctl hardening
-file. Everything else is a module the document names ([Configuration](config.md)).
+file. `/factory` (the `/etc` seed) and `/vars` (the var runner) are built in as well. Everything
+else is a module the document names with its table ([Configuration](config.md)).
 
 ## Components
 

@@ -167,6 +167,7 @@ let
     by "lib/system.nix" [
       "/usr/lib/golconda/config.json"
       "/usr/lib/golconda/schema.json"
+      "/usr/lib/golconda/modules.json"
     ]
     ++ by "lib/usr-tree.nix" [ "/usr/lib/golconda/attribution.json" ]
     ++ by "lib/usr-tree/main.nu" [

@@ -1,10 +1,8 @@
-# Checks of /base: the implicit base system and the drop-ins for units the systemd farm ships.
+# Checks of /base: the built-in base system and the drop-ins for units the systemd farm ships.
 # A function of the harness (./harness.nix); it returns a list of checks.
 {
   check,
   compose,
-  f,
-  factory,
   hasInfix,
   hasPrefix,
   stubCacert,
@@ -17,20 +15,10 @@ let
 in
 [
   # 11. /base: the implicit base system
-  (check "base: is implicit in /system (a system with no fragments has systemd)" (
+  (check "base: is built in (a system with no table has systemd)" (
     let
-      result =
-        (f.modules {
-          options = {
-            "/pkgs".target = stubSet;
-            "/system" = {
-              name = "empty";
-              version = "20261031.1";
-              fragments = [ ];
-            };
-          };
-        }).modules.system
-          { };
+      # the built-in components, as mkSystem selects them (lib/components.nix)
+      result = compose [ ];
     in
     # /base's packages are there even with no fragments
     any (p: p.name == "systemd-262") result.packages
@@ -129,9 +117,8 @@ in
   ))
   (check "base: tzdata, /usr/share/zoneinfo, and /etc/localtime at UTC" (
     let
-      # /factory is implicit in mkSystem (lib/system.nix), not in the composer's
-      # own argument; pass it, so this is the list the image's tmpfiles.d has
-      result = compose [ factory ];
+      # /factory is a built-in component: this is the list the image's tmpfiles.d has
+      result = compose [ ];
     in
     any (p: p.name == "tzdata-2026a") result.packages
     &&

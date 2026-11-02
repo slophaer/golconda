@@ -10,7 +10,8 @@
 #!
 #! The factory knows no service: a service owns its user and directories in
 #! its own fragment. Only `/etc` content is here, so `pam.d/sshd` is a
-#! built-in seed. `mkSystem` adds `/vars` and `/factory` to every system.
+#! built-in seed. `/factory` is a built-in component (`lib/components.nix`):
+#! every system has it.
 { types, ... }:
 let
   inherit (builtins)

@@ -1,8 +1,8 @@
 #! The base system: what every Golconda image contains.
 #!
-#! Always implicit, with `/network` and `/security`: `/system` merges this
-#! fragment first, before any other module's fragment. A configuration need
-#! not declare it.
+#! A built-in component (`lib/components.nix`), with `/network`,
+#! `/security`, `/factory` and `/vars`: every system has it, composed first.
+#! Its table only configures it; a configuration need not have one.
 #!
 #! Packages: systemd, dbus-broker, dash (linked as /usr/bin/sh; the image
 #! has no bash), uutils-coreutils, tpm2-tss (only systemd's dlopen reaches

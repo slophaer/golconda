@@ -3,11 +3,9 @@
 {
   check,
   compose,
-  f,
   hasInfix,
   hasPrefix,
   pkgs,
-  stubSet,
   ...
 }:
 let
@@ -90,20 +88,10 @@ in
     && hasInfix "net.core.bpf_jit_harden = 2" sysctlFile.text
     && hasInfix "kernel.kexec_load_disabled = 1" sysctlFile.text
   ))
-  (check "security: is implicit (a system with no fragments has the sysctl file)" (
+  (check "security: is built in (a system with no table has the sysctl file)" (
     let
-      result =
-        (f.modules {
-          options = {
-            "/pkgs".target = stubSet;
-            "/system" = {
-              name = "empty";
-              version = "20261031.1";
-              fragments = [ ];
-            };
-          };
-        }).modules.system
-          { };
+      # the built-in components, as mkSystem selects them (lib/components.nix)
+      result = compose [ ];
     in
     result.files ? "/usr/lib/sysctl.d/50-golconda.conf"
   ))

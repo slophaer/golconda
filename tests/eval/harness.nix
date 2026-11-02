@@ -132,9 +132,13 @@ let
       };
     };
 
+  # the composer as mkSystem drives it (lib/components.nix): the built-in components, the
+  # optional ones with a table, then `fragments`
+  componentsLib = import ../../lib/components.nix { };
   compose =
     fragments:
-    (f.modules {
+    componentsLib.compose {
+      inherit (f) modules;
       options = {
         "/pkgs".target = stubSet;
         "/system" = {
@@ -143,12 +147,12 @@ let
           inherit fragments;
         };
       };
-    }).modules.system
-      { };
+    };
   # compose with extra module options (for /network, /factory, etc.)
   composeWith =
     extraOpts:
-    (f.modules {
+    componentsLib.compose {
+      inherit (f) modules;
       options = {
         "/pkgs".target = stubSet;
         "/system" = {
@@ -158,8 +162,7 @@ let
         };
       }
       // extraOpts;
-    }).modules.system
-      { };
+    };
   # the composer's files, forced: a type error in a file fires here
   filesOf =
     fragments:
@@ -241,7 +244,15 @@ let
   # 8. the factory: /etc seeds under /usr/share/factory/etc as symlinks
   factoryDir = "/usr/share/factory/etc";
   factoryOf = opts: ((f.modules { options."/factory" = opts; }).modules.factory { });
-  factoryThrows = opts: filesThrow [ (factoryOf opts) ];
+  # the built-in /factory with these options, composed: a type error in a file fires here
+  factoryThrows =
+    opts:
+    !(tryEval (
+      let
+        r = (composeWith { "/factory" = opts; }).files;
+      in
+      deepSeq r r
+    )).success;
   pamSshd = factory.files."${factoryDir}/pam.d/sshd";
 in
 {

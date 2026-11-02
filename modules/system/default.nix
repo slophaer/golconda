@@ -4,9 +4,11 @@
 #! (see `docs/design/modules.md`). The union itself is `modules/lib/merge.nix`,
 #! so a module that returns several fragments applies the same rule.
 #!
-#! The `/base`, `/network` and `/security` modules are always included first,
-#! before any fragment the configuration declares. A system with no fragments
-#! still has systemd, dbus-broker, dash, coreutils and the kernel.
+#! It selects nothing itself: `mkSystem` (`lib/components.nix`) passes the
+#! fragments of the selected components as `components`, the built-ins
+#! (`/base`, `/network`, `/security`, `/factory`, `/vars`) first, then each
+#! optional component the configuration has a table for. A system with no
+#! table still has systemd, dbus-broker, dash, coreutils and the kernel.
 #!
 #! Output: `{ name; version; units; files; sysusers; tmpfiles; packages; packageOrigins; origins; links }`,
 #! every file as `{ text; mode; }` and `links` one map, path under `/usr` ->
@@ -18,8 +20,8 @@
 #! `/usr/lib/systemd/user/`, so one duplicate check covers both scopes.
 #!
 #! `packageOrigins` answers "why is this package here": package key (its
-#! name-version) -> the origins that brought it, `"/base"`,
-#! `"/network"`, `"/security"`, a fragment's own `name` (a module sets its path), or
+#! name-version) -> the origins that brought it: a component's module path
+#! (`"/base"`, `"/services/sshd"`), another fragment's own `name`, or
 #! `"fragments[<i>]"`. `packages` stays one deduped list.
 #!
 #! `origins` does the same for everything a fragment emits: `{ packages; files;
@@ -92,16 +94,6 @@ in
 {
   name = "system";
 
-  # Implicit modules: every system has them, merged first.
-  # /base: systemd, dbus-broker, dash, coreutils, kernel
-  # /network: networkd configuration
-  # /security: sysctl hardening (Yama, kptr_restrict, etc.)
-  inputs = {
-    base.path = "/base";
-    network.path = "/network";
-    security.path = "/security";
-  };
-
   types = {
     fragment = fragmentT;
   };
@@ -150,26 +142,27 @@ in
       default = [ ];
       description = "Fragments to merge. Each module returns a fragment; the composer unions them, erroring on duplicate keys.";
     };
+    components = {
+      type = types.listOf fragmentT;
+      default = [ ];
+      description = "The fragments of the selected components, each named by its module path. mkSystem passes them (lib/components.nix); not configuration data, and the TOML loader refuses it.";
+    };
   };
 
   impl =
-    { options, results }:
-    # /base, /network and /security fragments first, then the declared fragments
+    { options, ... }:
+    # the selected components first, then the declared fragments
     merge.withOrigins (
-      [
-        {
-          origin = "/base";
-          fragment = results.base;
-        }
-        {
-          origin = "/network";
-          fragment = results.network;
-        }
-        {
-          origin = "/security";
-          fragment = results.security;
-        }
-      ]
+      map (
+        fragment:
+        if fragment ? name then
+          {
+            origin = fragment.name;
+            inherit fragment;
+          }
+        else
+          throw "golconda: /system.components: a component fragment needs its module path as `name` (lib/components.nix sets it)"
+      ) options.components
       ++ merge.labelFragments options.fragments
       ++ map (fragment: {
         origin = "/system";
