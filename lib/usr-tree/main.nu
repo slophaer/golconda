@@ -66,6 +66,39 @@ export def make-relative [link_path: string, target: string]: nothing -> string 
   }
 }
 
+# Inspect each parent before mkdir or a write can follow a symlink. Shared real
+# directories are valid; even a dangling symlink is an existing claim.
+def conflict [rel: string, source: string, dest: string] {
+  let kind = ($dest | path type)
+  let existing = if $kind == "symlink" { ^readlink $dest | str trim } else { $kind }
+  error make {msg: $"destination conflict at /usr/($rel): ($source); existing ($kind) ($existing)"}
+}
+
+def ensure-directory [out: string, rel: string, source: string] {
+  mut dest = $out
+  if ($dest | path exists -n) {
+    if ($dest | path type) != "dir" { conflict "" $source $dest }
+  } else {
+    mkdir $dest
+  }
+  mut prefix = []
+  for component in (path-components $rel | where { $in != "." }) {
+    $prefix = ($prefix | append $component)
+    $dest = $"($dest)/($component)"
+    if ($dest | path exists -n) {
+      if ($dest | path type) != "dir" { conflict ($prefix | str join "/") $source $dest }
+    } else {
+      mkdir $dest
+    }
+  }
+}
+
+def guard-write [out: string, rel: string, source: string] {
+  ensure-directory $out ($rel | path dirname) $source
+  let dest = $"($out)/($rel)"
+  if ($dest | path exists -n) { conflict $rel $source $dest }
+}
+
 # Main entry point
 export def build [] {
   let attrs = (attrs)
@@ -80,15 +113,9 @@ export def build [] {
   log $"closure has ($closure | length) paths"
 
   # Create output directory structure
-  mkdir $out
-  mkdir $"($out)/nix/store"
-  mkdir $"($out)/bin"
-  mkdir $"($out)/lib"
-  mkdir $"($out)/lib/systemd/system"
-  mkdir $"($out)/lib/sysusers.d"
-  mkdir $"($out)/lib/tmpfiles.d"
-  mkdir $"($out)/lib/golconda"
-  mkdir $"($out)/share"
+  for dir in ["nix/store" "bin" "lib/systemd/system" "lib/sysusers.d" "lib/tmpfiles.d" "lib/golconda" "share"] {
+    ensure-directory $out $dir "fixed builder directory"
+  }
 
   # Step 1: Copy the closure to nix/store
   log "copying closure..."
@@ -97,11 +124,13 @@ export def build [] {
     let basename = ($store_path | path basename)
     let dest = $"($out)/nix/store/($basename)"
     log $"  ($basename)"
+    guard-write $out $"nix/store/($basename)" $"closure copy from ($store_path)"
     ^cp -a $store_path $dest
   }
 
   # Step 2: Create sbin -> bin symlink
   log "creating sbin -> bin"
+  guard-write $out "sbin" "fixed sbin alias"
   ^ln -s "bin" $"($out)/sbin"
 
   # Step 3: Create symlinks from the links list (every kind but farm)
@@ -116,14 +145,13 @@ export def build [] {
     let dest = $"($out)/($dest_rel)"
     let dest_dir = ($dest | path dirname)
 
-    # Create parent directory
-    mkdir $dest_dir
+    guard-write $out $dest_rel $"($link.kind) link from ($target)"
 
     # Make target relative
     let rel_target = (make-relative $path $target)
 
     # Create symlink
-    ^ln -sf $rel_target $dest
+    ^ln -s $rel_target $dest
 
     # A target under /usr/ must resolve to that path in the image's /usr:
     # compare the created link's resolved path with the path the target names.
@@ -145,6 +173,7 @@ export def build [] {
   # fine (a farm of lib/systemd and one of lib/systemd/system overlap); a different source is
   # a collision.
   log $"expanding ($farm_links | length) farm directories..."
+  mut farm_sources = {}
   for dir in $farm_links {
     let path = $dir.path
     let target = $dir.target
@@ -152,8 +181,7 @@ export def build [] {
     let dest_rel = ($path | str replace "/usr/" "")
     let dest_dir = $"($out)/($dest_rel)"
 
-    # Create destination directory
-    mkdir $dest_dir
+    ensure-directory $out $dest_rel $"farm directory from ($target)"
 
     # Link every file of the source tree; a missing directory is an error
     if not ($target | path exists) {
@@ -170,15 +198,16 @@ export def build [] {
       let dest_file = $"($dest_dir)/($rel)"
       let rel_target = (make-relative $"($path)/($rel)" $file)
 
+      let claim = $"($dest_rel)/($rel)"
+      ensure-directory $out ($claim | path dirname) $"farm file from ($file)"
       if ($dest_file | path exists -n) {
-        let existing_target = (ls -l $dest_file | get 0.target? | default "file")
-        if $existing_target == $rel_target { continue }
-        # Collision: error with both sources
-        error make {msg: $"farm collision at ($path)/($rel): ($target) vs ($existing_target)"}
+        # Only a previous farm claim can repeat, not an ordinary link to the same source.
+        if ($farm_sources | get -o $claim) == $file { continue }
+        conflict $claim $"farm file from ($file)" $dest_file
       }
 
-      mkdir ($dest_file | path dirname)
-      ^ln -sf $rel_target $dest_file
+      ^ln -s $rel_target $dest_file
+      $farm_sources = ($farm_sources | upsert $claim $file)
     }
   }
 
@@ -194,13 +223,10 @@ export def build [] {
     }
 
     let dest_path = $"($out)/($dest)"
-    let dest_dir = ($dest_path | path dirname)
-
-    # Create parent directory
-    mkdir $dest_dir
+    guard-write $out $dest $"configured file ($path)"
 
     # Write file
-    $file.text | save -f $dest_path
+    $file.text | save $dest_path
 
     # Set mode (convert octal string to chmod format)
     let mode = $file.mode
@@ -210,38 +236,44 @@ export def build [] {
   # Step 6: Write units to lib/systemd/system/
   log $"writing ($attrs.units | columns | length) units..."
   for entry in ($attrs.units | transpose name text) {
-    let dest = $"($out)/lib/systemd/system/($entry.name)"
-    $entry.text | save -f $dest
+    let rel = $"lib/systemd/system/($entry.name)"
+    guard-write $out $rel $"unit ($entry.name)"
+    $entry.text | save $"($out)/($rel)"
   }
 
   # Step 7: Write sysusers.d/golconda.conf
   if ($attrs.sysusers | length) > 0 {
     log $"writing sysusers.d/golconda.conf \(($attrs.sysusers | length) lines\)"
     let content = ($attrs.sysusers | str join "\n")
-    $content | save -f $"($out)/lib/sysusers.d/golconda.conf"
+    guard-write $out "lib/sysusers.d/golconda.conf" "generated sysusers"
+    $content | save $"($out)/lib/sysusers.d/golconda.conf"
   }
 
   # Step 8: Write tmpfiles.d/golconda.conf
   if ($attrs.tmpfiles | length) > 0 {
     log $"writing tmpfiles.d/golconda.conf \(($attrs.tmpfiles | length) lines\)"
     let content = ($attrs.tmpfiles | str join "\n")
-    $content | save -f $"($out)/lib/tmpfiles.d/golconda.conf"
+    guard-write $out "lib/tmpfiles.d/golconda.conf" "generated tmpfiles"
+    $content | save $"($out)/lib/tmpfiles.d/golconda.conf"
   }
 
   # Step 9: Write os-release
   log "writing lib/os-release"
-  $attrs.osRelease | save -f $"($out)/lib/os-release"
+  guard-write $out "lib/os-release" "generated os-release"
+  $attrs.osRelease | save $"($out)/lib/os-release"
 
   # Step 10: Write lib/golconda/packages.json (name, version when known, store path, origins)
   log "writing lib/golconda/packages.json"
+  guard-write $out "lib/golconda/packages.json" "generated package list"
   $attrs.packageList
   | each {|p| if $p.version == null { $p | reject version } else { $p } }
   | to json
-  | save -f $"($out)/lib/golconda/packages.json"
+  | save $"($out)/lib/golconda/packages.json"
 
   # Step 10b: Copy SBOM if one was provided
   if $attrs.sbomPath != null {
     log "copying sbom.json"
+    guard-write $out "lib/golconda/sbom.json" $"SBOM from ($attrs.sbomPath)"
     ^cp $attrs.sbomPath $"($out)/lib/golconda/sbom.json"
   }
 

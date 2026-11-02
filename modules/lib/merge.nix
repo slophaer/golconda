@@ -222,7 +222,9 @@ let
   duplicateErrorOf =
     labelled:
     let
-      byPath = groupBy (c: c.path) (reservedClaims ++ concatMap claimsOf labelled);
+      claims = concatMap claimsOf labelled;
+      aliases = filter (c: c.path == "/usr/sbin" || path.hasPrefix "/usr/sbin/" c.path) claims;
+      byPath = groupBy (c: c.path) (reservedClaims ++ claims);
       errorAt =
         path:
         let
@@ -235,7 +237,15 @@ let
           "golconda: ${path} defined twice: ${first.what} from ${first.origin}, ${(head clash).what} from ${(head clash).origin}";
       errors = filter (e: e != null) (map errorAt (attrNames byPath));
     in
-    if errors == [ ] then null else head errors;
+    if aliases != [ ] then
+      let
+        c = head aliases;
+      in
+      "golconda: ${c.path} claimed by ${c.what} from ${c.origin} uses the fixed /usr/sbin alias; use /usr/bin instead"
+    else if errors == [ ] then
+      null
+    else
+      head errors;
 
   # The check over a plain fragment list, so a test can read its message.
   duplicateError = fragments: duplicateErrorOf (labelFragments fragments);
