@@ -107,7 +107,7 @@
         type = "string";
       };
       prefix = {
-        type = "string";
+        "$ref" = "#/$defs/credentialPrefix";
       };
     };
     required = [ "credential" ];
