@@ -1,8 +1,8 @@
 # Packaging
 
 Packages are repkgs packages: a `package.nix` naming a build system and a `sources.toml` naming the
-upstream. Golconda adds its own under `packages/` and sets a few set-wide features; it has no
-builder of its own.
+upstream. Golconda adds its own under `packages/` and sets a few set-wide features. The kernel uses
+package-local phases; repkgs supplies the shared build machinery.
 
 ## Where a package lives
 
@@ -10,10 +10,10 @@ builder of its own.
   dbus-broker, openssh, cryptsetup and the rest). They go into the set through its `packages`
   argument, so another package finds them by name. A package's own test goes in
   `tests/packages/<name>/test.nu` and builds as `packages.<system>.tests-<name>`.
-- **In the fork**: changes to the build system (relocation, `wrap`, `prefix`, `kbuild`) and to the
+- **In the fork**: changes to the shared build system (relocation, `wrap`, `prefix`) and to the
   toolchain packages (glibc, crt-interp, jig). The fork also keeps the packages its own tests need:
-  automake and libtool for the aclocal test. The general build tools bc and elfutils also stay there.
-  The kernel recipe and its policy belong to Golconda.
+  automake and libtool for the aclocal test. The general build tools bc and elfutils also stay
+  there. The kernel recipe, kbuild module and policy belong to Golconda.
 
 The fork's branch is meant to hold only what upstream should take. A package goes upstream from
 `packages/` when it is general.
@@ -87,18 +87,18 @@ templates and ukify, Perl for OpenSSL's Configure and some autotools, Rust for i
 
 ## The kernel belongs to Golconda
 
-`packages/kernel/` owns the recipe, source pin and policy. Its typed base starts from x86_64
-`defconfig` with virtio, a serial console and the initramfs path. The package only advertises
+`packages/kernel/` owns the recipe, source pin, kbuild module and policy. Its typed base starts from
+x86_64 `defconfig` with virtio, a serial console and the initramfs path. The package only advertises
 x86_64 support because its ORC unwinder config is architecture-specific.
 
 `golconda.config` adds dm-verity with signed root hashes, erofs, TPM drivers, EFI, LSMs, nftables,
-WireGuard and systemd requirements. A comment above each option says why. `nix/packages.nix` appends
-the fragment through `overrides.linux-kernel.kbuild.configFragments.append`.
+WireGuard and systemd requirements. A comment above each option says why. `nix/packages.nix` passes
+the fragment and the typed config as JSON in the build environment. Store references stay intact.
 
-Repkgs supplies the generic `kbuild` module, not the OS kernel package. It merges the fragment with
-`merge_config.sh` and verifies that the requested settings survive `olddefconfig`. A wrong option
-name is a build error, not a silent loss. The result is `packages.<system>.kernel`: Linux 6.18 LTS,
-monolithic (no modules, so no kmod), built with `LLVM=1`.
+The local `kbuild.nu` uses repkgs' existing package-local phase interface. It merges the fragment
+with `merge_config.sh` and verifies that the requested settings survive `olddefconfig`. A wrong
+option name is a build error, not a silent loss. The result is `packages.<system>.kernel`: Linux
+6.18 LTS, monolithic (no modules, so no kmod), built with `LLVM=1`.
 
 ## What is packaged
 

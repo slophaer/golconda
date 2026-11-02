@@ -9,8 +9,8 @@ $ git log --oneline origin/main..fork/golconda
 ```
 
 They form series, one per future upstream pull request, in this order: platforms, relocation,
-propagate, aclocal, prefix, wrap, kbuild, then fork-only work (`buildPkgs`, `sbom`, jig passthrough,
-two finish checks). The packages the image needs are not in the fork: they are in
+propagate, aclocal, prefix, wrap, then fork-only work (`buildPkgs`, `sbom`, jig passthrough, two
+finish checks). The packages the image needs are not in the fork: they are in
 [`packages/`](../../packages/README.md).
 
 This directory holds what goes with the relocation series: the issue drafts

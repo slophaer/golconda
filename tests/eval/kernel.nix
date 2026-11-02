@@ -32,6 +32,16 @@ in
     in
     local ? linux-kernel && pkgs.linux-kernel.dir == local.linux-kernel
   ))
+  (check "kernel: its phases use a package-local module, not a repkgs build system" (
+    (pkgs.linux-kernel.args.uses or [ ]) == [ ]
+    &&
+      pkgs.linux-kernel.args.phases == [
+        "kbuild.configure"
+        "kbuild.build"
+        "kbuild.install"
+      ]
+    && builtins.pathExists ../../packages/kernel/kbuild.nu
+  ))
   (check "kernel: the ORC config only advertises x86_64" (
     pkgs.linux-kernel.args.platforms.cpu == [ "x86_64" ]
   ))
@@ -78,9 +88,11 @@ in
   (check "tpm2-tss: the device TCTI exports Tss2_Tcti_Info for systemd (no --enable-nodl)" (
     !(elem "--enable-nodl" pkgs.tpm2-tss.drvAttrs.spec.autotools.flags)
   ))
-  (check "kernel: the override reaches the derivation (kbuild.configFragments holds the file)" (
+  (check "kernel: the policy fragment reaches the package-local builder" (
     let
-      fragments = pkgs.linux-kernel.drvAttrs.spec.kbuild.configFragments;
+      fragments = builtins.fromJSON (
+        builtins.unsafeDiscardStringContext pkgs.linux-kernel.drvAttrs.spec.env.GOLCONDA_KERNEL_FRAGMENTS
+      );
     in
     # builtins.toFile creates /nix/store/xxx-golconda.config (dash, not slash)
     length fragments == 1 && match ".*golconda\\.config" (toString (elemAt fragments 0)) != null
