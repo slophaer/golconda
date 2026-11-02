@@ -40,12 +40,12 @@ let
     readFile
     ;
 
-  schemaLib = import ./schema.nix { };
-  moduleAt = schemaLib.moduleAt tree;
+  treeLib = import ./tree.nix { };
+  moduleAt = treeLib.moduleAt tree;
 
   # Every module path with options, except /pkgs: the tables a document may have.
   validPaths = filter (p: p != "/pkgs") (
-    map (m: m.path) (filter (m: schemaLib.hasOptions m.module) (schemaLib.modulesOf tree))
+    map (m: m.path) (filter (m: (m.module.options or { }) != { }) (treeLib.modulesOf tree))
   );
 
   # The message for a table `given` at module path `p`, or null: an unknown
