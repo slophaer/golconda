@@ -38,6 +38,18 @@
   };
 
   # modules/network/default.nix
+  networks = {
+    description = "Network configurations keyed by one filename component.";
+    type = "object";
+    propertyNames = {
+      type = "string";
+      pattern = pattern "component";
+    };
+    additionalProperties = {
+      "$ref" = "#/$defs/network";
+    };
+  };
+
   network = {
     description = "A .network file: `match` (the Match section) and the optional sections network, link, dhcpv4, address and route. Any other key is an error.";
     type = "object";

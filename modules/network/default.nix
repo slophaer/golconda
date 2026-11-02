@@ -58,6 +58,20 @@ let
     }).override
       { unknown = false; };
 
+  # attrsOf checks values only; keys become direct .network filenames.
+  networks = types.typedef' "networks" (
+    v:
+    let
+      valuesError = (attrsOf network).verify v;
+    in
+    if valuesError != null then
+      valuesError
+    else
+      builtins.foldl' (
+        err: name: if err != null then err else (import ../lib/path.nix).componentError name
+      ) null (attrNames v)
+  );
+
   # Render a .network file: the Match section plus each of the others that cfg has (cfg key ->
   # section name). Sections come out in ini.nix's order (sorted by name); systemd reads them in
   # any order.
@@ -87,7 +101,7 @@ in
 
   options = {
     networks = {
-      type = attrsOf network;
+      type = networks;
       default = { };
       description = "Network configurations, keyed by name. Each becomes a .network file under /usr/lib/systemd/network/.";
     };
