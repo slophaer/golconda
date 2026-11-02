@@ -23,6 +23,10 @@
       };
       files = {
         type = "object";
+        propertyNames = noControl // {
+          type = "string";
+          pattern = pattern "usrPath";
+        };
         additionalProperties = {
           "$ref" = "#/$defs/file";
         };
@@ -122,8 +126,9 @@
     description = "A symlink in the /usr farm: { target; kind; }; its path is the key in `links`.";
     type = "object";
     properties = {
-      target = {
+      target = noControl // {
         type = "string";
+        minLength = 1;
         description = "Symlink target: a store path, or relative to the link (../sshd.service); for kind farm, a directory to link file by file.";
       };
       kind = {

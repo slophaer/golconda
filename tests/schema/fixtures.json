@@ -45,6 +45,21 @@
     "value": { "/system": { "name": "test", "version": "20261031.1", "fragments": [{ "name": "marker", "files": { "/usr/lib/marker": "present" } }] } }
   },
   {
+    "name": "fragment file outside usr",
+    "accepted": false,
+    "value": { "/system": { "name": "test", "version": "20261031.1", "fragments": [{ "files": { "/etc/motd": "outside" } }] } }
+  },
+  {
+    "name": "noncanonical fragment file path",
+    "accepted": false,
+    "value": { "/system": { "name": "test", "version": "20261031.1", "fragments": [{ "files": { "/usr/lib/../motd": "outside" } }] } }
+  },
+  {
+    "name": "control in fragment file path",
+    "accepted": false,
+    "value": { "/system": { "name": "test", "version": "20261031.1", "fragments": [{ "files": { "/usr/lib/a\nb": "invalid" } }] } }
+  },
+  {
     "name": "unknown fragment field",
     "accepted": false,
     "value": { "/system": { "name": "test", "version": "20261031.1", "fragments": [{ "naem": "marker" }] } }
@@ -177,6 +192,24 @@
     "value": { "target": "../sshd.service", "kind": "explicit" }
   },
   {
+    "name": "empty link target",
+    "definition": "link",
+    "accepted": false,
+    "value": { "target": "", "kind": "explicit" }
+  },
+  {
+    "name": "line break in link target",
+    "definition": "link",
+    "accepted": false,
+    "value": { "target": "../sshd.service\nevil", "kind": "explicit" }
+  },
+  {
+    "name": "control in link target",
+    "definition": "link",
+    "accepted": false,
+    "value": { "target": "../sshd.service\u007f", "kind": "explicit" }
+  },
+  {
     "name": "unknown link field",
     "definition": "link",
     "accepted": false,
@@ -187,6 +220,18 @@
     "definition": "credentialRef",
     "accepted": true,
     "value": { "credential": "key", "prefix": "-oKey=" }
+  },
+  {
+    "name": "space in credential prefix",
+    "definition": "credentialRef",
+    "accepted": false,
+    "value": { "credential": "key", "prefix": "-o Key=" }
+  },
+  {
+    "name": "shell separator in credential prefix",
+    "definition": "credentialRef",
+    "accepted": false,
+    "value": { "credential": "key", "prefix": "a;b" }
   },
   {
     "name": "unknown credential reference field",
