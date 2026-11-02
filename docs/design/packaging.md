@@ -101,7 +101,8 @@ fails the build.
 The local `kbuild.nu` uses repkgs' existing package-local phase interface. It merges the fragment
 with `merge_config.sh` and verifies that the requested settings survive `olddefconfig`. A wrong
 option name is a build error, not a silent loss. The result is `packages.<system>.kernel`: Linux
-6.18 LTS, monolithic (no modules, so no kmod), built with `LLVM=1`.
+6.18 LTS, monolithic (no modules, so no kmod), built with `LLVM=1`. Its `debug` output holds the
+unstripped `vmlinux` with full DWARF 5, for `gdb` and crash analysis; it is large.
 
 ## What is packaged
 

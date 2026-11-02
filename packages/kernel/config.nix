@@ -35,6 +35,15 @@
   IKCONFIG = "y";
   IKCONFIG_PROC = "y";
 
+  # Full DWARF 5 in vmlinux, which install copies to the debug output (Linux 6.18 "Debug
+  # information" choice; LLVM_IAS=1 meets its assembler condition). Not reduced, not split into
+  # .dwo files. BTF stays off (golconda.config)
+  DEBUG_KERNEL = "y";
+  DEBUG_INFO = "y";
+  DEBUG_INFO_DWARF5 = "y";
+  DEBUG_INFO_REDUCED = "n";
+  DEBUG_INFO_SPLIT = "n";
+
   # Unwinder: ORC (objtool and sorttable need pthreads; libunwind is fixed in the glibc output)
   UNWINDER_ORC = "y";
   UNWINDER_FRAME_POINTER = "n";
