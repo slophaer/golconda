@@ -28,6 +28,8 @@ fi
 iets eval-jobs --force-recurse --no-instantiate \
   --expr 'let f = import ./default.nix; in { inherit (f) packages checks devShells formatter; }' > /dev/null
 iets eval --expr 'import ./nix/tests.nix { }' > /dev/null
+# configuration errors must carry their message (tests/errors/run.sh)
+tests/errors/run.sh
 # The pinned iets cannot resolve outputs of dynamic package-test derivations.
 # Keep its strict evaluation above; the patched Nix client builds native checks.
 nix-build --no-out-link --expr '(import ./default.nix).checks.${builtins.currentSystem}'

@@ -334,6 +334,9 @@ in
     && throws (configLib.readProject { golconda.replaces = "openssh"; })
     && throws (configLib.readProject { golconda.replaces = [ 1 ]; })
   ))
+  (check "downstream: Golconda has no module named local (the downstream mount would hide it)" (
+    !((builtins.readDir ../../modules) ? local)
+  ))
   (check "downstream: a package named after a repkgs alias is refused (the alias would win)" (
     throws (mkSystem ../fixtures/downstream-alias/server.toml).composed.units
   ))

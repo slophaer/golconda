@@ -1,0 +1,9 @@
+# A downstream repository that replaces a /base package (tzdata). The initrd composes /base
+# from its own set, so the chain must hand it the downstream packages
+# (tests/eval/image-config.nix).
+[golconda]
+replaces = ["tzdata"]
+
+["/system"]
+name = "downstream-initrd"
+version = "20261103.1"
