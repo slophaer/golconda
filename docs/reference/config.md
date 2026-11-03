@@ -119,6 +119,14 @@ own. A package that takes an existing name replaces that package for everything 
 for one of the fork's, null for a new name). Only target packages can be named; build-host tools
 cannot.
 
+When a downstream package enters the runtime closure, its SBOM component has
+`golconda:origin = downstream`. A replacement also has `golconda:replaces = golconda` or
+`golconda:replaces = repkgs`; a new package has no `golconda:replaces` property. This includes
+transitive dependencies. The SBOM matches package identities, not display names. Returning an
+upstream package as an alias does not change that package's origin. If one artifact has conflicting
+replacement records, SBOM generation fails rather than choosing one. Unlike `modules.json`, the SBOM
+does not list unused packages ([Image](image.md#software-bill-of-materials)).
+
 ## Validation
 
 Export the schema and use any JSON Schema validator:
@@ -172,6 +180,7 @@ every optional component the document has a table for; an empty table selects on
 | ----------------- | ----------------------------------------------------------------------------------------------------- |
 | `composed`        | the composer output ([Modules](modules/README.md#the-composer-output))                                |
 | `usrTree`         | the `/usr` tree derivation with the artifacts in `/usr/lib/golconda/`                                 |
+| `sbom`            | the SBOM derivation; `.bom` is the evaluated CycloneDX document, its output contains `sbom.json`      |
 | `config`          | the normalized options of every included component and `/system`, derivations replaced by their names |
 | `inventory`       | every module's role and inputs; for a component, `included` and `reason`                              |
 | `fragments`       | the names of the build's own fragments (`/image/hwdb` and `extraFragments`)                           |

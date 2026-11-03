@@ -3,6 +3,7 @@
 # mkSystem { config; platform?; sources?; extraFragments?; } → {
 #   composed;   # the composer output (units, files, links, packages, …)
 #   usrTree;    # the /usr derivation
+#   sbom;       # the SBOM derivation; .bom is its evaluated CycloneDX document
 #   config;     # config.json: module path -> option -> { value?; explicit; }, for every
 #               # included component and /system
 #   inventory;  # module path -> { role; inputs; included?; reason?; } (lib/components.nix)
@@ -234,10 +235,66 @@ let
   # usr-tree library for building the tree.
   usrTreeLib = import ./usr-tree.nix { };
 
+  # These paths identify packages; the SBOM does not build those packages.
+  drvKey = pkg: builtins.unsafeDiscardStringContext (pkg.drvPath or "");
+  # A plain package keeps its directory; a variant keeps its attribute name.
+  # A mere alias of an upstream package must not relabel that package.
+  downstreamNames = builtins.filter (
+    n:
+    let
+      pkg = setFull.pkgs.${n};
+    in
+    (pkg.supported or true)
+    && pkg ? drvPath
+    && (
+      (pkg.pname or null) == n || (pkg ? dir && toString pkg.dir == toString (project.packages + "/${n}"))
+    )
+  ) (attrNames setFull.downstream);
+  downstreamByDrv = builtins.foldl' (
+    index: n:
+    let
+      key = drvKey setFull.pkgs.${n};
+      info = setFull.downstream.${n};
+    in
+    index
+    // {
+      ${key} =
+        if index ? ${key} && index.${key} != info then
+          throw "golconda: downstream SBOM package ${n} has conflicting replacement metadata for the same derivation"
+        else
+          info;
+    }
+  ) { } downstreamNames;
+
   # Build the SBOM derivation (CycloneDX JSON).
   sbom = setFull.set.sbom {
     roots = composed.packages;
     name = "${composed.name}-${composed.version}";
+    extraProperties =
+      pkg:
+      let
+        downstream = downstreamByDrv.${drvKey pkg} or null;
+      in
+      if downstream == null then
+        [ ]
+      else
+        [
+          {
+            name = "golconda:origin";
+            value = "downstream";
+          }
+        ]
+        ++ (
+          if downstream.replaces == null then
+            [ ]
+          else
+            [
+              {
+                name = "golconda:replaces";
+                value = downstream.replaces;
+              }
+            ]
+        );
   };
 
   # The files mkSystem adds to /usr/lib/golconda/ (modules/lib/merge.nix reserves the paths).
@@ -277,6 +334,7 @@ in
     composed
     fragments
     inventory
+    sbom
     ;
   packages = setFull.downstream;
   usrTree = usrTreeDrv;

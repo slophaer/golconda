@@ -258,6 +258,7 @@ in
     in
     sys.packages == {
       openssh.replaces = "golconda";
+      openssh-alias.replaces = null;
       ripgrep.replaces = "repkgs";
       hello.replaces = null;
     }
