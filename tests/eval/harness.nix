@@ -148,7 +148,7 @@ let
           version = "20261031.1";
         };
       };
-      extra = named fragments;
+      extraFragments = named fragments;
     };
   # compose with extra module options (for /network, /factory, etc.)
   composeWith =

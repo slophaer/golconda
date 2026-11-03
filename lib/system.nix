@@ -1,6 +1,6 @@
 # lib/system.nix: the entry point for one Golconda system.
 #
-# mkSystem { config; platform?; sources?; extra?; extraFragments?; } → {
+# mkSystem { config; platform?; sources?; extraFragments?; } → {
 #   composed;   # the composer output (units, files, links, packages, …)
 #   usrTree;    # the /usr derivation
 #   config;     # config.json: module path -> option -> { value?; explicit; }, for every
@@ -18,7 +18,6 @@
 # `config` is a path to a TOML file or an attrset already loaded.
 # `platform` defaults to the build host's (builtins.currentSystem).
 # `sources` defaults to ../nix/sources.nix.
-# `extra` overrides individual options from the configuration.
 # `verityCert` is the certificate that signs /usr (lib.mkImage passes the db certificate of
 # its keys). With `/system.secureBoot = false` the kernel carries it in its built-in keyring;
 # without Secure Boot nothing else would put it in a keyring (docs/design/trust.md).
@@ -27,10 +26,10 @@
 #   let sys = import ./lib/system.nix { config = ./server.toml; };
 #   in sys.usrTree
 #
-# Nix-only option values (a package override) come through `extra`. A downstream
-# repository adds modules, never bare fragments: the document's optional `[golconda]`
-# table names its module directory (default `modules/` beside the document), mounted
-# under /local (lib/config.nix readProject).
+# The document is the whole configuration: no Nix hook. A package option takes a package
+# name, resolved in the target set. A downstream repository adds modules, never bare
+# fragments: the document's optional `[golconda]` table names its module directory (default
+# `modules/` beside the document), mounted under /local (lib/config.nix readProject).
 #
 # `extraFragments` are the build's own fragments (lib/image: the loader, the update
 # index, the initrd's tools), each with a `name`; they are not configuration, and
@@ -40,7 +39,6 @@
   platform ? system,
   system ? builtins.currentSystem,
   sources ? import ../nix/sources.nix,
-  extra ? { },
   extraFragments ? [ ],
   verityCert ? null,
 }:
@@ -49,6 +47,7 @@ let
     attrNames
     isAttrs
     isPath
+    isString
     mapAttrs
     ;
 
@@ -65,7 +64,7 @@ let
   # Load the repkgs set for this platform. The kernel config depends on /system.secureBoot,
   # read from the options before the tree checks them: the tree needs the set, and the
   # option's type still checks the value when /system is evaluated.
-  secureBoot = ((mergeModuleOptions loadedOptions extra)."/system" or { }).secureBoot or true;
+  secureBoot = (loadedOptions."/system" or { }).secureBoot or true;
   setFull = import ../nix/packages.nix {
     inherit sources system platform;
     kernelConfig =
@@ -93,19 +92,31 @@ let
     else
       throw "golconda: config must be a path to a TOML file or an attrset of options";
 
-  # Merge option names at each module path; nested values replace rather than recurse.
-  # extra."/system".name overrides just that field, not the whole /system entry.
-  mergeModuleOptions =
-    a: b:
-    builtins.mapAttrs (k: av: if b ? ${k} && isAttrs av && isAttrs b.${k} then av // b.${k} else av) a
-    // builtins.removeAttrs b (attrNames a);
+  # A table names a module, and an option name must be one the module declares
+  # (configLib.checkOptions). The loader checked the TOML; this checks an attrset config too,
+  # so every route into the tree is checked.
+  documentOptions = configLib.checkOptions loadedOptions;
 
-  # A table names a module, and an option name must be one the module
-  # declares (configLib.checkOptions). The loader checked the TOML; this
-  # checks what an attrset config and `extra` give, so every route into the
-  # tree is checked. mkSystem is the one place that binds /pkgs.target: it is
-  # always the platform's set, never from the document or `extra`.
-  mergedOptions = configLib.checkOptions (mergeModuleOptions loadedOptions extra) // {
+  # A package option (type derivation) takes a package name, looked up in the target set
+  # (Golconda's packages and repkgs'). An attrset config may pass a derivation.
+  resolvePackages = mapAttrs (
+    path: given:
+    let
+      declared = (treeLib.moduleAt unloaded path).options or { };
+    in
+    mapAttrs (
+      n: v:
+      if isString v && (declared.${n}.type.name or null) == "derivation" then
+        setFull.pkgs.${v}
+          or (throw "golconda: ${path}.${n} names the package '${v}', which the target set does not have")
+      else
+        v
+    ) given
+  );
+
+  # mkSystem is the one place that binds /pkgs.target: it is always the platform's set,
+  # never from the document.
+  mergedOptions = resolvePackages documentOptions // {
     "/pkgs".target = setFull.set;
   };
 
@@ -138,7 +149,7 @@ let
   composedRaw = componentsLib.compose {
     modules = tree;
     options = mergedOptions;
-    extra = imageFragments;
+    extraFragments = imageFragments;
   };
 
   # Reading the name forces the option types, including the image-id and transfer-path rules.
@@ -164,9 +175,10 @@ let
   } unloaded;
 
   # The normalized configuration: one row per option of every included component and /system,
-  # { value?; explicit; }, for config.json. `explicit` is true when the TOML (or `extra`)
-  # set the option, false when the default applies; an option with a computed default
-  # (defaultFunc) has no `value` then. Derivations render as their name, so the JSON is data.
+  # { value?; explicit; }, for config.json. `explicit` is true when the document set the
+  # option, false when the default applies; an option with a computed default (defaultFunc)
+  # has no `value` then. A package is the name the document gave; a derivation from an
+  # attrset config renders as its name, so the JSON is data.
   normalizedConfig =
     let
       stripDerivations =
@@ -207,7 +219,7 @@ let
       map
         (path: {
           name = path;
-          value = rows path (mergedOptions.${path} or { });
+          value = rows path (documentOptions.${path} or { });
         })
         (
           # every included component and /system; /pkgs: its set is not configuration data

@@ -117,25 +117,34 @@ in
     in
     sys.name == "server" && sys.version == "20261031.1"
   ))
-  (check "mkSystem: extra overrides an option" (
+  (check "mkSystem: a package option takes a package name from the target set" (
     let
       mkSystem =
-        args:
-        import ../../lib/system.nix (
-          args
-          // {
-            inherit sources platform;
-            system = platform;
-          }
-        );
-      sys = mkSystem {
-        config = ../../examples/server.toml;
-        extra = {
-          "/system".name = "overridden";
+        config:
+        import ../../lib/system.nix {
+          inherit sources platform config;
+          system = platform;
+        };
+      head = {
+        "/system" = {
+          name = "t";
+          version = "20261031.1";
         };
       };
+      sys = mkSystem (head // { "/services/sshd".package = "openssh"; });
+      unit = sys.composed.units."sshd.service";
     in
-    sys.name == "overridden" && sys.version == "20261031.1"
+    # the unit runs the named package's sshd, and config.json keeps the name as written
+    builtins.elem sys.pkgs.openssh sys.composed.packages
+    && hasInfix "ExecStart=/usr/bin/sshd " unit
+    &&
+      sys.config."/services/sshd".package == {
+        value = "openssh";
+        explicit = true;
+      }
+    && !(tryEval (
+      deepSeq (mkSystem (head // { "/services/sshd".package = "no-such-package"; })).composed.units true
+    )).success
   ))
   (check "mkSystem: config.json has the sshd table and no derivation strings" (
     let
@@ -225,7 +234,7 @@ in
         };
       }
     )
-    # extra is the Nix hook and is checked too
+    # every table of an attrset config is checked too
     && !(accepted (base // { "/network".netwroks = { }; }))
   ))
   # The image id has one grammar, safe in os-release, the artifact

@@ -22,8 +22,8 @@
 # mkSystem selects the components (lib/components.nix).
 #
 # The loader does not apply the options. lib/system.nix (mkSystem) is the one
-# entry point that does: it binds /pkgs, runs `checkOptions` again over what an
-# attrset config and `extra` add, and composes.
+# entry point that does: it binds /pkgs, runs `checkOptions` again over an attrset
+# config, resolves package names, and composes.
 #
 # Usage:
 #   let cfg = import ./lib/config.nix { tree = f.modules { }; };

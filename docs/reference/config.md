@@ -37,13 +37,13 @@ declare throws with the valid names: a misspelt `prot = 2222` is an error, not a
 iets eval --json -E '(import ./default.nix).configLib.validPaths'
 ```
 
-| path             | options                                                                                                             |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `/base`          | `ntp`, `journalMaxUse`                                                                                              |
-| `/factory`       | `timezone`, `extraFiles`                                                                                            |
-| `/network`       | `networks`, `dns`, `defaultDhcp`                                                                                    |
-| `/system`        | `name`, `version`, `updateSource`                                                                                   |
-| `/services/sshd` | `package` (Nix only), `port`, `authorizedKeys`, `trustedUserCAKeys`, `principals`, `revokedKeys`, `hostCertificate` |
+| path             | options                                                                                                           |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `/base`          | `ntp`, `journalMaxUse`                                                                                            |
+| `/factory`       | `timezone`, `extraFiles`                                                                                          |
+| `/network`       | `networks`, `dns`, `defaultDhcp`                                                                                  |
+| `/system`        | `name`, `version`, `updateSource`                                                                                 |
+| `/services/sshd` | `package` (a name), `port`, `authorizedKeys`, `trustedUserCAKeys`, `principals`, `revokedKeys`, `hostCertificate` |
 
 The option types, defaults and descriptions are on the generated module pages
 ([Modules](modules/README.md)).
@@ -101,6 +101,17 @@ The default `modules/` is used when it exists; a directory the table names must 
 gets a schema entry with the file it is declared in, a row in `modules.json`, and the attribution of
 what it emits. The generated module pages cover Golconda's own tree only.
 
+## Your own packages
+
+A package option takes a package name, looked up in the target set:
+
+```toml
+["/services/sshd"]
+package = "openssh"
+```
+
+`config.json` keeps the name as written.
+
 ## Validation
 
 Export the schema and use any JSON Schema validator:
@@ -117,7 +128,7 @@ for editors and external tools.
 ## The entry point
 
 `lib/system.nix` turns a document into a system:
-`mkSystem { config; platform?; system?; sources?; extra?; extraFragments?; }`, exposed as the output
+`mkSystem { config; platform?; system?; sources?; extraFragments?; }`, exposed as the output
 `lib.mkSystem`. `examples/golconda.nix` is the template: copy it next to your `server.toml` and pin
 Golconda with npins in place of its `import ../default.nix` line. It evaluates from inside the
 repository as it stands. `lib.mkImage` takes the same `config` and signs it into an image
@@ -131,9 +142,6 @@ golconda.lib.mkSystem {
   config = ./server.toml;
   system = "x86_64-linux"; # the build host; left out, `iets eval` needs --impure
   # platform = "aarch64-linux";  # default: the build host's
-  # extra = {                   # Nix-only options, merged into the TOML
-  #   "/services/sshd".package = myOpenSSH;
-  # };
 }
 ```
 
@@ -143,12 +151,11 @@ golconda.lib.mkSystem {
 | `platform`       | the target platform, default `system`                                                                                                   |
 | `system`         | the build host, default `builtins.currentSystem`, which `iets eval` refuses unless `--impure`: pass it explicitly                       |
 | `sources`        | the pins, default `nix/sources.nix`                                                                                                     |
-| `extra`          | Nix-only options merged into the TOML's, one module path at a time (a package override)                                                 |
 | `extraFragments` | the build's own fragments, each with a `name` (`lib/image`: the loader, the update index, the initrd's tools); listed in `modules.json` |
 
-`extra` replaces individual option values, including lists and nested objects; it does not merge
-inside an option. `extraFragments` adds the image's own fragments (`mkImage`'s loader and keyring)
-beside the components; a duplicate claim still fails rather than overrides.
+`extraFragments` adds the image's own fragments (`mkImage`'s loader and keyring) beside the
+components; a duplicate claim still fails rather than overrides. It is not configuration: the
+document is.
 
 `mkSystem` binds `/pkgs.target` to the platform's set, selects the components (the built-ins, then
 every optional component the document has a table for; an empty table selects one with its defaults;
@@ -173,12 +180,12 @@ nix-build -E '(import ./examples/golconda.nix).usrTree'    # through the patched
 
 `mkSystem` is the one entry point that applies a document. The loader alone is `configLib`
 ([Outputs](outputs.md#configlib)): it turns a document into checked options and applies nothing.
-`mkSystem` runs the same option check over an attribute-set `config` and over `extra`, so every
-route into the tree is checked.
+`mkSystem` runs the same option check over an attribute-set `config`, so every route into the tree
+is checked.
 
 ## Nix escapes
 
 TOML covers the common path. Nix stays necessary for a custom module (in `modules/` beside the
 document, [Your own modules](#your-own-modules)), a package not in repkgs, and logic (a value shared
-between options, a conditional), which lives in a module too. A document cannot name a derivation or
-a function.
+between options, a conditional), which lives in a module too. A document names a package by name; it
+cannot name a derivation or a function.

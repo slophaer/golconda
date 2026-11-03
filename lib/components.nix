@@ -20,9 +20,9 @@
 #   inventory tree options           { path = { role; inputs; included?; reason?; }; } for every
 #                                    module; `included` and `reason` (builtin | config | null)
 #                                    only on components. `tree` is the loaded tree (f.modules { }).
-#   compose { modules; options; extra ? [ ]; }
+#   compose { modules; options; extraFragments ? [ ]; }
 #                                    the composer output of `options`: `modules` is the tree
-#                                    function (f.modules), `extra` the build's own named
+#                                    function (f.modules), `extraFragments` the build's own named
 #                                    fragments, which are not modules (lib/image/hwdb.nix). Each selected component's
 #                                    fragment carries its module path as `name`, its origin.
 #                                    A component enters by its table only: /system has no
@@ -116,7 +116,7 @@ let
     {
       modules,
       options,
-      extra ? [ ],
+      extraFragments ? [ ],
     }:
     let
       evaluated = modules { inherit options; };
@@ -126,7 +126,7 @@ let
     (modules {
       options = options // {
         ${composer} = systemOptions // {
-          components = map fragmentOf (select options) ++ extra;
+          components = map fragmentOf (select options) ++ extraFragments;
         };
       };
     }).modules.system
