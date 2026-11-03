@@ -1,0 +1,13 @@
+# Linux kernel for Golconda: pinned to 6.18.y LTS series
+[upstream]
+purl = 'pkg:generic/linux?url=https://kernel.org/releases.json&regex=linux-(\d+\.\d+(?:\.\d+)?)\.tar\.xz'
+allow = ">=6.18,<6.19"
+
+[[source]]
+key = "default"
+url = "https://cdn.kernel.org/pub/linux/kernel/v{major}.x/linux-{version}.tar.xz"
+hash = "sha256-i0QFPjStbQOlfqW57Eq9ckYwo+s7mUOKr6AODmMW+Vo="
+
+[pin]
+version = "6.18.60"
+date = "2026-10-30"

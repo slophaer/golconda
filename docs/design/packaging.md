@@ -1,8 +1,8 @@
 # Packaging
 
 Packages are repkgs packages: a `package.nix` naming a build system and a `sources.toml` naming the
-upstream. Golconda adds its own under `packages/` and sets a few set-wide features; it has no
-builder of its own.
+upstream. Golconda adds its own under `packages/` and sets a few set-wide features. The kernel uses
+package-local phases; repkgs supplies the shared build machinery.
 
 ## Where a package lives
 
@@ -10,16 +10,17 @@ builder of its own.
   dbus-broker, openssh, cryptsetup and the rest). They go into the set through its `packages`
   argument, so another package finds them by name. A package's own test goes in
   `tests/packages/<name>/test.nu` and builds as `packages.<system>.tests-<name>`.
-- **In the fork**: changes to the build system (relocation, `wrap`, `prefix`, `kbuild`) and to the
+- **In the fork**: changes to the shared build system (relocation, `wrap`, `prefix`) and to the
   toolchain packages (glibc, crt-interp, jig). The fork also keeps the packages its own tests need:
-  automake and libtool for the aclocal test; bc, elfutils and `linux-kernel` for `kbuild`.
+  automake and libtool for the aclocal test. The general build tools bc and elfutils also stay
+  there. The kernel recipe, kbuild module and policy belong to Golconda.
 
 The fork's branch is meant to hold only what upstream should take. A package goes upstream from
 `packages/` when it is general.
 
 ## Why repkgs
 
-Golconda pins a fork of repkgs (branch `golconda`; see
+Golconda pins a fork of repkgs (branch `upstream-prep`; see
 [patches/repkgs](../../patches/repkgs/README.md) for its commits and their issue drafts) with
 relocation fixes: PT_INTERP via libc with relative sysroot links, and glibc `$ORIGIN` expansion from
 `AT_EXECFN` instead of `/proc`.
@@ -84,18 +85,24 @@ Dash is the only shell in the image; systemd units run dash scripts. At build ti
 are the toolchain, nushell drives the repkgs builders, Python is needed for meson, systemd's jinja2
 templates and ukify, Perl for OpenSSL's Configure and some autotools, Rust for iets and dbus-broker.
 
-## The kernel: base in the fork, policy here
+## The kernel belongs to Golconda
 
-The fork's `linux-kernel` is a small bootable base: x86_64 `defconfig`, virtio, the serial console,
-devtmpfs and the initramfs path, enough to boot in QEMU and pass the fork's own smoke test. Golconda
-owns every policy choice as a kconfig fragment, `packages/kernel/golconda.config`: dm-verity with
-signed root hashes, erofs, the TPM drivers, EFI, the LSMs (built in, not forced on), nftables,
-WireGuard, the systemd requirements, and the hardening that costs nothing at run time. A comment
-above each option says why. `nix/packages.nix` appends the file through the set's override path
-(`overrides.linux-kernel.kbuild.configFragments.append`); the fork merges it onto the base with
-`merge_config.sh` and fails the build when a line does not survive `olddefconfig`. A wrong option
-name is a build error, not a silent loss. The result is `packages.<system>.kernel`: the latest LTS
-series, monolithic (no modules, so no kmod), built with `LLVM=1`.
+`packages/kernel/` owns the recipe, source pin, kbuild module and policy. Its typed base starts from
+x86_64 `defconfig` with virtio, a serial console and the initramfs path. The package only advertises
+x86_64 support because its ORC unwinder config is architecture-specific.
+
+`golconda.config` adds dm-verity with signed root hashes, erofs, TPM drivers, EFI, LSMs, nftables,
+WireGuard and systemd requirements. A comment above each option says why. The package owns its typed
+base and make flags. `nix/packages.nix` passes only the fragment and the options the system
+requires, such as the built-in verity key, as JSON fields in the build environment. Store references
+stay intact. A fragment may change a base option. A fragment that contradicts a required option
+fails the build.
+
+The local `kbuild.nu` uses repkgs' existing package-local phase interface. It merges the fragment
+with `merge_config.sh` and verifies that the requested settings survive `olddefconfig`. A wrong
+option name is a build error, not a silent loss. The result is `packages.<system>.kernel`: Linux
+6.18 LTS, monolithic (no modules, so no kmod), built with `LLVM=1`. Its `debug` output holds the
+unstripped `vmlinux` with full DWARF 5, for `gdb` and crash analysis; it is large.
 
 ## What is packaged
 

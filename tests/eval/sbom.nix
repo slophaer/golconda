@@ -18,7 +18,24 @@ let
   fixture = mkSystem { config = ../fixtures/downstream/server.toml; };
   components = fixture.sbom.bom.components;
   component = name: builtins.head (builtins.filter (c: c.name == name) components);
-  properties = c: c.properties or [ ];
+  isProvenance = p: p.name == "golconda:origin" || p.name == "golconda:replaces";
+  properties = c: builtins.filter isProvenance (c.properties or [ ]);
+  baseline =
+    (import ../../nix/packages.nix {
+      inherit sources;
+      system = platform;
+      downstream = ../fixtures/downstream/packages;
+    }).set.sbom
+      {
+        roots = fixture.composed.packages;
+        name = "${fixture.name}-${fixture.version}";
+      };
+  withoutProvenance =
+    c:
+    let
+      kept = builtins.filter (p: !isProvenance p) (c.properties or [ ]);
+    in
+    builtins.removeAttrs c [ "properties" ] // (if kept == [ ] then { } else { properties = kept; });
   origin = {
     name = "golconda:origin";
     value = "downstream";
@@ -142,5 +159,8 @@ in
         origin
         (replaces "golconda")
       ]
+  ))
+  (check "sbom: only downstream provenance changes the baseline BOM" (
+    fixture.sbom.bom // { components = map withoutProvenance components; } == baseline.bom
   ))
 ]
