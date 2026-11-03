@@ -94,6 +94,27 @@ A Nix store path carries no mtimes (Nix sets them to 1), so the tree itself has 
 applies the timestamp derived from the version (`YYYYMMDD.N` → epoch seconds, `versionToEpoch`) with
 `mkfs.erofs -T`.
 
+### Software bill of materials
+
+`lib/golconda/sbom.json` is a CycloneDX 1.5 document for the runtime package closure. Downstream
+components carry these entries in their `properties` array:
+
+```json
+[
+  { "name": "golconda:origin", "value": "downstream" },
+  { "name": "golconda:replaces", "value": "repkgs" }
+]
+```
+
+`golconda:replaces` is `golconda` or `repkgs` when the downstream package replaces that layer's
+package. New packages omit it. Roots and transitive packages use the same rule. Existing properties
+remain; ordinary components do not change. Only target-set package identities receive this
+attribution, not build-host tools. An alias that returns an upstream package keeps its upstream
+origin ([Your own packages](config.md#your-own-packages)).
+
+`mkSystem.sbom.bom` exposes the same document at evaluation time. Building `mkSystem.sbom` writes
+`sbom.json` without building the package outputs.
+
 ## Built today (`lib/image/`)
 
 Each step is a content-addressed derivation with a nushell builder (`common.nix`), repkgs packages

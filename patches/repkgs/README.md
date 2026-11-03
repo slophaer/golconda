@@ -15,7 +15,8 @@ two finish checks). The packages the image needs are not in the fork: they are i
 
 This directory holds what goes with the relocation series: the issue drafts
 `0001-interp-via-sysroot.md` and `0002-origin-without-proc.md`, and `negative-control.txt`, the run
-that shows the bug without the fix.
+that shows the bug without the fix. The draft [`0003-sbom-properties.md`](0003-sbom-properties.md)
+covers the generic SBOM property hook.
 
 ## Changing the fork
 

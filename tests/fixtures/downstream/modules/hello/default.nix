@@ -5,6 +5,9 @@ _: {
   impl =
     { results, ... }:
     {
-      packages = [ results.pkgs.pkgs.hello ];
+      packages = [
+        results.pkgs.pkgs.hello
+        results.pkgs.pkgs.openssh
+      ];
     };
 }

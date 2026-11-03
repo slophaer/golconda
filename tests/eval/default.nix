@@ -43,6 +43,7 @@ let
     ./index.nix
     ./hwdb.nix
     ./components.nix
+    ./sbom.nix
   ];
   tests = builtins.concatLists areas;
 in
