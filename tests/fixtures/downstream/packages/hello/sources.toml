@@ -1,0 +1,10 @@
+[upstream]
+purl = "pkg:github/Cyan4973/xxHash"
+
+[[source]]
+key = "default"
+url = "https://github.com/Cyan4973/xxHash/archive/refs/tags/v{version}.tar.gz"
+hash = "sha256-h6kohM+NxvQ89R9NEXZcYBG2wPOuB4mcyPfofKrx9wQ="
+
+[pin]
+version = "0.0.1"

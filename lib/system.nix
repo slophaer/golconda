@@ -7,7 +7,8 @@
 #               # included component and /system
 #   inventory;  # module path -> { role; inputs; included?; reason?; } (lib/components.nix)
 #   fragments;  # the names of the build's own fragments: /image/hwdb and extraFragments
-#               # modules.json is { modules = inventory; fragments; }
+#   packages;   # the downstream packages: name -> { replaces; } ("golconda", "repkgs" or null)
+#               # modules.json is { modules = inventory; fragments; packages; }
 #   artifacts;  # the files mkSystem adds to /usr/lib/golconda/
 #   platform;   # the elaborated platform record
 #   version;    # YYYYMMDD.N from /system
@@ -27,9 +28,11 @@
 #   in sys.usrTree
 #
 # The document is the whole configuration: no Nix hook. A package option takes a package
-# name, resolved in the target set. A downstream repository adds modules, never bare
-# fragments: the document's optional `[golconda]` table names its module directory (default
-# `modules/` beside the document), mounted under /local (lib/config.nix readProject).
+# name, resolved in the target set. A downstream repository adds modules and packages: the
+# document's optional `[golconda]` table names their directories (default `modules/` and
+# `packages/` beside the document; lib/config.nix readProject). Its modules are mounted
+# under /local; its packages join the target set after Golconda's own, and one that takes a
+# name replaces that package, recorded in modules.json.
 #
 # `extraFragments` are the build's own fragments (lib/image: the loader, the update
 # index, the initrd's tools), each with a `name`; they are not configuration, and
@@ -67,6 +70,7 @@ let
   secureBoot = (loadedOptions."/system" or { }).secureBoot or true;
   setFull = import ../nix/packages.nix {
     inherit sources system platform;
+    downstream = project.packages;
     kernelConfig =
       if secureBoot != false then
         { }
@@ -98,7 +102,7 @@ let
   documentOptions = configLib.checkOptions loadedOptions;
 
   # A package option (type derivation) takes a package name, looked up in the target set
-  # (Golconda's packages and repkgs'). An attrset config may pass a derivation.
+  # (Golconda's packages and the downstream ones). An attrset config may pass a derivation.
   resolvePackages = mapAttrs (
     path: given:
     let
@@ -250,6 +254,7 @@ let
       text = builtins.toJSON {
         modules = inventory;
         inherit fragments;
+        packages = setFull.downstream;
       };
       mode = "0644";
     };
@@ -273,6 +278,7 @@ in
     fragments
     inventory
     ;
+  packages = setFull.downstream;
   usrTree = usrTreeDrv;
   config = normalizedConfig;
   inherit (setFull) platform pkgs;

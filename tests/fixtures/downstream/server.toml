@@ -5,3 +5,5 @@ version = "20261102.1"
 
 ["/local/motd"]
 text = "hello\n"
+
+["/local/hello"]

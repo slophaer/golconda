@@ -30,7 +30,8 @@
 #   in cfg.loadConfig ./config.toml
 #
 # The one table that is not a module, `[golconda]`, says where the downstream repository's
-# parts are, relative to the document: `modules` (default "modules", mounted under /local).
+# parts are, relative to the document: `modules` (default "modules", mounted under /local) and
+# `packages` (default "packages", added to the target set; a name it shares replaces that package).
 # A default directory that does not exist means none; a path the table names must exist.
 # `readProject path` reads it without the tree: mkSystem needs it to build the tree.
 #
@@ -53,6 +54,7 @@ let
   # The project table: its keys and their default directories.
   projectDefaults = {
     modules = "modules";
+    packages = "packages";
   };
 
   # { modules; }: each a path or null. `dir` is the document's directory; `given` its
