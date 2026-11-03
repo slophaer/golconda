@@ -13,7 +13,7 @@
 # `config` is a TOML file (like server.toml) validated against the schema.
 # server.toml is the whole configuration. Your own units and files are a module in modules/
 # beside it (mounted under /local), your own packages are in packages/ beside it
-# (docs/reference/config.md).
+# (docs/reference/config.md). With no build-host argument, `golconda.lib.mkSystem ./server.toml`.
 #
 # See docs/reference/config.md for the full surface.
 let
