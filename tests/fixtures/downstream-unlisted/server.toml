@@ -1,0 +1,8 @@
+# The downstream packages take the names openssh and ripgrep, but [golconda] lists no
+# replacement: an error.
+[golconda]
+packages = "../downstream/packages"
+
+["/system"]
+name = "unlisted"
+version = "20261103.1"

@@ -43,9 +43,12 @@ analogue of a NixOS `system.nix`). The document is the whole configuration, with
 it: a package option takes a package name (`package = "openssh"`), looked up in the target set, and
 a downstream repository brings its own modules in `modules/` and its own packages in `packages/`
 (the same layout as Golconda's: a `package.nix` and a `sources.toml` per package), so they get
-purls, the SBOM and update tracking. A downstream package that takes a name replaces that package;
-`modules.json` records it. Nix stays where it is code: in a module and in a package. The interface
-is in [reference/config](../reference/config.md#the-entry-point).
+purls, the SBOM and update tracking. A downstream package may replace a Golconda or repkgs package
+only when `[golconda] replaces` lists the name: a replacement reaches the kernel, the boot chain and
+the signing tools, so it is a stated choice, never a name collision
+([Trust](trust.md#downstream-packages)). `modules.json` records it. Nix stays where it is code: in a
+module and in a package. The interface is in
+[reference/config](../reference/config.md#the-entry-point).
 
 ## The schema
 

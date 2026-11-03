@@ -59,6 +59,7 @@ let
       inherit sources system;
       platform = system;
       downstream = project.packages;
+      inherit (project) replaces;
     })
     pkgs
     platform
@@ -111,7 +112,13 @@ let
     args
     // {
       # not sys.usrTree
-      usrTree = imageLib.initrdTree (args // { packagesDir = project.packages; });
+      usrTree = imageLib.initrdTree (
+        args
+        // {
+          packagesDir = project.packages;
+          inherit (project) replaces;
+        }
+      );
     }
   );
   uki = imageLib.uki (

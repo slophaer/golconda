@@ -368,7 +368,13 @@ let
           packages = {
             type = "string";
             default = "packages";
-            description = "The package directory (package.nix + sources.toml per package), added to the target set; a name it shares replaces that package.";
+            description = "The package directory (package.nix + sources.toml per package), added to the target set. A name it shares with a Golconda or repkgs package must be listed in replaces.";
+          };
+          replaces = {
+            type = "array";
+            items.type = "string";
+            default = [ ];
+            description = "The names of Golconda and repkgs packages that a downstream package may replace. Any other shared name is an error.";
           };
         };
         additionalProperties = false;

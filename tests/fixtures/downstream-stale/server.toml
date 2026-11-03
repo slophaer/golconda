@@ -1,0 +1,8 @@
+# [golconda] replaces lists jq, which no downstream package replaces: an error.
+[golconda]
+packages = "../downstream/packages"
+replaces = ["openssh", "ripgrep", "jq"]
+
+["/system"]
+name = "stale"
+version = "20261103.1"
