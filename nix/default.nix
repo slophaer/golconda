@@ -10,7 +10,12 @@ let
 
   # mkSystem: the entry point for a complete Golconda system.
   # See lib/system.nix for the full interface.
-  mkSystem = args: import ../lib/system.nix (args // { inherit sources; });
+  # A path is the configuration alone: mkSystem ./server.toml.
+  mkSystem =
+    args:
+    import ../lib/system.nix (
+      (if builtins.isPath args then { config = args; } else args) // { inherit sources; }
+    );
 
   docsFromSchema =
     let
