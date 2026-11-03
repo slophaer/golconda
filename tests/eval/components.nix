@@ -64,7 +64,7 @@ let
     sys:
     fromJSON sys.artifacts."/usr/lib/golconda/modules.json".text == {
       modules = sys.inventory;
-      inherit (sys) fragments;
+      inherit (sys) fragments packages;
     }
     && emittersOf sys.composed sys.inventory == includedOf sys.inventory;
 in
@@ -251,6 +251,35 @@ in
         }
     )
   )
+  (check "downstream: packages/ joins the target set; a replacement is recorded" (
+    let
+      sys = mkSystem ../fixtures/downstream/server.toml;
+      json = fromJSON sys.artifacts."/usr/lib/golconda/modules.json".text;
+    in
+    sys.packages == {
+      openssh.replaces = "golconda";
+      ripgrep.replaces = "repkgs";
+      hello.replaces = null;
+    }
+    && json.packages == sys.packages
+    # each name is the downstream package: the fixtures' versions mark them
+    && sys.pkgs.hello.version == "0.0.1"
+    # a replacement wins over repkgs' and Golconda's own package of that name
+    && sys.pkgs.ripgrep.version == "0.0.2"
+    && sys.pkgs.openssh.version == "0.0.3"
+    # a module brings the new package into the image
+    && builtins.elem sys.pkgs.hello sys.composed.packages
+    &&
+      sys.composed.packageOrigins.${(import ../../modules/lib/merge.nix).pkgKey sys.pkgs.hello} == [
+        "/local/hello"
+      ]
+  ))
+  (check "downstream: a package named after a repkgs alias is refused (the alias would win)" (
+    throws (mkSystem ../fixtures/downstream-alias/server.toml).composed.units
+  ))
+  (check "downstream: no packages/ beside the document, no downstream packages" (
+    (mkSystem ../fixtures/downstream-none/server.toml).packages == { }
+  ))
   (check "downstream: a module's schema has its options and the file it is declared in" (
     let
       sys = mkSystem ../fixtures/downstream/server.toml;

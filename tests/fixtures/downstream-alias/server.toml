@@ -1,0 +1,4 @@
+# packages/cpython takes the name of a repkgs alias (cpython -> cpython314): refused.
+["/system"]
+name = "alias"
+version = "20261102.1"

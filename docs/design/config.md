@@ -40,8 +40,11 @@ the document (a path, or options already loaded), binds the package set of the p
 components, composes, and returns the composed system and its `/usr` tree derivation. `golconda.nix`
 at the repository root is the template a user copies next to `server.toml` (the analogue of a NixOS
 `system.nix`). The document is the whole configuration, with no Nix hook beside it: a package option
-takes a package name (`package = "openssh"`), looked up in the target set. Units or files of your
-own are a module in the downstream `modules/`. The interface is in
+takes a package name (`package = "openssh"`), looked up in the target set, and a downstream
+repository brings its own modules in `modules/` and its own packages in `packages/` (the same layout
+as Golconda's: a `package.nix` and a `sources.toml` per package), so they get purls, the SBOM and
+update tracking. A downstream package that takes a name replaces that package; `modules.json`
+records it. Nix stays where it is code: in a module and in a package. The interface is in
 [reference/config](../reference/config.md#the-entry-point).
 
 ## The schema

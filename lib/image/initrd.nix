@@ -1,9 +1,11 @@
 # lib/image/initrd.nix: the initrd, a zstd cpio around a minimal /usr tree.
 #
-# initrdTree { imageId; version; platform; buildSystem; pkgs; } → the initrd's /usr tree: /base
-#   (systemd, dash, uutils-coreutils, dbus-broker) as lib/system.nix composes it, plus lvm2 and
-#   cryptsetup, without the kernel (the UKI carries it); lib/usr-tree.nix builds it as for the
-#   system.
+# initrdSystem { imageId; version; platform; buildSystem; pkgs; packagesDir ? null; } → the
+#   mkSystem of the initrd: /base (systemd, dash, uutils-coreutils, dbus-broker) as
+#   lib/system.nix composes it, plus lvm2 and cryptsetup. `packagesDir` is the configuration's
+#   downstream package directory, so a replacement reaches the initrd too.
+# initrdTree (the same arguments) → the initrd's /usr tree: that system without the kernel (the
+#   UKI carries it); lib/usr-tree.nix builds it as for the system.
 #
 # initrd { usrTree; imageId; version; buildSystem; pkgs; } → derivation with
 #   initrd.cpio.zst
@@ -25,14 +27,49 @@ let
   inherit (builtins) filter;
   common = import ./common.nix { };
   usrTreeLib = import ../usr-tree.nix { };
-in
-{
-  # initrdTree { imageId; version; platform; buildSystem; pkgs; } → the initrd's /usr tree:
-  # the system mkSystem makes of /base alone (lib/system.nix), plus lvm2 and cryptsetup,
-  # minus the kernel.
-  initrdTree =
+
+  initrdSystem =
     {
       imageId,
+      version,
+      platform,
+      buildSystem,
+      pkgs,
+      packagesDir ? null,
+      ...
+    }:
+    import ../system.nix {
+      system = buildSystem;
+      platform = platform.name;
+      config = {
+        "/system" = {
+          name = imageId;
+          inherit version;
+        };
+      }
+      // (if packagesDir == null then { } else { golconda.packages = packagesDir; });
+      extraFragments = [
+        {
+          name = "/image/initrd";
+          packages = [
+            pkgs.lvm2 # dmsetup and the dm udev rules (initrd.nu substitutes {prefix})
+            pkgs.cryptsetup # veritysetup, for the initrd's own checks
+          ];
+          # The initrd reaches sockets.target and sysinit.target, which pull networkd (its
+          # socket) and timesyncd through /base's .wants links. sysusers does not run in the
+          # initrd, so /base gives those units ConditionPathExists=!/etc/initrd-release.
+          # resolved is wanted by multi-user.target only, which the initrd does not reach.
+        }
+      ];
+    };
+in
+{
+  # the system mkSystem makes of /base alone (lib/system.nix), plus lvm2 and cryptsetup
+  inherit initrdSystem;
+
+  # initrdTree: the initrd system's /usr tree, without the kernel
+  initrdTree =
+    args@{
       version,
       platform,
       buildSystem,
@@ -40,29 +77,7 @@ in
       ...
     }:
     let
-      sys = import ../system.nix {
-        system = buildSystem;
-        platform = platform.name;
-        config = {
-          "/system" = {
-            name = imageId;
-            inherit version;
-          };
-        };
-        extraFragments = [
-          {
-            name = "/image/initrd";
-            packages = [
-              pkgs.lvm2 # dmsetup and the dm udev rules (initrd.nu substitutes {prefix})
-              pkgs.cryptsetup # veritysetup, for the initrd's own checks
-            ];
-            # The initrd reaches sockets.target and sysinit.target, which pull networkd (its
-            # socket) and timesyncd through /base's .wants links. sysusers does not run in the
-            # initrd, so /base gives those units ConditionPathExists=!/etc/initrd-release.
-            # resolved is wanted by multi-user.target only, which the initrd does not reach.
-          }
-        ];
-      };
+      sys = initrdSystem args;
     in
     usrTreeLib.usrTree {
       # the kernel is in the UKI, not in the initrd

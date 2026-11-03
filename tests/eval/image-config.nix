@@ -101,6 +101,31 @@ in
     && additive.composed.files."/usr/lib/additive-marker".text == "additive"
     && builtins.elem "/image/additive" additive.fragments
   ))
+  (check "mkImage: the loader, keyring and initrd use the downstream packages too" (
+    let
+      i = f.lib.mkImage {
+        config = ../fixtures/downstream/server.toml;
+        keys = "/tmp/golconda-test-keys";
+        system = "x86_64-linux";
+      };
+      initrdSys =
+        packagesDir:
+        (import ../../lib/image { }).initrdSystem {
+          imageId = "t";
+          version = "20261031.1";
+          inherit (i) pkgs;
+          platform = {
+            name = "x86_64-linux";
+          };
+          buildSystem = "x86_64-linux";
+          inherit packagesDir;
+        };
+    in
+    # the fixture's openssh (version 0.0.3) replaces Golconda's for the chain's own set
+    i.pkgs.openssh.version == "0.0.3"
+    && (initrdSys ../fixtures/downstream/packages).pkgs.openssh.version == "0.0.3"
+    && (initrdSys null).pkgs.openssh.version != "0.0.3"
+  ))
   (check "mkImage: rejects a user claim on its keyring destination" (
     !(builtins.tryEval (builtins.deepSeq (image duplicateConfig).erofs.usrTree.links true)).success
   ))

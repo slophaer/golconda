@@ -110,7 +110,14 @@ A package option takes a package name, looked up in the target set:
 package = "openssh"
 ```
 
-`config.json` keeps the name as written.
+`config.json` keeps the name as written. A downstream repository adds packages in `packages/` beside
+the document (or the directory `[golconda] packages = "…"` names), in the layout Golconda's own
+`packages/` uses: one directory per package with a `package.nix` and a `sources.toml`, so the
+package has a purl, an SBOM entry and update tracking. They join the target set after Golconda's
+own. A package that takes an existing name replaces that package for everything that uses it, and
+`modules.json` records it under `packages`: `{ "openssh": { "replaces": "golconda" } }` (`"repkgs"`
+for one of the fork's, null for a new name). Only target packages can be named; build-host tools
+cannot.
 
 ## Validation
 
@@ -168,6 +175,7 @@ every optional component the document has a table for; an empty table selects on
 | `config`          | the normalized options of every included component and `/system`, derivations replaced by their names |
 | `inventory`       | every module's role and inputs; for a component, `included` and `reason`                              |
 | `fragments`       | the names of the build's own fragments (`/image/hwdb` and `extraFragments`)                           |
+| `packages`        | the downstream packages: name → `{ replaces; }`, `"golconda"`, `"repkgs"` or null                     |
 | `artifacts`       | the files `mkSystem` adds to `/usr/lib/golconda/`                                                     |
 | `platform`        | the elaborated platform record                                                                        |
 | `version`, `name` | from `/system`                                                                                        |
@@ -185,7 +193,8 @@ is checked.
 
 ## Nix escapes
 
-TOML covers the common path. Nix stays necessary for a custom module (in `modules/` beside the
-document, [Your own modules](#your-own-modules)), a package not in repkgs, and logic (a value shared
-between options, a conditional), which lives in a module too. A document names a package by name; it
-cannot name a derivation or a function.
+The document is the whole configuration. Nix is code, and code lives in two places: a module (in
+`modules/` beside the document, [Your own modules](#your-own-modules)), which holds logic too (a
+value shared between options, a conditional), and a package (in `packages/`,
+[Your own packages](#your-own-packages)). A document names a package by name; it cannot name a
+derivation or a function.

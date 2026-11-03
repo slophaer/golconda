@@ -50,11 +50,15 @@ let
     else
       k;
   checkedKeys = absolute keys;
+  # the configuration's downstream directories ([golconda]): its packages replace for the loader,
+  # the keyring and the initrd as for the system
+  project = (import ../config.nix { tree = null; }).readProject config;
   # the same set default.nix argsFun hands to `packages`: the loader is built before the system
   inherit
     (import ../../nix/packages.nix {
       inherit sources system;
       platform = system;
+      downstream = project.packages;
     })
     pkgs
     platform
@@ -103,7 +107,13 @@ let
       cert = sbCert;
     }
   );
-  initrd = imageLib.initrd (args // { usrTree = imageLib.initrdTree args; }); # not sys.usrTree
+  initrd = imageLib.initrd (
+    args
+    // {
+      # not sys.usrTree
+      usrTree = imageLib.initrdTree (args // { packagesDir = project.packages; });
+    }
+  );
   uki = imageLib.uki (
     args
     // {
@@ -144,6 +154,7 @@ in
     uki
     loader
     disk
+    pkgs
     ;
   # what sysupdate fetches: the four files and SHA256SUMS (docs/design/releases.md)
   release = "${disk}/release";

@@ -357,11 +357,19 @@ let
     properties = builtins.removeAttrs (moduleSchemasWith context tree) [ "/pkgs" ] // {
       # the project table (lib/config.nix): not a module
       golconda = {
-        description = "Where the downstream repository's modules are, relative to this file. Optional; default \"modules\", used when it exists.";
+        description = "Where the downstream repository's modules and packages are, relative to this file. Optional; each default is used when it exists.";
         type = "object";
-        properties.modules = {
-          type = "string";
-          description = "The module directory, mounted under /local.";
+        properties = {
+          modules = {
+            type = "string";
+            default = "modules";
+            description = "The module directory, mounted under /local.";
+          };
+          packages = {
+            type = "string";
+            default = "packages";
+            description = "The package directory (package.nix + sources.toml per package), added to the target set; a name it shares replaces that package.";
+          };
         };
         additionalProperties = false;
       };
