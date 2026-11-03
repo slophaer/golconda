@@ -275,6 +275,65 @@ in
         "/local/hello"
       ]
   ))
+  (check "downstream: replacing a package needs its name in [golconda] replaces" (
+    let
+      sys = mkSystem ../fixtures/downstream-unlisted/server.toml;
+    in
+    throws sys.packages
+    && throws sys.composed.units
+    &&
+      configLib.replacementError {
+        downstream = {
+          hello.replaces = null;
+          openssh.replaces = "golconda";
+          ripgrep.replaces = "repkgs";
+        };
+        allowed = [ "ripgrep" ];
+      }
+      == "golconda: downstream package openssh replaces Golconda's package of that name; add \"openssh\" to [golconda] replaces to allow it"
+    &&
+      configLib.replacementError {
+        downstream.ripgrep.replaces = "repkgs";
+        allowed = [ ];
+      }
+      == "golconda: downstream package ripgrep replaces repkgs' package of that name; add \"ripgrep\" to [golconda] replaces to allow it"
+  ))
+  (check "downstream: [golconda] replaces must name a package that is replaced" (
+    throws (mkSystem ../fixtures/downstream-stale/server.toml).packages
+    &&
+      configLib.replacementError {
+        downstream = {
+          hello.replaces = null;
+          ripgrep.replaces = "repkgs";
+        };
+        allowed = [
+          "ripgrep"
+          "hello"
+        ];
+      }
+      == "golconda: [golconda] replaces lists hello, but no downstream package replaces a package of that name"
+    &&
+      configLib.replacementError {
+        downstream.ripgrep.replaces = "repkgs";
+        allowed = [ "ripgrep" ];
+      } == null
+  ))
+  (check "downstream: [golconda] replaces is a list of package names, empty by default" (
+    configLib.readProject ../fixtures/downstream-none/server.toml == {
+      modules = null;
+      packages = null;
+      replaces = [ ];
+    }
+    &&
+      (configLib.readProject ../fixtures/downstream-stale/server.toml).replaces == [
+        "openssh"
+        "ripgrep"
+        "jq"
+      ]
+    && (configLib.readProject { golconda.replaces = [ "openssh" ]; }).replaces == [ "openssh" ]
+    && throws (configLib.readProject { golconda.replaces = "openssh"; })
+    && throws (configLib.readProject { golconda.replaces = [ 1 ]; })
+  ))
   (check "downstream: a package named after a repkgs alias is refused (the alias would win)" (
     throws (mkSystem ../fixtures/downstream-alias/server.toml).composed.units
   ))

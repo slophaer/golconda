@@ -142,6 +142,13 @@ in
       schema = schemaLib.toJsonSchema (f.modules { });
     in
     schema.properties.golconda.properties ? modules
+    &&
+      schema.properties.golconda.properties.replaces == {
+        type = "array";
+        items.type = "string";
+        default = [ ];
+        description = "The names of Golconda and repkgs packages that a downstream package may replace. Any other shared name is an error.";
+      }
     && schema.properties.golconda.additionalProperties == false
   ))
   (check "schema: computed defaults do not require input and preserve null defaults" (

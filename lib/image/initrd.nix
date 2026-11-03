@@ -1,9 +1,10 @@
 # lib/image/initrd.nix: the initrd, a zstd cpio around a minimal /usr tree.
 #
-# initrdSystem { imageId; version; platform; buildSystem; pkgs; packagesDir ? null; } → the
-#   mkSystem of the initrd: /base (systemd, dash, uutils-coreutils, dbus-broker) as
-#   lib/system.nix composes it, plus lvm2 and cryptsetup. `packagesDir` is the configuration's
-#   downstream package directory, so a replacement reaches the initrd too.
+# initrdSystem { imageId; version; platform; buildSystem; pkgs; packagesDir ? null;
+#   replaces ? [ ]; } → the mkSystem of the initrd: /base (systemd, dash, uutils-coreutils,
+#   dbus-broker) as lib/system.nix composes it, plus lvm2 and cryptsetup. `packagesDir` and
+#   `replaces` are the configuration's downstream package directory and its [golconda]
+#   replaces, so a replacement reaches the initrd too, under the same opt-in.
 # initrdTree (the same arguments) → the initrd's /usr tree: that system without the kernel (the
 #   UKI carries it); lib/usr-tree.nix builds it as for the system.
 #
@@ -36,6 +37,7 @@ let
       buildSystem,
       pkgs,
       packagesDir ? null,
+      replaces ? [ ],
       ...
     }:
     import ../system.nix {
@@ -47,7 +49,17 @@ let
           inherit version;
         };
       }
-      // (if packagesDir == null then { } else { golconda.packages = packagesDir; });
+      // (
+        if packagesDir == null then
+          { }
+        else
+          {
+            golconda = {
+              packages = packagesDir;
+              inherit replaces;
+            };
+          }
+      );
       extraFragments = [
         {
           name = "/image/initrd";

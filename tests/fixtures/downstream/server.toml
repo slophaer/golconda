@@ -1,4 +1,8 @@
 # A downstream repository: modules/ beside this file is mounted under /local.
+# Its packages/ take two existing names; [golconda] replaces allows exactly those.
+[golconda]
+replaces = ["openssh", "ripgrep"]
+
 ["/system"]
 name = "downstream"
 version = "20261102.1"

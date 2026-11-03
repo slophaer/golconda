@@ -32,8 +32,9 @@
 # name, resolved in the target set. A downstream repository adds modules and packages: the
 # document's optional `[golconda]` table names their directories (default `modules/` and
 # `packages/` beside the document; lib/config.nix readProject). Its modules are mounted
-# under /local; its packages join the target set after Golconda's own, and one that takes a
-# name replaces that package, recorded in modules.json.
+# under /local; its packages join the target set after Golconda's own. One that takes a
+# Golconda or repkgs name replaces that package only when [golconda] replaces lists the name;
+# modules.json records each replacement.
 #
 # `extraFragments` are the build's own fragments (lib/image: the loader, the update
 # index, the initrd's tools), each with a `name`; they are not configuration, and
@@ -72,6 +73,7 @@ let
   setFull = import ../nix/packages.nix {
     inherit sources system platform;
     downstream = project.packages;
+    inherit (project) replaces;
     kernelConfig =
       if secureBoot != false then
         { }

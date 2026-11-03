@@ -109,7 +109,7 @@ in
         system = "x86_64-linux";
       };
       initrdSys =
-        packagesDir:
+        packagesDir: replaces:
         (import ../../lib/image { }).initrdSystem {
           imageId = "t";
           version = "20261031.1";
@@ -118,13 +118,26 @@ in
             name = "x86_64-linux";
           };
           buildSystem = "x86_64-linux";
-          inherit packagesDir;
+          inherit packagesDir replaces;
         };
+      allowed = [
+        "openssh"
+        "ripgrep"
+      ];
     in
     # the fixture's openssh (version 0.0.3) replaces Golconda's for the chain's own set
     i.pkgs.openssh.version == "0.0.3"
-    && (initrdSys ../fixtures/downstream/packages).pkgs.openssh.version == "0.0.3"
-    && (initrdSys null).pkgs.openssh.version != "0.0.3"
+    && (initrdSys ../fixtures/downstream/packages allowed).pkgs.openssh.version == "0.0.3"
+    && (initrdSys null [ ]).pkgs.openssh.version != "0.0.3"
+    # the initrd and the chain's own set need the same opt-in as the system
+    && !(builtins.tryEval (initrdSys ../fixtures/downstream/packages [ ]).pkgs.openssh.version).success
+    && !(builtins.tryEval
+      (f.lib.mkImage {
+        config = ../fixtures/downstream-unlisted/server.toml;
+        keys = "/tmp/golconda-test-keys";
+        system = "x86_64-linux";
+      }).pkgs.openssh.version
+    ).success
   ))
   (check "mkImage: rejects a user claim on its keyring destination" (
     !(builtins.tryEval (builtins.deepSeq (image duplicateConfig).erofs.usrTree.links true)).success

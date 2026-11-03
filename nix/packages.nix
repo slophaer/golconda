@@ -13,8 +13,10 @@
 #
 # `downstream` (the argument) is a downstream repository's package directory, or null: each
 # subdirectory with a package.nix is a package (package.nix + sources.toml, as in packages/).
-# It goes after Golconda's own, so a name it shares replaces that package; mkSystem records
-# the replacement in modules.json.
+# It goes after Golconda's own, so a name it shares replaces that package. `replaces` (the
+# document's [golconda] replaces) must list exactly the names it takes: a replacement is an
+# opt-in, never an accident (lib/config.nix replacementError). mkSystem records each one in
+# modules.json.
 #
 # Cross-compilation: `system` is the build host (builtins.currentSystem by default),
 # `platform` is the target (defaults to the build host). When they differ, repkgs
@@ -28,6 +30,7 @@
   # /system.secureBoot = false); kbuild.nu fails if the policy fragment contradicts one
   kernelConfig ? { },
   downstream ? null,
+  replaces ? [ ],
 }:
 let
   inherit (builtins)
@@ -76,6 +79,13 @@ let
         null;
   }) downstreamPackages;
 
+  replacementError = (import ../lib/config.nix { tree = null; }).replacementError {
+    downstream = downstreamInfo;
+    allowed = replaces;
+  };
+  # every use of the downstream packages, or the record of them, sees the refusal
+  checked = v: if replacementError != null then throw replacementError else v;
+
   platforms = import "${sources.repkgs}/nix/platforms.nix";
 
   # Kernel config: the base config plus IPE boot policy path substitution.
@@ -101,7 +111,7 @@ let
         in
         throw "golconda: downstream package ${n} has the name of a repkgs alias (${n} -> ${aliases.${n}}), which repkgs applies after every package; name the package itself (${aliases.${n}})"
       else
-        golcondaPackages // downstreamPackages;
+        checked (golcondaPackages // downstreamPackages);
     overrides = {
       # The system's required options and the policy fragment, read by packages/kernel/kbuild.nu.
       # The package owns its base config and make flags; this replaces only these two fields.
@@ -117,5 +127,5 @@ in
 {
   inherit (set) pkgs platform;
   inherit platforms set;
-  downstream = downstreamInfo;
+  downstream = checked downstreamInfo;
 }

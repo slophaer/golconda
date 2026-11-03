@@ -31,8 +31,9 @@
 #
 # The one table that is not a module, `[golconda]`, says where the downstream repository's
 # parts are, relative to the document: `modules` (default "modules", mounted under /local) and
-# `packages` (default "packages", added to the target set; a name it shares replaces that package).
-# A default directory that does not exist means none; a path the table names must exist.
+# `packages` (default "packages", added to the target set). A default directory that does not
+# exist means none; a path the table names must exist. A downstream package may take the name
+# of a Golconda or repkgs package only when `replaces` lists that name (`replacementError`).
 # `readProject path` reads it without the tree: mkSystem needs it to build the tree.
 #
 # `tree` is the evaluated tree (f.modules { }), for path and option validation. `readProject`
@@ -57,12 +58,14 @@ let
     packages = "packages";
   };
 
-  # { modules; }: each a path or null. `dir` is the document's directory; `given` its
-  # `golconda` table.
+  # { modules; packages; replaces; }: each directory a path or null, `replaces` a list of
+  # package names. `dir` is the document's directory; `given` its `golconda` table.
   resolveProject =
     dir: given:
     let
-      unknown = filter (k: !(projectDefaults ? ${k})) (attrNames given);
+      keys = attrNames projectDefaults ++ [ "replaces" ];
+      unknown = filter (k: !(elem k keys)) (attrNames given);
+      replaces = given.replaces or [ ];
       resolve =
         key:
         if given ? ${key} then
@@ -82,9 +85,37 @@ let
           null;
     in
     if unknown != [ ] then
-      throw "golconda: [golconda] has no key ${concatStringsSep ", " unknown}; valid keys: ${concatStringsSep ", " (attrNames projectDefaults)}"
+      throw "golconda: [golconda] has no key ${concatStringsSep ", " unknown}; valid keys: ${concatStringsSep ", " keys}"
+    else if !(builtins.isList replaces && builtins.all isString replaces) then
+      throw "golconda: golconda.replaces must be a list of package names"
     else
-      builtins.mapAttrs (k: _: resolve k) projectDefaults;
+      builtins.mapAttrs (k: _: resolve k) projectDefaults // { inherit replaces; };
+
+  # The message for downstream packages that take existing names, or null. `downstream` is
+  # name -> { replaces; } (nix/packages.nix: "golconda", "repkgs" or null); `allowed` is
+  # [golconda] replaces. Every taken name must be allowed, and every allowed name taken: a
+  # stale entry would allow a later replacement nobody reviewed.
+  replacementError =
+    { downstream, allowed }:
+    let
+      owner = {
+        golconda = "Golconda's";
+        repkgs = "repkgs'";
+      };
+      unlisted = filter (n: downstream.${n}.replaces != null && !(elem n allowed)) (attrNames downstream);
+      stale = filter (n: (downstream.${n}.replaces or null) == null) allowed;
+    in
+    if unlisted != [ ] then
+      let
+        n = head unlisted;
+      in
+      "golconda: downstream package ${n} replaces ${
+        owner.${downstream.${n}.replaces}
+      } package of that name; add \"${n}\" to [golconda] replaces to allow it"
+    else if stale != [ ] then
+      "golconda: [golconda] replaces lists ${head stale}, but no downstream package replaces a package of that name"
+    else
+      null;
 
   # The project of a TOML file (a path) or of options already loaded (an attrset, where
   # `golconda.modules` is a path and nothing has a default).
@@ -96,7 +127,7 @@ let
       resolveProject null (config.golconda or { })
     else
       # mkSystem refuses any other config with its own message
-      builtins.mapAttrs (_: _: null) projectDefaults;
+      builtins.mapAttrs (_: _: null) projectDefaults // { replaces = [ ]; };
 
   treeLib = import ./tree.nix { };
   inherit (import ./components.nix { }) internalOptions roleOf;
@@ -169,6 +200,7 @@ in
     loadConfigText
     optionError
     readProject
+    replacementError
     validPaths
     ;
 }

@@ -16,6 +16,17 @@ own copy of any of them:
 
 A fourth thing, who may log in, is decided outside the image ([Identity](#identity)).
 
+## Downstream packages
+
+A downstream repository can replace any package by name, including the kernel, systemd, the loader
+and the tools that sign the image. Such a replacement is trusted code. It can drop the IPE policy,
+the verity key the kernel carries, or the boot checks. Golconda therefore takes a replacement only
+when the document lists its name in `[golconda] replaces`, and refuses a name collision that the
+list does not name. The list must be exact: a stale entry is an error, so it cannot silently allow a
+later replacement. `modules.json` and the SBOM record each replacement. Golconda does not check what
+a replacement does; whoever lists it owns that review
+([reference/config](../reference/config.md#your-own-packages)).
+
 ### 1. Boot keys
 
 ```mermaid

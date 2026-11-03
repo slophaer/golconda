@@ -25,6 +25,10 @@ let
       inherit sources;
       system = platform;
       downstream = ../fixtures/downstream/packages;
+      replaces = [
+        "openssh"
+        "ripgrep"
+      ];
     }).set.sbom
       {
         roots = fixture.composed.packages;
@@ -58,6 +62,10 @@ let
   identity = mkSystem {
     config = {
       golconda.packages = ../fixtures/downstream/packages;
+      golconda.replaces = [
+        "openssh"
+        "ripgrep"
+      ];
       "/system" = {
         name = "identity";
         version = "20261103.1";
@@ -95,10 +103,12 @@ let
       inherit sources;
       system = platform;
       downstream = ../fixtures/sbom-conflict;
+      replaces = [ "openssh" ];
     }).pkgs;
   conflict = mkSystem {
     config = {
       golconda.packages = ../fixtures/sbom-conflict;
+      golconda.replaces = [ "openssh" ];
       "/system" = {
         name = "conflict";
         version = "20261103.1";

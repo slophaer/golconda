@@ -114,10 +114,23 @@ package = "openssh"
 the document (or the directory `[golconda] packages = "…"` names), in the layout Golconda's own
 `packages/` uses: one directory per package with a `package.nix` and a `sources.toml`, so the
 package has a purl, an SBOM entry and update tracking. They join the target set after Golconda's
-own. A package that takes an existing name replaces that package for everything that uses it, and
-`modules.json` records it under `packages`: `{ "openssh": { "replaces": "golconda" } }` (`"repkgs"`
-for one of the fork's, null for a new name). Only target packages can be named; build-host tools
-cannot.
+own. A package option names only a target package; a build-host tool cannot be named.
+
+A package that takes the name of a Golconda or repkgs package replaces it, but only when the
+document lists that name:
+
+```toml
+[golconda]
+replaces = ["openssh"]
+```
+
+Without the entry, evaluation fails and names the package. An entry for a name that no downstream
+package takes is also an error, so the list says exactly what the repository replaces. A replacement
+applies to everything that uses the package: the image, the initrd, the loader and the keyring, and
+the build host's tools when the build host and the target are the same platform. `modules.json`
+records each package under `packages`: `{ "openssh": { "replaces": "golconda" } }` (`"repkgs"` for
+one of the fork's, null for a new name). A package that takes the name of a repkgs alias is refused:
+repkgs applies its aliases last, so the alias would win.
 
 When a downstream package enters the runtime closure, its SBOM component has
 `golconda:origin = downstream`. A replacement also has `golconda:replaces = golconda` or
