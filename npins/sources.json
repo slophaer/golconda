@@ -59,11 +59,11 @@
         "owner": "yolobox",
         "repo": "repkgs"
       },
-      "branch": "golconda",
+      "branch": "upstream-prep",
       "submodules": false,
-      "revision": "80c77f74efd04927009a57d0a9bdb5e5c5f42cdc",
-      "url": "https://code.in.a.flawed.cloud/yolobox/repkgs/archive/80c77f74efd04927009a57d0a9bdb5e5c5f42cdc.tar.gz",
-      "hash": "sha256-OjmU6Lu0v8+6fkEF684KaGAgVclqxtXHSTLgG4fLaCU="
+      "revision": "c467114e6782c4b3a2732fb02a031700d744d69c",
+      "url": "https://code.in.a.flawed.cloud/yolobox/repkgs/archive/c467114e6782c4b3a2732fb02a031700d744d69c.tar.gz",
+      "hash": "sha256-lmUBiiYzp00J68D7WIUMcelJRCXGJMCQkInKOCEzXTk="
     }
   },
   "version": 7
