@@ -5,32 +5,35 @@ schema is the flake one, produced by flake-incompat.
 
 ## Outputs
 
-| attribute                                                             | per system  | content                                                                                                                         |
-| --------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `packages.<system>.nix`                                               | yes         | repkgs' own Nix package, built by repkgs; not the first daemon ([Build host](build-host.md#the-first-daemon-a-chicken-and-egg)) |
-| `packages.<system>.kernel`                                            | yes         | the Linux kernel from `packages/kernel/`, including the Golconda policy fragment                                                |
-| `packages.<system>.tests-<name>`                                      | yes         | the test of package `<name>` in `tests/packages/<name>/test.nu` (uutils-coreutils, btrfs-progs)                                 |
-| `packages.<system>.usr-tree-smoke`                                    | yes         | smoke test for the `/usr` tree builder: the base system plus jq                                                                 |
-| `packages.<system>.usr-tree-base-smoke`                               | yes         | the `/usr` tree of a system with no fragments: `/base`, `/network` and `/security` alone                                        |
-| `packages.x86_64-linux.usr-tree-smoke-aarch64`                        | x86_64 only | cross-compiled `/usr` tree for aarch64; needs an aarch64 builder, postponed after v1 ([Scope](../design/scope.md))              |
-| `packages.<system>.image-smoke`                                       | yes         | the image chain over `examples/server.toml`, with `proof.txt` ([Image artifacts](image.md))                                     |
-| `packages.<system>.image-smoke-{erofs,verity,initrd,uki,loader,disk}` | yes         | one step of the chain each                                                                                                      |
-| `packages.<system>.image-smoke-test`                                  | yes         | the boot test image, version `20261031.1`: `image-smoke` with the test SSH key and an update source (`scripts/boot-test`)       |
-| `packages.<system>.image-smoke-test-nosb`                             | yes         | the test image for a host without Secure Boot (`/system.secureBoot = false`): its kernel carries the throwaway `db` certificate |
-| `packages.<system>.image-smoke-test-nosb-next`                        | yes         | its next release, `20261031.2`                                                                                                  |
-| `packages.<system>.image-smoke-test-next`                             | yes         | its next release, `20261031.2`, with the same throwaway keys: what `scripts/boot-test --next` installs                          |
-| `packages.<system>.image-smoke-test-rotated`                          | yes         | the same next release signed with a second throwaway `db` key: `scripts/boot-test --next <it> --rotate`                         |
-| `checks.<system>`                                                     | yes         | `treefmt`, `docs`, `module-docs`, `usr-tree-test`, `boundary`, `etc-systemd-links`, `schema` (the sandboxed checks)             |
-| `formatter.<system>`                                                  | yes         | treefmt with pinned tools                                                                                                       |
-| `devShells.<system>.default`                                          | yes         | treefmt, mdbook, iets, npins                                                                                                    |
-| `modules`                                                             | no          | the adios tree; `modules { options = {...}; }` evaluates it                                                                     |
-| `docs-pages`, `docs-summary`                                          | no          | the generated reference pages, and the module lines `docs/SUMMARY.md` must carry                                                |
-| `docs-modules`, `docs-module-paths`                                   | no          | the same pages by module path, and the module paths discovered in `modules/`                                                    |
-| `schema`                                                              | no          | JSON Schema 2020-12 of the module tree (see below)                                                                              |
-| `configLib`                                                           | no          | TOML configuration loader (see below)                                                                                           |
-| `platforms`                                                           | no          | the platforms table (repkgs `nix/platforms.nix`)                                                                                |
-| `lib.mkSystem`                                                        | no          | the entry point: a TOML document → the composed system and its `/usr` tree ([Configuration](config.md#the-entry-point))         |
-| `lib.mkImage`                                                         | no          | a TOML document and a key directory → the signed image chain ([`lib.mkImage`](#libmkimage))                                     |
+| attribute                                                                 | per system  | content                                                                                                                         |
+| ------------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `packages.<system>.nix`                                                   | yes         | repkgs' own Nix package, built by repkgs; not the first daemon ([Build host](build-host.md#the-first-daemon-a-chicken-and-egg)) |
+| `packages.x86_64-linux.kernel`                                            | x86_64 only | the Linux kernel from `packages/kernel/`, including the Golconda policy fragment                                                |
+| `packages.<system>.tests-<name>`                                          | yes         | the test of package `<name>` in `tests/packages/<name>/test.nu` (uutils-coreutils, btrfs-progs)                                 |
+| `packages.x86_64-linux.usr-tree-smoke`                                    | x86_64 only | smoke test for the `/usr` tree builder: the base system plus jq                                                                 |
+| `packages.x86_64-linux.usr-tree-base-smoke`                               | x86_64 only | the `/usr` tree of a system with no fragments: `/base`, `/network` and `/security` alone                                        |
+| `packages.x86_64-linux.image-smoke`                                       | x86_64 only | the image chain over `examples/server.toml`, with `proof.txt` ([Image artifacts](image.md))                                     |
+| `packages.x86_64-linux.image-smoke-{erofs,verity,initrd,uki,loader,disk}` | x86_64 only | one step of the chain each                                                                                                      |
+| `packages.x86_64-linux.image-smoke-test`                                  | x86_64 only | the boot test image, version `20261031.1`: `image-smoke` with the test SSH key and an update source (`scripts/boot-test`)       |
+| `packages.x86_64-linux.image-smoke-test-nosb`                             | x86_64 only | the test image for a host without Secure Boot (`/system.secureBoot = false`): its kernel carries the throwaway `db` certificate |
+| `packages.x86_64-linux.image-smoke-test-nosb-next`                        | x86_64 only | its next release, `20261031.2`                                                                                                  |
+| `packages.x86_64-linux.image-smoke-test-next`                             | x86_64 only | its next release, `20261031.2`, with the same throwaway keys: what `scripts/boot-test --next` installs                          |
+| `packages.x86_64-linux.image-smoke-test-rotated`                          | x86_64 only | the same next release signed with a second throwaway `db` key: `scripts/boot-test --next <it> --rotate`                         |
+| `checks.<system>`                                                         | yes         | `treefmt`, `docs`, `module-docs`, `usr-tree-test`, `boundary`, `etc-systemd-links`, `schema` (the sandboxed checks)             |
+| `formatter.<system>`                                                      | yes         | treefmt with pinned tools                                                                                                       |
+| `devShells.<system>.default`                                              | yes         | treefmt, mdbook, iets, npins                                                                                                    |
+| `modules`                                                                 | no          | the adios tree; `modules { options = {...}; }` evaluates it                                                                     |
+| `docs-pages`, `docs-summary`                                              | no          | the generated reference pages, and the module lines `docs/SUMMARY.md` must carry                                                |
+| `docs-modules`, `docs-module-paths`                                       | no          | the same pages by module path, and the module paths discovered in `modules/`                                                    |
+| `schema`                                                                  | no          | JSON Schema 2020-12 of the module tree (see below)                                                                              |
+| `configLib`                                                               | no          | TOML configuration loader (see below)                                                                                           |
+| `platforms`                                                               | no          | the platforms table (repkgs `nix/platforms.nix`)                                                                                |
+| `lib.mkSystem`                                                            | no          | the entry point: a TOML document → the composed system and its `/usr` tree ([Configuration](config.md#the-entry-point))         |
+| `lib.mkImage`                                                             | no          | a TOML document and a key directory → the signed image chain ([`lib.mkImage`](#libmkimage))                                     |
+
+OS outputs require the local x86_64 kernel. Golconda exposes no aarch64 images or cross-compiled OS
+trees until the kernel supports that architecture ([Scope](../design/scope.md)). Package tests, Nix
+and developer tools still have per-system outputs.
 
 ## Inputs
 

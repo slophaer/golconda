@@ -68,6 +68,21 @@ in
   (check "kernel: the ORC config only advertises x86_64" (
     pkgs.linux-kernel.args.platforms.cpu == [ "x86_64" ]
   ))
+  (check "outputs: aarch64 exposes no unsupported kernel, image or OS tree" (
+    let
+      names = attrNames f.packages.aarch64-linux;
+    in
+    !(elem "kernel" names) && all (n: !(hasPrefix "image-smoke" n) && !(hasPrefix "usr-tree" n)) names
+  ))
+  (check "outputs: x86_64 keeps the native kernel and images, not an unsupported cross OS tree" (
+    let
+      native = f.packages.x86_64-linux;
+    in
+    native ? kernel
+    && native ? image-smoke-test
+    && native ? usr-tree-smoke
+    && !(native ? usr-tree-smoke-aarch64)
+  ))
   # 12. The kernel config fragment (packages/kernel/golconda.config)
   (check "kernel: the fragment is KEY=VALUE lines, comments and 'is not set' lines, no name twice" (
     let
