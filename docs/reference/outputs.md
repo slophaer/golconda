@@ -98,7 +98,7 @@ in
   names are absolute module paths (`/services/sshd`). An unknown path throws with the valid list, an
   undeclared option name throws with the module's valid names, and a `/pkgs` table throws.
 - `checkOptions options`: the same checks over an attribute set of options; returns it unchanged.
-  `mkSystem` runs it over an attribute-set `config` and `extra`.
+  `mkSystem` runs it over an attribute-set `config`.
 - `optionError path table`: the check's message for one table, or `null`.
 - `validPaths`: list of all module paths that accept options; `/pkgs` is not one (its `target` is
   not data, and `mkSystem` binds it to the platform's set).

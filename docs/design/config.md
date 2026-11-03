@@ -35,14 +35,14 @@ like `/services/sshd`, with typed options, a schema entry and a table that selec
 therefore lists every module in the image, with why, and the build's own named fragments
 (`/image/hwdb`) ([Modules](modules.md#which-modules-a-system-has)).
 
-The entry point that applies this rule is `lib/system.nix`:
-`mkSystem { config; platform?; extra?; }` takes the document (a path, or options already loaded),
-binds the package set of the platform, selects the components, composes, and returns the composed
-system and its `/usr` tree derivation. `golconda.nix` at the repository root is the template a user
-copies next to `server.toml` (the analogue of a NixOS `system.nix`). `extra` is the one Nix hook: an
-attribute set merged into the options, for a package override, so a configuration is pure TOML or
-TOML plus Nix. Anything more, units or files of your own, is a module in the downstream `modules/`.
-The interface is in [reference/config](../reference/config.md#the-entry-point).
+The entry point that applies this rule is `lib/system.nix`: `mkSystem { config; platform?; }` takes
+the document (a path, or options already loaded), binds the package set of the platform, selects the
+components, composes, and returns the composed system and its `/usr` tree derivation. `golconda.nix`
+at the repository root is the template a user copies next to `server.toml` (the analogue of a NixOS
+`system.nix`). The document is the whole configuration, with no Nix hook beside it: a package option
+takes a package name (`package = "openssh"`), looked up in the target set. Units or files of your
+own are a module in the downstream `modules/`. The interface is in
+[reference/config](../reference/config.md#the-entry-point).
 
 ## The schema
 
