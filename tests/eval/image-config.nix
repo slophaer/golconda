@@ -139,6 +139,28 @@ in
       }).pkgs.openssh.version
     ).success
   ))
+  (check "mkImage: the chain builds its initrd from the downstream set" (
+    let
+      image =
+        config:
+        f.lib.mkImage {
+          inherit config;
+          keys = "/tmp/golconda-test-keys";
+          system = "x86_64-linux";
+        };
+      replaced = image ../fixtures/downstream-initrd/server.toml;
+      plain = image {
+        "/system" = {
+          name = "downstream-initrd";
+          version = "20261103.1";
+        };
+      };
+      tree = i: builtins.unsafeDiscardStringContext (toString i.initrd.usrTree);
+    in
+    # the fixture's tzdata (0.0.4) is in the chain's set, and the initrd tree that the
+    # chain builds differs from the one without the downstream packages
+    replaced.pkgs.tzdata.version == "0.0.4" && tree replaced != tree plain
+  ))
   (check "mkImage: rejects a user claim on its keyring destination" (
     !(builtins.tryEval (builtins.deepSeq (image duplicateConfig).erofs.usrTree.links true)).success
   ))

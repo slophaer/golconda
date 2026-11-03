@@ -38,14 +38,14 @@ therefore lists every module in the image, with why, and the build's own named f
 The entry point that applies this rule is `lib/system.nix`: `mkSystem ./server.toml` (or
 `mkSystem { config; platform?; }`) takes the document, binds the package set of the platform,
 selects the components, composes, and returns the composed system and its `/usr` tree derivation.
-`golconda.nix` at the repository root is the template a user copies next to `server.toml` (the
-analogue of a NixOS `system.nix`). The document is the whole configuration, with no Nix hook beside
-it: a package option takes a package name (`package = "openssh"`), looked up in the target set, and
-a downstream repository brings its own modules in `modules/` and its own packages in `packages/`
-(the same layout as Golconda's: a `package.nix` and a `sources.toml` per package), so they get
-purls, the SBOM and update tracking. A downstream package may replace a Golconda or repkgs package
-only when `[golconda] replaces` lists the name: a replacement reaches the kernel, the boot chain and
-the signing tools, so it is a stated choice, never a name collision
+`examples/golconda.nix` is the template a user copies next to `server.toml` (the analogue of a NixOS
+`system.nix`). The document is the whole configuration, with no Nix hook beside it: a package option
+takes a package name (`package = "openssh"`), looked up in the target set, and a downstream
+repository brings its own modules in `modules/` and its own packages in `packages/` (the same layout
+as Golconda's: a `package.nix` and a `sources.toml` per package), so they get purls, the SBOM and
+update tracking. A downstream package may replace a Golconda or repkgs package only when
+`[golconda] replaces` lists the name: a replacement reaches the kernel, the boot chain and the
+signing tools, so it is a stated choice, never a name collision
 ([Trust](trust.md#downstream-packages)). `modules.json` records it. Nix stays where it is code: in a
 module and in a package. The interface is in
 [reference/config](../reference/config.md#the-entry-point).

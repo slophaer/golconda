@@ -217,8 +217,8 @@ set.
 
 ### `/base`, `/network` and `/security`
 
-`/system` declares all three as inputs and merges their fragments first; a configuration never lists
-them.
+All three are built-in components: `lib/components.nix` selects them for every system and composes
+them first, and a configuration never lists them.
 
 `/base` returns:
 
