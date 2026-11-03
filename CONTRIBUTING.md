@@ -9,7 +9,7 @@
 | `image/`          | image parameters as data (partitions, sysupdate transfers, the UKI cmdline); `lib/image/` builds from them, file for file                                                                                                        |
 | `nix/`            | the outputs (`default.nix`), the pins (`sources.nix`), the repkgs set (`packages.nix`), checks, the dev shell                                                                                                                    |
 | `packages/`       | Golconda's package specs; a name here replaces the repkgs fork's                                                                                                                                                                 |
-| `tests/`          | `eval/`: the pure-Nix tests by area (`nix/tests.nix` imports them); `packages/`: package tests; `usr-tree/`; fixtures                                                                                                            |
+| `tests/`          | `eval/`: the pure-Nix tests by area (`nix/tests.nix` imports them); `packages/`: package tests; `usr-tree/`; `kernel/`: the kernel's kbuild phases on a stub tree; fixtures                                                      |
 | `scripts/`        | developer tools: `lint`, `docs`, `make-keys`, `provision-esp`, `boot-test`                                                                                                                                                       |
 | `examples/`       | example configurations                                                                                                                                                                                                           |
 | `patches/repkgs/` | issue drafts for the fork's commits                                                                                                                                                                                              |
@@ -51,8 +51,8 @@ directories to a booted machine.
 - **Pins.** `npins/sources.json` is the lock; `nix/sources.nix` reads it. The forge needs a sign-in,
   so update the repkgs pin by hand (see [patches/repkgs](patches/repkgs/README.md)).
 - **Fork patches.** A change to repkgs' build system goes to the fork branch the pin follows
-  (`branch` in `npins/sources.json`, today `golconda`), in the series it belongs to. A new package
-  goes to `packages/` instead.
+  (`branch` in `npins/sources.json`, today `upstream-prep`), in the series it belongs to. A new
+  package goes to `packages/` instead.
 
 ## Getting started
 

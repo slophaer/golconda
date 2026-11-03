@@ -24,8 +24,8 @@
   sources,
   system,
   platform ? system,
-  # kconfig options merged into linux-kernel's kbuild.config (lib/system.nix: the built-in
-  # verity key for /system.secureBoot = false)
+  # kconfig options the system requires (lib/system.nix: the built-in verity key for
+  # /system.secureBoot = false); kbuild.nu fails if the policy fragment contradicts one
   kernelConfig ? { },
   downstream ? null,
 }:
@@ -103,11 +103,12 @@ let
       else
         golcondaPackages // downstreamPackages;
     overrides = {
-      # The kernel policy: Golconda's kconfig fragment with the IPE boot policy path.
-      linux-kernel.kbuild = {
-        configFragments.append = [ kernelConfigFragment ];
-      }
-      // (if kernelConfig == { } then { } else { config.merge = kernelConfig; });
+      # The system's required options and the policy fragment, read by packages/kernel/kbuild.nu.
+      # The package owns its base config and make flags; this replaces only these two fields.
+      linux-kernel.env.merge = {
+        GOLCONDA_KERNEL_EXTRA_CONFIG = builtins.toJSON kernelConfig;
+        GOLCONDA_KERNEL_FRAGMENTS = builtins.toJSON [ kernelConfigFragment ];
+      };
     };
     # Set-wide choices: one TLS stack, one of each (docs/design/principles.md).
     features.tls = "openssl";

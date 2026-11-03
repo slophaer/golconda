@@ -3,6 +3,7 @@
 {
   check,
   compose,
+  f,
   hasInfix,
   hasPrefix,
   pkgs,
@@ -24,6 +25,63 @@ let
     ;
 in
 [
+  (check "kernel: Golconda owns the package recipe" (
+    let
+      local = import ../../packages;
+    in
+    local ? linux-kernel && pkgs.linux-kernel.dir == local.linux-kernel
+  ))
+  (check "kernel: its phases use a package-local module, not a repkgs build system" (
+    (pkgs.linux-kernel.args.uses or [ ]) == [ ]
+    &&
+      pkgs.linux-kernel.args.phases == [
+        "kbuild.configure"
+        "kbuild.build"
+        "kbuild.install"
+      ]
+    && builtins.pathExists ../../packages/kernel/kbuild.nu
+  ))
+  (check "kernel: vmlinux carries full DWARF 5 (Linux 6.18 \"Debug information\" choice)" (
+    let
+      base = builtins.fromJSON (
+        builtins.unsafeDiscardStringContext pkgs.linux-kernel.drvAttrs.spec.env.GOLCONDA_KERNEL_CONFIG
+      );
+      conf = readFile ../../packages/kernel/golconda.config;
+      names = [
+        "DEBUG_KERNEL"
+        "DEBUG_INFO"
+        "DEBUG_INFO_NONE"
+        "DEBUG_INFO_DWARF5"
+        "DEBUG_INFO_REDUCED"
+        "DEBUG_INFO_SPLIT"
+      ];
+    in
+    base.DEBUG_KERNEL or null == "y"
+    && base.DEBUG_INFO or null == "y"
+    && base.DEBUG_INFO_DWARF5 or null == "y"
+    && base.DEBUG_INFO_REDUCED or null == "n"
+    && base.DEBUG_INFO_SPLIT or null == "n"
+    # the fragment must not change the choice
+    && all (n: !(hasInfix "CONFIG_${n}=" conf) && !(hasInfix "# CONFIG_${n} is not set" conf)) names
+  ))
+  (check "kernel: the ORC config only advertises x86_64" (
+    pkgs.linux-kernel.args.platforms.cpu == [ "x86_64" ]
+  ))
+  (check "outputs: aarch64 exposes no unsupported kernel, image or OS tree" (
+    let
+      names = attrNames f.packages.aarch64-linux;
+    in
+    !(elem "kernel" names) && all (n: !(hasPrefix "image-smoke" n) && !(hasPrefix "usr-tree" n)) names
+  ))
+  (check "outputs: x86_64 keeps the native kernel and images, not an unsupported cross OS tree" (
+    let
+      native = f.packages.x86_64-linux;
+    in
+    native ? kernel
+    && native ? image-smoke-test
+    && native ? usr-tree-smoke
+    && !(native ? usr-tree-smoke-aarch64)
+  ))
   # 12. The kernel config fragment (packages/kernel/golconda.config)
   (check "kernel: the fragment is KEY=VALUE lines, comments and 'is not set' lines, no name twice" (
     let
@@ -64,12 +122,38 @@ in
   (check "linux-pam: pam_unix reads shadow itself (the set has no unix_chkpwd helper)" (
     pkgs.linux-pam.drvAttrs.spec.meson.defs."pam_unix-try-getspnam" == true
   ))
+  (check "openssh: /usr through `prefix`, not a raw --prefix flag (repkgs rejects those)" (
+    let
+      spec = pkgs.openssh.drvAttrs.spec;
+    in
+    (spec.prefix or null) == "/usr"
+    && !(builtins.any (f: match "--prefix(=.*)?" f != null) spec.autotools.flags)
+  ))
   (check "tpm2-tss: the device TCTI exports Tss2_Tcti_Info for systemd (no --enable-nodl)" (
     !(elem "--enable-nodl" pkgs.tpm2-tss.drvAttrs.spec.autotools.flags)
   ))
-  (check "kernel: the override reaches the derivation (kbuild.configFragments holds the file)" (
+  (check "kernel: the package owns the base; env.merge adds the extra config and fragment only" (
     let
-      fragments = pkgs.linux-kernel.drvAttrs.spec.kbuild.configFragments;
+      own = pkgs.linux-kernel.args.env;
+      final = pkgs.linux-kernel.drvAttrs.spec.env;
+    in
+    attrNames final == attrNames own
+    && final.GOLCONDA_KERNEL_CONFIG == own.GOLCONDA_KERNEL_CONFIG
+    && final.GOLCONDA_KERNEL_EXTRA_CONFIG == "{}"
+    && final.GOLCONDA_KERNEL_FRAGMENTS != own.GOLCONDA_KERNEL_FRAGMENTS
+  ))
+  (check "kernel: GOLCONDA_KERNEL_MAKE survives env.merge" (
+    let
+      make = pkgs.linux-kernel.drvAttrs.spec.env.GOLCONDA_KERNEL_MAKE;
+    in
+    make == pkgs.linux-kernel.args.env.GOLCONDA_KERNEL_MAKE
+    && elem "CC=clang" (builtins.fromJSON (builtins.unsafeDiscardStringContext make))
+  ))
+  (check "kernel: the policy fragment reaches the package-local builder" (
+    let
+      fragments = builtins.fromJSON (
+        builtins.unsafeDiscardStringContext pkgs.linux-kernel.drvAttrs.spec.env.GOLCONDA_KERNEL_FRAGMENTS
+      );
     in
     # builtins.toFile creates /nix/store/xxx-golconda.config (dash, not slash)
     length fragments == 1 && match ".*golconda\\.config" (toString (elemAt fragments 0)) != null

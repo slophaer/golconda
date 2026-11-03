@@ -111,135 +111,104 @@ in
       # repkgs' own Nix package (stock Nix with a relocation patch), built by repkgs, so it
       # needs a daemon with CA and dynamic derivations first (docs/reference/build-host.md)
       inherit (pkgs) nix;
-
-      # the kernel: the repkgs fork's linux-kernel (a small bootable base) with Golconda's kconfig
-      # fragment, which the override in nix/packages.nix applies to every `pkgs.linux-kernel`
-      kernel = pkgs.linux-kernel;
     }
     # tests-<name>: a package's own test from tests/packages/ (they moved with the packages)
     // import ../tests/packages { inherit sources set; }
-    // {
-
-      # The image chain (lib/image) over the /base system: erofs, verity, initrd, UKI, disk, and
-      # the proofs in proof.txt. Keys are throwaways made in the store; a release signs with the
-      # deployment's keys (lib.mkImage). image-smoke-<step> exposes each step on its own.
-      image-smoke = imageSmoke.smoke;
-      image-smoke-erofs = imageSmoke.erofs;
-      image-smoke-verity = imageSmoke.verity;
-      image-smoke-initrd = imageSmoke.initrd;
-      image-smoke-uki = imageSmoke.uki;
-      image-smoke-disk = imageSmoke.disk;
-      image-smoke-loader = imageSmoke.loader;
-
-      image-smoke-test =
-        (imageChain {
-          inherit system;
-          config = testConfig "20261031.1";
-          keys = throwawayKeys;
-        }).smoke;
-
-      # The test image without Secure Boot, and its next release for --next
-      image-smoke-test-nosb =
-        (imageChain {
-          inherit system;
-          config = noSecureBootConfig "20261031.1";
-          keys = throwawayKeys;
-        }).smoke;
-      image-smoke-test-nosb-next =
-        (imageChain {
-          inherit system;
-          config = noSecureBootConfig "20261031.2";
-          keys = throwawayKeys;
-        }).smoke;
-
-      # The next release of the test image with the same throwaway keys: what
-      # scripts/boot-test --next installs and boots, without --rotate.
-      image-smoke-test-next =
-        (imageChain {
-          inherit system;
-          config = testConfig "20261031.2";
-          keys = throwawayKeys;
-        }).smoke;
-
-      # The next release of the test image, signed with a new db key: the loader, the UKI and
-      # the verity root hash take rotatedKeys; the PCR policy key stays, so a credential sealed
-      # by 20261031.1 still unseals. scripts/boot-test --next <this> --rotate installs it and
-      # rotates the firmware's db (docs/design/bootloader.md).
-      image-smoke-test-rotated =
-        (imageChain {
-          inherit system;
-          config = testConfig "20261031.2";
-          keys = rotatedKeys;
-          pcrKeys = throwawayKeys;
-          # the running image trusts only its own release key: a db rotation keeps it
-          indexKeys = throwawayKeys;
-        }).smoke;
-
-      # Smoke test for the /usr tree builder: base system + jq via mkSystem.
-      usr-tree-smoke =
-        (mkSystem {
-          inherit system;
-          platform = system;
-          config = {
-            "/system" = {
-              name = "smoke";
-              version = "20261031.1";
-            };
-          };
-          extraFragments = [
-            {
-              name = "/smoke/jq";
-              packages = [ pkgs.jq ];
-            }
-          ];
-        }).usrTree;
-
-      # Smoke test for /base alone: no extra fragments, just the base packages.
-      # Verifies: no absolute symlinks, no GNU coreutils, base packages only.
-      usr-tree-base-smoke =
-        (mkSystem {
-          inherit system;
-          platform = system;
-          config = {
-            "/system" = {
-              name = "base-smoke";
-              version = "20261031.1";
-            };
-          };
-        }).usrTree;
-
-    }
     // (
-      if system == "x86_64-linux" then
+      if pkgs.linux-kernel.supported then
         {
-          # Cross-compiled usr-tree for aarch64: proves the platform argument flows through.
-          # Built on x86_64, runs on aarch64. The jq binary in the output is an aarch64 ELF.
-          # Visible only in packages.x86_64-linux (cross builds from x86_64 to aarch64).
-          usr-tree-smoke-aarch64 =
+          # OS outputs need the local kernel. Do not advertise unsupported image or /usr trees.
+          # nix/packages.nix applies the policy fragment to every `pkgs.linux-kernel`.
+          kernel = pkgs.linux-kernel;
+
+          # The image chain (lib/image) over the /base system: erofs, verity, initrd, UKI, disk, and
+          # the proofs in proof.txt. Keys are throwaways made in the store; a release signs with the
+          # deployment's keys (lib.mkImage). image-smoke-<step> exposes each step on its own.
+          image-smoke = imageSmoke.smoke;
+          image-smoke-erofs = imageSmoke.erofs;
+          image-smoke-verity = imageSmoke.verity;
+          image-smoke-initrd = imageSmoke.initrd;
+          image-smoke-uki = imageSmoke.uki;
+          image-smoke-disk = imageSmoke.disk;
+          image-smoke-loader = imageSmoke.loader;
+
+          image-smoke-test =
+            (imageChain {
+              inherit system;
+              config = testConfig "20261031.1";
+              keys = throwawayKeys;
+            }).smoke;
+
+          # The test image without Secure Boot, and its next release for --next
+          image-smoke-test-nosb =
+            (imageChain {
+              inherit system;
+              config = noSecureBootConfig "20261031.1";
+              keys = throwawayKeys;
+            }).smoke;
+          image-smoke-test-nosb-next =
+            (imageChain {
+              inherit system;
+              config = noSecureBootConfig "20261031.2";
+              keys = throwawayKeys;
+            }).smoke;
+
+          # The next release of the test image with the same throwaway keys: what
+          # scripts/boot-test --next installs and boots, without --rotate.
+          image-smoke-test-next =
+            (imageChain {
+              inherit system;
+              config = testConfig "20261031.2";
+              keys = throwawayKeys;
+            }).smoke;
+
+          # The next release of the test image, signed with a new db key: the loader, the UKI and
+          # the verity root hash take rotatedKeys; the PCR policy key stays, so a credential sealed
+          # by 20261031.1 still unseals. scripts/boot-test --next <this> --rotate installs it and
+          # rotates the firmware's db (docs/design/bootloader.md).
+          image-smoke-test-rotated =
+            (imageChain {
+              inherit system;
+              config = testConfig "20261031.2";
+              keys = rotatedKeys;
+              pcrKeys = throwawayKeys;
+              # the running image trusts only its own release key: a db rotation keeps it
+              indexKeys = throwawayKeys;
+            }).smoke;
+
+          # Smoke test for the /usr tree builder: base system + jq via mkSystem.
+          usr-tree-smoke =
             (mkSystem {
               inherit system;
-              platform = "aarch64-linux";
+              platform = system;
               config = {
                 "/system" = {
-                  name = "smoke-aarch64";
+                  name = "smoke";
                   version = "20261031.1";
                 };
               };
               extraFragments = [
                 {
                   name = "/smoke/jq";
-                  packages =
-                    let
-                      crossSet = import ./packages.nix {
-                        inherit sources;
-                        inherit system;
-                        platform = "aarch64-linux";
-                      };
-                    in
-                    [ crossSet.pkgs.jq ];
+                  packages = [ pkgs.jq ];
                 }
               ];
             }).usrTree;
+
+          # Smoke test for /base alone: no extra fragments, just the base packages.
+          # Verifies: no absolute symlinks, no GNU coreutils, base packages only.
+          usr-tree-base-smoke =
+            (mkSystem {
+              inherit system;
+              platform = system;
+              config = {
+                "/system" = {
+                  name = "base-smoke";
+                  version = "20261031.1";
+                };
+              };
+            }).usrTree;
+
         }
       else
         { }
