@@ -3,7 +3,7 @@
 
 use crate::document::{EditError, line_of, path_name, to_json};
 use crate::eval::{self, Arg, Iets};
-use crate::system::{self, System};
+use crate::system::{self, System, beside};
 use crate::validate::Validator;
 use serde_json::Value;
 use std::fmt;
@@ -134,12 +134,16 @@ pub fn apply(
     if !problems.is_empty() {
         return Err(Error::Invalid(sys.document, problems));
     }
-    let name = document.file_name().unwrap_or_default().to_string_lossy();
-    let copy = document.with_file_name(format!(".{name}.golconda-{}", std::process::id()));
+    let copy = beside(document, "new");
     std::fs::write(&copy, &text).map_err(|e| Error::Write(copy.clone(), e))?;
     let checked = evaluate(iets, &sys.root, &copy, system).map_err(Error::Eval);
+    // the document's mode stays; through a symlink, its target changes, the link stays
+    let target = std::fs::canonicalize(document).unwrap_or_else(|_| document.to_path_buf());
+    let write = |e| Error::Write(target.clone(), e);
     let done = checked.and_then(|()| {
-        std::fs::rename(&copy, document).map_err(|e| Error::Write(document.to_path_buf(), e))
+        let mode = std::fs::metadata(&target).map_err(write)?.permissions();
+        std::fs::set_permissions(&copy, mode).map_err(write)?;
+        std::fs::rename(&copy, &target).map_err(write)
     });
     if done.is_err() {
         let _ = std::fs::remove_file(&copy);

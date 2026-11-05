@@ -25,8 +25,6 @@ pub struct Iets {
 /// An evaluation error, from iets' `internal-json` record.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EvalError {
-    /// iets' error code (`throw`, `missing-attr`, `lint`, …)
-    pub code: Option<String>,
     /// the message without the trace
     pub message: String,
     pub file: Option<String>,
@@ -170,7 +168,6 @@ pub fn parse_error(stderr: &str) -> EvalError {
             f.strip_suffix(&suffix).unwrap_or(f).to_string()
         });
         return EvalError {
-            code: r["code"].as_str().map(str::to_string),
             message,
             file,
             line: line_no,
@@ -178,7 +175,6 @@ pub fn parse_error(stderr: &str) -> EvalError {
         };
     }
     EvalError {
-        code: None,
         message: stderr
             .lines()
             .rev()
@@ -196,7 +192,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn an_error_record_gives_code_message_and_position() {
+    fn an_error_record_gives_message_and_position() {
         let stderr = concat!(
             r#"@nix {"action":"start","id":1,"level":4,"text":"evaluating"}"#,
             "\n",
@@ -209,7 +205,6 @@ mod tests {
         assert_eq!(
             parse_error(stderr),
             EvalError {
-                code: Some("throw".into()),
                 message:
                     "while computing /services/sshd args: in option 'port': Expected type 'int'"
                         .into(),
@@ -233,13 +228,11 @@ mod tests {
     fn without_a_record_the_last_line_is_the_message() {
         let e = parse_error("something\nunknown flag --x\n\n");
         assert_eq!(e.message, "unknown flag --x");
-        assert_eq!(e.code, None);
     }
 
     #[test]
     fn display_puts_the_position_first() {
         let e = EvalError {
-            code: None,
             message: "boom".into(),
             file: Some("a.nix".into()),
             line: Some(3),

@@ -209,3 +209,14 @@ async fn module_docs_and_descriptions_are_markdown() {
     assert!(body.contains("<code>openssh</code>"), "{body}");
     assert!(!body.contains('`'), "{body}");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs iets and the Golconda checkout"]
+async fn changes_pages_at_the_same_time() {
+    let a = app(false);
+    let pages = (0..4).map(|_| tokio::spawn(get(a.clone(), "/systems/server/changes", false)));
+    for p in pages {
+        let (s, _, body) = p.await.unwrap();
+        assert_eq!(s, StatusCode::OK, "{body}");
+    }
+}

@@ -8,7 +8,8 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::get;
-use golconda_core::diff::{Change, diff};
+use golconda_core::diff::{Change, against_git};
+use golconda_core::document::parse_path;
 use golconda_core::eval::Iets;
 use golconda_core::system::System;
 use serde_json::Value;
@@ -183,17 +184,21 @@ async fn module(
         .unwrap_or(&empty);
     let mut options = Vec::new();
     for o in props.keys() {
-        match sys.explain(&module, o) {
+        match sys.explain(&module, &[o]) {
             Ok(e) => options.push(e),
             Err(e) => return problem(json, StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
         }
     }
-    let selected = match &option {
+    let selected = match option.as_deref().map(parse_path) {
         None => None,
-        Some(o) => match sys.explain(&module, o) {
-            Ok(e) => Some(e),
-            Err(e) => return problem(json, StatusCode::NOT_FOUND, e.to_string()),
-        },
+        Some(Err(e)) => return problem(json, StatusCode::NOT_FOUND, e.to_string()),
+        Some(Ok(p)) => {
+            let p: Vec<&str> = p.iter().map(String::as_str).collect();
+            match sys.explain(&module, &p) {
+                Ok(e) => Some(e),
+                Err(e) => return problem(json, StatusCode::NOT_FOUND, e.to_string()),
+            }
+        }
     };
     if json {
         let doc = sys.module_docs.get(&module).cloned().unwrap_or(Value::Null);
@@ -214,19 +219,12 @@ async fn changes(State(app): State<Shared>, Path(name): Path<String>, h: HeaderM
         return problem(json, StatusCode::NOT_FOUND, format!("no system {name}"));
     };
     let a = app.clone();
-    let both = tokio::task::spawn_blocking(move || -> Result<(System, Vec<Change>), String> {
-        let after = System::load(&a.iets, &doc, &a.platform).map_err(|e| e.to_string())?;
-        let text = System::git_text(&doc, "HEAD").map_err(|e| e.to_string())?;
-        let before =
-            System::load_text(&a.iets, &doc, &text, &a.platform).map_err(|e| e.to_string())?;
-        let changes = diff(&before.config, &after.config);
-        Ok((after, changes))
-    })
-    .await
-    .expect("evaluation thread");
+    let both = tokio::task::spawn_blocking(move || against_git(&a.iets, &doc, "HEAD", &a.platform))
+        .await
+        .expect("evaluation thread");
     let (sys, changes) = match both {
         Ok(x) => x,
-        Err(e) => return problem(json, StatusCode::INTERNAL_SERVER_ERROR, e),
+        Err(e) => return problem(json, StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
     };
     if json {
         return axum::Json(Value::Array(changes.iter().map(Change::to_json).collect()))

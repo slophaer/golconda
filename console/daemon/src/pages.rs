@@ -4,7 +4,7 @@
 use crate::app::App;
 use axum::http::StatusCode;
 use golconda_core::diff::Change;
-use golconda_core::document::{path_name, toml_text};
+use golconda_core::document::{option_name, toml_text};
 use golconda_core::system::{Explanation, System};
 use maud::{DOCTYPE, Markup, PreEscaped, html};
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
@@ -126,8 +126,9 @@ fn tree(name: &str, sys: &System, current: Option<&str>) -> Markup {
     }
 }
 
-fn first_paragraph(doc: &str) -> &str {
-    doc.split("\n\n").next().unwrap_or(doc)
+/// A module's doc: its first paragraph, and the rest.
+fn split_doc(doc: &str) -> (&str, &str) {
+    doc.split_once("\n\n").unwrap_or((doc, ""))
 }
 
 /// Markdown (module docs, option descriptions) as HTML. Raw HTML in it is shown as text,
@@ -165,7 +166,7 @@ pub fn config(app: &App, name: &str, sys: &System) -> Markup {
                     a.opt href={ "/systems/" (name) "/config" (m) } {
                         span.n { (m) }
                         span.v.def { @if sys.config.get(m.as_str()).is_none() { "not included" } }
-                        @if let Some(d) = doc.as_str() { span.desc { (markdown(first_paragraph(d), true)) } }
+                        @if let Some(d) = doc.as_str() { span.desc { (markdown(split_doc(d).0, true)) } }
                     }
                 }
             }
@@ -234,7 +235,7 @@ pub fn module(
                     @if let Some(f) = &file { span { (f) } }
                 }
                 @if let Some(d) = doc {
-                    @let (first, rest) = d.split_once("\n\n").unwrap_or((d, ""));
+                    @let (first, rest) = split_doc(d);
                     div.doc.md { (markdown(first, false)) }
                     @if !rest.is_empty() {
                         details.doc { summary { "More about " (module) } div.doc.md { (markdown(rest, false)) } }
@@ -294,7 +295,7 @@ pub fn changes(app: &App, name: &str, sys: &System, changes: &[Change]) -> Marku
             div.diff {
                 @for (i, c) in changes.iter().enumerate() {
                     @if i == 0 || changes[i - 1].module != c.module { span.hdr { (c.module) } "\n" }
-                    @let at = { let p: Vec<&str> = c.path.iter().map(String::as_str).collect(); if p.is_empty() { "(module)".to_string() } else { path_name("", &p).trim().to_string() } };
+                    @let at = { let p: Vec<&str> = c.path.iter().map(String::as_str).collect(); if p.is_empty() { "(module)".to_string() } else { option_name(&p) } };
                     @if let Some(v) = &c.before.value {
                         span.del { "- " (at) " = " (toml_text(v)) @if !c.before.explicit { "  (default)" } } "\n"
                     }
@@ -409,7 +410,7 @@ mod tests {
     fn no_inline_style_or_script() {
         // the content security policy allows the stylesheet and nothing inline
         let a = app(false, Level::Operator);
-        let e = sys().explain("/services/sshd", "port").ok();
+        let e = sys().explain("/services/sshd", &["port"]).ok();
         for page in [
             config(&a, "s", &sys()).into_string(),
             module(&a, "s", &sys(), "/services/sshd", &[], e.as_ref()).into_string(),
@@ -479,6 +480,12 @@ mod tests {
         );
         // inline: no paragraph around it
         assert_eq!(markdown("a `b`", true).into_string(), "a <code>b</code>");
+    }
+
+    #[test]
+    fn a_doc_splits_after_its_first_paragraph() {
+        assert_eq!(split_doc("a\nb\n\nc\n\nd"), ("a\nb", "c\n\nd"));
+        assert_eq!(split_doc("a"), ("a", ""));
     }
 
     #[test]

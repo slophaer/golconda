@@ -72,6 +72,8 @@ pub enum EditError {
     NotSet(String),
     /// a key on the way is a value, not a table
     NotATable(String),
+    /// the text is not an option path (a TOML dotted key)
+    Path(String, String),
 }
 
 impl std::fmt::Display for EditError {
@@ -80,19 +82,47 @@ impl std::fmt::Display for EditError {
             EditError::Parse(e) => write!(f, "the document is not TOML: {e}"),
             EditError::NotSet(p) => write!(f, "{p} is not set in the document"),
             EditError::NotATable(p) => write!(f, "{p} is a value in the document, not a table"),
+            EditError::Path(p, e) => write!(f, "{p:?} is not an option path: {e}"),
         }
     }
 }
 
 impl std::error::Error for EditError {}
 
-/// "module a.b.c", as messages name a path.
+/// A key as TOML writes it: bare when it can be, else quoted.
+pub fn key(k: &str) -> String {
+    if !k.is_empty()
+        && k.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        k.to_string()
+    } else {
+        Value::String(k.to_string()).to_string()
+    }
+}
+
+/// An option path as a TOML dotted key, `networks."lan.1".dns`: what `parse_path` reads.
+pub fn option_name(path: &[&str]) -> String {
+    path.iter().map(|k| key(k)).collect::<Vec<_>>().join(".")
+}
+
+/// "module option.path", as messages and the diff name a path.
 pub fn path_name(module: &str, path: &[&str]) -> String {
     if path.is_empty() {
         module.to_string()
     } else {
-        format!("{module} {}", path.join("."))
+        format!("{module} {}", option_name(path))
     }
+}
+
+/// An option path, written as a TOML dotted key: `networks.lan.dns`, `networks."lan.1".dns`.
+pub fn parse_path(s: &str) -> Result<Vec<String>, EditError> {
+    let bad = |e: String| EditError::Path(s.to_string(), e);
+    let keys = toml_edit::Key::parse(s).map_err(|e| bad(e.to_string()))?;
+    if keys.is_empty() {
+        return Err(bad("it is empty".into()));
+    }
+    Ok(keys.iter().map(|k| k.get().to_string()).collect())
 }
 
 /// A value as the command line gives it: TOML, or else the text as a string.
@@ -498,6 +528,40 @@ network = { DNS = ["192.0.2.53"] }
         assert_eq!(
             to_json("[\"/a\".b]\nc = [1, \"x\"]\nd = 1979-05-27\ne = { f = true }\n").unwrap(),
             json!({ "/a": { "b": { "c": [1, "x"], "d": "1979-05-27", "e": { "f": true } } } })
+        );
+    }
+
+    #[test]
+    fn option_paths_are_toml_dotted_keys() {
+        assert_eq!(parse_path("port").unwrap(), vec!["port"]);
+        assert_eq!(
+            parse_path("networks.lan.dns").unwrap(),
+            vec!["networks", "lan", "dns"]
+        );
+        assert_eq!(
+            parse_path(r#"networks."lan.1".dns"#).unwrap(),
+            vec!["networks", "lan.1", "dns"]
+        );
+        assert!(parse_path("a..b").is_err());
+        // written back so that parse_path reads it again
+        assert_eq!(
+            path_name("/n", &["networks", "lan.1", "dns"]),
+            r#"/n networks."lan.1".dns"#
+        );
+        assert_eq!(path_name("/n", &["networks", "lan"]), "/n networks.lan");
+        assert_eq!(path_name("/n", &[]), "/n");
+    }
+
+    #[test]
+    fn tables_that_get_a_header_get_a_blank_line() {
+        let doc = "[\"/system\"]\nname = \"s\"\n\n[\"/network\".networks.lan]\nmatch = {}\n";
+        assert_eq!(
+            set(doc, "/network", &["networks", "wan", "match"], v("{}")).unwrap(),
+            "[\"/system\"]\nname = \"s\"\n\n[\"/network\".networks]\nwan.match = {}\n\n[\"/network\".networks.lan]\nmatch = {}\n"
+        );
+        assert_eq!(
+            set(doc, "/network", &["defaultDhcp"], v("false")).unwrap(),
+            "[\"/system\"]\nname = \"s\"\n\n[\"/network\"]\ndefaultDhcp = false\n\n[\"/network\".networks.lan]\nmatch = {}\n"
         );
     }
 }

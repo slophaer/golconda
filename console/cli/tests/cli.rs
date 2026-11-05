@@ -519,3 +519,77 @@ fn diff_against_a_git_revision() {
         .collect();
     assert!(left.is_empty(), "{left:?}");
 }
+
+#[test]
+#[ignore = "needs iets and the Golconda checkout"]
+fn a_key_with_a_dot_is_quoted() {
+    let f = scratch("dotted", NET);
+    stdout(&golconda(&[
+        "config",
+        "set",
+        "-f",
+        &f,
+        "/network",
+        r#"networks."lan.1""#,
+        r#"{ match = { Name = "eth1" } }"#,
+    ]));
+    let out = stdout(&golconda(&[
+        "config",
+        "explain",
+        "--json",
+        "-f",
+        &f,
+        "/network",
+        r#"networks."lan.1".match"#,
+    ]));
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["value"]["Name"], "eth1");
+    assert_eq!(v["option"], r#"networks."lan.1".match"#);
+    let out = stdout(&golconda(&["diff", "-f", &f, "--from", NET]));
+    assert!(
+        out.contains(r#"set /network networks."lan.1" { match = { Name = "eth1" } } (was none)"#),
+        "{out}"
+    );
+}
+
+#[test]
+#[ignore = "needs iets and the Golconda checkout"]
+fn an_edit_keeps_the_mode_and_a_symlink() {
+    use std::os::unix::fs::PermissionsExt;
+    let f = scratch("mode", DOC);
+    let path = checkout().join(&f);
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    stdout(&golconda(&[
+        "config",
+        "set",
+        "-f",
+        &f,
+        "/services/sshd",
+        "port",
+        "2222",
+    ]));
+    assert_eq!(
+        std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    // a link to the document stays a link, and the document changes
+    let link = path.with_file_name("link.toml");
+    std::os::unix::fs::symlink("server.toml", &link).unwrap();
+    let lf = format!("{}/link.toml", f.rsplit_once('/').unwrap().0);
+    stdout(&golconda(&[
+        "config",
+        "set",
+        "-f",
+        &lf,
+        "/services/sshd",
+        "port",
+        "2200",
+    ]));
+    assert!(
+        std::fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert!(read(&f).contains("\nport = 2200\n"));
+}

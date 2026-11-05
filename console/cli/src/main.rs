@@ -1,8 +1,8 @@
 //! `golconda`: read and explain a Golconda system's configuration, and push its admin vars.
 
 use golconda_core::check;
-use golconda_core::diff::{Change, diff};
-use golconda_core::document::{self, parse_value};
+use golconda_core::diff::{Change, against_git, diff};
+use golconda_core::document::{self, parse_path, parse_value};
 use golconda_core::eval::Iets;
 use golconda_core::system::System;
 use golconda_core::vars::{self, Program, Remote, Store};
@@ -162,11 +162,9 @@ fn run(a: &Args) -> Result<String, Box<dyn std::error::Error>> {
     }
     let iets = Iets::from_env();
     let file = a.file.display();
-    // MODULE [OPTION] [VALUE]: the option path, empty for the module itself
-    let path = |option: Option<&String>| -> Vec<String> {
-        option
-            .map(|o| o.split('.').map(str::to_string).collect())
-            .unwrap_or_default()
+    // MODULE [OPTION] [VALUE]: the option path (a TOML dotted key), empty for the module itself
+    let path = |option: Option<&String>| -> Result<Vec<String>, document::EditError> {
+        option.map_or(Ok(Vec::new()), |o| parse_path(o))
     };
     match a.command.as_str() {
         "validate" => {
@@ -175,7 +173,7 @@ fn run(a: &Args) -> Result<String, Box<dyn std::error::Error>> {
         }
         "set" => {
             let (value, option) = a.rest[1..].split_last().unwrap();
-            let p = path(option.first());
+            let p = path(option.first())?;
             let p: Vec<&str> = p.iter().map(String::as_str).collect();
             check::apply(&iets, &a.file, &a.system, |text| {
                 document::set(text, &a.rest[0], &p, parse_value(value))
@@ -183,7 +181,7 @@ fn run(a: &Args) -> Result<String, Box<dyn std::error::Error>> {
             return Ok(String::new());
         }
         "delete" => {
-            let p = path(a.rest.get(1));
+            let p = path(a.rest.get(1))?;
             let p: Vec<&str> = p.iter().map(String::as_str).collect();
             check::apply(&iets, &a.file, &a.system, |text| {
                 document::delete(text, &a.rest[0], &p)
@@ -191,16 +189,17 @@ fn run(a: &Args) -> Result<String, Box<dyn std::error::Error>> {
             return Ok(String::new());
         }
         "diff" => {
-            let after = System::load(&iets, &a.file, &a.system)?;
-            let before = match &a.from {
-                Some(other) => System::load(&iets, other, &a.system)?,
+            let changes = match &a.from {
+                Some(other) => {
+                    let before = System::load(&iets, other, &a.system)?;
+                    let after = System::load(&iets, &a.file, &a.system)?;
+                    diff(&before.config, &after.config)
+                }
                 None => {
                     let rev = a.rest.first().map_or("HEAD", String::as_str);
-                    let text = System::git_text(&a.file, rev)?;
-                    System::load_text(&iets, &a.file, &text, &a.system)?
+                    against_git(&iets, &a.file, rev, &a.system)?.1
                 }
             };
-            let changes = diff(&before.config, &after.config);
             return Ok(if a.json {
                 let v: Vec<_> = changes.iter().map(Change::to_json).collect();
                 format!("{:#}\n", serde_json::Value::Array(v))
@@ -232,7 +231,9 @@ fn run(a: &Args) -> Result<String, Box<dyn std::error::Error>> {
         }
         "show" => sys.show(a.set_only),
         _ => {
-            let e = sys.explain(&a.rest[0], &a.rest[1])?;
+            let p = path(a.rest.get(1))?;
+            let p: Vec<&str> = p.iter().map(String::as_str).collect();
+            let e = sys.explain(&a.rest[0], &p)?;
             if a.json {
                 format!("{:#}\n", e.to_json())
             } else {
