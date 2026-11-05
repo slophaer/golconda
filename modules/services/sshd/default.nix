@@ -26,7 +26,8 @@ let
   dir = s.filesDir "sshd";
   # The admin-supplied vars (docs/design/trust.md): the host certificate the
   # host CA signs after enrolment, and the key revocation list. The deploy
-  # host pushes them; sshd loads the credentials <name>.<file>.
+  # host pushes them; sshd loads the credentials <name>.<file> when
+  # hostCertificate or revokedKeys is on. The image declares both either way.
   hostCertVar = v.admin {
     name = "sshd-host-cert";
     files = [ "cert" ];
@@ -237,8 +238,12 @@ in
           };
         }
       ]
-      ++ optional hasKRL [ revokedKeysVar ]
-      ++ optional options.hostCertificate [ hostCertVar ]
+      # declared whether or not the options use them: the image accepts a push before a
+      # release that turns them on reads it (the bootstrap in docs/design/trust.md)
+      ++ [
+        revokedKeysVar
+        hostCertVar
+      ]
     )
     // {
       name = "/services/sshd";
