@@ -593,3 +593,32 @@ fn an_edit_keeps_the_mode_and_a_symlink() {
     );
     assert!(read(&f).contains("\nport = 2200\n"));
 }
+
+#[test]
+#[ignore = "needs iets and the Golconda checkout"]
+fn values_that_start_with_a_dash() {
+    let f = scratch("dash", DOC);
+    // a negative number is a value, not a flag
+    stdout(&golconda(&[
+        "config",
+        "set",
+        "-f",
+        &f,
+        "/services/sshd",
+        "port",
+        "-1",
+    ]));
+    assert!(read(&f).contains("\nport = -1\n"));
+    // after --, everything is an operand
+    let err = fails(&golconda(&[
+        "config",
+        "set",
+        "-f",
+        &f,
+        "--",
+        "/services/sshd",
+        "port",
+        "--x",
+    ]));
+    assert!(err.contains("expected integer"), "{err}");
+}

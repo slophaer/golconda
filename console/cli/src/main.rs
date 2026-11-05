@@ -32,8 +32,9 @@ const USAGE: &str = "usage:
                    keys in DIR/recipients.txt (default: vars)
   -i IDENTITY      the age identity that decrypts them (or GOLCONDA_AGE_IDENTITY)
 
-OPTION is dotted below the module (networks.lan.network.DNS). VALUE is TOML (22, \"22\",
-[\"a\"], { a = 1 }); text that is not TOML is a string. set and delete write the document only
+OPTION is a TOML dotted key below the module (networks.lan.network.DNS, networks.\"lan.1\").
+VALUE is TOML (22, \"22\", [\"a\"], { a = 1 }); text that is not TOML is a string. After --,
+every argument is an operand: `-- /m opt -x`. set and delete write the document only
 when the result passes the schema and evaluates; comments and layout stay as written.
 diff lists the set and delete operations from the other side's effective configuration to
 FILE's, defaults included.
@@ -88,9 +89,16 @@ fn parse(argv: &[String]) -> Result<Args, String> {
     };
     // the document flags: config and diff
     let config = a.group == "config" || a.group == "diff";
+    let mut flags = true;
     while let Some(arg) = it.next() {
+        if !flags {
+            a.rest.push(arg.clone());
+            continue;
+        }
         let mut value = || it.next().cloned().ok_or(format!("{arg} needs a value"));
         match arg.as_str() {
+            // the rest are operands, such as a VALUE that starts with a dash
+            "--" => flags = false,
             "-f" | "--file" if config => a.file = value()?.into(),
             "--system" if config => a.system = value()?,
             "--set" if a.command == "show" => a.set_only = true,
@@ -98,7 +106,11 @@ fn parse(argv: &[String]) -> Result<Args, String> {
             "--from" if a.command == "diff" => a.from = Some(value()?.into()),
             "--vars" if !config && a.command != "pub" => a.vars = value()?.into(),
             "-i" | "--identity" if a.command == "push" => a.identity = Some(value()?.into()),
-            f if f.starts_with("--") || (f.starts_with('-') && f.len() > 1) => {
+            // a negative number is a VALUE
+            f if f.starts_with('-')
+                && f.len() > 1
+                && !f[1..].starts_with(|c: char| c.is_ascii_digit()) =>
+            {
                 return Err(format!("unknown flag {f}"));
             }
             _ => a.rest.push(arg.clone()),
