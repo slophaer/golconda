@@ -103,6 +103,7 @@ key ([Trust](trust.md#2-verity-key)). The PCR policy key is a separate key and d
      config = ./server.toml;
      keys = "/srv/golconda-keys-2"; # the new db key, in a new directory
      pcrKeys = "/srv/golconda-keys"; # the old directory: the PCR key stays
+     indexKeys = "/srv/golconda-keys"; # and the release key, which the running image trusts
    }
    ```
 

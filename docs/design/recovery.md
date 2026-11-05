@@ -1,9 +1,26 @@
 # Recovery
 
-A machine that no longer answers over ssh has four paths back, in the order to try them: reboot and
-let boot counting pick the other slot, choose an entry in the systemd-boot menu, reset the state
-partition, or reflash the disk. The first two need no console login; the last two lose state and
-need physical access. What does not exist is in [What is missing](#what-is-missing).
+There are four paths back, in the order to try them: reboot and let boot counting pick the other
+slot, choose an entry in the systemd-boot menu, reset the state partition, or reflash the disk. The
+first two need no login and keep the state. A state reset loses the state and needs a working ssh
+login. A reflash loses everything and needs physical access. What does not exist is in
+[What is missing](#what-is-missing).
+
+```mermaid
+flowchart TD
+  start[something is wrong] --> ssh{does ssh as root work?}
+  ssh -->|yes, the state is broken| reset[factory-reset.target: state is lost, slots and ESP stay]
+  ssh -->|no| fresh{is a new, unblessed release running?}
+  fresh -->|yes, and the other slot is filled| reboot[power-cycle until its tries run out]
+  reboot --> other[systemd-boot starts the other slot]
+  fresh -->|no| menu{firmware console or serial redirection?}
+  menu -->|yes| pick[hold a key at power-on, pick the other entry]
+  menu -->|no| reflash[reflash the disk]
+  other --> works{does it answer?}
+  pick --> works
+  works -->|yes| older[the previous release runs: not yet a repair]
+  works -->|no| reflash
+```
 
 ## What the machine does by itself
 

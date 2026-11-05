@@ -92,18 +92,17 @@ attributes, `erofs` to `disk` plus `release`, listed in
 `disk.raw`, `disk.json` and `release/`. The command prints the output path.
 
 Verification: two releases were built from the path form (`keys = /srv/keys;`) and both booted with
-`--secure-boot --keys` and the whole update test
-([Boot: What is proven](../design/boot.md#what-is-proven)). **Unverified:** no build uses the string
-form. It is the one that keeps the private keys out of the store, so a build with
-`keys = "/srv/golconda-keys";` and a boot of its disk would test it.
+`--secure-boot --keys` and the whole update test ([What is proven](../proven.md)). **Unverified:**
+no build uses the string form. It is the one that keeps the private keys out of the store, so a
+build with `keys = "/srv/golconda-keys";` and a boot of its disk would test it.
 
 ## 4. The release directory
 
-`release/` holds the four release files and `SHA256SUMS`. The names, the fixed line order and what a
-version means are in [Releases: The release directory](../design/releases.md#the-release-directory);
-do not rename or reorder the files. Serve this directory at the URL `/system.updateSource` names; a
-machine with that option set fetches the release from it
-([Image artifacts: A release](image.md#a-release)).
+`release/` holds the four release files, `SHA256SUMS` and `SHA256SUMS.gpg`. The names, the fixed
+line order and what a version means are in
+[Releases: The release directory](../design/releases.md#the-release-directory); do not rename or
+reorder the files. Serve this directory at the URL `/system.updateSource` names; a machine with that
+option set fetches the release from it ([Image artifacts: A release](image.md#a-release)).
 
 Verification: `scripts/boot-test --next` serves `release/` on `127.0.0.1:8074` (`10.0.2.2:8074` in
 the guest) and rewrites no transfer file. The markers `http-source` and `http-fetch` show that the

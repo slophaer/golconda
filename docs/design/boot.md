@@ -2,7 +2,7 @@
 
 Boot is a chain of signed and measured steps from firmware to `boot-complete.target`, all of them
 systemd's. Each UKI carries the `usrhash=` of its `/usr` slot, which is how A and B differ. What the
-test harness has run, and what it has not, is in [What is proven](#what-is-proven).
+test harness has run, and what it has not, is in [What is proven](../proven.md).
 
 ```mermaid
 sequenceDiagram
@@ -47,6 +47,23 @@ The UKI is installed as `EFI/Linux/<id>_<version>+3-0.efi`. systemd-boot decreme
 each attempt; `systemd-bless-boot` renames it to good when `boot-complete.target` is reached. After
 three failures systemd-boot falls back to the other entry, which is the other `/usr` slot. See
 [Updates](updates.md).
+
+```mermaid
+stateDiagram-v2
+  [*] --> t3: sysupdate installs id_version+3-0.efi
+  t3: +3-0 (installed, not yet tried)
+  t2: +2-1 (try 1 running)
+  t1: +1-2 (try 2 running)
+  t0: +0-3 (try 3 running)
+  good: blessed (id_version.efi)
+  t3 --> t2: systemd-boot starts try 1
+  t2 --> t1: try 1 fails, next boot
+  t1 --> t0: try 2 fails, next boot
+  t2 --> good: health checks pass, bless-boot
+  t1 --> good: health checks pass, bless-boot
+  t0 --> good: health checks pass, bless-boot
+  t0 --> [*]: try 3 fails: systemd-boot prefers the other slot
+```
 
 ### Boot health
 
@@ -180,7 +197,8 @@ no-ops ([Updates: Versions](updates.md#versions)).
 systemd-stub measures the UKI's parts into PCR 11. `systemd-measure` precomputes those values at
 build time and signs them; the signature travels in the UKI (`.pcrsig`). Credentials are sealed to
 the signing key, not to a PCR value, so a new signed image unseals them without re-enrolment.
-Firmware PCRs (0–7) are policy-locked with `systemd-pcrlock`.
+Firmware PCRs (0–7) are not part of the policy; locking them with `systemd-pcrlock` is *(after v1)*
+([Trust: Rollback weakness](trust.md#rollback-weakness)).
 
 ## Secure Boot
 
@@ -194,48 +212,3 @@ else: with only this certificate enrolled, firmware refuses an unsigned loader.
 The image does not enrol the key: nothing writes `loader/keys/auto`, and a release step does not do
 it either. Enrolment is manual, on the variable store (`virt-fw-vars`) or with `sbctl` where
 firmware needs it. Key hierarchy in [Trust](trust.md).
-
-## What is proven
-
-This is the one place that says how far the work has got; the design pages above say why. Each row
-is a marker of `scripts/boot-test`, which runs the image in QEMU with OVMF; the flags are in
-[Image artifacts: the boot test](../reference/image.md#boot-test-scriptsboot-test). The image
-enforces IPE, so every run of the default image uses `--secure-boot`; the last column lists the
-flags on top of it. The image for a host without Secure Boot (`/system.secureBoot = false`,
-`image-smoke-test-nosb`) runs without it, on OVMF with no Secure Boot and no TPM.
-
-| claim                                                                                 | marker                                                                                                   | flags                        |
-| ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| boots to `multi-user.target` and `boot-complete.target`                               | `multi-user-reached`, `boot-complete`                                                                    | none                         |
-| sshd is active; the host key var finished; firstboot finished without a prompt        | `sshd-active`, `var-sshd-hostkey`, `no-firstboot-prompt`                                                 | none                         |
-| root login by ssh, host name from the SMBIOS credential                               | `ssh-login`, `hostname`                                                                                  | `--ssh-test`                 |
-| no failed unit; varlink answers                                                       | `no-failed-units`, `varlinkctl-list-interfaces`                                                          | `--ssh-test`                 |
-| firmware enforces Secure Boot                                                         | `secure-boot-enabled`                                                                                    | `--secure-boot`              |
-| the kernel accepts the verity signature and IPE enforces                              | no marker of its own: the boot reaches `multi-user.target` with `ipe.enforce=1`                          | `--secure-boot`              |
-| the host key is sealed to the TPM and unseals after reboot                            | `hostkey-sealed-with-tpm2`, `ssh-after-reboot`, `hostkey-unchanged`                                      | `--ssh-test --tpm`           |
-| the ESP loader is the one in `/usr`, and `loader.conf` is read                        | `loader-matches-usr`, `loader-conf-in-effect`, `boot-update-off`                                         | `--ssh-test`                 |
-| the loader updates after a good boot, not after a blessed one                         | `loader-update-ran`, `loader-update-not-run`                                                             | `--ssh-test`                 |
-| the release directory is well formed; sysupdate installs it; it boots; no failed unit | `release-index`, `sysupdate-installed`, `boots-next`, `etc-links-stable`, `no-failed-units-after-update` | `--next`                     |
-| the recovery commands in [Boot loader](bootloader.md#recovery) work                   | `loader-reinstall`, `set-oneshot-other-slot`, `set-default-other-slot`, `reboot-to-firmware`             | `--next`                     |
-| a `db` rotation works; the old disk is refused                                        | `boots-after-rotation`, `kernel-db-rotated`, `old-loader-refused`                                        | `--next --rotate`            |
-| a failed health check costs one try, and the old release boots after the third        | `health-check-broken`, `attempt-[1-3]-unblessed`, `fallback-to-old-slot`, `counter-exhausted`            | `--next --fail-health`       |
-| the guest fetches the release from the update server, with its own definition         | `http-source`, `http-fetch`                                                                              | `--next`                     |
-| the image's keyring is the release key; the guest checks the signed index             | `index-keyring` (`--ssh-test`), `index-signed`, `sysupdate-installed`                                    | `--next`                     |
-| a changed index installs nothing                                                      | `sysupdate-installed` fails with `BOOT_TEST_TAMPER_INDEX=1`                                              | `--next`                     |
-| `factory-reset.target` deletes the state and keeps the slots and the ESP              | `state-gone`, `machine-id-new`, `first-boot-rerun`, `multi-user-after-reset`, `slots-kept`               | `--factory-reset --ssh-test` |
-| the host name and root's ssh key come from null-key credentials on the ESP            | `hostname`, `esp-authorized-keys`, `ssh-login` with a key only the ESP holds                             | `--ssh-test --esp-creds`     |
-| without Secure Boot, the kernel's built-in key accepts the verity signature           | no marker of its own: `image-smoke-test-nosb` reaches `multi-user.target` with `ipe.enforce=1`           | no `--secure-boot`           |
-
-Not proven:
-
-- **Enrolment on real firmware.** The harness enrols keys offline in the variable store.
-- **Hardware.** Only QEMU with OVMF on x86_64 has run. aarch64 is postponed after v1
-  ([Scope](scope.md)), because no aarch64 package can be built here.
-- **Loader recovery by hand.** A loader that no longer starts, a lost ESP and a lost `db` key
-  ([Boot loader: Recovery](bootloader.md#recovery)) have no marker. The rotation run has two
-  releases, so it leaves out step 4 of the rotation.
-- **A boot without the `db` enrolled.** It stops at switch-root; the harness has no marker for it.
-
-One release was signed with a deployment key set that `scripts/make-keys` wrote outside the store.
-It booted on the same markers as the throwaway set, and its next release installed over HTTP
-([Release](../reference/release.md)).

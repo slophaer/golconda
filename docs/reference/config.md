@@ -171,7 +171,7 @@ in
 golconda.lib.mkSystem {
   config = ./server.toml;
   system = "x86_64-linux"; # the build host; left out, `iets eval` needs --impure
-  # platform = "aarch64-linux";  # default: the build host's
+  # platform = "x86_64-linux";  # default: the build host's; x86_64 is the only one built today
 }
 ```
 

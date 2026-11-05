@@ -54,6 +54,7 @@ let
     config = ./server.toml;          # what lib.mkSystem takes
     keys = "/srv/golconda-keys";      # the key directory, below
     # pcrKeys = "/srv/golconda-pcr";  # pcr/ from another directory; default: keys
+    # indexKeys = "/srv/golconda-old"; # release/ from another directory; default: keys
     # system = "x86_64-linux";        # the build host; default: builtins.currentSystem
   };
 in
@@ -62,9 +63,10 @@ image.disk
 
 It returns `erofs`, `verity`, `initrd`, `uki`, `loader`, `disk` and `release` (the string
 `"${disk}/release"`, the directory sysupdate fetches). The steps are those of the smoke outputs
-([Image artifacts](image.md)). The chain reads four files under `keys`: `secureboot/db.key`,
-`secureboot/db.crt`, `pcr/pcr.key` and `pcr/pcr.pub`. A relative string is an error. A path value
-copies the keys into the store; a string does not, and needs `extra-sandbox-paths` on the daemon
+([Image artifacts](image.md)). The chain reads six files under `keys`: `secureboot/db.key`,
+`secureboot/db.crt`, `pcr/pcr.key`, `pcr/pcr.pub`, `release/index.key` and `release/index.pgp`. A
+relative string is an error. A path value copies the keys into the store; a string does not, and
+needs `extra-sandbox-paths` on the daemon
 ([Trust: How the private keys reach the build](../design/trust.md#how-the-private-keys-reach-the-build)).
 The procedure around it, from making the key set to enrolling the certificate, is in
 [Making a release](release.md).
