@@ -11,22 +11,11 @@ these jobs. Nix builds the image but is not installed on the machine.
 Golconda suits Linux servers and appliances that should all run the same reproducible image. A
 machine cannot drift from that image, and a failed update rolls back on its own.
 
-```mermaid
-flowchart TD
-  toml["server.toml"] --> build["build host: iets + Nix daemon"]
-  build --> release["signed release: /usr image, verity, signature, UKI"]
-  release -->|update source, signed index| sysupdate
-  subgraph server["server"]
-    sysupdate["systemd-sysupdate"] --> slot["inactive /usr slot"]
-    slot --> boot["reboot: systemd-boot tries the new slot"]
-    boot -->|health checks pass| good["blessed"]
-    boot -->|3 failed tries| back["previous slot"]
-  end
-```
-
-A few words used below: a **UKI** (unified kernel image) is one signed file with the kernel, the
-initrd and the kernel command line. **erofs** is a read-only file system, and **dm-verity** checks
-each block of it against a signed hash. The [Glossary](docs/reference/glossary.md) has the rest.
+Terms used on this page: a **UKI** (unified kernel image) is one signed file that holds the kernel,
+the initrd and the kernel command line. **erofs** is a read-only file system, and **dm-verity**
+checks every block of it against a signed hash. **Boot counting** gives a new UKI three tries:
+systemd-boot counts each start, and when none of them passes the health checks, it boots the
+previous release again. The [Glossary](docs/reference/glossary.md) explains the rest.
 
 ## Features
 
@@ -76,6 +65,23 @@ limits.
 
 [Comparison](docs/design/comparison.md) says what Golconda takes from NixOS, ParticleOS, Flatcar and
 others, and what you give up against NixOS.
+
+## How it fits together
+
+A release goes from the TOML file to the server, and boot counting decides whether it stays.
+
+```mermaid
+flowchart TD
+  toml["server.toml"] --> build["build host: iets + Nix daemon"]
+  build --> release["signed release: /usr image, verity, signature, UKI"]
+  release -->|update source, signed index| sysupdate
+  subgraph server["server"]
+    sysupdate["systemd-sysupdate"] --> slot["inactive /usr slot"]
+    slot --> boot["reboot: systemd-boot tries the new slot"]
+    boot -->|health checks pass| good["blessed"]
+    boot -->|3 failed tries| back["previous slot"]
+  end
+```
 
 ## Status
 
