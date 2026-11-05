@@ -78,13 +78,13 @@ iets eval --json -E 'builtins.attrNames (import ./examples/golconda.nix).compose
   `golconda-health-sshd.service`, `golconda-loader-update.service`,
   `golconda-var-sshd-hostkey.service`, `sshd.service`.
 
-- `files` (36), by origin:
+- `files` (37), by origin:
 
-  - `/base` (22): `/usr/lib/repart.d/30-root.conf`, `/usr/lib/locale.conf`, the timesyncd and
+  - `/base` (23): `/usr/lib/repart.d/30-root.conf`, `/usr/lib/locale.conf`, the timesyncd and
     journald files, `dbus.socket` and `/usr/share/dbus-1/system.conf`, `golconda-loader-update` and
-    `loader.conf`, `/usr/libexec/golconda-etc-links`, and thirteen unit drop-ins named
+    `loader.conf`, `/usr/libexec/golconda-etc-links`, and fourteen unit drop-ins named
     `/usr/lib/systemd/system/<unit>.d/golconda.conf` (for example `systemd-firstboot.service`,
-    `ldconfig.service`, `modprobe@.service`);
+    `systemd-sysusers.service`, `ldconfig.service`, `modprobe@.service`);
   - `/services/sshd` (4): `/usr/lib/sshd/sshd_config`, `/usr/lib/sshd/authorized_keys/root`, and the
     var's script and manifest `/usr/lib/golconda/vars.d/sshd-hostkey.{sh,json}`;
   - `/network` (1): `99-default-dhcp.network`; `/security` (1):
@@ -102,7 +102,9 @@ iets eval --json -E 'builtins.attrNames (import ./examples/golconda.nix).compose
 - `tmpfiles`: `L /bin`, `L /sbin` and `L /lib` into `usr/`; `L /etc/ssl/cert.pem` and
   `L /etc/ssl/certs/ca-certificates.crt`; `d /var/empty`; one
   `L /etc/<path> - - - - /usr/share/factory/etc/<path>` per factory file; `L /etc/localtime`
-  (`/usr/share/zoneinfo/UTC`); `L /etc/os-release`.
+  (`/usr/share/zoneinfo/UTC`); `L /etc/os-release`. The `/etc` lines run at build time, into the
+  read-only `/etc` (`lib/etc.nix`,
+  [Layout: The read-only /etc](../design/layout.md#the-read-only-etc)).
 
 - `packageOrigins`: `openssh` from `/services/sshd`; `cacert`, `dash`, `dbus-broker`, `e2fsprogs`,
   `hwdb`, `linux-kernel`, `systemd`, `tpm2-tss`, `tzdata` and `uutils-coreutils` from `/base`.
@@ -185,8 +187,8 @@ kernel trusts the verity signature only from the platform keyring, which the fir
 Secure Boot `db`. Plain `OVMF.fd` has no Secure Boot, so the boot stops at switch-root with
 `Failed to execute /sbin/init` ([Image artifacts](image.md#boot-test-scriptsboot-test)). The harness
 does what is needed: it enrols the throwaway db key into the OVMFFull variable store, starts QEMU
-with SMM and a 40 GiB overlay (room for `root`), and passes the host name `boot-test` as an SMBIOS
-credential.
+with SMM and a 40 GiB overlay (room for `root`), passes the host name `boot-test` as an SMBIOS
+credential, and gives the machine an SMBIOS UUID (`-uuid`), the source of its machine id.
 
 ```sh
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --timeout 120
@@ -201,7 +203,7 @@ PASS: multi-user-reached
 PASS: sshd-active
 PASS: var-sshd-hostkey
 PASS: boot-complete
-PASS: no-firstboot-prompt (firstboot ran without prompting)
+PASS: no-prompt
 ```
 
 What happens, in order, and which marker or file shows it:
@@ -209,23 +211,24 @@ What happens, in order, and which marker or file shows it:
 1. systemd-boot runs the UKI `server_20261031.1+3-0.efi`. The stub measures it into PCR 11. The
    initrd finds `usr-a` by `usrhash=`, attaches verity, and repart creates `root` from
    `/usr/lib/repart.d/30-root.conf` (ext4, the rest of the disk).
-1. After switch-root, PID 1 writes `/etc/machine-id` and takes the host name from the
-   `system.hostname` credential at every boot; nothing writes `/etc/hostname`
+1. `systemd-confext-sysroot.service` merges `/usr/lib/confexts/golconda` onto `/sysroot/etc`,
+   read-only. It was built with the image: `passwd`, `group` and `shadow` from
+   `sysusers.d/golconda.conf` (`messagebus`, `sshd`), and `/etc/pam.d/sshd`, `/etc/shells` and the
+   other factory files as symlinks into `/usr/share/factory/etc`; `/etc/localtime`,
+   `/etc/os-release`. `--ssh-test` checks it: `etc-read-only`.
+1. After switch-root, PID 1 takes the machine id from the SMBIOS UUID and mounts it over the empty
+   `/etc/machine-id`. It takes the host name from the `system.hostname` credential at every boot;
+   nothing writes `/etc/hostname`
    ([Boot: Bootstrap credentials](../design/boot.md#bootstrap-credentials)). `--ssh-test` checks it:
    `PASS: hostname (system.hostname credential applied)`.
-1. `systemd-firstboot.service` runs with the drop-in
-   `/usr/lib/systemd/system/systemd-firstboot.service.d/golconda.conf`:
-   `systemd-firstboot --mute-console=yes`. It never prompts, and still applies `firstboot.*`
-   credentials. Marker: `no-firstboot-prompt`.
-1. systemd-sysusers writes `passwd`, `group` and `shadow` from `sysusers.d/golconda.conf`
-   (`messagebus`, `sshd`).
-1. systemd-tmpfiles runs `tmpfiles.d/golconda.conf`: `/etc/pam.d/sshd`, `/etc/shells` and the other
-   factory files become symlinks into `/usr/share/factory/etc`; `/etc/localtime`, `/etc/os-release`,
-   `/var/empty` exists.
+1. `systemd-firstboot.service` is skipped: an empty `/etc/machine-id` is not a first boot. So is
+   `systemd-sysusers.service`, by its drop-in `ConditionPathIsReadWrite=/etc`. Markers: `no-prompt`,
+   and `firstboot-skipped` with `--ssh-test`.
+1. systemd-tmpfiles runs `tmpfiles.d/golconda.conf` without its `/etc` lines: `/var/empty` exists.
 1. `golconda-var-sshd-hostkey.service` runs `golconda-var-run sshd-hostkey "key" "key.pub"`:
    `ssh-keygen -q -t ed25519 -N '' -f key` in a runtime directory, then
    `systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11 --name=sshd-hostkey.key` of the
-   key into `/etc/credstore.encrypted/sshd-hostkey.key`. The public half goes to
+   key into `/var/lib/golconda/credstore.encrypted/sshd-hostkey.key`. The public half goes to
    `/var/lib/golconda/vars/sshd-hostkey/pub/key.pub`, and a `done` file ends the unit's future runs.
    Marker: `var-sshd-hostkey`. `--with-key=auto` seals to the host key plus the TPM2 when a TPM2
    exists, and to the host key alone when it does not; the plain run above has no TPM.
@@ -264,7 +267,7 @@ scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-te
 The harness forwards host port 10022 (`BOOT_TEST_SSH_PORT`) to the guest's port 22 and logs in as
 root with `ssh -i tests/fixtures/snakeoil-ssh -p 10022 root@localhost`. In the run *(boot)*,
 `--ssh-test` printed `PASS: ssh-login`, `PASS: no-failed-units` and
-`PASS: varlinkctl-list-interfaces`, and the 27 ssh checks of that run all passed.
+`PASS: varlinkctl-list-interfaces`; with `--tpm` added, the 17 ssh checks of that run all passed.
 
 Certificate login: uncomment the three lines at the end of `examples/server.toml`. The evaluation
 *(eval, with an `admin@example.com` principal)* adds `/usr/lib/sshd/ca.pub` and
@@ -296,11 +299,12 @@ Output *(boot)*:
 
 ```text
 PASS: release-index (4 lines: usr, verity, signature, UKI; digests match)
-Successfully installed '/var/tmp/next/boot-test_20261031.2.efi' (regular-file) as '/boot/EFI/Linux/boot-test_20261031.2+3-0.efi' (regular-file).
+Successfully installed 'http://10.0.2.2:8074/boot-test_20261031.2.efi' (url-file) as '/boot/EFI/Linux/boot-test_20261031.2+3-0.efi' (regular-file).
 * Successfully installed update '20261031.2'.
 PASS: sysupdate-installed (20261031.2)
 PASS: boots-next (20261031.1 -> 20261031.2)
-PASS: etc-links-stable (372 links, 0 naming a store path, 0 dangling)
+PASS: etc-follows-update (/etc is the running 20261031.2's confext; 0 enable links in /etc)
+PASS: hostkey-unsealed-after-update (sshd of 20261031.2 presents the first boot's host key)
 PASS: no-failed-units-after-update
 ```
 

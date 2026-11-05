@@ -291,10 +291,11 @@ loader on the ESP is refused by firmware, which is the negative control for this
 
 The script creates a 40 GiB qcow2 overlay (room for the root partition), copies the OVMF variable
 store, passes the host name `boot-test` as a credential (`-smbios type=11,...`, not with
-`--esp-creds`), and logs the serial console to a file. QEMU runs with `-display none` and no monitor
-or QMP socket: the harness reaches the guest through the serial log and ssh, and nothing else. QEMU
-runs with `-no-reboot` unless `--tpm`, `--next` or `--factory-reset` is given, because those reboot
-the guest.
+`--esp-creds`), gives the machine the SMBIOS UUID `6f1a2c3e-0b4d-4e5f-8a9b-0c1d2e3f4a5b` (`-uuid`:
+PID 1 takes the machine id from it, and the sealed host key needs a stable id), and logs the serial
+console to a file. QEMU runs with `-display none` and no monitor or QMP socket: the harness reaches
+the guest through the serial log and ssh, and nothing else. QEMU runs with `-no-reboot` unless
+`--tpm`, `--next` or `--factory-reset` is given, because those reboot the guest.
 
 ### The markers
 
@@ -307,28 +308,29 @@ grep -ho 'verdict "[a-z0-9-]*\|PASS: [a-z0-9-]*' scripts/boot-test | sed 's/verd
 
 Always (read from the serial log; `check_markers`):
 
-| marker                | what it proves                                                        |
-| --------------------- | --------------------------------------------------------------------- |
-| `multi-user-reached`  | `multi-user.target` was reached                                       |
-| `sshd-active`         | sshd started                                                          |
-| `var-sshd-hostkey`    | the host key var finished, so the root was writable when the unit ran |
-| `boot-complete`       | `boot-complete.target` was reached                                    |
-| `no-firstboot-prompt` | no "Please enter" prompt appeared (see the limit below)               |
+| marker               | what it proves                                                        |
+| -------------------- | --------------------------------------------------------------------- |
+| `multi-user-reached` | `multi-user.target` was reached                                       |
+| `sshd-active`        | sshd started                                                          |
+| `var-sshd-hostkey`   | the host key var finished, so the root was writable when the unit ran |
+| `boot-complete`      | `boot-complete.target` was reached                                    |
+| `no-prompt`          | no "Please enter" prompt appeared on the serial console               |
 
-`no-firstboot-prompt` passes when the log has no prompt. The script prints `INFO` and counts a pass
-when firstboot left no trace in the log, so this marker is absence of evidence, not proof that
-firstboot ran.
+`no-prompt` is absence of evidence: it passes when the log has no prompt. That `systemd-firstboot`
+did not run is `firstboot-skipped`, below.
 
 With `--ssh-test` (the harness logs in as root with `tests/fixtures/snakeoil-ssh`):
 
-| marker                       | what it proves                                                                |
-| ---------------------------- | ----------------------------------------------------------------------------- |
-| `ssh-login`                  | an ssh login with the test key works                                          |
-| `hostname`                   | `hostname` prints `boot-test`: PID 1 applied the `system.hostname` credential |
-| `esp-authorized-keys`        | with `--esp-creds`: `/root/.ssh/authorized_keys` holds the generated key      |
-| `no-failed-units`            | `systemctl --failed` lists no unit                                            |
-| `varlinkctl-list-interfaces` | `io.systemd.Manager` answers on its varlink socket                            |
-| `secure-boot-enabled`        | `bootctl status` says `Secure Boot: enabled` (with `--secure-boot`)           |
+| marker                       | what it proves                                                                                                                                                                                       |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ssh-login`                  | an ssh login with the test key works                                                                                                                                                                 |
+| `hostname`                   | `hostname` prints `boot-test`: PID 1 applied the `system.hostname` credential                                                                                                                        |
+| `esp-authorized-keys`        | with `--esp-creds`: `/root/.ssh/authorized_keys` holds the generated key                                                                                                                             |
+| `no-failed-units`            | `systemctl --failed` lists no unit                                                                                                                                                                   |
+| `varlinkctl-list-interfaces` | `io.systemd.Manager` answers on its varlink socket                                                                                                                                                   |
+| `secure-boot-enabled`        | `bootctl status` says `Secure Boot: enabled` (with `--secure-boot`)                                                                                                                                  |
+| `etc-read-only`              | `/etc` is an `overlay` mount, `ro`; `systemd-confext status` names `golconda`; `touch /etc/boot-test` fails with "Read-only file system"; `/etc/machine-id` is the SMBIOS UUID QEMU passes (`-uuid`) |
+| `firstboot-skipped`          | `systemd-firstboot.service` has `ConditionResult=no`: an empty `/etc/machine-id` is not a first boot                                                                                                 |
 
 The loader checks ([Boot loader](../design/bootloader.md)) run on the first boot, again after an
 update, and after a rotation:
@@ -352,21 +354,22 @@ With `--tpm` (and `--ssh-test`):
 
 With `--next DIR` ([The update test](#the-update-test)):
 
-| marker                                                                 | what it proves                                                                                               |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `release-index`                                                        | `SHA256SUMS` has four lines in the fixed order, the digests match, none lists itself                         |
-| `http-source`                                                          | the guest's own `10-usr.transfer` has `Type=url-file` and `Path=http://10.0.2.2:<port>/`                     |
-| `http-fetch`                                                           | the sysupdate journal names the release over `http`, so the guest fetched it, not a local file               |
-| `sysupdate-installed`                                                  | `systemd-sysupdate-update.service` installed the release                                                     |
-| `boots-next`                                                           | after the reboot `IMAGE_VERSION` is the new version                                                          |
-| `etc-links-stable`                                                     | links under `/etc/systemd/system` exist, none names a store path, none dangles                               |
-| `no-failed-units-after-update`                                         | the updated system has no failed unit                                                                        |
-| `loader-replaced`                                                      | when the loader bytes differ, the new loader is on the ESP and the old one is `systemd-boot-fallbackx64.efi` |
-| `bootctl-list-both-slots`                                              | `bootctl list` shows the entries of both versions                                                            |
-| `loader-reinstall`                                                     | a damaged `BOOTX64.EFI` is reinstalled by `golconda-loader-update`                                           |
-| `set-oneshot-other-slot`, `other-slot-keeps-loader`, `oneshot-is-once` | `bootctl set-oneshot` boots the other slot once and installs nothing                                         |
-| `set-default-other-slot`, `set-default-cleared`                        | `bootctl set-default` boots the other slot until it is cleared                                               |
-| `reboot-to-firmware`                                                   | `bootctl reboot-to-firmware` reaches OVMF's boot menu                                                        |
+| marker                                                                 | what it proves                                                                                                                                                                                                              |
+| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `release-index`                                                        | `SHA256SUMS` has four lines in the fixed order, the digests match, none lists itself                                                                                                                                        |
+| `http-source`                                                          | the guest's own `10-usr.transfer` has `Type=url-file` and `Path=http://10.0.2.2:<port>/`                                                                                                                                    |
+| `http-fetch`                                                           | the sysupdate journal names the release over `http`, so the guest fetched it, not a local file                                                                                                                              |
+| `sysupdate-installed`                                                  | `systemd-sysupdate-update.service` installed the release                                                                                                                                                                    |
+| `boots-next`                                                           | after the reboot `IMAGE_VERSION` is the new version                                                                                                                                                                         |
+| `etc-follows-update`                                                   | `/etc/extension-release.d/extension-release.golconda` has `VERSION_ID=` of the running release (the new one after an update, the old one after the `--fail-health` fallback), and `/etc/systemd/system` has no enable links |
+| `hostkey-unsealed-after-update`                                        | sshd of the new release presents the host key recorded at the first login: it unsealed the first release's credential (with `--tpm`: TPM2 and the shared signed PCR 11 policy)                                              |
+| `no-failed-units-after-update`                                         | the updated system has no failed unit                                                                                                                                                                                       |
+| `loader-replaced`                                                      | when the loader bytes differ, the new loader is on the ESP and the old one is `systemd-boot-fallbackx64.efi`                                                                                                                |
+| `bootctl-list-both-slots`                                              | `bootctl list` shows the entries of both versions                                                                                                                                                                           |
+| `loader-reinstall`                                                     | a damaged `BOOTX64.EFI` is reinstalled by `golconda-loader-update`                                                                                                                                                          |
+| `set-oneshot-other-slot`, `other-slot-keeps-loader`, `oneshot-is-once` | `bootctl set-oneshot` boots the other slot once and installs nothing                                                                                                                                                        |
+| `set-default-other-slot`, `set-default-cleared`                        | `bootctl set-default` boots the other slot until it is cleared                                                                                                                                                              |
+| `reboot-to-firmware`                                                   | `bootctl reboot-to-firmware` reaches OVMF's boot menu                                                                                                                                                                       |
 
 With `--rotate`:
 
@@ -380,16 +383,17 @@ With `--rotate`:
 
 With `--factory-reset --ssh-test` ([The factory reset test](#the-factory-reset-test)):
 
-| marker                     | what it proves                                                                            |
-| -------------------------- | ----------------------------------------------------------------------------------------- |
-| `factory-reset-test-image` | `/usr/lib/os-release` says `IMAGE_ID=boot-test`, so the reset runs on the test image only |
-| `factory-reset-before`     | `/etc/machine-id`, `IMAGE_VERSION` and `bootctl list` were readable before the reset      |
-| `state-marker-written`     | the marker in `/etc` is readable before the request                                       |
-| `state-gone`               | the guest says the marker is absent after the reset boot                                  |
-| `machine-id-new`           | `/etc/machine-id` is non-empty and differs from the id before the reset                   |
-| `first-boot-rerun`         | the reset boot's serial log has `systemd-firstboot.service` finishing                     |
-| `multi-user-after-reset`   | the reset boot reached `multi-user.target`                                                |
-| `slots-kept`               | `bootctl list` entries (ignoring the boot counter) and `IMAGE_VERSION` are unchanged      |
+| marker                     | what it proves                                                                                 |
+| -------------------------- | ---------------------------------------------------------------------------------------------- |
+| `factory-reset-test-image` | `/usr/lib/os-release` says `IMAGE_ID=boot-test`, so the reset runs on the test image only      |
+| `factory-reset-before`     | `/etc/machine-id`, `IMAGE_VERSION` and `bootctl list` were readable before the reset           |
+| `state-marker-written`     | the marker in `/var` is readable before the request                                            |
+| `state-gone`               | the guest says the marker is absent after the reset boot                                       |
+| `machine-id-kept`          | `/etc/machine-id` is non-empty and the same as before the reset: it is the SMBIOS UUID         |
+| `hostkey-new`              | the ssh host key's public half differs from the one before the reset                           |
+| `first-boot-rerun`         | the reset boot's serial log has `Generate var sshd-hostkey` finishing: the var units ran again |
+| `multi-user-after-reset`   | the reset boot reached `multi-user.target`                                                     |
+| `slots-kept`               | `bootctl list` entries (ignoring the boot counter) and `IMAGE_VERSION` are unchanged           |
 
 The test SSH keypair is a committed test fixture (`tests/fixtures/snakeoil-ssh*`). The
 `image-smoke-test` reads the public key and adds it to `authorizedKeys`. See
@@ -411,9 +415,9 @@ be held. `DIR` is a built release (`DIR/disk/release`, `DIR/keys`). The harness:
    `Successfully installed 'http://…'` line is `http-fetch`; the service's exit status is
    `sysupdate-installed`. sysupdate fetches `SHA256SUMS` and the four artifacts over HTTP, then
    writes the B slots and `EFI/Linux/<id>_<version>+3-0.efi`;
-1. reboots and checks `boots-next`, `etc-links-stable`, `no-failed-units-after-update` and the
-   loader markers (the new release installed its loader on its first good boot and kept the previous
-   one as `systemd-boot-fallbackx64.efi`);
+1. reboots and checks `boots-next`, `etc-follows-update`, `hostkey-unsealed-after-update`,
+   `no-failed-units-after-update` and the loader markers (the new release installed its loader on
+   its first good boot and kept the previous one as `systemd-boot-fallbackx64.efi`);
 1. runs the recovery paths: `bootctl list` shows both slots, a damaged `BOOTX64.EFI` is reinstalled
    by `golconda-loader-update`, `bootctl set-oneshot` and `bootctl set-default` boot the other slot
    and back, and `bootctl reboot-to-firmware` reaches OVMF's boot menu.
@@ -435,17 +439,24 @@ QEMU, sets db to the new certificate alone, adds the old one to dbx (`virt-fw-va
 checks that the kernel loaded only the new db certificate, and boots the original disk under the
 rotated store, which firmware must refuse.
 
-`--next DIR --fail-health` proves the fallback instead of the good update boot. It masks a health
-unit (`/etc/systemd/system/golconda-health-network.service` → `/dev/null`), so
-`boot-complete.target` cannot be reached and the candidate is never blessed. It then reboots three
-times and checks after each one that the counter fell (`tries: 2 left; 1 done`, then
+`--next DIR --fail-health` proves the fallback instead of the good update boot. `/etc` is read-only
+and `/run` does not survive a reboot, so it writes a null-key `network.network` credential to the
+ESP, `/boot/loader/credentials/network.network.00-boot-test-no-route.cred`. systemd-stub hands it to
+every boot of every slot. It gives the link its address with `Scope=link` and no DHCP: ssh still
+reaches the guest, but networkd never calls the link routable, so `golconda-health-network.service`
+fails, `boot-complete.target` cannot be reached and the candidate is never blessed. It then reboots
+three times and checks after each one that the counter fell (`tries: 2 left; 1 done`, then
 `1 left; 2 done`, then `0 left; 3 done`), that `boot-complete.target` is inactive and that the
-loader update did not run. It lifts the mask and checks the fourth boot: the previous release runs,
-the candidate is at `tries: 0 left; 3 done`, and the old entry is the one systemd-boot selected. A
-mask keeps every boot clean and ssh reachable, so the counter can be read after each one; cutting
-the link would need a QMP `set_link` call and a hard reset. `--fail-health` and `--rotate` are
-alternatives, and `--fail-health` skips the loader and recovery checks, because no boot of the
-candidate is blessed.
+loader update did not run. It removes the credential and checks the fourth boot: the previous
+release runs, the candidate is at `tries: 0 left; 3 done`, and the old entry is the one systemd-boot
+selected (`fallback-to-old-slot`, `counter-exhausted`, `old-slot-selected`). `/etc` is the old
+release's confext again, and the host key still opens (`etc-follows-update`,
+`hostkey-unsealed-after-update`). The credential keeps every boot clean and ssh reachable, so the
+counter can be read after each one; cutting the link would need a QMP `set_link` call and a hard
+reset. PID 1 refuses a null-key credential with Secure Boot and a TPM2, so `--fail-health` refuses
+`--tpm` ([Boot: Bootstrap credentials](../design/boot.md#bootstrap-credentials)). `--fail-health`
+and `--rotate` are alternatives, and `--fail-health` skips the loader and recovery checks, because
+no boot of the candidate is blessed.
 
 What this test does not prove:
 
@@ -461,11 +472,12 @@ boot of its own: do not combine it with `--next`, and give a `--timeout` large e
 (such as 480). The harness:
 
 1. checks that `/usr/lib/os-release` says `IMAGE_ID=boot-test`, writes
-   `/etc/boot-test-factory-reset`, and reads `/etc/machine-id`, `IMAGE_VERSION` and `bootctl list`;
+   `/var/lib/boot-test-factory-reset` (`/etc` is read-only), and reads `/etc/machine-id`, the host
+   key's public half, `IMAGE_VERSION` and `bootctl list`;
 1. runs `systemctl start factory-reset.target` in the guest. The target sets the
    `FactoryResetRequest` EFI variable, and `systemd-factory-reset-reboot.service` reboots
    (systemd-factory-reset(8), [Updates: Factory reset](../design/updates.md#factory-reset));
-1. waits for a login with a new boot id, then checks `state-gone`, `machine-id-new`,
+1. waits for a login with a new boot id, then checks `state-gone`, `machine-id-kept`, `hostkey-new`,
    `first-boot-rerun`, `multi-user-after-reset` and `slots-kept`, and prints the last 100 lines of
    the reset boot's serial log.
 

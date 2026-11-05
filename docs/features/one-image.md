@@ -54,8 +54,8 @@ scripts/provision-esp disk.raw --hostname web1 --authorized-keys admin.pub
 ## Status
 
 Proven in QEMU by `hostname`, `ssh-login` (host name from the SMBIOS credential),
-`var-sshd-hostkey`, `no-firstboot-prompt` and `esp-authorized-keys` (host name and key from the
-ESP). `hostkey-sealed-with-tpm2` checks the sealed host key. See [What is proven](../proven.md).
+`var-sshd-hostkey`, `no-prompt` and `esp-authorized-keys` (host name and key from the ESP).
+`hostkey-sealed-with-tpm2` checks the sealed host key. See [What is proven](../proven.md).
 
 ## Limits
 

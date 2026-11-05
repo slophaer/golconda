@@ -63,12 +63,13 @@ update runs. Read the counters with `bootctl list`.
 
 The boot test proves this in QEMU with OVMF ([What is proven](../proven.md)):
 
-- `release-index`, `sysupdate-installed`, `boots-next`, `etc-links-stable` and
-  `no-failed-units-after-update`: the update installs and the new version boots (`--next`).
+- `release-index`, `sysupdate-installed`, `boots-next`, `etc-follows-update`,
+  `hostkey-unsealed-after-update` and `no-failed-units-after-update`: the update installs, the new
+  version boots with its own `/etc` and opens the old host key (`--next`).
 - `http-source`, `http-fetch`, `index-signed`: the guest fetches over HTTP with its own definition.
-- `health-check-broken`, `attempt-[1-3]-unblessed`, `fallback-to-old-slot`, `counter-exhausted`: a
-  failed health check costs one try each, and the old release boots after the third
-  (`--next --fail-health`).
+- `health-check-broken`, `attempt-[1-3]-unblessed`, `fallback-to-old-slot`, `counter-exhausted`,
+  `old-slot-selected`, `etc-follows-update`: a failed health check costs one try each, and the old
+  release boots after the third, with its own `/etc` (`--next --fail-health`).
 - `loader-update-ran` and `loader-update-not-run`: the loader updates after a good boot only.
 
 ## Limits

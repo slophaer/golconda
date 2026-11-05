@@ -29,12 +29,12 @@ present, PID 1 refuses it. Anyone who can write the ESP could otherwise plant a 
 measured boot never vouched for. On such a machine use SMBIOS or fw_cfg.
 
 PID 1 takes the host name from `systemd.hostname=` on the command line, then `/etc/hostname`, then
-the credential, then the fallback `golconda`. Nothing writes `/etc/hostname`, so the credential
-wins.
+the credential, then the fallback `golconda`. Nothing writes `/etc/hostname`, and `/etc` is
+read-only, so the credential wins.
 
-On first boot, `systemd-repart` makes the root partition, PID 1 sets the host name, and
-`systemd-firstboot` runs with `--mute-console=yes`, so it never prompts. tmpfiles writes the root
-key.
+On first boot, `systemd-repart` makes the root partition and PID 1 sets the host name.
+`systemd-firstboot` does not run: `/etc/machine-id` is empty, and to systemd that is not a first
+boot. tmpfiles writes the root key.
 
 ## Using it
 
@@ -59,7 +59,8 @@ The boot test proves this in QEMU ([What is proven](../proven.md)):
 - `hostname` and `ssh-login` with the SMBIOS credential (`--ssh-test`).
 - `hostname`, `esp-authorized-keys` and `ssh-login` with a key only the ESP holds
   (`--ssh-test --esp-creds`).
-- `no-firstboot-prompt`: first boot finishes without a prompt.
+- `no-prompt`: nothing on the serial console asks for input.
+- `firstboot-skipped`: `systemd-firstboot` does not run (`--ssh-test`).
 
 ## Limits
 
@@ -67,7 +68,10 @@ The boot test proves this in QEMU ([What is proven](../proven.md)):
   Secrets are [vars](vars.md).
 - With Secure Boot on and a TPM2, the guest refuses ESP credentials. That run fails.
 - No marker covers a cloud's own OEM strings, or fw_cfg on real hardware.
-- v1 names two credentials. `--credential` writes others, but the docs name no reader for them.
+- v1 names two credentials. `--credential` writes others. `system.machine_id` and `network.*` have a
+  reader ([Boot: Bootstrap credentials](../design/boot.md#bootstrap-credentials)).
+- A credential that systemd's tmpfiles lines write into `/etc` has no effect, because `/etc` is
+  read-only: `network.hosts`, `login.motd` and `login.issue`.
 
 ## More
 

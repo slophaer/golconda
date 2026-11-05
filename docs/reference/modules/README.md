@@ -14,7 +14,7 @@ this shape: [design/modules](../../design/modules.md).
 | `/base`          | built in, composed first: systemd, dbus-broker, dash, uutils coreutils, tpm2-tss, e2fsprogs, the kernel, the base units, `C.UTF-8`, `ntp`, `journalMaxUse` (details below) |
 | `/network`       | built in: networkd `.network` files (DHCP on every wired link by default) and resolved's fallback `dns`                                                                    |
 | `/security`      | built in: `/usr/lib/sysctl.d/50-golconda.conf`, the kernel hardening settings                                                                                              |
-| `/factory`       | built in: the `/etc` seed under `/usr/share/factory/etc` and the `L` lines that link it                                                                                    |
+| `/factory`       | built in: the `/etc` files under `/usr/share/factory/etc` and the `L` lines that link them                                                                                 |
 | `/vars`          | installs `/usr/lib/golconda/golconda-var-run` (mode `0755`), the POSIX sh runner for var units (`modules/vars/golconda-var-run`); built in                                 |
 | `/services/sshd` | OpenSSH as a service with its configuration under `/usr/lib/sshd/` and an ed25519 host key var; keys and certificates only                                                 |
 
@@ -135,20 +135,20 @@ A service is an `app` plus what only a unit has. `render service` returns a frag
 the package, and the `.wants` links. A module writes the same `/usr/lib/<name>/` paths into `argv`
 that the renderer writes the files to; `systemctl cat` shows the whole command.
 
-| field              | type                                                                                     | rendered as                                                                      |
-| ------------------ | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `name`             | unit name stem                                                                           | `units."<name>.service"`, `/usr/lib/<name>/` for files                           |
-| `scope`            | `"system"` or `"user"`, default `"system"`                                               | which manager: `units` or a file under `/usr/lib/systemd/user/`                  |
-| `app`              | `app`                                                                                    | `ExecStart=`, `Environment=`, `files`, `packages`                                |
-| `credentials`      | attrs handle → credstore id, default `{ }`                                               | `LoadCredentialEncrypted=id`, argv `%d/id`; refused for scope `user`             |
-| `state`            | list of string, default `[ ]`                                                            | `StateDirectory=`                                                                |
-| `runtimeDirectory` | word, optional                                                                           | `RuntimeDirectory=`                                                              |
-| `killMode`         | `"control-group"`, `"process"` or `"mixed"`, optional                                    | `KillMode=`; absent means systemd's default (`control-group`)                    |
-| `user`             | `"dynamic"`, `"root"` or a sysusers line; required for scope `system`                    | `DynamicUser=yes`, `User=root`, or `User=` plus sysusers; refused for `user`     |
-| `sandbox`          | `"strict"`, `"default"` or `"trusted"`, required                                         | the tier's directives (below)                                                    |
-| `after`            | list of unit names, default `[ ]`                                                        | `After=`                                                                         |
-| `wants`            | list of unit names, default `[ ]`                                                        | `Wants=`                                                                         |
-| `wantedBy`         | list of target names, default `[ "multi-user.target" ]` (`user`: `[ "default.target" ]`) | `[Install] WantedBy=` and static `.wants` links under the scope's unit directory |
+| field              | type                                                                                     | rendered as                                                                                                   |
+| ------------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `name`             | unit name stem                                                                           | `units."<name>.service"`, `/usr/lib/<name>/` for files                                                        |
+| `scope`            | `"system"` or `"user"`, default `"system"`                                               | which manager: `units` or a file under `/usr/lib/systemd/user/`                                               |
+| `app`              | `app`                                                                                    | `ExecStart=`, `Environment=`, `files`, `packages`                                                             |
+| `credentials`      | attrs handle → credstore id, default `{ }`                                               | `LoadCredentialEncrypted=id:/var/lib/golconda/credstore.encrypted/id`, argv `%d/id`; refused for scope `user` |
+| `state`            | list of string, default `[ ]`                                                            | `StateDirectory=`                                                                                             |
+| `runtimeDirectory` | word, optional                                                                           | `RuntimeDirectory=`                                                                                           |
+| `killMode`         | `"control-group"`, `"process"` or `"mixed"`, optional                                    | `KillMode=`; absent means systemd's default (`control-group`)                                                 |
+| `user`             | `"dynamic"`, `"root"` or a sysusers line; required for scope `system`                    | `DynamicUser=yes`, `User=root`, or `User=` plus sysusers; refused for `user`                                  |
+| `sandbox`          | `"strict"`, `"default"` or `"trusted"`, required                                         | the tier's directives (below)                                                                                 |
+| `after`            | list of unit names, default `[ ]`                                                        | `After=`                                                                                                      |
+| `wants`            | list of unit names, default `[ ]`                                                        | `Wants=`                                                                                                      |
+| `wantedBy`         | list of target names, default `[ "multi-user.target" ]` (`user`: `[ "default.target" ]`) | `[Install] WantedBy=` and static `.wants` links under the scope's unit directory                              |
 
 Arguments are escaped (`%` → `%%`, `$` → `$$`; a literal `%u` for sshd is `%%u` in the unit).
 `credential "n"` builds a plain ref; `credentialArg "RevokedKeys=" "n"` builds one with a prefix,
@@ -230,6 +230,10 @@ them first, and a configuration never lists them.
 - **links**:
   - `.wants` links for `dbus.socket`, `systemd-networkd` (service and socket), `systemd-resolved`
     and `systemd-timesyncd`, with the `dbus.service` alias;
+  - `initrd.target.wants/systemd-confext-sysroot.service`, which merges the read-only `/etc` onto
+    `/sysroot/etc` in the initrd, and `sysinit.target.wants/systemd-network-generator.service`,
+    which systemd enables only by preset
+    ([design/layout](../../design/layout.md#the-read-only-etc));
   - `/usr/bin/sh` → dash, and `/usr/bin` links for the util-linux and e2fsprogs executables that
     mount units, fsck and udev rules exec;
   - `farm` links for systemd's own directories (`/usr/lib/systemd`, `/usr/lib/udev`,
@@ -244,9 +248,9 @@ them first, and a configuration never lists them.
     `image/repart.nix`);
   - `/usr/lib/golconda/golconda-loader-update` and `loader.conf`, and
     `/usr/libexec/golconda-etc-links`;
-  - thirteen unit drop-ins, `/usr/lib/systemd/system/<unit>.d/golconda.conf` (for example
-    `systemd-firstboot.service` runs without prompts, and `ldconfig.service` and `modprobe@.service`
-    skip without their binary).
+  - fourteen unit drop-ins, `/usr/lib/systemd/system/<unit>.d/golconda.conf` (for example
+    `systemd-firstboot.service` runs without prompts, `systemd-sysusers.service` runs only on a
+    writable `/etc`, and `ldconfig.service` and `modprobe@.service` skip without their binary).
 - **tmpfiles**: `L /bin`, `L /sbin` and `L /lib` (merged `/usr` on the root partition), and
   `L /etc/ssl/cert.pem` and `L /etc/ssl/certs/ca-certificates.crt` into the one CA bundle.
 - **sysusers**: the `messagebus` user.
@@ -269,9 +273,10 @@ routable link is not blessed ([design/boot](../../design/boot.md#boot-health)).
 ### `/factory`
 
 One fragment: the files under `/usr/share/factory/etc` and the tmpfiles lines that link them into
-`/etc`. The factory knows no service: a service's user and directories are in its own fragment, and
-only `/etc` content is here (`pam.d/sshd`, which sshd refuses to start without). `mkSystem` always
-adds `/factory`.
+`/etc`. The lines run at build time, into the read-only `/etc` (`lib/etc.nix`,
+[design/layout](../../design/layout.md#the-read-only-etc)). The factory knows no service: a
+service's user and directories are in its own fragment, and only `/etc` content is here
+(`pam.d/sshd`, which sshd refuses to start without). `mkSystem` always adds `/factory`.
 
 | option       | type                             | rendered as                                                                                                                       |
 | ------------ | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
@@ -288,13 +293,13 @@ Built-in seeds:
 - `ssl/blocklist/.keep`;
 - `pkcs11/.keep`.
 
-Never seeded: `passwd`, `group`, `shadow` (systemd-sysusers writes them on first boot), `machine-id`
-(PID 1) and `hostname` (PID 1 sets it from the bootstrap credential).
+Never seeded: `passwd`, `group`, `shadow` (systemd-sysusers writes them at build time), `machine-id`
+(an empty file in the confext; PID 1 mounts the id over it) and `hostname` (PID 1 sets it from the
+bootstrap credential).
 
 tmpfiles holds:
 
-- one `L /etc/<path> - - - - /usr/share/factory/etc/<path>` line per factory file (`L`, not `L+`: a
-  regular file an admin put at that path wins and stays);
+- one `L /etc/<path> - - - - /usr/share/factory/etc/<path>` line per factory file;
 - `localtime` and `os-release` → `../usr/lib/os-release` as `L` lines.
 
 Two modules that write one factory path are a composer error, like any duplicate file.

@@ -108,8 +108,9 @@ gzip -1 -c web1.raw | ssh root@$IP 'gunzip | dd of=/dev/sda bs=4M conv=fsync && 
 
 Watch it in the Cloud Console (or `hcloud server request-console web1`): the screen shows the
 kernel's messages and the journal. On the first boot repart makes the root partition in the rest of
-the disk and moves the GPT's backup header to its end, firstboot runs without a prompt, and the
-health units bless the entry ([Boot: First boot](../design/boot.md#first-boot)).
+the disk and moves the GPT's backup header to its end, nothing prompts, and the health units bless
+the entry ([Boot: First boot](../design/boot.md#first-boot)). PID 1 takes the machine id from the
+server's SMBIOS UUID; that this works on Hetzner's KVM is not yet run.
 
 ```sh
 ssh-keygen -R $IP            # the rescue system's host key

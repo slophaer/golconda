@@ -26,8 +26,8 @@ limits.
   or other per-machine value, so one build serves every machine of its kind. The Nix store lives
   inside the image at `/usr/nix/store`; the machine has no Nix.
 - **[A read-only, verified `/usr`](docs/features/verified-usr.md).** `/usr` is erofs under dm-verity
-  with a signed root hash. `/etc` starts as links into the image and an administrator's file wins;
-  `/var` holds the state.
+  with a signed root hash. `/etc` is read-only too: a confext in the image, built at build time. A
+  change is a new image; `/var` holds the state.
 - **[Only signed code runs](docs/features/execution-policy.md).** The kernel's IPE policy lets a
   program run only from the verified `/usr`, so a binary copied to `/var` does not run.
 - **[Secure Boot and measured boot](docs/features/measured-boot.md).** systemd-boot and each UKI are

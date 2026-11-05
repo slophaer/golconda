@@ -7,11 +7,12 @@ back and what each one costs.
 
 ## How it works
 
-`image/repart.nix` marks the root partition (`/etc`, `/var`, `/home`, `/root`) with
-`FactoryReset=yes`. The ESP (EFI System Partition) and both `/usr` slots stay. Run
-`systemctl start factory-reset.target`. It sets the `FactoryResetRequest` EFI variable and reboots.
-On the next boot `systemd-repart` deletes the root partition and makes it again, empty. First boot
-then runs again: new machine id, new host key, no state.
+`image/repart.nix` marks the root partition (`/var`, `/home`, `/root`) with `FactoryReset=yes`. The
+ESP (EFI System Partition) and both `/usr` slots stay, and so does `/etc`, which is part of the
+image. Run `systemctl start factory-reset.target`. It sets the `FactoryResetRequest` EFI variable
+and reboots. On the next boot `systemd-repart` deletes the root partition and makes it again, empty.
+The var units then run again: new host key, no state. The machine id stays: it comes from the SMBIOS
+UUID or a credential, not from the state.
 
 Do not run `systemd-repart --factory-reset=yes` for this. It deletes the partition at once, on the
 running machine.
@@ -51,12 +52,12 @@ ssh root@web1 systemctl start factory-reset.target
 ```
 
 The machine reboots and comes back with new state. Credentials on the ESP stay, so the host name and
-the root key from [provisioning](provisioning.md) apply again on the new first boot.
+the root key from [provisioning](provisioning.md) apply again on the reset boot.
 
 ## Status
 
 The boot test proves this in QEMU ([What is proven](../proven.md)), with
-`--factory-reset --ssh-test`: `state-gone`, `machine-id-new`, `first-boot-rerun`,
+`--factory-reset --ssh-test`: `state-gone`, `machine-id-kept`, `hostkey-new`, `first-boot-rerun`,
 `multi-user-after-reset` and `slots-kept`. With `--next`: `loader-reinstall`,
 `set-oneshot-other-slot`, `set-default-other-slot` and `reboot-to-firmware`. Fallback by boot
 counting has markers too (`fallback-to-old-slot`).

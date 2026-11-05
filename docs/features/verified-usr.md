@@ -1,15 +1,16 @@
 # A read-only, verified /usr
 
 The operating system is one read-only filesystem, and the kernel checks every block against a signed
-hash. A changed file in `/usr` does not run. All state lives in one place, `/var` on the state
-partition, so you know what an update replaces and what it keeps.
+hash. A changed file in `/usr` does not run. `/etc` comes from `/usr` too, read-only. All state
+lives in one place, `/var` on the state partition, so you know what an update replaces and what it
+keeps.
 
 ```mermaid
 flowchart LR
   uki["signed UKI: usrhash= + root-hash signature"] --> vs[systemd-veritysetup]
   vs --> dm["dm-verity checks the signature against the firmware db"]
   dm --> usr["/usr: erofs, read-only"]
-  usr -->|tmpfiles L links| etc["/etc"]
+  usr -->|confext, merged read-only| etc["/etc"]
 ```
 
 ## How it works
@@ -25,10 +26,12 @@ flowchart LR
 - **A/B slots.** The disk has `usr-a` and `usr-b`, each with a verity and a signature partition (10
   GiB, 128 MiB, 16 KiB). An update writes the inactive slot and its UKI. systemd-boot counts boots
   and falls back after three failures.
-- **`/etc` links into the factory.** `/factory` seeds `/usr/share/factory/etc`. Tmpfiles lines
-  `L /etc/<path> - - - - /usr/share/factory/etc/<path>` link each file. `L` creates only what is
-  missing, so an administrator's regular file at the same path wins and stays. PID 1 writes
-  `machine-id`, and sysusers write `passwd`, `group` and `shadow`. Nothing writes `hostname`.
+- **`/etc` is read-only.** `lib/etc.nix` runs sysusers and the `/etc` lines of tmpfiles at build
+  time and puts the result in `/usr/lib/confexts/golconda`. The initrd merges it onto `/etc` with
+  overlayfs, read-only, with no upper layer. `/factory` seeds `/usr/share/factory/etc`, and
+  `L /etc/<path> - - - - /usr/share/factory/etc/<path>` lines link each file. `/etc/machine-id` is
+  empty: PID 1 mounts the id from the SMBIOS UUID or a credential over it. Nothing writes
+  `hostname`. See [Layout: The read-only /etc](../design/layout.md#the-read-only-etc).
 - **`/var` is state.** Services use `StateDirectory=` and so `/var/lib/<app>`. Vars sit under
   `/var/lib/golconda/vars`. `/home` and `/root` are on the same partition. `/tmp` and `/run` are
   tmpfs.
@@ -37,20 +40,21 @@ flowchart LR
 
 ## Using it
 
-Change an `/etc` file by replacing the link with a regular file:
+You cannot change `/etc` on the machine. A change is a new image:
 
 ```sh
-echo web1 > /etc/hostname      # wins over the hostname credential
-find /etc -type f              # lists every change you made
+touch /etc/x                   # Read-only file system
+systemctl mask --runtime foo   # only --runtime works, until the next boot
 ```
 
-A vendor change reaches every unmodified file on the next boot with no tool. A program that rewrites
-a file in place needs a directory of its own, not a link.
+An update brings its own `/etc` with its `/usr`. A program that rewrites a file in place needs a
+directory of its own under `/var`.
 
 ## Status
 
 Proven in QEMU: `multi-user-reached` and `boot-complete` with `ipe.enforce=1`, so the kernel accepts
-the signature. `sysupdate-installed`, `boots-next` and `etc-links-stable` cover the A/B update.
+the signature. `etc-read-only` shows the read-only `/etc` and the machine id from the SMBIOS UUID.
+`sysupdate-installed`, `boots-next` and `etc-follows-update` cover the A/B update.
 `fallback-to-old-slot` and `counter-exhausted` cover the rollback. `state-gone` and `slots-kept`
 cover the factory reset. See [What is proven](../proven.md).
 
@@ -61,12 +65,15 @@ cover the factory reset. See [What is proven](../proven.md).
   activates `/usr` unsigned. IPE then denies PID 1's re-exec and the boot stops at switch-root.
 - Both slots are fixed at 10 GiB, and each must hold any release.
 - A rotated `db` key needs new images.
-- Nothing checks `/var` or an administrator's `/etc` file.
+- Nothing checks `/var`.
+- An administrator cannot change `/etc` at all. Signed confexts in `/var/lib/confexts` could allow
+  it; this is not designed.
+- `/etc/shadow` is world-readable: the Nix store makes every file 0444. It holds no password.
 - Hardware and real-firmware enrolment have not run.
 
 ## More
 
-- [Layout](../design/layout.md#state) and [reference/layout](../reference/layout.md)
+- [Layout](../design/layout.md#the-read-only-etc) and [reference/layout](../reference/layout.md)
 - [Trust: verity key](../design/trust.md#2-verity-key)
 - [Boot](../design/boot.md#boot-counting-and-ab) and [Updates](../design/updates.md)
 - [Principles: immutable by default](../design/principles.md#immutable-by-default)

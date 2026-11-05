@@ -65,16 +65,17 @@ firmware to use it. The boot test does not exercise the menu.
 
 ## State reset
 
-`FactoryReset=yes` on the root partition makes systemd-repart delete it at the next boot, and first
-boot runs again. The request is `systemctl start factory-reset.target`, which sets the
+`FactoryReset=yes` on the root partition makes systemd-repart delete it at the next boot, and the
+var units run again. The request is `systemctl start factory-reset.target`, which sets the
 `FactoryResetRequest` EFI variable and reboots ([Updates: Factory reset](updates.md#factory-reset)).
-The ESP and the `/usr` slots stay, so this path repairs a broken state partition, not a broken
-image. All state is lost. It needs a working ssh login, because there is no console login; a machine
-without one is reflashed.
+The ESP, the `/usr` slots and the read-only `/etc` stay, so this path repairs a broken state
+partition, not a broken image. All state is lost. It needs a working ssh login, because there is no
+console login; a machine without one is reflashed.
 
 `scripts/boot-test … --factory-reset --ssh-test` checks this path on the test image. It writes a
-marker in `/etc` and reads `/etc/machine-id`, requests the reset, and waits for the reset boot. It
-checks that the marker is gone (`state-gone`), the machine id changed (`machine-id-new`), first boot
+marker in `/var`, reads `/etc/machine-id` and the ssh host key, requests the reset, and waits for
+the reset boot. It checks that the marker is gone (`state-gone`), the machine id stayed
+(`machine-id-kept`: it is the SMBIOS UUID) while the host key is new (`hostkey-new`), the var units
 ran again and `multi-user.target` was reached (`first-boot-rerun`, `multi-user-after-reset`), and
 that `bootctl list` shows the same entries and the same running version (`slots-kept`). An ssh
 failure cannot pass `state-gone`: the guest must print `absent`. The mode prints the last 100 lines

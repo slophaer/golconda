@@ -27,8 +27,8 @@ Code enforces what it can:
 - **Shell.** A test (`tests/eval/base.nix`) checks that `/usr/bin/sh` is dash and that no bash
   package is in the base.
 - **nixpkgs.** `checks.boundary` fails when a nixpkgs reference leaks outside developer tooling.
-- **CA store.** The image ships one bundle, cacert's Mozilla roots, in `/usr`. Tmpfiles links it to
-  `/etc/ssl/cert.pem` and `/etc/ssl/certs/ca-certificates.crt`.
+- **CA store.** The image ships one bundle, cacert's Mozilla roots, in `/usr`. Tmpfiles lines link
+  it to `/etc/ssl/cert.pem` and `/etc/ssl/certs/ca-certificates.crt`, at build time.
 
 ## Against NixOS
 

@@ -203,11 +203,12 @@ becomes an image is in [Configuration](config.md#from-document-to-image).
 
 ## `/factory`
 
-`/factory` is the one module that may write under `/etc`, and it does so only as the seed in
-`/usr/share/factory/etc` plus the tmpfiles `L` lines that link it
-([Layout: State](layout.md#state)). It knows no service: a module that needs a file under `/etc`
-(sshd's `pam.d/sshd`) has it in the factory because `/etc` content lives there, while the module's
-own user and directories are in the module's fragment.
+`/factory` is the one module that may write under `/etc`, and it does so only as the files in
+`/usr/share/factory/etc` plus the tmpfiles `L` lines that link them. The lines run at build time,
+into the read-only `/etc` ([Layout: The read-only /etc](layout.md#the-read-only-etc)). It knows no
+service: a module that needs a file under `/etc` (sshd's `pam.d/sshd`) has it in the factory because
+`/etc` content lives there, while the module's own user and directories are in the module's
+fragment.
 
 ## Why not the NixOS module system
 

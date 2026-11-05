@@ -81,8 +81,8 @@ Every image carries `/usr/lib/golconda/`:
 | `vars.d/*.json`    | one manifest per var: class, files, credential ids                                          |
 
 The sysupdate transfers from `/system.updateSource` are beside them in `/usr/lib/sysupdate.d/`.
-There is no `etc.manifest`: `/etc` is symlinks into the factory and `find /etc -type f` lists the
-administrator's changes ([Layout: State](layout.md#state)).
+There is no `etc.manifest`: `/etc` is the image's read-only confext at `/usr/lib/confexts/golconda`
+([Layout: The read-only /etc](layout.md#the-read-only-etc)).
 
 ## Diffing *(planned)*
 

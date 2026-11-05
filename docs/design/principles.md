@@ -11,8 +11,9 @@ lost ([Comparison](comparison.md)).
 
 ## Immutable by default
 
-`/usr` is read-only and verity-protected. Anything that changes at runtime lives under `/etc` or
-`/var` on the state partition and is declared: a `StateDirectory=`, a tmpfiles line, a repart
+`/usr` is read-only and verity-protected. `/etc` is read-only too: a confext built with the image
+([Layout: The read-only /etc](layout.md#the-read-only-etc)). Anything that changes at runtime lives
+under `/var` on the state partition and is declared: a `StateDirectory=`, a tmpfiles line, a repart
 definition. A path that is neither in the image nor declared does not exist.
 
 Enforced: a fragment's `files` must be under `/usr` (a path under `/etc` is a type error outside
@@ -30,8 +31,9 @@ Enforced: an app file that contains a credential path or a key marker is a type 
 
 If systemd has a component for it, that component is used and nothing else is packaged for the job:
 journald, networkd, resolved, timesyncd, sysusers, tmpfiles, repart, sysupdate, boot, stub,
-cryptsetup, veritysetup, pcrlock, creds, firstboot. Vendor configuration lives in `/usr/lib`,
-administrator overrides in `/etc`, state in `/var`, exactly as systemd documents it.
+cryptsetup, veritysetup, pcrlock, creds, firstboot. Vendor configuration lives in `/usr/lib` and
+state in `/var`, as systemd documents it. `/etc` is the image's own and read-only, so there are no
+administrator overrides; a change is a new image.
 
 ## One of each
 
@@ -54,8 +56,8 @@ administrator overrides in `/etc`, state in `/var`, exactly as systemd documents
 The choice is enforced where it can be: repkgs `features` (`tls = "openssl"` set-wide), lints, and
 the boundary check that keeps nixpkgs out of everything but developer tooling.
 
-The one CA file is Mozilla's roots (cacert), kept in `/usr` and linked into `/etc/ssl` at boot at
-the two paths the image's clients read by default: `/etc/ssl/cert.pem` for OpenSSL
+The one CA file is Mozilla's roots (cacert), kept in `/usr` and linked into `/etc/ssl` at build time
+at the two paths the image's clients read by default: `/etc/ssl/cert.pem` for OpenSSL
 (`OPENSSLDIR=/etc/ssl`) and `/etc/ssl/certs/ca-certificates.crt` for curl. The file lives in `/usr`,
 so an update replaces it and `/etc` keeps no copy to go stale.
 

@@ -69,6 +69,14 @@ for the threat model.
 Yama restricts ptrace. The sysctl `kernel.yama.ptrace_scope=2` (set by `/security`) allows ptrace
 only for processes with `CAP_SYS_PTRACE`. This blocks lateral movement via ptrace injection.
 
+## overlayfs
+
+`CONFIG_OVERLAY_FS=y` serves one use: systemd-confext merges the image's `/etc` read-only, with no
+upper layer ([Layout: The read-only /etc](layout.md#the-read-only-etc)). The extra features
+(`redirect_dir`, `index`, `xino`, `metacopy`) stay at their default, off.
+`CONFIG_OVERLAY_FS_REDIRECT_ALWAYS_FOLLOW` is off, the more secure choice. Nothing uses a writable
+overlay: that is the part with the long CVE history.
+
 ## Sysctl hardening
 
 `/usr/lib/sysctl.d/50-golconda.conf` (from the `/security` module) applies at boot:

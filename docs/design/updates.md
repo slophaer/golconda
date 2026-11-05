@@ -53,42 +53,48 @@ than the ones it has. The composer cannot check that (evaluation does not know t
 release); a release script *(planned)* will refuse a non-increasing version on the builder.
 
 The version also sets the mtime of every file in the image (`mkfs.erofs -T`, the epoch of the date
-plus `N`). systemd's `ConditionNeedsUpdate=` compares `/usr`'s mtime with `/etc/.updated`, so
-sysusers, tmpfiles and the other first-boot units run exactly once per new image while the image
-itself stays reproducible. Other downgrades than the boot-counting fall-back are unsupported.
+plus `N`). systemd's `ConditionNeedsUpdate=/var` compares `/usr`'s mtime with `/var/.updated`, so
+units with that condition (the journal catalog) run once per new image while the image itself stays
+reproducible. `/etc/.updated` can never be written, so `ConditionNeedsUpdate=/etc` is true at every
+boot; the three units that use it do nothing harmful: `systemd-sysusers` is skipped by
+`ConditionPathIsReadWrite=/etc`, `systemd-hwdb-update` by its own conditions (`hwdb.bin` is in
+`/usr`, there is no `/etc/udev`), and `systemd-update-done` ignores `EROFS`. `/etc` is read-only and
+comes with the image: sysusers and the `/etc` lines of tmpfiles ran at build time
+([Layout: The read-only /etc](layout.md#the-read-only-etc)). Other downgrades than the boot-counting
+fall-back are unsupported.
 
 ## Factory reset
 
 The root partition is defined with `FactoryReset=yes`. `systemctl start factory-reset.target` asks
 for a reset: it sets the `FactoryResetRequest` EFI variable and reboots, and the next boot has
 systemd-repart delete the partitions marked `FactoryReset=` and create them again empty
-(systemd-factory-reset(8)). First boot then runs again. The state is gone; the ESP and the `/usr`
-slots stay. Do not run `systemd-repart --factory-reset=yes` for this: it deletes the partition at
-once, on the running machine.
+(systemd-factory-reset(8)). The var units then run again and make new keys. The state is gone; the
+ESP, the `/usr` slots and `/etc`, which is part of the image, stay. The machine id stays too: it
+comes from the SMBIOS UUID or a credential, not from the state. Do not run
+`systemd-repart --factory-reset=yes` for this: it deletes the partition at once, on the running
+machine.
 
 ## Enable links and systemd's store path
 
-PID 1 runs `preset-all` when `/etc` is empty (the first boot). It writes enable links under
-`/etc/systemd/system` with an absolute target,
-`/usr/nix/store/<hash>-systemd/lib/systemd/system/<unit>`. A release that changes systemd's own
-store path would leave those links dangling, and the units they enable would not load.
+`/etc` is read-only and no boot is a first boot
+([Layout: The read-only /etc](layout.md#the-read-only-etc)), so PID 1 never runs `preset-all` and
+`/etc/systemd/system` has no enable links. A change of systemd's store path in an update can leave
+no dangling link. The `etc-follows-update` marker checks that `/etc` is the running release's
+confext and holds no enable links, after an update and after a fallback.
 
-The unit `golconda-etc-links.service` runs `/usr/libexec/golconda-etc-links /sysroot` in the initrd,
-after `/sysroot/usr` is mounted and before switch-root. It rewrites each link whose target is an
-absolute store path to `/usr/lib/systemd/system/<unit>`: a stable path that exists in every release.
-Masks, links inside `/etc` and relative links stay as they are, so an administrator's unit is not
-bypassed. The script exits 1 and names the link when it cannot rewrite one, so the unit fails. The
-unit is pulled in by `Wants=`, so switch-root still goes on, and the failed unit is what tells the
-operator.
+Before, PID 1 ran `preset-all` when `/etc` was empty and wrote links with an absolute target,
+`/usr/nix/store/<hash>-systemd/lib/systemd/system/<unit>`. The unit `golconda-etc-links.service`
+still runs `/usr/libexec/golconda-etc-links /sysroot` in the initrd, after `/sysroot/usr` is mounted
+and before switch-root. It rewrites each link whose target is an absolute store path to
+`/usr/lib/systemd/system/<unit>`, and now finds nothing. The script exits 1 and names the link when
+it cannot rewrite one, so the unit fails. The unit is pulled in by `Wants=`, so switch-root still
+goes on, and the failed unit is what tells the operator.
 
 The unit is wanted by `initrd-switch-root.target`, not `initrd.target`: only then is it in the same
 job transaction as `initrd-switch-root.service`, and `Before=` makes switch-root wait for it. A unit
 pulled by `initrd.target` is stopped when switch-root cleans up, possibly before it rewrites the
 links. The service environment may have no `PATH`, so the script uses `/usr/bin/readlink` and
 `/usr/bin/ln` and the shell's parameter expansion for the target's name.
-
-The unit does not remove an enable link for a unit that the new release no longer ships; such a link
-stays and is ignored by PID 1. Cleaning those links is not designed.
 
 ## Rollback protection *(after v1)*
 

@@ -19,17 +19,20 @@ There are two classes of var.
   release unseals without re-sealing, as long as it is signed with the same PCR key, and so does the
   previous release after a fallback. The same property lets an attacker boot an older signed image
   and unseal ([Limits](#limits)). A release signed with a new PCR key cannot unseal what the old key
-  sealed, which is why a `db` rotation keeps the PCR key (`pcrKeys`). No boot-test marker covers an
-  unseal after an update yet: the TPM markers run on one release.
+  sealed, which is why a `db` rotation keeps the PCR key (`pcrKeys`).
+  `hostkey-unsealed-after-update` shows the next release unsealing the host key.
 
 - **admin**: the deploy host keeps the value encrypted with age (a file-encryption tool), pushes it
   over ssh, and the machine seals it with its own `systemd-creds`. The image carries only the
   manifest entry, and no unit. The consumer's unit waits for the push.
 
-Both classes end the same way. The sealed file is `/etc/credstore.encrypted/<name>.<file>`. A
-service names the credential id `<name>.<file>`, and the unit gets `LoadCredentialEncrypted=<id>`.
-The program reads the value from its credentials directory: in `app.argv`, a typed reference renders
-as `%d/<id>`. No path to a secret appears in the image.
+Both classes end the same way. The sealed file is
+`/var/lib/golconda/credstore.encrypted/<name>.<file>`. A service names the credential id
+`<name>.<file>`, and the unit gets
+`LoadCredentialEncrypted=<id>:/var/lib/golconda/credstore.encrypted/<id>`. The path is absolute:
+`/etc` is read-only, and systemd searches no credstore under `/var`. The program reads the value
+from its credentials directory: in `app.argv`, a typed reference renders as `%d/<id>`. No path to a
+secret appears in the image.
 
 The image lists every var in `/usr/lib/golconda/vars.d/<name>.json`: name, class, files and
 credential ids. A local var also has `<name>.sh`, its generator script.
@@ -66,12 +69,14 @@ For an admin var, write one call: `v.admin { name = "sshd-host-cert"; files = [ 
 
 ## Status
 
-The boot test proves the sshd host key. With `--ssh-test --tpm` it checks four markers:
+The boot test proves the sshd host key. With `--ssh-test --tpm` it checks four markers, and a fifth
+with `--next`:
 
 - `var-sshd-hostkey`: the unit finished.
 - `hostkey-sealed-with-tpm2`: the credential header says host key, TPM2 and signed PCR policy.
 - `ssh-after-reboot` and `hostkey-unchanged`: the key unsealed after a reboot and was not made
   again.
+- `hostkey-unsealed-after-update`: the next release presents the same host key.
 
 See [What is proven](../proven.md).
 
@@ -88,6 +93,10 @@ The deploy tool that pushes and seals them is *(planned)*. No boot test covers a
 - **TPM loss.** A sealed credential dies with its TPM. That is why admin values live on the deploy
   host.
 - Without a TPM2, a local var seals to the host key only.
+- **A stable machine id.** The host secret of `systemd-creds` is bound to the machine id. A VM or a
+  cloud gives an SMBIOS UUID. Bare metal needs the `system.machine_id` credential or
+  `systemd.machine_id=firmware`; this is open
+  ([Layout: The read-only /etc](../design/layout.md#the-read-only-etc)).
 - Bootstrap values such as the host name are not vars. They are plain credentials, and they carry no
   secret ([Provisioning](provisioning.md)).
 

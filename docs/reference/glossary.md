@@ -14,17 +14,20 @@
 - **build host**: the machine whose Nix daemon builds packages and images, with `ca-derivations`,
   `dynamic-derivations` and `builder-rpc-v0` ([Build host](build-host.md)).
 - **composer**: the `/system` module. It unions fragments into one system and refuses duplicates.
+- **confext**: a systemd configuration extension, a tree that `systemd-confext` merges onto `/etc`.
+  Golconda's `/etc` is one directory confext, `/usr/lib/confexts/golconda`, built by `lib/etc.nix`
+  and merged read-only ([Layout: The read-only /etc](../design/layout.md#the-read-only-etc)).
 - **credential**: a file a service receives from systemd at start (`LoadCredentialEncrypted=`),
   readable as `%d/<name>` in `argv`. The on-disk form is sealed to the TPM in
-  `/etc/credstore.encrypted/<var>.<file>`.
+  `/var/lib/golconda/credstore.encrypted/<var>.<file>`.
 - **downstream package**: a package in `packages/` beside the document. One that takes the name of a
   Golconda or repkgs package replaces it only when `[golconda] replaces` lists that name
   ([Configuration](config.md#your-own-packages)).
 - **DPS**: Discoverable Partitions Specification, the type GUIDs systemd-gpt-auto-generator reads.
 - **ESP**: EFI System Partition, the FAT partition the firmware reads; it holds systemd-boot, the
   UKIs and `loader/credentials/`.
-- **factory**: `/usr/share/factory/etc`, the seed for `/etc`, written by the `/factory` module and
-  linked into `/etc` by tmpfiles `L` lines.
+- **factory**: `/usr/share/factory/etc`, the files `/etc` links to, written by the `/factory` module
+  and linked into the confext by tmpfiles `L` lines at build time.
 - **farm** (symlink farm): `/usr/bin`, `/usr/lib` and `/usr/share` as symlinks into
   `/usr/nix/store`, made by the `/usr` tree builder from the composer's `links` map. The word means
   only the tree; the link kind `farm` names a directory expanded file by file into it.

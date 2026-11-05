@@ -28,8 +28,9 @@ between them.
 The timestamp has two uses:
 
 - `mkfs.erofs -T`: every file in the `/usr` image and the filesystem itself carry it. systemd's
-  `ConditionNeedsUpdate=` compares `/usr`'s mtime with `/etc/.updated`, so first-boot units run once
-  per version.
+  `ConditionNeedsUpdate=/var` compares `/usr`'s mtime with `/var/.updated`, so units with that
+  condition run once per version. `/etc` is read-only and has no `.updated`
+  ([Updates: Versions](updates.md#versions)).
 - The verity salt and filesystem UUID are seeded from the version string (`lib/image/erofs.nix`), so
   the same version rebuilds to the same image.
 

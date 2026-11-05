@@ -259,7 +259,8 @@ and session (`pam_systemd`), never for auth: the factory's `/etc/pam.d/sshd` has
 `/etc/pam.d/other` denies every type. The image carries no setuid binary: linux-pam ships without
 `unix_chkpwd`, so a non-root process cannot verify a password at all, and pam_unix is built with
 `pam_unix-try-getspnam` so that root (sshd's account check) reads `/etc/shadow` itself (repkgs
-`pkgs/li/linux-pam`).
+`pkgs/li/linux-pam`). `/etc/shadow` is world-readable, because the Nix store makes every file 0444
+([Layout: The read-only /etc](layout.md#the-read-only-etc)); it holds no password.
 
 The machine's own identity is its host key, a local var, plus a host certificate and a key
 revocation list, both admin vars; sshd reads them from its credentials directory, never from the
@@ -290,16 +291,20 @@ identity). Both are designed, not built.
 Sealed today: the sshd host key, and nothing else. `golconda-var-sshd-hostkey.service` runs
 `/usr/lib/golconda/golconda-var-run`, which calls
 `systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11 --name=sshd-hostkey.key` and writes
-`/etc/credstore.encrypted/sshd-hostkey.key`; sshd loads it with `LoadCredentialEncrypted=`. It is
-the only local var in the image. Not sealed: the state partition (unencrypted in v1, no LUKS), the
-machine-id (a plain file PID 1 writes), the admin vars (the host certificate and the revocation
-list; the deploy tool that pushes and seals them is *(planned)*), and administrator credentials for
-the machine itself.
+`/var/lib/golconda/credstore.encrypted/sshd-hostkey.key`; sshd loads it by that path with
+`LoadCredentialEncrypted=`, because `/etc` is read-only and systemd searches no credstore under
+`/var`. It is the only local var in the image. The host secret of `systemd-creds` is bound to the
+machine id, so the id must be stable: a new id at every boot means a sealed var does not open after
+a reboot ([Layout: The read-only /etc](layout.md#the-read-only-etc)). Not sealed: the state
+partition (unencrypted in v1, no LUKS), the machine id (PID 1 mounts it over an empty
+`/etc/machine-id`), the admin vars (the host certificate and the revocation list; the deploy tool
+that pushes and seals them is *(planned)*), and administrator credentials for the machine itself.
 
 **Status.** A boot with `--secure-boot --tpm` prints
 `sshd-hostkey.key sealed with: host key + TPM2 + signed PCR policy` (`scripts/boot-test` reads the
 credential header); after a reboot in the same QEMU with the same swtpm state the key is unchanged,
-so it was unsealed, not regenerated.
+so it was unsealed, not regenerated. With `--next` the updated release presents the same key
+(`hostkey-unsealed-after-update`).
 
 A phase path is the colon-separated chain of words systemd has measured into PCR 11 up to one boot
 state (`systemd-pcrphase.service(8)`); `systemd-measure --phase=` signs exactly one path, and

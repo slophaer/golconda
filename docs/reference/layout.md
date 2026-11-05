@@ -21,33 +21,36 @@ root hash, which is how gpt-auto finds the pair the UKI's `usrhash=` names.
 
 ## Paths
 
-| path                                            | where | written by                                                                                                                                   |
-| ----------------------------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/usr/nix/store`                                | image | `lib/usr-tree.nix`: the closure of the composer's `packages`                                                                                 |
-| `/usr/bin`, `/usr/lib`, `/usr/share`            | image | `lib/usr-tree.nix` from the composer's `links` (symlinks) and `files`                                                                        |
-| `/usr/lib/systemd/system/<name>`                | image | the composer's `units`; `.wants/` links from `links`                                                                                         |
-| `/usr/lib/systemd/user/<name>`                  | image | the composer's `files` (user-scope services)                                                                                                 |
-| `/usr/lib/sysusers.d/golconda.conf`             | image | the composer's `sysusers` lines, one file                                                                                                    |
-| `/usr/lib/tmpfiles.d/golconda.conf`             | image | the composer's `tmpfiles` lines, one file                                                                                                    |
-| `/usr/lib/systemd/network/*.network`            | image | `/network`                                                                                                                                   |
-| `/usr/lib/systemd/{timesyncd,journald}.conf.d/` | image | `/base`                                                                                                                                      |
-| `/usr/lib/locale.conf`                          | image | `/base` (`LANG=C.UTF-8`)                                                                                                                     |
-| `/usr/lib/sysupdate.d/*.transfer`               | image | `/system` from `updateSource` and `image/sysupdate.nix`                                                                                      |
-| `/usr/lib/repart.d/30-root.conf`                | image | `/base`, rendered from `image/repart.nix`                                                                                                    |
-| `/usr/lib/os-release`                           | image | `lib/usr-tree.nix` from `image/os-release.nix`; `ID`/`IMAGE_ID` are `/system.name`                                                           |
-| `/usr/lib/golconda/packages.json`               | image | `lib/usr-tree.nix` from the composer's `packageOrigins`                                                                                      |
-| `/usr/lib/golconda/vars.d/`, `golconda-var-run` | image | `/vars` and the var renderer                                                                                                                 |
-| `/usr/lib/<service>/`                           | image | the service renderer: the app's files                                                                                                        |
-| `/usr/share/factory/etc`                        | image | `/factory`                                                                                                                                   |
-| `/etc`                                          | root  | tmpfiles `L` links into the factory; PID 1 (`machine-id`), sysusers (`passwd`, `group`, `shadow`); the administrator (`hostname`, if wanted) |
-| `/etc/credstore.encrypted/`                     | root  | the var runner and the deploy tool: sealed credentials                                                                                       |
-| `/var/lib/golconda/vars/<name>/`                | root  | the var runner: public halves and the `done` marker                                                                                          |
-| `/var`                                          | root  | services (`StateDirectory=`), tmpfiles                                                                                                       |
-| `/boot`                                         | ESP   | systemd-boot, the UKIs, sysupdate                                                                                                            |
+| path                                            | where   | written by                                                                                                   |
+| ----------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------ |
+| `/usr/nix/store`                                | image   | `lib/usr-tree.nix`: the closure of the composer's `packages`                                                 |
+| `/usr/bin`, `/usr/lib`, `/usr/share`            | image   | `lib/usr-tree.nix` from the composer's `links` (symlinks) and `files`                                        |
+| `/usr/lib/systemd/system/<name>`                | image   | the composer's `units`; `.wants/` links from `links`                                                         |
+| `/usr/lib/systemd/user/<name>`                  | image   | the composer's `files` (user-scope services)                                                                 |
+| `/usr/lib/sysusers.d/golconda.conf`             | image   | the composer's `sysusers` lines, one file                                                                    |
+| `/usr/lib/tmpfiles.d/golconda.conf`             | image   | the composer's `tmpfiles` lines, one file                                                                    |
+| `/usr/lib/systemd/network/*.network`            | image   | `/network`                                                                                                   |
+| `/usr/lib/systemd/{timesyncd,journald}.conf.d/` | image   | `/base`                                                                                                      |
+| `/usr/lib/locale.conf`                          | image   | `/base` (`LANG=C.UTF-8`)                                                                                     |
+| `/usr/lib/sysupdate.d/*.transfer`               | image   | `/system` from `updateSource` and `image/sysupdate.nix`                                                      |
+| `/usr/lib/repart.d/30-root.conf`                | image   | `/base`, rendered from `image/repart.nix`                                                                    |
+| `/usr/lib/os-release`                           | image   | `lib/usr-tree.nix` from `image/os-release.nix`; `ID`/`IMAGE_ID` are `/system.name`                           |
+| `/usr/lib/golconda/packages.json`               | image   | `lib/usr-tree.nix` from the composer's `packageOrigins`                                                      |
+| `/usr/lib/golconda/vars.d/`, `golconda-var-run` | image   | `/vars` and the var renderer                                                                                 |
+| `/usr/lib/<service>/`                           | image   | the service renderer: the app's files                                                                        |
+| `/usr/share/factory/etc`                        | image   | `/factory`                                                                                                   |
+| `/usr/lib/confexts/golconda`                    | image   | `lib/etc.nix` via `mkSystem`: the read-only `/etc`, a directory confext                                      |
+| `/etc`                                          | overlay | `systemd-confext-sysroot.service` in the initrd: the confext, read-only, `nosuid`, `nodev`, `noexec`         |
+| `/etc/machine-id`                               | overlay | an empty file in the confext; PID 1 bind-mounts the id over it (SMBIOS UUID, `system.machine_id`, or random) |
+| `/var/lib/golconda/credstore.encrypted/`        | root    | the var runner and the deploy tool: sealed credentials (directory from `/vars`, 0700)                        |
+| `/var/lib/golconda/vars/<name>/`                | root    | the var runner: public halves and the `done` marker                                                          |
+| `/var`                                          | root    | services (`StateDirectory=`), tmpfiles                                                                       |
+| `/boot`                                         | ESP     | systemd-boot, the UKIs, sysupdate                                                                            |
 
 Nothing writes `/etc/hostname`. PID 1 reads the `system.hostname` credential at every boot
-([Boot: Bootstrap credentials](../design/boot.md#bootstrap-credentials)); `systemd-firstboot` reads
-`firstboot.hostname`, a different credential.
+([Boot: Bootstrap credentials](../design/boot.md#bootstrap-credentials)). `systemd-firstboot` would
+read `firstboot.hostname`, but it does not run: no boot is a first boot
+([Layout: The read-only /etc](../design/layout.md#the-read-only-etc)).
 
 The ESP is at `/boot`, not `/efi`: systemd-gpt-auto-generator(8) mounts the ESP at `/boot/` when
 that directory is not used for XBOOTLDR, and the image has no XBOOTLDR partition.

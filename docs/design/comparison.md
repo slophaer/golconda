@@ -13,7 +13,7 @@ behind.
 | Modules    | global namespace, `mkForce`/priorities, fixpoint     | typed fragments, explicit inputs, duplicates are errors |
 | Activation | `switch-to-configuration`, generations in the store  | image swap, A/B slots, boot counting                    |
 | Boot       | systemd-boot or GRUB, kernel + initrd per generation | signed UKI per slot, measured boot                      |
-| `/etc`     | generated, mostly symlinks into the store            | symlinks into the image's factory, admin files win      |
+| `/etc`     | generated, mostly symlinks into the store            | a read-only confext in the image, built at build time   |
 | Evaluator  | Nix                                                  | iets (Nix only on the build daemon)                     |
 | Inputs     | flakes or channels                                   | npins; flake output schema via flake-incompat           |
 
@@ -29,7 +29,7 @@ behind.
 | taken                                                                    | left behind                                                       |
 | ------------------------------------------------------------------------ | ----------------------------------------------------------------- |
 | DPS layout, `/usr`-only images, first-boot repart of the state partition | distribution packages, mkosi                                      |
-| UKIs, boot counting, PCR policies, sysupdate; `/etc` as tmpfiles lines   | sysext as the way to add software (modules do that at build time) |
+| UKIs, boot counting, PCR policies, sysupdate; `/etc` from tmpfiles lines | sysext as the way to add software (modules do that at build time) |
 
 ## What neither does
 
@@ -60,8 +60,9 @@ An honest list for someone who runs NixOS today, with when (if ever) the gap clo
 - **Flatcar**: the A/B partition pair with automatic rollback, and the update contract (a server
   serves versioned artifacts, the client decides by version). Left behind: Ignition and the
   container-first userland.
-- **openSUSE MicroOS**: transactional updates that only take effect on reboot, and a `/etc` that the
-  administrator owns. Left behind: the btrfs snapshot machinery and RPM.
+- **openSUSE MicroOS**: transactional updates that only take effect on reboot. Left behind: the
+  btrfs snapshot machinery, RPM, and a `/etc` that the administrator owns: Golconda's `/etc` is
+  read-only.
 - **bootc / Fedora CoreOS**: an explicit "what is not supported" page (this one), and the image as
   the unit of configuration. Left behind: OCI as the transport and `rpm-ostree`'s package layering.
 - **ParticleOS**: nearly everything on the machine: DPS, `/usr`-only verity images, UKIs with

@@ -18,8 +18,9 @@ sequenceDiagram
   UKI->>IRD: start PID 1
   IRD->>IRD: gpt-auto: find usr by usrhash, verity-setup, signature check
   IRD->>IRD: first boot: repart creates root, ext4, unencrypted in v1
+  IRD->>IRD: systemd-confext merges the read-only /etc onto /sysroot/etc
   IRD->>SYS: switch-root
-  SYS->>SYS: firstboot, sysusers, tmpfiles (/etc links), vars, units
+  SYS->>SYS: tmpfiles (/var), vars, units
   SYS->>SYS: health units (network routable, sshd active)
   SYS->>SB: boot-complete.target → bless-boot marks the entry good
 ```
@@ -119,7 +120,7 @@ change the unsigned configuration ([Trust](trust.md)). The cmdline carries `rw` 
 says `rw`, and gpt-auto's remount-rw drop-in takes effect only when `systemd-remount-fs.service`
 runs, late in boot). A debug image with other parameters is a separate build *(after v1)*.
 
-The ssh host key var unit seals its key in `/etc/credstore.encrypted` before
+The ssh host key var unit seals its key in `/var/lib/golconda/credstore.encrypted` before
 `systemd-remount-fs.service` runs, so without `rw` it fails and sshd starts without a host key. `rw`
 is an ordinary kernel parameter, and the test image boots the same cmdline. Libraries need no such
 flag: the fork's RUNPATH reaches every dlopen soname.
@@ -149,8 +150,8 @@ credentials at first boot. This is Golconda's provisioning path; there is no clo
 
 PID 1 takes the hostname from the first of: `systemd.hostname=` on the kernel command line,
 `/etc/hostname`, the `system.hostname` credential, the fallback `golconda` compiled into systemd
-(repkgs `fallback-hostname`). No factory file and no tmpfiles line writes `/etc/hostname`, so the
-credential wins until an admin writes one. PID 1 reads SMBIOS strings from
+(repkgs `fallback-hostname`). No factory file and no tmpfiles line writes `/etc/hostname`, and
+`/etc` is read-only, so the credential wins. PID 1 reads SMBIOS strings from
 `/sys/firmware/dmi/entries` and fw_cfg from `/sys/firmware/qemu_fw_cfg`: the kernel needs
 `CONFIG_DMI_SYSFS=y` and `CONFIG_FW_CFG_SYSFS=y` (built in).
 
@@ -172,6 +173,13 @@ credential when Secure Boot is off or the machine has no TPM2. With Secure Boot 
 present, PID 1 refuses it: anyone who can write the ESP could otherwise plant a credential that the
 measured boot chain never vouched for. On such a machine use SMBIOS or fw_cfg.
 
+Two more credentials matter. `system.machine_id` sets the machine id when the firmware gives no
+SMBIOS UUID ([Layout: The read-only /etc](layout.md#the-read-only-etc)). `network.network.*` and the
+other `network.*` credentials become units in `/run/systemd/network`:
+`systemd-network-generator.service` has a static link in `sysinit.target.wants`. A credential that
+systemd's tmpfiles lines write into `/etc` has no effect, because those lines ran at build time:
+`network.hosts`, `login.motd` and `login.issue`.
+
 The ESP is not encrypted, and SMBIOS strings are readable by every process: a bootstrap credential
 carries no secret. Secrets are vars ([Trust: Secrets and vars](trust.md#secrets-and-vars)).
 
@@ -180,17 +188,20 @@ carries no secret. Secrets are vars ([Trust: Secrets and vars](trust.md#secrets-
 What happens once, on the first boot of a disk:
 
 1. repart creates the root partition from `/usr/lib/repart.d/30-root.conf` (`GrowFileSystem=`,
-   `FactoryReset=`), with `/etc`, `/var`, `/home`, `/root` inside.
-1. PID 1 writes `/etc/machine-id` and sets the hostname from the credential. A drop-in runs
-   `systemd-firstboot --mute-console=yes`, so firstboot never prompts: there is no local login.
-1. systemd-sysusers writes `passwd`, `group`, `shadow` from `/usr/lib/sysusers.d`.
-1. systemd-tmpfiles links each factory file into `/etc` and makes the state directories.
+   `FactoryReset=`), with `/var`, `/home`, `/root` inside.
+1. The initrd merges the image's read-only `/etc` onto `/sysroot/etc`
+   ([Layout: The read-only /etc](layout.md#the-read-only-etc)). It holds the factory links and
+   `passwd`, `group`, `shadow` and `gshadow`, all made at build time.
+1. PID 1 takes the machine id from the SMBIOS UUID or the `system.machine_id` credential and mounts
+   it over the empty `/etc/machine-id`. An empty file is not a first boot to systemd, so
+   `systemd-firstboot` is skipped and no presets run. PID 1 sets the hostname from the credential.
+1. systemd-tmpfiles makes the state directories. Its `/etc` lines ran at build time.
 1. The var units generate the machine-local secrets and seal them to the TPM
    ([Trust: Secrets and vars](trust.md#secrets-and-vars)).
 1. The services start; the health units must pass before `boot-complete.target` blesses the entry.
 
-Every later boot runs the same units; `ConditionNeedsUpdate=` and the vars' `done` markers make them
-no-ops ([Updates: Versions](updates.md#versions)).
+Every later boot runs the same units; the vars' `done` markers make them no-ops
+([Updates: Versions](updates.md#versions)).
 
 ## Measured boot
 
