@@ -29,7 +29,7 @@
 # With --ssh-test: logs in with tests/fixtures/snakeoil-ssh and checks
 #   ssh-login, hostname (must be "boot-test", the SMBIOS credential),
 #   systemctl --failed (no failed units), varlinkctl list-interfaces, the loader, hwdb,
-#   index-keyring.
+#   ipe-denies-copy (a copy of /usr/bin/sh in /var/tmp is refused, and IPE logs it), index-keyring.
 # With --tpm: the host key is sealed to TPM2 and the signed PCR 11 policy; after a reboot, and
 #   with --next after the update or --fail-health's fallback, it is the first boot's key, its
 #   credential has the first boot's bytes, and sshd runs (hostkey-unchanged).
@@ -657,6 +657,25 @@ test_ssh() {
   guest test -e /usr/lib/udev/hwdb.bin || RC=1
   guest test ! -e /etc/udev/hwdb.bin || RC=1
   verdict "hwdb (/usr/lib/udev/hwdb.bin answers for DMI, PCI and USB; none in /etc)" $RC
+
+  # IPE (docs/design/kernel.md): only files on a dm-verity volume with a verified signature run.
+  # A copy of /usr's shell on the root partition must be refused with EACCES, and the kernel must
+  # log a new IPE denial; the count before and after keeps an earlier denial from passing. The
+  # image has no grep, so the journal is filtered here.
+  echo ""
+  echo "=== IPE: a copy outside /usr ==="
+  RC=0
+  DENY='ipe_op=EXECUTE.* path="/var/tmp/ipe-sh".* action=DENY'
+  D0=$(guest journalctl -b -o cat --no-pager 2>/dev/null | grep -c "$DENY") || D0=0
+  OUT=$(guest 'cp /usr/bin/sh /var/tmp/ipe-sh && /var/tmp/ipe-sh -c true 2>&1; echo "rc=$?"; rm -f /var/tmp/ipe-sh' 2>&1) || true
+  D1=$(guest journalctl -b -o cat --no-pager 2>/dev/null | grep -c "$DENY") || D1=0
+  echo "$OUT"
+  echo "IPE denials in the journal: $D0 before, $D1 after"
+  guest journalctl -b -o cat --no-pager 2>/dev/null | grep "$DENY" | tail -1 || true
+  echo "$OUT" | grep -q "Permission denied" || RC=1
+  echo "$OUT" | grep -q "^rc=126$" || RC=1
+  [ "$D1" -gt "$D0" ] || RC=1
+  verdict "ipe-denies-copy (/var/tmp/ipe-sh: EACCES, and IPE logged the denial)" $RC
 
   # the signed index's keyring is the key set's release key and nothing else: systemd's own vendor
   # keyring (image vendors' keys) is not in the image (packages/systemd)
