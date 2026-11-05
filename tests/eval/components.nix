@@ -385,6 +385,14 @@ in
     && c ? cpython314
     && builtins.length (attrNames c) > 100
   ))
+  (check "schema: mkSystem's schema has the downstream modules and is the one the image ships" (
+    let
+      sys = mkSystem ../fixtures/downstream/server.toml;
+    in
+    sys.schema.properties ? "/local/hello"
+    && sys.schema.properties ? "/services/sshd"
+    && builtins.fromJSON sys.artifacts."/usr/lib/golconda/schema.json".text == sys.schema
+  ))
   (check "moduleDocs: the #! text of every module with a file, downstream modules included" (
     let
       sys = mkSystem ../fixtures/downstream/server.toml;
