@@ -195,7 +195,7 @@ every optional component the document has a table for; an empty table selects on
 | ----------------- | ----------------------------------------------------------------------------------------------------- |
 | `composed`        | the composer output ([Modules](modules/README.md#the-composer-output))                                |
 | `usrTree`         | the `/usr` tree derivation with the artifacts in `/usr/lib/golconda/`                                 |
-| `sbom`            | `{ bom; json; }`: the CycloneDX document, and the text of `/usr/lib/golconda/sbom.json`               |
+| `sbom`            | the SBOM derivation; `.bom` is the evaluated CycloneDX document, its output contains `sbom.json`      |
 | `config`          | the normalized options of every included component and `/system`, derivations replaced by their names |
 | `inventory`       | every module's role and inputs; for a component, `included` and `reason`                              |
 | `fragments`       | the names of the build's own fragments (`extraFragments`)                                             |

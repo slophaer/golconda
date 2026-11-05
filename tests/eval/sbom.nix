@@ -218,7 +218,7 @@ in
   (check "sbom: only golconda:origin and pedigree change the generator's BOM" (
     fixture.sbom.bom // { components = map withoutProvenance components; } == baseline.bom
   ))
-  (check "sbom: sbom.json in /usr is the evaluated document" (
-    fixture.sbom.json == builtins.toJSON fixture.sbom.bom
+  (check "sbom: /usr gets the generator's sbom.json for this document" (
+    fixture.usrTree.drvAttrs.sbomPath == "${fixture.sbom}/sbom.json"
   ))
 ]

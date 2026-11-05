@@ -65,7 +65,7 @@ The definitions are data. The composer renders `sysupdate.nix` and the root defi
 
 ## `/usr` tree (`lib/usr-tree.nix`)
 
-`usrTree { composerOutput; platform; version; buildSystem ? platform.name; sbomFile ? null; }`
+`usrTree { composerOutput; platform; version; buildSystem ? platform.name; sbomDrv ? null; }`
 produces a derivation whose output **is** the complete `/usr` directory; `mkSystem` calls it with
 the artifacts added ([Configuration](config.md#the-entry-point)):
 
@@ -119,18 +119,19 @@ component comes from.
 - `golconda:origin` is on every component: `downstream` (a downstream package), `golconda` (one of
   Golconda's `packages/`) or `repkgs` (everything else, the libc and the toolchain included).
 - `cpe` comes from `[upstream] cpe` in the package's `sources.toml`, with `{version}` replaced by
-  the package's version, modelled on nixpkgs' `meta.identifiers.cpe`.
+  the package's version, modelled on nixpkgs' `meta.identifiers.cpe`; the repkgs SBOM generator
+  reads it.
 - `pedigree.ancestors` names the package a downstream package replaced: its name, version, purl and
   cpe, as the set without the downstream packages describes it. A new package has no `pedigree`.
 
 Roots and transitive packages use the same rule. Only target-set package identities are matched, by
 derivation and not by display name; an alias that returns an upstream package keeps its upstream
-origin ([Your own packages](config.md#your-own-packages)). The fork's SBOM hook adds properties
-only, so `mkSystem` marks components through it and then lifts the markers into the `cpe` and
-`pedigree` fields; a fork hook for whole fields can replace that step.
+origin ([Your own packages](config.md#your-own-packages)). `mkSystem` adds `golconda:origin` through
+the generator's `extraProperties` hook and `pedigree` through its `extraFields` hook.
 
-`mkSystem.sbom.bom` is the document at evaluation time and `mkSystem.sbom.json` its text, which the
-`/usr` tree installs. Neither builds a package.
+`mkSystem.sbom` is the generator's derivation, whose output has `sbom.json`; the `/usr` tree
+installs that file. `mkSystem.sbom.bom` is the same document at evaluation time. Neither builds a
+package.
 
 ## Built today (`lib/image/`)
 
