@@ -8,8 +8,8 @@ the image, checks every block it reads, and updates itself by swapping in the ne
 does the work on the machine: boot, logging, networking and updates, with no second tool for any of
 these jobs. Nix builds the image but is not installed on the machine.
 
-It is for people who run Linux servers and appliances and want each one to be a copy of a known,
-reproducible image: no drift, no package manager on the host, and a rollback that happens by itself.
+Golconda suits Linux servers and appliances that should all run the same reproducible image. A
+machine cannot drift from that image, and a failed update rolls back on its own.
 
 ```mermaid
 flowchart TD
