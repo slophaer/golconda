@@ -1,0 +1,10 @@
+[package]
+name = "golconda"
+description = "Golconda's command line: read and explain a system's configuration"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+golconda-core.workspace = true
+serde_json.workspace = true
