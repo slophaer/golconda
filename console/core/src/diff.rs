@@ -126,19 +126,20 @@ fn values(module: &str, path: Vec<String>, before: Side, after: Side, out: &mut 
     if before == after {
         return;
     }
-    if before.explicit && after.explicit {
-        if let (Some(Value::Object(b)), Some(Value::Object(a))) = (&before.value, &after.value) {
-            for k in keys(b, a) {
-                let side = |m: &Map<String, Value>| Side {
-                    explicit: m.contains_key(k),
-                    value: m.get(k).cloned(),
-                };
-                let mut p = path.clone();
-                p.push(k.clone());
-                values(module, p, side(b), side(a), out);
-            }
-            return;
+    if before.explicit
+        && after.explicit
+        && let (Some(Value::Object(b)), Some(Value::Object(a))) = (&before.value, &after.value)
+    {
+        for k in keys(b, a) {
+            let side = |m: &Map<String, Value>| Side {
+                explicit: m.contains_key(k),
+                value: m.get(k).cloned(),
+            };
+            let mut p = path.clone();
+            p.push(k.clone());
+            values(module, p, side(b), side(a), out);
         }
+        return;
     }
     out.push(Change {
         module: module.to_string(),
