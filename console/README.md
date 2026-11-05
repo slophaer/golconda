@@ -22,6 +22,8 @@ golconda config set -f server.toml /services/sshd port 2222
 golconda config set -f server.toml /network networks.lan '{ match = { Name = "en*" } }'
 golconda config delete -f server.toml /services/sshd port
 golconda config validate -f server.toml
+golconda diff -f server.toml              # against git's HEAD
+golconda diff -f server.toml --from other.toml --json
 ```
 
 `set` and `delete` change only what they name: comments, order and spacing stay as written. They
@@ -30,6 +32,12 @@ lib/schema.nix emits) and evaluates as far as every module's checks (the /usr tr
 built). A schema problem names the line in the document; nothing is written otherwise. A VALUE is
 TOML, and text that is not TOML is a string: `port 2222` is a number, `name web` the string "web",
 `name '"2222"'` the string "2222".
+
+`diff` compares effective configurations (mkSystem's `config`, defaults included), not text, and
+lists the operations from the other side to FILE: `set /services/sshd port 2222 (was 22)`,
+`delete … (was …; now …, the default)`. Where both sides set a table it goes down to the keys that
+differ; a module only one side has is one change. Another revision is evaluated from a copy beside
+the document, removed afterwards.
 
 Admin vars ([Trust: Secrets and vars](../docs/design/trust.md#secrets-and-vars)): the values a
 machine's image names but never contains, such as its host certificate. They are kept in the

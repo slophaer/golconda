@@ -436,3 +436,86 @@ fn validate_checks_schema_then_evaluation() {
         "{err}"
     );
 }
+
+#[test]
+#[ignore = "needs iets and the Golconda checkout"]
+fn diff_lists_operations_between_effective_configurations() {
+    let f = scratch("diff", DOC);
+    let set = |args: &[&str]| {
+        let mut a = vec!["config", "set", "-f", &f];
+        a.extend_from_slice(args);
+        stdout(&golconda(&a));
+    };
+    set(&["/services/sshd", "port", "2222"]);
+    set(&[
+        "/network",
+        "networks.lan",
+        r#"{ match = { Name = "en*" } }"#,
+    ]);
+    set(&["/factory", "timezone", "Europe/Berlin"]);
+    stdout(&golconda(&[
+        "config",
+        "delete",
+        "-f",
+        &f,
+        "/services/sshd",
+        "authorizedKeys",
+    ]));
+    let out = stdout(&golconda(&["diff", "-f", &f, "--from", DOC]));
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(
+        lines,
+        vec![
+            r#"set /factory timezone "Europe/Berlin" (was "UTC", the default)"#,
+            // networks was the default: the change is the whole table, not its new key
+            r#"set /network networks { lan = { match = { Name = "en*" } } } (was {}, the default)"#,
+            r#"delete /services/sshd authorizedKeys (was ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample admin@example.com"]; now [], the default)"#,
+            "set /services/sshd port 2222 (was 22)",
+        ],
+        "{out}"
+    );
+}
+
+#[test]
+#[ignore = "needs iets and the Golconda checkout"]
+fn diff_goes_down_to_the_key_that_changed() {
+    let f = scratch("diff-key", NET);
+    stdout(&golconda(&[
+        "config",
+        "set",
+        "-f",
+        &f,
+        "/network",
+        "networks.lan.network.DNS",
+        r#"["192.0.2.54"]"#,
+    ]));
+    let out = stdout(&golconda(&["diff", "--json", "-f", &f, "--from", NET]));
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(
+        v,
+        serde_json::json!([{
+            "op": "set",
+            "module": "/network",
+            "path": ["networks", "lan", "network", "DNS"],
+            "before": { "explicit": true, "value": ["192.0.2.53"] },
+            "after": { "explicit": true, "value": ["192.0.2.54"] },
+        }])
+    );
+}
+
+#[test]
+#[ignore = "needs iets and the Golconda checkout"]
+fn diff_against_a_git_revision() {
+    // the working tree's examples/server.toml is HEAD's
+    assert_eq!(stdout(&golconda(&["diff", "-f", DOC])), "");
+    assert_eq!(stdout(&golconda(&["diff", "-f", DOC, "HEAD"])), "");
+    let err = fails(&golconda(&["diff", "-f", DOC, "no-such-rev"]));
+    assert!(err.contains("no-such-rev"), "{err}");
+    // the old revision was evaluated from a copy beside the document, now gone
+    let left: Vec<_> = std::fs::read_dir(checkout().join("examples"))
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_string_lossy().contains(".golconda-"))
+        .collect();
+    assert!(left.is_empty(), "{left:?}");
+}
