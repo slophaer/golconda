@@ -18,7 +18,7 @@ export def build [] {
   let roothash = (open --raw $"($a.verity)/roothash")
   mut lines = []
   $lines ++= ["== sizes"]
-  for f in [$usr $hash $"($a.verity)/($a.stem).usr-verity-sig.raw" $"($a.initrd)/initrd.cpio.zst" (glob $"($a.uki)/*.efi" | first) $"($a.disk)/disk.raw"] {
+  for f in [$usr $hash $"($a.verity)/($a.stem).usr-verity-sig.raw" $"($a.initrd)/initrd.cpio.zst" (glob $"($a.uki)/*.efi" | sort | first) $"($a.disk)/disk.raw"] {
     $lines ++= [$"(ls $f | get size.0 | into int) ($f)"]
   }
   $lines ++= ["" "== veritysetup verify"]
@@ -31,7 +31,7 @@ export def build [] {
   $lines ++= (^bsdtar -tf $"($a.initrd)/initrd.cpio.zst" | lines | first 12)
   $lines ++= [$"... (^bsdtar -tf $"($a.initrd)/initrd.cpio.zst" | lines | length) entries, rdinit=(open --raw $"($a.initrd)/rdinit")"]
   $lines ++= ["" "== ukify inspect"]
-  $lines ++= (^ukify inspect (glob $"($a.uki)/*.efi" | first) | lines)
+  $lines ++= (^ukify inspect (glob $"($a.uki)/*.efi" | sort | first) | lines)
   $lines ++= ["" "== systemd-repart --json=pretty (at build)"]
   $lines ++= (open --raw $"($a.disk)/disk.json" | from json | each {|p| $"($p.type) ($p.label? | default '-') offset ($p.offset) size ($p.raw_size) uuid ($p.uuid)" })
   $lines | str join "\n" | save -f $"($out)/proof.txt"
