@@ -4,6 +4,8 @@
 
 [What is proven](proven.md)
 
+[The v1 checklist](v1.md)
+
 # Features
 
 - [One image for every machine](features/one-image.md)
