@@ -174,7 +174,8 @@ image (and in `disk.raw`'s internal files), not in the release directory's metad
 filled offline with mtools (`packages/mtools`). Keys are paths: the smoke makes throwaway ones in
 the store (`throwawayKeys`); a release signs with the deployment's keys, which reach the build as
 [Trust: How the private keys reach the build](../design/trust.md#how-the-private-keys-reach-the-build)
-describes. Not yet: the verity certificate in the kernel keyring, a TPM.
+describes. The boot test covers the verity certificate in the kernel keyring and TPM sealing
+([What is proven](../proven.md)).
 
 The smoke, the test image and the production image boot the same command line
 ([The kernel command line](#the-kernel-command-line)).
@@ -248,6 +249,11 @@ scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --next n
 nix-build -A packages.x86_64-linux.image-smoke-test-rotated -o next-rotated
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --next next-rotated \
   --rotate --timeout 480
+
+# With --fail-health the candidate never passes its health check: three unblessed
+# boots, then the old release boots again (see the update test below)
+scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --next next \
+  --fail-health --timeout 480
 
 # Factory reset: the reset request, the reset boot, and the state checks (two boots)
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-test \

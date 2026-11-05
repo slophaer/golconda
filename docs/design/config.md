@@ -70,14 +70,15 @@ pin would fix it: `mkStruct' { } // { inherit members; }` in `struct`, and
 
 Every image carries `/usr/lib/golconda/`:
 
-| file            | content                                                                                     |
-| --------------- | ------------------------------------------------------------------------------------------- |
-| `config.json`   | the resolved options of every included component, after type-checking, derivations as names |
-| `modules.json`  | every module's role and inputs; for a component, whether it is included and why             |
-| `schema.json`   | the JSON Schema the image was built against                                                 |
-| `sbom.json`     | CycloneDX SBOM: purl and cpe per component, its origin, pedigree for a replacement          |
-| `packages.json` | every package with its version, store path and the fragments that brought it                |
-| `vars.d/*.json` | one manifest per var: class, files, credential ids                                          |
+| file               | content                                                                                     |
+| ------------------ | ------------------------------------------------------------------------------------------- |
+| `config.json`      | the resolved options of every included component, after type-checking, derivations as names |
+| `modules.json`     | every module's role and inputs; for a component, whether it is included and why             |
+| `schema.json`      | the JSON Schema the image was built against                                                 |
+| `sbom.json`        | CycloneDX SBOM: purl and cpe per component, its origin, pedigree for a replacement          |
+| `packages.json`    | every package with its version, store path and the fragments that brought it                |
+| `attribution.json` | each file, link, unit, sysusers and tmpfiles line → the module or fragment that emitted it  |
+| `vars.d/*.json`    | one manifest per var: class, files, credential ids                                          |
 
 The sysupdate transfers from `/system.updateSource` are beside them in `/usr/lib/sysupdate.d/`.
 There is no `etc.manifest`: `/etc` is symlinks into the factory and `find /etc -type f` lists the

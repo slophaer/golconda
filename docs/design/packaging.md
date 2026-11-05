@@ -54,8 +54,9 @@ build host. `nix/packages.nix` takes `system` (the build host) and `platform` (t
 the build host). When they differ, repkgs cross-compiles packages that run on the target using the
 build host's toolchain; `/pkgs.build` is the host's set for tools that run on the builder. The
 `/usr` tree, os-release and every package output belong to the target; the derivation's `system` is
-the build host where the build runs. A cross-compiled `/usr` tree for aarch64 builds today
-(`packages.x86_64-linux.usr-tree-smoke-aarch64`); a bootable aarch64 image is *(planned)*.
+the build host where the build runs. The wiring exists, but Golconda exposes OS outputs only where
+its kernel is supported, which today is x86_64: no aarch64 `/usr` tree or image is built
+([Scope](scope.md#after-v1)). aarch64 is *(after v1)*.
 
 ## Set-wide features
 

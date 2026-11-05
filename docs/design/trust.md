@@ -6,7 +6,8 @@ own copy of any of them:
 1. **Secure Boot and measured boot keys** decide *what runs*: the Secure Boot `db` key signs
    systemd-boot and every UKI; the PCR policy key signs the expected PCR 11 values and is what
    TPM2-sealed credentials are bound to. Signed in the image chain today (the smoke uses throwaway
-   keys) and proven in a boot test with `--secure-boot`, where firmware refuses the unsigned loader;
+   keys) and proven in a boot test with `--secure-boot`, where firmware enforces Secure Boot
+   (`secure-boot-enabled`) and refuses a loader whose key is in `dbx` (`old-loader-refused`);
    enrolment is manual and automatic enrolment is *(planned)* ([Deployment keys](#deployment-keys)).
 1. **The verity signing key** decides *what is read*: it signs the root hash of every `/usr` image.
    In v1 it is the Secure Boot `db` key, and the kernel checks the signature against the firmware
@@ -15,6 +16,20 @@ own copy of any of them:
    every TLS client ([status](#3-ca-store)).
 
 A fourth thing, who may log in, is decided outside the image ([Identity](#identity)).
+
+```mermaid
+flowchart TD
+  db["Secure Boot db key"] -->|signs| loader["systemd-boot and each UKI"]
+  db -->|signs| roothash["each /usr root hash"]
+  pcr["PCR policy key"] -->|signs| pcrsig[".pcrsig in each UKI"]
+  rel["release key"] -->|signs| index["each SHA256SUMS"]
+  stepca["step-ca, outside the image"] -->|signs| usercert["user certificates"]
+  loader -->|checked by| fw["firmware db"]
+  roothash -->|checked by| kernel["kernel keyring; IPE runs only this /usr"]
+  pcrsig -->|lets the TPM2 unseal| vars["sealed vars"]
+  index -->|checked by| sysupdate["systemd-sysupdate"]
+  usercert -->|checked by| sshd["sshd"]
+```
 
 ## Downstream packages
 
@@ -158,7 +173,7 @@ operator builds the image with `lib.mkImage`:
 ```
 
 It returns the steps `erofs`, `verity`, `initrd`, `uki`, `loader` and `disk`, and `release`, the
-directory sysupdate fetches ([Releases](releases.md#the-release-directory)). The chain reads four
+directory sysupdate fetches ([Releases](releases.md#the-release-directory)). The chain reads six
 files under `keys`, and nothing else:
 
 | file                | used for                                                         |
@@ -167,10 +182,14 @@ files under `keys`, and nothing else:
 | `secureboot/db.crt` | the certificate for those signatures; firmware `db` must hold it |
 | `pcr/pcr.key`       | signs the PCR 11 policy of each boot phase (`.pcrsig`)           |
 | `pcr/pcr.pub`       | the public half, embedded in the UKI as `.pcrpkey`               |
+| `release/index.key` | signs each release's `SHA256SUMS` (OpenPGP Ed25519)              |
+| `release/index.pgp` | the public half, the image's keyring for `Verify=yes`            |
 
-The chain needs no `PK` or `KEK`: they are enrolled in firmware and sign nothing the build makes. An
-optional `pcrKeys` names a second directory in the same layout and is read for `pcr/` only; a `db`
-rotation uses it to keep the PCR key ([Boot loader: Key rotation](bootloader.md#key-rotation)).
+The chain needs no `PK` or `KEK`: they are enrolled in firmware and sign nothing the build makes.
+The optional `pcrKeys` and `indexKeys` name other directories in the same layout, read for `pcr/`
+and `release/` only; a `db` rotation uses them to keep the PCR key and the release key
+([Boot loader: Key rotation](bootloader.md#key-rotation),
+[Releases: The signed index](releases.md#the-signed-index)).
 
 The `db` key signs both the UKI (`ukify --secureboot-private-key`, `lib/image/uki.nu`) and the
 verity root hash (`lib/image/verity.nu`), and the same key signs the loader

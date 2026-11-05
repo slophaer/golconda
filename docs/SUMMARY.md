@@ -2,6 +2,32 @@
 
 [Golconda](index.md)
 
+[What is proven](proven.md)
+
+# Features
+
+- [One image for every machine](features/one-image.md)
+- [A read-only, verified /usr](features/verified-usr.md)
+- [Only signed code runs](features/execution-policy.md)
+- [Secure Boot and measured boot](features/measured-boot.md)
+- [A/B updates with health-checked rollback](features/updates.md)
+- [Reproducible, signed releases](features/signed-releases.md)
+- [Secrets as vars](features/vars.md)
+- [Provisioning without cloud-init](features/provisioning.md)
+- [Certificate login, no local login](features/ssh-login.md)
+- [Factory reset and recovery](features/factory-reset.md)
+- [One of each](features/one-of-each.md)
+- [Typed modules, duplicates are errors](features/typed-modules.md)
+- [Configuration as data](features/config-as-data.md)
+- [Your own modules and packages](features/extending.md)
+
+# Guides
+
+- [Walkthrough](reference/walkthrough.md)
+- [Build host](reference/build-host.md)
+- [Making a release](reference/release.md)
+- [Deploying to Hetzner Cloud](reference/hetzner-cloud.md)
+
 # Design
 
 - [Principles](design/principles.md)
@@ -22,7 +48,6 @@
 
 # Reference
 
-- [Walkthrough](reference/walkthrough.md)
 - [Partitions and paths](reference/layout.md)
 - [Image artifacts](reference/image.md)
 - [Modules](reference/modules/README.md)
@@ -38,8 +63,5 @@
   - [Types](reference/modules/generated/types.md)
 - [Configuration](reference/config.md)
 - [Commands](reference/cli.md)
-- [Build host](reference/build-host.md)
 - [Outputs and inputs](reference/outputs.md)
-- [Making a release](reference/release.md)
-- [Deploying to Hetzner Cloud](reference/hetzner-cloud.md)
 - [Glossary](reference/glossary.md)

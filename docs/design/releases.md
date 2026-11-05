@@ -57,7 +57,8 @@ the release date and must not be used as one: the version, and the erofs timesta
 
 ## The release directory
 
-`release/` holds four symlinks to the step outputs and the index:
+`release/` holds four symlinks to the step outputs, the index `SHA256SUMS` and its signature
+`SHA256SUMS.gpg` ([The signed index](#the-signed-index)):
 
 | artifact         | release file name                      | installed form                     |
 | ---------------- | -------------------------------------- | ---------------------------------- |
