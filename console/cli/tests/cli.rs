@@ -140,3 +140,88 @@ fn version_and_help() {
     assert_eq!(v, format!("golconda {}\n", env!("CARGO_PKG_VERSION")));
     assert!(stdout(&golconda(&["--help"])).starts_with("usage:"));
 }
+
+/// `golconda vars` with stand-ins for age and ssh (GOLCONDA_AGE, GOLCONDA_SSH): the wiring of
+/// set, push and list. The logic is tested in golconda-core (vars.rs).
+#[test]
+fn vars_set_push_list() {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    let dir = std::env::temp_dir().join(format!("golconda-cli-vars-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("vars")).unwrap();
+    fs::write(dir.join("vars/recipients.txt"), "age1op\n").unwrap();
+    fs::write(dir.join("id.txt"), "AGE-SECRET-KEY-1").unwrap();
+    let exe = |name: &str, body: &str| {
+        let p = dir.join(name);
+        fs::write(&p, format!("#!/bin/sh\nset -eu\n{body}")).unwrap();
+        fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
+        p
+    };
+    // age: -e -R R -o OUT copies stdin; -d -i ID FILE prints FILE
+    let age = exe(
+        "age",
+        "case $1 in -e) cat > \"$5\" ;; -d) cat \"$4\" ;; esac\n",
+    );
+    // ssh DEST CMD: one admin var; seals by logging; nothing sealed yet for list
+    let log = dir.join("ssh.log");
+    let ssh = exe(
+        "ssh",
+        &format!(
+            "shift; case \"$*\" in\n\
+             \"cat /usr/lib/golconda/vars.d/\"*) printf '%s' '{{\"class\":\"admin\",\"consumers\":[\"sshd.service\"],\"credentials\":[\"c.cert\"],\"files\":[\"cert\"],\"name\":\"c\"}}' ;;\n\
+             \"ls -1A \"*) ;;\n\
+             *) printf '%s|%s\\n' \"$*\" \"$(cat)\" >> {} ;;\n\
+             esac\n",
+            log.display()
+        ),
+    );
+    let run = |args: &[&str], stdin: &str| {
+        let mut c = Command::new(env!("CARGO_BIN_EXE_golconda"))
+            .args(args)
+            .current_dir(&dir)
+            .env("GOLCONDA_AGE", &age)
+            .env("GOLCONDA_SSH", &ssh)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        use std::io::Write;
+        c.stdin.take().unwrap().write_all(stdin.as_bytes()).unwrap();
+        c.wait_with_output().unwrap()
+    };
+    let o = run(&["vars", "set", "web1", "c", "cert"], "CERT");
+    assert!(stdout(&o).contains("vars/web1/c/cert.age"));
+    let o = run(&["vars", "list", "web1"], "");
+    assert_eq!(stdout(&o), "c cert stored not-sealed\n");
+    let o = run(&["vars", "push", "-i", "id.txt", "web1"], "");
+    assert_eq!(stdout(&o), "sealed c.cert\nrestarted sshd.service\n");
+    let pushed = fs::read_to_string(&log).unwrap();
+    assert!(
+        pushed.starts_with("/usr/lib/golconda/golconda-var-run --admin c cert|CERT\n"),
+        "{pushed}"
+    );
+    // push needs an identity
+    let o = run(&["vars", "push", "web1"], "");
+    assert_eq!(
+        o.status.code(),
+        Some(2),
+        "{}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn vars_usage_errors_exit_2() {
+    for args in [
+        &["vars", "set", "web1", "c"][..],
+        &["vars", "list"],
+        &["vars", "pub", "web1", "v"],
+        &["vars", "frobnicate"],
+    ] {
+        let o = golconda(args);
+        assert_eq!(o.status.code(), Some(2), "{args:?}");
+    }
+}

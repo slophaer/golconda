@@ -8,3 +8,4 @@ pub mod document;
 pub mod eval;
 pub mod schema;
 pub mod system;
+pub mod vars;
