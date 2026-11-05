@@ -7,7 +7,10 @@
 //! compares paths). A module that only one side has is one change with an empty path.
 
 use crate::document::{path_name, toml_text};
+use crate::eval::Iets;
+use crate::system::{self, System};
 use serde_json::{Map, Value, json};
+use std::path::Path;
 
 /// One side of a change.
 #[derive(Debug, Clone, PartialEq)]
@@ -86,6 +89,20 @@ pub fn diff(before: &Value, after: &Value) -> Vec<Change> {
         }
     }
     out
+}
+
+/// What changed in `document` since git's `rev`: its system as it is now, and the changes.
+pub fn against_git(
+    iets: &Iets,
+    document: &Path,
+    rev: &str,
+    platform: &str,
+) -> Result<(System, Vec<Change>), system::Error> {
+    let after = System::load(iets, document, platform)?;
+    let text = System::git_text(document, rev)?;
+    let before = System::load_text(iets, document, &text, platform)?;
+    let changes = diff(&before.config, &after.config);
+    Ok((after, changes))
 }
 
 /// A module as one value: the options its document sets.

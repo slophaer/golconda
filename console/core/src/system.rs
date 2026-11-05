@@ -1,11 +1,12 @@
 //! One system: its document, and what mkSystem says about it (config, schema, module docs).
 
-use crate::document::{line_of, toml_text};
+use crate::document::{key, line_of, option_name, toml_text};
 use crate::eval::{self, Arg, Iets};
 use crate::schema::{self, LookupError};
 use serde_json::{Map, Value, json};
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// What one evaluation returns: the outputs the console reads, nothing that builds.
 const EXPR: &str = "{ config, system }: \
@@ -53,6 +54,16 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+/// A file beside `document` for one evaluation (pure evaluation reads under the checkout only,
+/// and the document's relative paths must hold): a name of its own for every call, so that
+/// evaluations at the same time in one process do not share it.
+pub(crate) fn beside(document: &Path, tag: &str) -> PathBuf {
+    static N: AtomicU64 = AtomicU64::new(0);
+    let name = document.file_name().unwrap_or_default().to_string_lossy();
+    let n = N.fetch_add(1, Ordering::Relaxed);
+    document.with_file_name(format!(".{name}.golconda-{tag}-{}-{n}", std::process::id()))
+}
+
 /// The nearest directory at or above `path` with lib/system.nix.
 pub fn find_root(path: &Path) -> Option<PathBuf> {
     let abs = std::path::absolute(path).ok()?;
@@ -94,8 +105,7 @@ impl System {
         text: &str,
         system: &str,
     ) -> Result<System, Error> {
-        let name = document.file_name().unwrap_or_default().to_string_lossy();
-        let copy = document.with_file_name(format!(".{name}.golconda-old-{}", std::process::id()));
+        let copy = beside(document, "old");
         std::fs::write(&copy, text).map_err(|e| Error::Read(copy.clone(), e))?;
         let loaded = System::load(iets, &copy, system);
         let _ = std::fs::remove_file(&copy);
@@ -127,20 +137,20 @@ impl System {
         })
     }
 
-    pub fn explain(&self, module: &str, option: &str) -> Result<Explanation, LookupError> {
-        let path: Vec<&str> = option.split('.').collect();
-        let found = schema::option(&self.schema, module, &path)?;
+    /// `path`: the option path in the module, at least one key.
+    pub fn explain(&self, module: &str, path: &[&str]) -> Result<Explanation, LookupError> {
+        let found = schema::option(&self.schema, module, path)?;
         let entry = &self.config[module][path[0]];
         let value = path[1..]
             .iter()
             .try_fold(&entry["value"], |v, seg| v.get(*seg))
             .filter(|v| !v.is_null())
             .cloned();
-        let set_at = line_of(&self.text, module, &path);
+        let set_at = line_of(&self.text, module, path);
         let declared = &found.node["x-golconda-declaredIn"];
         Ok(Explanation {
             module: module.to_string(),
-            option: option.to_string(),
+            option: option_name(path),
             type_name: schema::type_name(found.node),
             description: found.description.map(str::to_string),
             explicit: entry["explicit"] == true && (path.len() == 1 || set_at.is_some()),
@@ -166,7 +176,7 @@ impl System {
                 if set_only && !explicit {
                     continue;
                 }
-                let key = toml_key(name);
+                let key = key(name);
                 match o.get("value") {
                     None => lines += &format!("# {key}: no value\n"),
                     // TOML has no null: a comment keeps the text TOML
@@ -185,17 +195,6 @@ impl System {
             out += &format!("[{}]\n{lines}", Value::String(module.clone()));
         }
         out
-    }
-}
-
-fn toml_key(k: &str) -> String {
-    if !k.is_empty()
-        && k.chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-    {
-        k.to_string()
-    } else {
-        Value::String(k.to_string()).to_string()
     }
 }
 
@@ -309,7 +308,7 @@ mod tests {
 
     #[test]
     fn explain_a_set_option() {
-        let e = system().explain("/services/sshd", "port").unwrap();
+        let e = system().explain("/services/sshd", &["port"]).unwrap();
         assert_eq!(
             e.to_text(),
             "/services/sshd port\n\n  Listening port.\n\n\
@@ -326,7 +325,7 @@ mod tests {
 
     #[test]
     fn explain_an_option_with_no_value() {
-        let e = system().explain("/services/sshd", "package").unwrap();
+        let e = system().explain("/services/sshd", &["package"]).unwrap();
         assert_eq!(e.value, None);
         assert!(!e.explicit);
         assert!(
@@ -338,7 +337,7 @@ mod tests {
     #[test]
     fn explain_inside_a_map_has_no_value_where_the_map_has_none() {
         let e = system()
-            .explain("/services/sshd", "principals.root")
+            .explain("/services/sshd", &["principals", "root"])
             .unwrap();
         assert_eq!(e.type_name, "list of string");
         assert_eq!(e.value, None);
@@ -351,10 +350,14 @@ mod tests {
         sys.text += "principals = { root = [\"a@b\"] }\n";
         sys.config["/services/sshd"]["principals"] =
             json!({ "explicit": true, "value": { "root": ["a@b"] } });
-        let root = sys.explain("/services/sshd", "principals.root").unwrap();
+        let root = sys
+            .explain("/services/sshd", &["principals", "root"])
+            .unwrap();
         assert!(root.explicit);
         assert_eq!(root.set_at, Some(("server.toml".into(), 3)));
-        let admin = sys.explain("/services/sshd", "principals.admin").unwrap();
+        let admin = sys
+            .explain("/services/sshd", &["principals", "admin"])
+            .unwrap();
         assert!(!admin.explicit);
         assert_eq!(admin.set_at, None);
     }
@@ -371,9 +374,9 @@ mod tests {
 
     #[test]
     fn keys_that_need_quotes() {
-        assert_eq!(toml_key("port"), "port");
-        assert_eq!(toml_key("a.b"), "\"a.b\"");
-        assert_eq!(toml_key(""), "\"\"");
+        assert_eq!(crate::document::key("port"), "port");
+        assert_eq!(crate::document::key("a.b"), "\"a.b\"");
+        assert_eq!(crate::document::key(""), "\"\"");
     }
 
     #[test]
@@ -387,5 +390,15 @@ mod tests {
         assert_eq!(find_root(&tmp.join("a/b/server.toml")), Some(tmp.clone()));
         std::fs::remove_dir_all(&tmp).unwrap();
         assert_eq!(find_root(Path::new("/server.toml")), None);
+    }
+
+    #[test]
+    fn copies_beside_the_document_have_names_of_their_own() {
+        let a = beside(Path::new("/c/server.toml"), "old");
+        let b = beside(Path::new("/c/server.toml"), "old");
+        assert_ne!(a, b);
+        assert_eq!(a.parent(), Some(Path::new("/c")));
+        let name = a.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(name.starts_with(".server.toml.golconda-old-"), "{name}");
     }
 }
