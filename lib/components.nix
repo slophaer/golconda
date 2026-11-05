@@ -23,7 +23,7 @@
 #   compose { modules; options; extraFragments ? [ ]; }
 #                                    the composer output of `options`: `modules` is the tree
 #                                    function (f.modules), `extraFragments` the build's own named
-#                                    fragments, which are not modules (lib/image/hwdb.nix). Each selected component's
+#                                    fragments, which are not modules (lib/image/loader.nix). Each selected component's
 #                                    fragment carries its module path as `name`, its origin.
 #                                    A component enters by its table only: /system has no
 #                                    other list of fragments. A downstream repository adds

@@ -202,10 +202,7 @@ in
         extraFragments = [ { name = "/image/test"; } ];
       };
     in
-    sys.fragments == [
-      "/image/hwdb"
-      "/image/test"
-    ]
+    sys.fragments == [ "/image/test" ]
     && agrees sys
     &&
       throws

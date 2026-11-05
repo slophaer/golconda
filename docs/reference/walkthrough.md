@@ -105,7 +105,7 @@ iets eval --json -E 'builtins.attrNames (import ./examples/golconda.nix).compose
   (`/usr/share/zoneinfo/UTC`); `L /etc/os-release`.
 
 - `packageOrigins`: `openssh` from `/services/sshd`; `cacert`, `dash`, `dbus-broker`, `e2fsprogs`,
-  `linux-kernel`, `systemd`, `tpm2-tss`, `tzdata` and `uutils-coreutils` from `/base`.
+  `hwdb`, `linux-kernel`, `systemd`, `tpm2-tss`, `tzdata` and `uutils-coreutils` from `/base`.
 
 - `links`: not quoted (see above). It holds every `bin` name of the packages as `/usr/bin/<name>`,
   systemd's directories as `farm` links, one link per dlopen soname, and the `.wants` links.

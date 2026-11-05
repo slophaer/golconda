@@ -8,7 +8,7 @@
 #! fragments of the selected components as `components`, the built-ins
 #! (`/base`, `/network`, `/security`, `/factory`, `/vars`) first, then each
 #! optional component the configuration has a table for, then the build's own
-#! named fragments (`/image/hwdb`). A system with no table still has systemd,
+#! named fragments (`/image/loader`, `/image/index`). A system with no table still has systemd,
 #! dbus-broker, dash, coreutils and the kernel.
 #!
 #! Output: `{ name; version; units; files; sysusers; tmpfiles; packages; packageOrigins; origins; links }`,
@@ -23,7 +23,7 @@
 #! `packageOrigins` answers "why is this package here": package key (its
 #! name-version) -> the origins that brought it: a component's module path
 #! (`"/base"`, `"/services/sshd"`) or a build fragment's `name`
-#! (`"/image/hwdb"`). `packages` stays one deduped list.
+#! (`"/image/loader"`). `packages` stays one deduped list.
 #!
 #! `origins` does the same for everything a fragment emits: `{ packages; files;
 #! links; units; sysusers; tmpfiles; }`, each a map from the key (package key,

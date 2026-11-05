@@ -82,6 +82,8 @@ let
   # cacert ships one file, tzdata one directory: neither has a bin list
   stubCacert = withBin "cacert-2026.1" [ ];
   stubTzdata = withBin "tzdata-2026a" [ ];
+  # hwdb ships one data file
+  stubHwdb = withBin "hwdb-262" [ ];
   # the repkgs set as /pkgs sees it: the stand-ins above
   stubSet = {
     buildPkgs = stubSet.pkgs;
@@ -95,6 +97,7 @@ let
       uutils-coreutils = stubUutils;
       cacert = stubCacert;
       tzdata = stubTzdata;
+      hwdb = stubHwdb;
       linux-kernel = stubLinuxKernel;
     }
     # the libraries /base links for systemd's dlopen (dlopenSonames): no bin, name only

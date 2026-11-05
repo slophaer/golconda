@@ -198,7 +198,7 @@ every optional component the document has a table for; an empty table selects on
 | `sbom`            | `{ bom; json; }`: the CycloneDX document, and the text of `/usr/lib/golconda/sbom.json`               |
 | `config`          | the normalized options of every included component and `/system`, derivations replaced by their names |
 | `inventory`       | every module's role and inputs; for a component, `included` and `reason`                              |
-| `fragments`       | the names of the build's own fragments (`/image/hwdb` and `extraFragments`)                           |
+| `fragments`       | the names of the build's own fragments (`extraFragments`)                                             |
 | `packages`        | the downstream packages: name → `{ replaces; }`, `"golconda"`, `"repkgs"` or null                     |
 | `artifacts`       | the files `mkSystem` adds to `/usr/lib/golconda/`                                                     |
 | `platform`        | the elaborated platform record                                                                        |

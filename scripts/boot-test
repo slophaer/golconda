@@ -611,7 +611,7 @@ test_ssh() {
 
   test_loader "first boot" 1
 
-  # the hardware database is compiled into /usr (lib/image/hwdb.nix), so nothing writes one
+  # the hardware database is compiled into /usr (packages/hwdb, linked by /base), so nothing writes one
   # to /etc and lookups answer: the IMDS entry for Hetzner Cloud's DMI vendor
   echo ""
   echo "=== hwdb ==="

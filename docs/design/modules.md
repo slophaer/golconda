@@ -102,9 +102,9 @@ all. `mkSystem` evaluates each selected component once and passes the fragments 
 `components`, each named by its module path, so the attribution names the module and never an index.
 `/usr/lib/golconda/modules.json` records the result: every module's role and inputs, for a component
 whether it is included and why (`builtin` or `config`), and the names of the build's own fragments
-(`/image/hwdb`, and the loader and update index of a signed image). The image is those components
-plus those fragments, nothing else: `/system` has no other list, and a downstream repository adds a
-module under `/local`, never a bare fragment.
+(the loader and the update index of a signed image). The image is those components plus those
+fragments, nothing else: `/system` has no other list, and a downstream repository adds a module
+under `/local`, never a bare fragment.
 
 ## The base system
 
