@@ -95,7 +95,9 @@ token itself (RS256 or ES256, the issuer, the audience, the expiry, the nonce), 
 memory (a restart signs everyone out) in an `HttpOnly`, `SameSite=Lax` cookie, `Secure` when the
 public URL is https, and answers only to the public URL's host name. `/auth/me` says who is signed
 in, as JSON. A provider that wants a client secret gets it from `--oidc-client-secret-file`. The
-issuer must use https, except on loopback.
+issuer must use https, except on loopback. Its TLS certificate is checked against the public roots
+built into the daemon, or, with `--oidc-ca-file`, against our own CA's certificates (step-ca)
+instead.
 
 For development, `--dev-identity NAME:LEVEL` signs everyone in as NAME at LEVEL (`operator` or
 `read-only`), and the daemon then listens on a loopback address only and answers to loopback names.

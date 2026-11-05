@@ -38,6 +38,21 @@ enum Mode {
     AlgHs256,
     /// signed with the ES256 key, but the header says ES384: only the allow-list refuses it
     AlgMislabeled,
+    /// nbf ten minutes ahead
+    NotYetValid,
+    /// two audiences and no azp, or an azp that is another client
+    TwoAudiencesNoAzp,
+    TwoAudiencesOtherAzp,
+    /// two audiences, azp this client: good
+    TwoAudiencesAzp,
+    /// a crit header the daemon does not know
+    Crit,
+    /// kid of the same key published for encryption only
+    EncryptionKey,
+    /// kid of the same key published as an ES384 key
+    KeyForAnotherAlg,
+    /// no kid: the daemon tries every ES256 key, the right one is second
+    NoKid,
 }
 
 struct Grant {
@@ -88,6 +103,17 @@ impl Stub {
             Mode::WrongIssuer => claims["iss"] = "http://127.0.0.1:1".into(),
             Mode::Expired => claims["exp"] = (now - 600).into(),
             Mode::WrongNonce => claims["nonce"] = "not-the-nonce".into(),
+            Mode::NotYetValid => claims["nbf"] = (now + 600).into(),
+            Mode::TwoAudiencesNoAzp => claims["aud"] = json!(["console", "another-client"]),
+            Mode::TwoAudiencesOtherAzp | Mode::TwoAudiencesAzp => {
+                claims["aud"] = json!(["console", "another-client"]);
+                claims["azp"] = if mode == Mode::TwoAudiencesAzp {
+                    "console"
+                } else {
+                    "another-client"
+                }
+                .into();
+            }
             _ => {}
         }
         let (alg, kid) = match mode {
@@ -95,14 +121,20 @@ impl Stub {
             Mode::AlgNone => ("none", "ec1"),
             Mode::AlgHs256 => ("HS256", "ec1"),
             Mode::AlgMislabeled => ("ES384", "ec1"),
+            Mode::EncryptionKey => ("ES256", "enc1"),
+            Mode::KeyForAnotherAlg => ("ES256", "es384"),
             _ => ("ES256", "ec1"),
         };
         let b64 = |v: &Value| URL_SAFE_NO_PAD.encode(v.to_string());
-        let input = format!(
-            "{}.{}",
-            b64(&json!({ "alg": alg, "kid": kid, "typ": "JWT" })),
-            b64(&claims)
-        );
+        let mut header = json!({ "alg": alg, "kid": kid, "typ": "JWT" });
+        match mode {
+            Mode::NoKid => {
+                header.as_object_mut().unwrap().remove("kid");
+            }
+            Mode::Crit => header["crit"] = json!(["exp"]),
+            _ => {}
+        }
+        let input = format!("{}.{}", b64(&header), b64(&claims));
         let rng = ring::rand::SystemRandom::new();
         let sig = match mode {
             Mode::AlgNone => Vec::new(),
@@ -154,8 +186,15 @@ async fn discovery(State(s): State<Arc<Stub>>) -> axum::Json<Value> {
 }
 
 async fn jwks() -> axum::Json<Value> {
-    // oidc-other's key is not here: what it signs must be refused
+    // oidc-other's key is not here: what it signs must be refused. The stub's own key is
+    // here three times: for encryption only, as an ES384 key, and as the signing key ec1;
+    // before them a key that signs nothing, so a token without kid must try more than one.
+    let mut enc = jwk(include_str!("fixtures/oidc-stub.jwk.json"), "enc1", "ES256");
+    enc["use"] = "enc".into();
     axum::Json(json!({ "keys": [
+        jwk(include_str!("fixtures/oidc-extra.jwk.json"), "ec0", "ES256"),
+        enc,
+        jwk(include_str!("fixtures/oidc-stub.jwk.json"), "es384", "ES384"),
         jwk(include_str!("fixtures/oidc-stub.jwk.json"), "ec1", "ES256"),
         jwk(include_str!("fixtures/oidc-rsa.jwk.json"), "rsa1", "RS256"),
     ]}))
@@ -277,6 +316,7 @@ async fn setup(mode: Mode) -> (Arc<Stub>, Router) {
         public_url: PUBLIC.into(),
         operator_group: "golconda-operators".into(),
         read_only_group: "golconda-readers".into(),
+        ca_pem: None,
     };
     let oidc = tokio::task::spawn_blocking(move || Oidc::discover(cfg))
         .await
@@ -419,11 +459,26 @@ async fn tokens_that_do_not_check_are_refused() {
         Mode::AlgNone,
         Mode::AlgHs256,
         Mode::AlgMislabeled,
+        Mode::NotYetValid,
+        Mode::TwoAudiencesNoAzp,
+        Mode::TwoAudiencesOtherAzp,
+        Mode::Crit,
+        Mode::EncryptionKey,
+        Mode::KeyForAnotherAlg,
     ] {
         let (_, app) = setup(mode).await;
         let (s, h, body) = sign_in(&app, "alice").await;
         assert_eq!(s, StatusCode::BAD_REQUEST, "{mode:?}: {body}");
         assert!(h.get(header::SET_COOKIE).is_none(), "{mode:?}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn tokens_that_check_in_other_ways_are_taken() {
+    for mode in [Mode::TwoAudiencesAzp, Mode::NoKid] {
+        let (_, app) = setup(mode).await;
+        let (s, _, body) = sign_in(&app, "alice").await;
+        assert_eq!(s, StatusCode::SEE_OTHER, "{mode:?}: {body}");
     }
 }
 
@@ -592,9 +647,98 @@ async fn the_issuer_must_use_https_except_on_loopback() {
         public_url: PUBLIC.into(),
         operator_group: "o".into(),
         read_only_group: "r".into(),
+        ca_pem: None,
     };
     let e = tokio::task::spawn_blocking(move || Oidc::discover(cfg("http://idp.example")).err())
         .await
         .unwrap();
     assert!(e.unwrap().contains("https"));
+}
+
+/// The stub's discovery document and keys over https, with a certificate from the test CA,
+/// on a thread of its own: the daemon trusts it only with that CA.
+fn https_stub() -> String {
+    use rustls::pki_types::pem::PemObject;
+    use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+    use std::io::{Read, Write};
+    let certs =
+        vec![CertificateDer::from_pem_slice(include_bytes!("fixtures/tls-server.pem")).unwrap()];
+    let key = PrivateKeyDer::from_pem_slice(include_bytes!("fixtures/tls-server.key")).unwrap();
+    let config = Arc::new(
+        rustls::ServerConfig::builder_with_provider(Arc::new(
+            rustls::crypto::ring::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_no_client_auth()
+        .with_single_cert(certs, key)
+        .unwrap(),
+    );
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let issuer = format!("https://{}", listener.local_addr().unwrap());
+    let doc = json!({
+        "issuer": issuer,
+        "authorization_endpoint": format!("{issuer}/authorize"),
+        "token_endpoint": format!("{issuer}/token"),
+        "jwks_uri": format!("{issuer}/jwks"),
+    });
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let conn = rustls::ServerConnection::new(config.clone()).unwrap();
+            let mut tls = rustls::StreamOwned::new(conn, stream);
+            let mut req = Vec::new();
+            let mut buf = [0u8; 1024];
+            while !req.windows(4).any(|w| w == b"\r\n\r\n") {
+                match tls.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => req.extend_from_slice(&buf[..n]),
+                }
+            }
+            let path = String::from_utf8_lossy(&req)
+                .split(' ')
+                .nth(1)
+                .unwrap_or("")
+                .to_string();
+            let body = if path == "/jwks" {
+                json!({ "keys": [] })
+            } else {
+                doc.clone()
+            }
+            .to_string();
+            let _ = write!(
+                tls,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = tls.flush();
+        }
+    });
+    issuer
+}
+
+#[tokio::test]
+async fn a_provider_behind_our_own_ca_is_trusted_with_the_ca_file_only() {
+    let issuer = https_stub();
+    let cfg = |ca: Option<&str>| OidcConfig {
+        issuer: issuer.clone(),
+        client_id: "console".into(),
+        client_secret: None,
+        public_url: PUBLIC.into(),
+        operator_group: "o".into(),
+        read_only_group: "r".into(),
+        ca_pem: ca.map(str::to_string),
+    };
+    let (without, with) = (cfg(None), cfg(Some(include_str!("fixtures/tls-ca.pem"))));
+    let e = tokio::task::spawn_blocking(move || Oidc::discover(without).err())
+        .await
+        .unwrap();
+    assert!(
+        e.expect("refused without the CA")
+            .to_lowercase()
+            .contains("certificate")
+    );
+    let ok = tokio::task::spawn_blocking(move || Oidc::discover(with).map(drop))
+        .await
+        .unwrap();
+    assert!(ok.is_ok(), "{ok:?}");
 }
