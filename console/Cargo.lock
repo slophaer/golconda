@@ -299,6 +299,7 @@ dependencies = [
  "maud",
  "pulldown-cmark",
  "ring",
+ "rustls",
  "serde_json",
  "thiserror",
  "tokio",

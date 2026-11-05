@@ -34,6 +34,10 @@ pub struct Args {
     /// A file with the client secret, for a provider that wants one
     #[arg(long, value_name = "FILE")]
     oidc_client_secret_file: Option<PathBuf>,
+    /// PEM certificates the provider's TLS certificate must chain to (our own CA's); without
+    /// it, the public roots built in
+    #[arg(long, value_name = "FILE")]
+    oidc_ca_file: Option<PathBuf>,
     /// Where browsers reach this daemon, such as https://console.example.com: the redirect
     /// address and the one host name it answers to
     #[arg(long, value_name = "URL")]
@@ -115,6 +119,13 @@ fn check(a: Args) -> Result<(Args, Mode), String> {
         ),
         None => None,
     };
+    let ca_pem = match &a.oidc_ca_file {
+        Some(f) => Some(
+            std::fs::read_to_string(f)
+                .map_err(|e| format!("--oidc-ca-file {}: {e}", f.display()))?,
+        ),
+        None => None,
+    };
     let config = OidcConfig {
         issuer,
         client_id: a.oidc_client_id.clone().unwrap_or_default(),
@@ -122,6 +133,7 @@ fn check(a: Args) -> Result<(Args, Mode), String> {
         public_url,
         operator_group: a.operator_group.clone(),
         read_only_group: a.read_only_group.clone(),
+        ca_pem,
     };
     Ok((a, Mode::Oidc(config)))
 }

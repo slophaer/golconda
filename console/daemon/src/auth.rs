@@ -34,6 +34,9 @@ pub struct OidcConfig {
     pub public_url: String,
     pub operator_group: String,
     pub read_only_group: String,
+    /// PEM certificates the provider's TLS certificate must chain to, such as our own CA's;
+    /// None: the public roots built in (webpki-roots)
+    pub ca_pem: Option<String>,
 }
 
 struct Pending {
@@ -110,9 +113,25 @@ impl Oidc {
         if !config.issuer.starts_with("https://") && !is_loopback(host(&config.issuer)) {
             return Err(format!("the issuer {} must use https", config.issuer));
         }
+        let roots = match &config.ca_pem {
+            None => ureq::tls::RootCerts::WebPki,
+            Some(pem) => {
+                let certs: Vec<_> = ureq::tls::parse_pem(pem.as_bytes())
+                    .filter_map(|item| match item {
+                        Ok(ureq::tls::PemItem::Certificate(c)) => Some(c),
+                        _ => None,
+                    })
+                    .collect();
+                if certs.is_empty() {
+                    return Err("the CA file holds no PEM certificate".into());
+                }
+                ureq::tls::RootCerts::new_with_certs(&certs)
+            }
+        };
         let agent: ureq::Agent = ureq::Agent::config_builder()
             .timeout_global(Some(Duration::from_secs(10)))
             .max_redirects(0)
+            .tls_config(ureq::tls::TlsConfig::builder().root_certs(roots).build())
             .build()
             .into();
         let url = format!(
@@ -295,6 +314,10 @@ impl Oidc {
             serde_json::from_slice(&b).map_err(|e| e.to_string())
         };
         let header = json(head)?;
+        // an extension the token says must be understood, and this code does not know any
+        if header.get("crit").is_some() {
+            return Err("it names critical header extensions".into());
+        }
         let alg = header["alg"].as_str().unwrap_or("");
         // the algorithm comes from the key's type, never from the token alone: only these two
         let (kty, scheme): (&str, &dyn signature::VerificationAlgorithm) = match alg {
@@ -304,38 +327,59 @@ impl Oidc {
         };
         let kid = header["kid"].as_str();
         let keys = self.keys.read().unwrap();
-        let key = keys
+        // the keys that may have signed it: its type, not for encryption only, not for another
+        // algorithm, its kid when it names one (without, each of them is tried)
+        let candidates: Vec<&Value> = keys
             .iter()
-            .find(|k| k["kty"] == kty && (kid.is_none() || k["kid"].as_str() == kid))
-            .ok_or_else(|| format!("unknown key {kid:?}"))?;
-        let b64 = |f: &str| {
-            key[f]
-                .as_str()
-                .and_then(|s| URL_SAFE_NO_PAD.decode(s).ok())
-                .ok_or(format!("the key has no {f}"))
-        };
+            .filter(|k| k["kty"] == kty && k["use"] != "enc")
+            .filter(|k| k["alg"].is_null() || k["alg"] == alg)
+            .filter(|k| kid.is_none() || k["kid"].as_str() == kid)
+            .collect();
+        if candidates.is_empty() {
+            return Err(format!("unknown key {kid:?}"));
+        }
         let sig = URL_SAFE_NO_PAD.decode(sig).map_err(|e| e.to_string())?;
         let signed = format!("{head}.{body}");
-        let checked = if kty == "RSA" {
-            signature::RsaPublicKeyComponents {
-                n: b64("n")?,
-                e: b64("e")?,
-            }
-            .verify(
-                &signature::RSA_PKCS1_2048_8192_SHA256,
-                signed.as_bytes(),
-                &sig,
-            )
-        } else {
-            if key["crv"] != "P-256" {
-                return Err("an EC key that is not P-256".into());
-            }
-            let mut point = vec![4u8];
-            point.extend(b64("x")?);
-            point.extend(b64("y")?);
-            UnparsedPublicKey::new(scheme, point).verify(signed.as_bytes(), &sig)
+        let checks = |key: &Value| -> Result<bool, String> {
+            let b64 = |f: &str| {
+                key[f]
+                    .as_str()
+                    .and_then(|s| URL_SAFE_NO_PAD.decode(s).ok())
+                    .ok_or(format!("the key has no {f}"))
+            };
+            Ok(if kty == "RSA" {
+                signature::RsaPublicKeyComponents {
+                    n: b64("n")?,
+                    e: b64("e")?,
+                }
+                .verify(
+                    &signature::RSA_PKCS1_2048_8192_SHA256,
+                    signed.as_bytes(),
+                    &sig,
+                )
+                .is_ok()
+            } else {
+                if key["crv"] != "P-256" {
+                    return Ok(false);
+                }
+                let mut point = vec![4u8];
+                point.extend(b64("x")?);
+                point.extend(b64("y")?);
+                UnparsedPublicKey::new(scheme, point)
+                    .verify(signed.as_bytes(), &sig)
+                    .is_ok()
+            })
         };
-        checked.map_err(|_| "its signature does not check".to_string())?;
+        let mut good = false;
+        for key in candidates {
+            if checks(key)? {
+                good = true;
+                break;
+            }
+        }
+        if !good {
+            return Err("its signature does not check".into());
+        }
         let claims = json(body)?;
         if claims["iss"] != self.config.issuer.as_str() {
             return Err(format!("issued by {}", claims["iss"]));
@@ -348,9 +392,21 @@ impl Oidc {
         if !aud {
             return Err(format!("meant for {}", claims["aud"]));
         }
+        // with more than one audience, the party it was issued to must be named, and be us
+        let several = claims["aud"].as_array().is_some_and(|a| a.len() > 1);
+        match claims.get("azp") {
+            Some(azp) if azp != self.config.client_id.as_str() => {
+                return Err(format!("issued to {azp}"));
+            }
+            None if several => return Err("several audiences and no azp".into()),
+            _ => {}
+        }
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.as_secs() as i64);
+        if claims["nbf"].as_i64().is_some_and(|nbf| nbf - LEEWAY > now) {
+            return Err("it is not valid yet".into());
+        }
         match claims["exp"].as_i64() {
             Some(exp) if exp + LEEWAY > now => Ok(claims),
             _ => Err("it has expired".into()),
