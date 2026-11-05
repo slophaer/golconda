@@ -4,8 +4,10 @@
 //! ([`eval`]); the console reads its config, schema and module docs ([`system`]), looks
 //! options up in the schema ([`schema`]) and finds them in the document ([`document`]).
 
+pub mod check;
 pub mod document;
 pub mod eval;
 pub mod schema;
 pub mod system;
+pub mod validate;
 pub mod vars;

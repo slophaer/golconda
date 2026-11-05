@@ -235,3 +235,204 @@ fn vars_usage_errors_exit_2() {
         assert_eq!(o.status.code(), Some(2), "{args:?}");
     }
 }
+
+/// A copy of `doc` in a directory of its own under target/ (inside the checkout: evaluation is
+/// pure), and its path relative to the checkout.
+fn scratch(test: &str, doc: &str) -> String {
+    let rel = format!("console/target/cli-tests/{test}-{}", std::process::id());
+    let dir = checkout().join(&rel);
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::copy(checkout().join(doc), dir.join("server.toml")).unwrap();
+    format!("{rel}/server.toml")
+}
+
+fn read(rel: &str) -> String {
+    std::fs::read_to_string(checkout().join(rel)).unwrap()
+}
+
+fn fails(o: &Output) -> String {
+    assert_eq!(
+        o.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&o.stdout)
+    );
+    String::from_utf8(o.stderr.clone()).unwrap()
+}
+
+#[test]
+#[ignore = "needs iets and the Golconda checkout"]
+fn set_changes_one_line_and_keeps_the_rest() {
+    let f = scratch("set-port", DOC);
+    let before = read(&f);
+    stdout(&golconda(&[
+        "config",
+        "set",
+        "-f",
+        &f,
+        "/services/sshd",
+        "port",
+        "2222",
+    ]));
+    let after = read(&f);
+    assert_eq!(after, before.replace("\nport = 22\n", "\nport = 2222\n"));
+    let out = stdout(&golconda(&[
+        "config",
+        "explain",
+        "-f",
+        &f,
+        "/services/sshd",
+        "port",
+    ]));
+    assert!(
+        out.contains(&format!("value     2222  (set at {f}:11)\n")),
+        "{out}"
+    );
+}
+
+#[test]
+#[ignore = "needs iets and the Golconda checkout"]
+fn set_adds_a_module_and_options_inside_it() {
+    let f = scratch("set-network", DOC);
+    let before = read(&f);
+    // a network needs its match section: the schema says so before anything is written
+    let err = fails(&golconda(&[
+        "config",
+        "set",
+        "-f",
+        &f,
+        "/network",
+        "networks.lan.network.DNS",
+        r#"["192.0.2.53"]"#,
+    ]));
+    assert!(
+        err.contains("/network networks.lan: missing match"),
+        "{err}"
+    );
+    assert_eq!(read(&f), before);
+    stdout(&golconda(&[
+        "config",
+        "set",
+        "-f",
+        &f,
+        "/network",
+        "networks.lan",
+        r#"{ match = { Name = "en*" } }"#,
+    ]));
+    stdout(&golconda(&[
+        "config",
+        "set",
+        "-f",
+        &f,
+        "/network",
+        "networks.lan.network.DNS",
+        r#"["192.0.2.53"]"#,
+    ]));
+    let after = read(&f);
+    assert!(after.starts_with(&before), "{after}");
+    assert_eq!(
+        &after[before.len()..],
+        "\n[\"/network\"]\nnetworks.lan = { match = { Name = \"en*\" }, network = { DNS = [\"192.0.2.53\"] } }\n"
+    );
+}
+
+#[test]
+#[ignore = "needs iets and the Golconda checkout"]
+fn set_refuses_a_value_of_the_wrong_type_and_names_the_line() {
+    let f = scratch("set-type", DOC);
+    let before = read(&f);
+    // a VALUE that is not TOML is a string
+    let err = fails(&golconda(&[
+        "config",
+        "set",
+        "-f",
+        &f,
+        "/services/sshd",
+        "port",
+        "x",
+    ]));
+    assert!(
+        err.contains(&format!(
+            "{f}:11: /services/sshd port: expected integer, got \"x\""
+        )),
+        "{err}"
+    );
+    assert_eq!(read(&f), before);
+    let err = fails(&golconda(&[
+        "config",
+        "set",
+        "-f",
+        &f,
+        "/services/sshd",
+        "prot",
+        "1",
+    ]));
+    assert!(err.contains("/services/sshd prot: no such option"), "{err}");
+    assert_eq!(read(&f), before);
+}
+
+#[test]
+#[ignore = "needs iets and the Golconda checkout"]
+fn set_refuses_what_only_evaluation_catches() {
+    let f = scratch("set-eval", DOC);
+    let before = read(&f);
+    let err = fails(&golconda(&[
+        "config", "set", "-f", &f, "golconda", "modules", "nope",
+    ]));
+    assert!(
+        err.contains("golconda.modules names 'nope', which does not exist"),
+        "{err}"
+    );
+    // Golconda's file by its path in the checkout
+    assert!(err.contains(": lib/config.nix:"), "{err}");
+    assert_eq!(read(&f), before);
+    // nothing left beside the document
+    let dir = checkout().join(&f).parent().unwrap().to_path_buf();
+    assert_eq!(std::fs::read_dir(dir).unwrap().count(), 1);
+}
+
+#[test]
+#[ignore = "needs iets and the Golconda checkout"]
+fn delete_removes_an_option_and_then_says_it_is_not_set() {
+    let f = scratch("delete", DOC);
+    let before = read(&f);
+    stdout(&golconda(&[
+        "config",
+        "delete",
+        "-f",
+        &f,
+        "/services/sshd",
+        "port",
+    ]));
+    assert_eq!(read(&f), before.replace("\nport = 22\n", "\n"));
+    let err = fails(&golconda(&[
+        "config",
+        "delete",
+        "-f",
+        &f,
+        "/services/sshd",
+        "port",
+    ]));
+    assert!(
+        err.contains("/services/sshd port is not set in the document"),
+        "{err}"
+    );
+}
+
+#[test]
+#[ignore = "needs iets and the Golconda checkout"]
+fn validate_checks_schema_then_evaluation() {
+    assert_eq!(
+        stdout(&golconda(&["config", "validate", "-f", DOC])),
+        format!("{DOC}: valid\n")
+    );
+    let f = scratch("validate", DOC);
+    let text = read(&f).replace("\nport = 22\n", "\nport = \"22\"\n");
+    std::fs::write(checkout().join(&f), text).unwrap();
+    let err = fails(&golconda(&["config", "validate", "-f", &f]));
+    assert!(
+        err.contains(&format!("{f}:11: /services/sshd port: expected integer")),
+        "{err}"
+    );
+}

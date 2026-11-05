@@ -1,5 +1,7 @@
 //! `golconda`: read and explain a Golconda system's configuration, and push its admin vars.
 
+use golconda_core::check;
+use golconda_core::document::{self, parse_value};
 use golconda_core::eval::Iets;
 use golconda_core::system::System;
 use golconda_core::vars::{self, Program, Remote, Store};
@@ -15,6 +17,9 @@ const USAGE: &str = "usage:
   golconda vars push [--vars DIR] -i IDENTITY HOST [VAR...]
   golconda vars list [--vars DIR] HOST
   golconda vars pub HOST VAR FILE
+  golconda config set [-f FILE] [--system SYSTEM] MODULE [OPTION] VALUE
+  golconda config delete [-f FILE] [--system SYSTEM] MODULE [OPTION]
+  golconda config validate [-f FILE] [--system SYSTEM]
 
   -f FILE          the system's document (default: server.toml)
   --system SYSTEM  the Nix system to evaluate for (default: this machine's)
@@ -23,6 +28,10 @@ const USAGE: &str = "usage:
   --vars DIR       the age-encrypted admin vars, DIR/HOST/VAR/FILE.age, encrypted to the
                    keys in DIR/recipients.txt (default: vars)
   -i IDENTITY      the age identity that decrypts them (or GOLCONDA_AGE_IDENTITY)
+
+OPTION is dotted below the module (networks.lan.network.DNS). VALUE is TOML (22, \"22\",
+[\"a\"], { a = 1 }); text that is not TOML is a string. set and delete write the document only
+when the result passes the schema and evaluates; comments and layout stay as written.
 
 iets comes from PATH, or GOLCONDA_IETS. ssh and age come from PATH, or GOLCONDA_SSH and
 GOLCONDA_AGE (a program and its arguments, such as \"ssh -p 2222\" or rage).";
@@ -44,7 +53,7 @@ fn parse(argv: &[String]) -> Result<Args, String> {
     let group = it.next().cloned().ok_or("give a command")?;
     let command = it.next().cloned().unwrap_or_default();
     let known = match group.as_str() {
-        "config" => ["show", "explain"].contains(&command.as_str()),
+        "config" => ["show", "explain", "set", "delete", "validate"].contains(&command.as_str()),
         "vars" => ["set", "push", "list", "pub"].contains(&command.as_str()),
         _ => return Err(format!("unknown command {group}")),
     };
@@ -71,7 +80,7 @@ fn parse(argv: &[String]) -> Result<Args, String> {
             "-f" | "--file" if config => a.file = value()?.into(),
             "--system" if config => a.system = value()?,
             "--set" if a.command == "show" => a.set_only = true,
-            "--json" if config => a.json = true,
+            "--json" if config && (a.command == "show" || a.command == "explain") => a.json = true,
             "--vars" if !config && a.command != "pub" => a.vars = value()?.into(),
             "-i" | "--identity" if a.command == "push" => a.identity = Some(value()?.into()),
             f if f.starts_with("--") || (f.starts_with('-') && f.len() > 1) => {
@@ -80,12 +89,14 @@ fn parse(argv: &[String]) -> Result<Args, String> {
             _ => a.rest.push(arg.clone()),
         }
     }
-    let (min, max) = match a.command.as_str() {
-        "show" => (0, 0),
-        "explain" => (2, 2),
-        "set" | "pub" => (3, 3),
-        "list" => (1, 1),
-        _ => (1, usize::MAX), // push HOST [VAR...]
+    let (min, max) = match (a.group.as_str(), a.command.as_str()) {
+        ("config", "explain") => (2, 2),
+        ("config", "set") => (2, 3),
+        ("config", "delete") => (1, 2),
+        ("config", _) => (0, 0),
+        ("vars", "set" | "pub") => (3, 3),
+        ("vars", "list") => (1, 1),
+        _ => (1, usize::MAX), // vars push HOST [VAR...]
     };
     if a.rest.len() < min || a.rest.len() > max {
         return Err(format!("{} {} takes other operands", a.group, a.command));
@@ -132,7 +143,39 @@ fn run(a: &Args) -> Result<String, Box<dyn std::error::Error>> {
     if a.group == "vars" {
         return run_vars(a);
     }
-    let sys = System::load(&Iets::from_env(), &a.file, &a.system)?;
+    let iets = Iets::from_env();
+    let file = a.file.display();
+    // MODULE [OPTION] [VALUE]: the option path, empty for the module itself
+    let path = |option: Option<&String>| -> Vec<String> {
+        option
+            .map(|o| o.split('.').map(str::to_string).collect())
+            .unwrap_or_default()
+    };
+    match a.command.as_str() {
+        "validate" => {
+            check::validate(&iets, &a.file, &a.system)?;
+            return Ok(format!("{file}: valid\n"));
+        }
+        "set" => {
+            let (value, option) = a.rest[1..].split_last().unwrap();
+            let p = path(option.first());
+            let p: Vec<&str> = p.iter().map(String::as_str).collect();
+            check::apply(&iets, &a.file, &a.system, |text| {
+                document::set(text, &a.rest[0], &p, parse_value(value))
+            })?;
+            return Ok(String::new());
+        }
+        "delete" => {
+            let p = path(a.rest.get(1));
+            let p: Vec<&str> = p.iter().map(String::as_str).collect();
+            check::apply(&iets, &a.file, &a.system, |text| {
+                document::delete(text, &a.rest[0], &p)
+            })?;
+            return Ok(String::new());
+        }
+        _ => {}
+    }
+    let sys = System::load(&iets, &a.file, &a.system)?;
     Ok(match a.command.as_str() {
         "show" if a.json => {
             let mut config = sys.config.clone();

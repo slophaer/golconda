@@ -11,3 +11,7 @@ license = "GPL-3.0-or-later"
 golconda-core = { path = "core" }
 serde_json = "1"
 toml_edit = "0.25"
+regex = { version = "1", default-features = false, features = [
+  "std",
+  "unicode-perl",
+] }
