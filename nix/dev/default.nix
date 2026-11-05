@@ -54,6 +54,15 @@ let
           options = [ "format" ];
           includes = [ "*.toml" ];
         };
+        # console/: the edition is the workspace's (console/Cargo.toml)
+        rust = {
+          command = "${pkgs.rustfmt}/bin/rustfmt";
+          options = [
+            "--edition"
+            "2024"
+          ];
+          includes = [ "*.rs" ];
+        };
       };
     };
   };
