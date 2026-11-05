@@ -191,8 +191,7 @@ definitions it renders from `updateSource`. The merge follows four rules:
 - List fields are concatenated.
 - `packages` is one list with each package once, and `packageOrigins` says which fragments brought
   it.
-- The symlinks of the packages' `bin` lists go into the same map as the fragments' own links, and
-  one duplicate check covers the whole map.
+- The fragments' links are one map, and one duplicate check covers the whole map.
 
 A module that returns several fragments unions them with the same `merge`, so a duplicate inside one
 module is the same error as one between modules. The output is the only thing the `/usr` tree

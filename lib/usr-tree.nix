@@ -3,6 +3,11 @@
 # usrTree { composerOutput; platform; version; buildSystem?; sbomDrv?; } → derivation
 # whose output IS the /usr tree:
 #   nix/store/<hash>-* for the runtime closure of composerOutput.packages
+#   bin/<name> = a symlink into nix/store for each executable of each package: the names
+#     in its exports.json `bin` (what bin/ holds after the build), or only the names it
+#     declares (`args.bin`) when it declares them. Read at build time: evaluation cannot see
+#     what a build installs. A name from two sources (two packages, or a package and a link)
+#     stops the build, and the message names the path and both sources.
 #   bin/, lib/, share/... = symlinks into nix/store (composerOutput.links; a link of kind
 #     "farm" names a directory, expanded file by file)
 #   sbin -> bin
@@ -13,7 +18,7 @@
 #     of composerOutput.packages, origins from composerOutput.origins.packages
 #   lib/golconda/attribution.json: composerOutput.origins without packages (files, links,
 #     units, sysusers, tmpfiles: key -> the origins that emitted it): which module put each
-#     path in the tree
+#     path in the tree; a bin/<name> link of a package has that package's origins
 #   files from composerOutput.files (paths are /usr/...; the /usr prefix is stripped)
 #
 # Cross-compilation: `buildSystem` is where the derivation runs (the build host);
@@ -138,19 +143,28 @@ in
         sysusers
         tmpfiles
         ;
-      # The files, and attribution.json: which fragment emitted each file, link, unit and line
-      files = composerOutput.files // {
-        "/usr/lib/golconda/attribution.json" = {
-          text = builtins.toJSON (builtins.removeAttrs (composerOutput.origins or { }) [ "packages" ]);
-          mode = "0644";
-        };
-      };
+      inherit (composerOutput) files;
+      origins = composerOutput.origins or { };
 
-      # The links map as a list of { path; target; kind; }, in path order
+      # attribution.json: which fragment emitted each file, link, unit and line; the
+      # builder adds the bin/ links of the packages
+      attribution = builtins.removeAttrs origins [ "packages" ];
+
+      # The links map as a list of { path; target; kind; origins; }, in path order
       links = map (path: {
         inherit path;
         inherit (composerOutput.links.${path}) target kind;
+        origins = origins.links.${path} or [ ];
       }) (attrNames composerOutput.links);
+
+      # bin/ links, one entry per package: the builder reads <path>/exports.json `bin`, or
+      # links only `declared` (what package.nix declares in `bin`) when it is not null
+      packageBins = map (p: {
+        package = merge.pkgKey p;
+        path = p.outPath;
+        declared = merge.declaredBin p;
+        origins = origins.packages.${merge.pkgKey p} or [ ];
+      }) roots;
 
       # packages.json: each package once, with the fragments that brought it
       # (composerOutput.packageOrigins); `path` keeps the store path's context
@@ -158,7 +172,7 @@ in
         name = p.pname or (p.name or "unknown");
         version = p.version or null;
         path = p.outPath;
-        origins = composerOutput.origins.packages.${merge.pkgKey p} or [ ];
+        origins = origins.packages.${merge.pkgKey p} or [ ];
       }) roots;
 
       epoch = versionToEpoch version;
@@ -203,6 +217,9 @@ in
 
       # Links as JSON-serializable records; kind "farm" is a directory to expand
       inherit links;
+
+      # The packages' bin/ links and the attribution they join
+      inherit packageBins attribution;
 
       # Files to write (path -> { text, mode })
       files = builtins.mapAttrs (path: v: {

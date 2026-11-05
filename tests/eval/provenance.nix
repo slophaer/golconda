@@ -1,6 +1,7 @@
 # Checks of provenance data: explicit per option, declaredIn, inputs and the attribution of packages and files.
 # A function of the harness (./harness.nix); it returns a list of checks.
 {
+  binsFor,
   check,
   compose,
   f,
@@ -139,8 +140,10 @@ in
     let
       o = (compose [ ]).origins;
     in
-    o.links."/usr/bin/systemctl" == [ "/base" ]
-    && o.links."/usr/lib/systemd/system/dbus.service" == [ "/base" ]
+    o.links."/usr/lib/systemd/system/dbus.service" == [ "/base" ]
+    # /usr/bin/systemctl: the usr tree builder writes it into attribution.json with the
+    # origins of its package (tests/usr-tree/builder.py)
+    && map (b: b.origins) (binsFor [ ] stubSystemd) == [ [ "/base" ] ]
     && o.links."/usr/lib/systemd" == [ "/base" ]
     && o.files."/usr/lib/sysctl.d/50-golconda.conf" == [ "/security" ]
   ))

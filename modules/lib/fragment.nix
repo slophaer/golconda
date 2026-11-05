@@ -124,14 +124,12 @@ let
       ) null (attrNames v)
   );
 
-  # What a symlink in the /usr farm is for. `package`: /usr/bin/<name> from a
-  # package's `bin` list (the composer derives these); `farm`: the target is a
+  # What a symlink in the /usr farm is for. `farm`: the target is a
   # directory the image builder links file by file (lib/udev/rules.d of a
   # package compiled with prefix /usr); `dlopen`: a soname systemd opens by
   # name, which the builder checks resolves; `explicit`: anything else, such
   # as a .wants link with a relative target.
   linkKind = enum "linkKind" [
-    "package"
     "farm"
     "dlopen"
     "explicit"
@@ -152,7 +150,7 @@ let
   );
 
   # One symlink: its target and kind; the path under /usr is the key in `links`.
-  #   "/usr/bin/sshd" = { target = "<store>/bin/sshd"; kind = "package"; };
+  #   "/usr/bin/sh" = { target = "<dash>/bin/dash"; kind = "explicit"; };
   #   "/usr/lib/systemd/system/multi-user.target.wants/sshd.service" =
   #     { target = "../sshd.service"; kind = "explicit"; };
   link =
@@ -194,7 +192,8 @@ let
     sysusers = optionalAttr (listOf string);
     # systemd-tmpfiles lines
     tmpfiles = optionalAttr (listOf string);
-    # closure roots that go into /usr/nix/store; their `bin` lists become /usr/bin links
+    # closure roots that go into /usr/nix/store; the image builder links their
+    # executables into /usr/bin (lib/usr-tree.nix)
     packages = optionalAttr (listOf derivation);
     # path under /usr -> { target; kind; }: the symlinks of the farm (.wants, a
     # directory to expand, a dlopen soname); the composer refuses a path with two sources

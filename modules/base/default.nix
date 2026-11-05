@@ -31,7 +31,7 @@
 #! differs; `systemd-boot-update.service` is turned off by a drop-in
 #! (docs/design/bootloader.md).
 #!
-#! Links, besides the `/usr/bin` links of the packages' `bin` lists:
+#! Links, besides the `/usr/bin` links the image builder makes for the packages:
 #! - farm links for systemd's own directories (`/usr/lib/systemd`,
 #!   `/usr/lib/udev`, `/usr/lib/sysusers.d`, `/usr/lib/tmpfiles.d`);
 #! - dlopen links: every soname systemd opens at run time, in `/usr/lib`;

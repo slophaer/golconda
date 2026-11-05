@@ -29,11 +29,9 @@ what systemd, PAM, sshd and `dlopen` address by absolute path:
 
 ### The symlink map
 
-The composer outputs every symlink of `/usr` as one map, path → `{ target; kind; }`, and the `/usr`
+The composer outputs the symlinks of `/usr` as one map, path → `{ target; kind; }`, and the `/usr`
 tree builder makes them:
 
-- **`package`**: `/usr/bin/<name>`, one per entry in a package's `bin` list; derived from
-  `packages`.
 - **`farm`**: a directory expanded file by file, for a package compiled with `prefix = "/usr"`
   ([Packaging](packaging.md#prefixed-packages)):
   `"/usr/lib/udev/rules.d" = { target = "${systemd}/lib/udev/rules.d"; kind = "farm"; }`.
@@ -42,8 +40,14 @@ tree builder makes them:
 - **`explicit`**: anything else, such as `/usr/bin/sh` → dash and the `.wants` links below.
 
 One rule covers the map: a path with two sources is an error naming both, whatever their kinds, and
-a link and a file at one path is an error too. Everything else stays reachable only through
-`/usr/nix/store`.
+a link and a file at one path is an error too.
+
+`/usr/bin/<name>` for a package's executables is not in the map, because evaluation cannot see what
+a build installs. The builder reads each package's `exports.json` and links every name in its `bin`
+(what `bin/` holds after the build). A package that declares `bin` in its `package.nix` gets only
+those names, and each must be in `exports.json`. The same rule holds there: a name from two
+packages, or from a package and a link of the map, stops the build, and the message names the path
+and both sources. Everything else stays reachable only through `/usr/nix/store`.
 
 ### Unit enablement
 

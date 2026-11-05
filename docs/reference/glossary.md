@@ -43,7 +43,8 @@
 - **launcher**: a repkgs `launch` record, a small program that runs another with fixed arguments and
   environment. Used for developer tools shipped to other hosts, not for services.
 - **link**: one symlink of `/usr` in a fragment's `links` map: `{ target; kind; }` under its path;
-  the kind (`package`, `farm`, `dlopen`, `explicit`) tells the builder what to do with it.
+  the kind (`farm`, `dlopen`, `explicit`) tells the builder what to do with it. A package's
+  `/usr/bin` links are not links of a fragment: the builder makes them from its `exports.json`.
 - **`/local`**: the module path of the `modules/` directory beside the document; its modules are
   selected by their table like any optional module ([Configuration](config.md#your-own-modules)).
 - **PCR**: a TPM Platform Configuration Register; PCR 11 holds the UKI measurements.

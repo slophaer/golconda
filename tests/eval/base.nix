@@ -1,12 +1,14 @@
 # Checks of /base: the built-in base system and the drop-ins for units the systemd farm ships.
 # A function of the harness (./harness.nix); it returns a list of checks.
 {
+  binsFor,
   check,
   compose,
   hasInfix,
   hasPrefix,
   stubCacert,
   stubSet,
+  stubSystemd,
   stubTzdata,
   ...
 }:
@@ -88,9 +90,10 @@ in
     && result.links."/usr/lib/systemd".kind == "farm"
     && result.links ? "/usr/lib/udev"
     && result.links."/usr/lib/udev".kind == "farm"
-    # mount units and fsck exec these by bare name; systemd-tmpfiles from the bin list of the fork's systemd
+    # mount units and fsck exec these by bare name; systemd-tmpfiles from the bin list of the
+    # fork's systemd, which the usr tree builder links
     && result.links."/usr/bin/mount".kind == "explicit"
-    && result.links."/usr/bin/systemd-tmpfiles".kind == "package"
+    && map (b: elem "systemd-tmpfiles" b.declared) (binsFor [ ] stubSystemd) == [ true ]
   ))
   (check "base: dlopen link for libsystemd.so.0" (
     let

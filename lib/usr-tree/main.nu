@@ -3,8 +3,13 @@
 # Called by the Nix derivation with structured attrs:
 #   closure: reference graph of the packages
 #   roots: list of store paths (the packages)
-#   links: list of { path, target, kind } for symlinks; kind "farm" names a directory
-#     to expand file by file, kind "dlopen" is verified to resolve
+#   links: list of { path, target, kind, origins? } for symlinks; kind "farm" names a
+#     directory to expand file by file, kind "dlopen" is verified to resolve
+#   packageBins: list of { package, path, declared, origins }, one per package: bin/<name>
+#     links for each name in <path>/exports.json `bin`, or only the `declared` names
+#     (args.bin) when the package declares them
+#   attribution: { files, links, ... } for lib/golconda/attribution.json; the bin/ links
+#     are added here, with their package's origins
 #   files: attrset of path -> { text, mode, dest }
 #   units: attrset of name -> text
 #   sysusers, tmpfiles: lists of lines
@@ -99,6 +104,32 @@ def guard-write [out: string, rel: string, source: string] {
   if ($dest | path exists -n) { conflict $rel $source $dest }
 }
 
+# " from /a, /b" for an error message, or "" when the origins are not known
+def from-origins [origins: list<string>]: nothing -> string {
+  if ($origins | is-empty) { "" } else { $" from ($origins | str join ', ')" }
+}
+
+# The executable names one package puts in /usr/bin: its exports.json `bin` (what bin/
+# holds after the build, no hidden launchers), or only the names it declares (args.bin).
+# A declared name must be in exports.json too. A derivation repkgs did not build (a
+# signed loader, a keyring) has no exports.json and no args: it puts nothing there.
+export def package-bin-names [pkg: record]: nothing -> list<string> {
+  let exports = $"($pkg.path)/exports.json"
+  if not ($exports | path exists) {
+    if $pkg.declared != null {
+      error make {msg: $"golconda: package ($pkg.package) declares bin ($pkg.declared | str join ', ') but has no exports.json at ($exports)"}
+    }
+    return []
+  }
+  let built = (open $exports | get -o bin | default [])
+  if $pkg.declared == null { return $built }
+  let missing = ($pkg.declared | where { $in not-in $built })
+  if ($missing | is-not-empty) {
+    error make {msg: $"golconda: package ($pkg.package) declares bin ($missing | str join ', '), which its exports.json bin does not list: [($built | str join ', ')]"}
+  }
+  $pkg.declared
+}
+
 # Main entry point
 export def build [] {
   let attrs = (attrs)
@@ -164,6 +195,32 @@ export def build [] {
       if $got != $want {
         error make {msg: $"link ($path) -> ($target) resolves to ($got), not ($want)"}
       }
+    }
+  }
+
+  # Step 3b: /usr/bin/<name> for the executables of each package (package-bin-names). A
+  # name from two sources stops the build and names both: two packages, or a package and
+  # a link of step 3. Duplicates are errors, never overrides.
+  log $"linking the executables of ($attrs.packageBins | length) packages..."
+  mut bin_claims = ($plain_links | where { ($in.path | path dirname) == "/usr/bin" }
+    | reduce -f {} {|l, acc| $acc | upsert $l.path $"($l.kind) link to ($l.target)(from-origins ($l.origins? | default []))" })
+  mut bin_links = []
+  for pkg in $attrs.packageBins {
+    let what = $"package ($pkg.package)(from-origins $pkg.origins)"
+    for name in (package-bin-names $pkg) {
+      let path = $"/usr/bin/($name)"
+      let first = ($bin_claims | get -o $path)
+      if $first != null {
+        error make {msg: $"golconda: ($path) defined twice: ($first), ($what)"}
+      }
+      let target = $"($pkg.path)/bin/($name)"
+      if not ($target | path exists) {
+        error make {msg: $"golconda: package ($pkg.package) lists ($name) in bin, but ($target) does not exist"}
+      }
+      guard-write $out $"bin/($name)" $"($what) link from ($target)"
+      ^ln -s (make-relative $path $target) $"($out)/bin/($name)"
+      $bin_claims = ($bin_claims | upsert $path $what)
+      $bin_links = ($bin_links | append {path: $path, origins: $pkg.origins})
     }
   }
 
@@ -269,6 +326,17 @@ export def build [] {
   | each {|p| if $p.version == null { $p | reject version } else { $p } }
   | to json
   | save $"($out)/lib/golconda/packages.json"
+
+  # Step 10a: Write lib/golconda/attribution.json: the composer's origins, and the bin/
+  # links of step 3b with their package's origins
+  log "writing lib/golconda/attribution.json"
+  guard-write $out "lib/golconda/attribution.json" "generated attribution"
+  mut links_origins = ($attrs.attribution | get -o links | default {})
+  for l in $bin_links { $links_origins = ($links_origins | upsert $l.path $l.origins) }
+  let attribution = if ($bin_links | is-empty) { $attrs.attribution } else {
+    $attrs.attribution | upsert links ($links_origins | sort)
+  }
+  $attribution | to json | save $"($out)/lib/golconda/attribution.json"
 
   # Step 10b: Copy SBOM if one was provided
   if $attrs.sbomPath != null {

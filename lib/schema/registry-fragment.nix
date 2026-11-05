@@ -52,7 +52,7 @@
           type = "string";
           "x-golconda" = "package";
         };
-        description = "Closure roots that go into /usr/nix/store; their bin lists become /usr/bin links.";
+        description = "Closure roots that go into /usr/nix/store; the image builder links the executables of each into /usr/bin.";
       };
       links = {
         "$ref" = "#/$defs/links";
@@ -143,9 +143,8 @@
   };
 
   linkKind = {
-    description = "What a link is for: package (`/usr/bin/<name>` from a bin list, derived by the composer), farm (a directory the image builder expands file by file), dlopen (a soname the builder checks resolves) or explicit (.wants and the like).";
+    description = "What a link is for: farm (a directory the image builder expands file by file), dlopen (a soname the builder checks resolves) or explicit (.wants and the like).";
     enum = [
-      "package"
       "farm"
       "dlopen"
       "explicit"

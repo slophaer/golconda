@@ -7,6 +7,8 @@
   fixturePkgs,
   hasInfix,
   hasPrefix,
+  merge,
+  mkSystemFixture,
   sshd,
   sshdConfig,
   sshdDir,
@@ -23,7 +25,16 @@ let
     any
     attrNames
     elem
+    head
     ;
+
+  # the usr tree's /usr/bin entry for openssh (lib/usr-tree.nix packageBins): the builder
+  # links its declared bin names
+  opensshBins = head (
+    builtins.filter (
+      b: b.package == merge.pkgKey fixturePkgs.openssh
+    ) mkSystemFixture.usrTree.packageBins
+  );
 
   # 1a. sshd with certificates: a user CA, principals, a KRL and a host certificate
   # a component enters by its table (lib/components.nix)
@@ -49,11 +60,10 @@ in
   (check "sshd: credential ref renders as %d" (hasInfix " -h %d/sshd-hostkey.key" unit))
   (check "sshd: ExecStart is the program from the farm with its config and credential" (
     hasInfix "\nExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config -h %d/sshd-hostkey.key\n" unit
-    &&
-      system.links."/usr/bin/sshd" == {
-        target = "${fixturePkgs.openssh}/bin/sshd";
-        kind = "package";
-      }
+    # the image builder links /usr/bin/sshd: openssh declares it in bin
+    && elem "sshd" opensshBins.declared
+    && opensshBins.path == fixturePkgs.openssh.outPath
+    && opensshBins.origins == [ "/services/sshd" ]
   ))
   (check "sshd: the configuration is under /usr/lib/sshd, mode 0644" (
     builtins.filter (hasPrefix "${sshdDir}/") (attrNames system.files) == [
@@ -75,8 +85,7 @@ in
     }
   ))
   (check "sshd: the package's other tools are in the farm" (
-    system.links."/usr/bin/ssh-keygen".target == "${fixturePkgs.openssh}/bin/ssh-keygen"
-    && system.links ? "/usr/bin/ssh"
+    elem "ssh-keygen" opensshBins.declared && elem "ssh" opensshBins.declared
   ))
   (check "sshd: valid options compose (sshdThrows has teeth)" (
     !(sshdThrows { }) && !(sshdThrows { port = 2222; })
