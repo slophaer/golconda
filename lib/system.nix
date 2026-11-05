@@ -7,7 +7,7 @@
 #   config;     # config.json: module path -> option -> { value?; explicit; }, for every
 #               # included component and /system
 #   inventory;  # module path -> { role; inputs; included?; reason?; } (lib/components.nix)
-#   fragments;  # the names of the build's own fragments: /image/hwdb and extraFragments
+#   fragments;  # the names of the build's own fragments (extraFragments)
 #   packages;   # the downstream packages: name -> { replaces; } ("golconda", "repkgs" or null)
 #               # modules.json is { modules = inventory; fragments; packages; }
 #   artifacts;  # the files mkSystem adds to /usr/lib/golconda/
@@ -134,30 +134,18 @@ let
   inventory = componentsLib.inventory (tree { }) mergedOptions;
   # The image's own fragments, each named: modules.json lists them beside the modules, so
   # the image is the selected components plus these, nothing else.
-  imageFragments = [ hwdbFragment ] ++ extraFragments;
   fragments = map (
     fr:
     fr.name or (throw "golconda: mkSystem extraFragments: every fragment needs a `name`, its origin")
-  ) imageFragments;
+  ) extraFragments;
 
-  # /usr/lib/udev/hwdb.bin, compiled at build time by the build host's systemd-hwdb from the
-  # target's sources (lib/image/hwdb.nix): the image has no writable place for it before udev runs
-  imageLib = import ./image { };
-  hwdbFragment = imageLib.hwdbFragment {
-    hwdb = imageLib.hwdb {
-      buildSystem = system;
-      tool = setFull.set.buildPkgs.systemd;
-      inherit (setFull.pkgs) systemd;
-    };
-  };
   # The system options from the config (name, version, fragments, updateSource).
 
-  # The composed system: /system with the selected components, the hwdb and the
-  # listed fragments.
+  # The composed system: /system with the selected components and the listed fragments.
   composedRaw = componentsLib.compose {
     modules = tree;
     options = mergedOptions;
-    extraFragments = imageFragments;
+    inherit extraFragments;
   };
 
   # Reading the name forces the option types, including the image-id and transfer-path rules.

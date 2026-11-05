@@ -8,7 +8,8 @@
 #! has no bash), uutils-coreutils, tpm2-tss (only systemd's dlopen reaches
 #! it), e2fsprogs (mkfs.ext4 and fsck.ext4 for the root partition systemd-repart
 #! makes at first boot), cacert (Mozilla's roots, one bundle), tzdata
-#! (/usr/share/zoneinfo) and the kernel (consumed later by the UKI builder).
+#! (/usr/share/zoneinfo), hwdb (systemd's hardware database, compiled, at
+#! /usr/lib/udev/hwdb.bin) and the kernel (consumed later by the UKI builder).
 #! No GNU coreutils.
 #!
 #! Units enabled: dbus.socket (wanted by sockets.target), dbus-broker.service
@@ -172,6 +173,7 @@ in
         p.e2fsprogs # mkfs.ext4 and fsck.ext4: repart makes the root partition at first boot
         p.cacert # the one CA bundle: /usr/share/ca-certificates/ca-bundle.crt
         p.tzdata # the zone database: /usr/share/zoneinfo
+        p.hwdb # the compiled hardware database: /usr/lib/udev/hwdb.bin
         p.linux-kernel # kernel; UKI builder consumes it
       ];
 

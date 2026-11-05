@@ -33,7 +33,7 @@ flag, and no other route in: a downstream repository adds a module, never a bare
 like `/services/sshd`, with typed options, a schema entry and a table that selects it. The optional
 `[golconda]` table names another directory (`modules = "site"`). `/usr/lib/golconda/modules.json`
 therefore lists every module in the image, with why, and the build's own named fragments
-(`/image/hwdb`) ([Modules](modules.md#which-modules-a-system-has)).
+(`/image/loader`, `/image/index`) ([Modules](modules.md#which-modules-a-system-has)).
 
 The entry point that applies this rule is `lib/system.nix`: `mkSystem ./server.toml` (or
 `mkSystem { config; platform?; }`) takes the document, binds the package set of the platform,

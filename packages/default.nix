@@ -33,6 +33,8 @@
   popt = ./popt;
   e2fsprogs = ./e2fsprogs;
   btrfs-progs = ./btrfs-progs;
+  # the compiled hardware database udev reads (/base links it)
+  hwdb = ./hwdb;
   # build-time: the /usr image, the ESP and the UKI
   erofs-utils = ./erofs-utils;
   dosfstools = ./dosfstools;

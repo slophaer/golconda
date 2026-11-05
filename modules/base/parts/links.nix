@@ -1,7 +1,7 @@
 # Part of /base (modules/base/default.nix merges it): the /usr links into the
 # packages. /usr/bin/sh, the util-linux and e2fsprogs tools, systemd's farm
-# directories, the dlopen sonames, the PAM module directories, the CA bundle and
-# the zone database, and the tmpfiles lines that link the CA bundle from /etc.
+# directories, the dlopen sonames, the PAM module directories, the CA bundle, the
+# zone database, the compiled hwdb, and the tmpfiles lines that link the CA bundle from /etc.
 # `p` is the package set. Returns { links; tmpfiles; }.
 { p }:
 let
@@ -30,6 +30,16 @@ let
   zoneinfoLinks = {
     "/usr/share/zoneinfo" = {
       target = "${p.tzdata}/share/zoneinfo";
+      kind = "explicit";
+    };
+  };
+
+  # The compiled hardware database (packages/hwdb). systemd ships no hwdb.bin, so this
+  # file sits beside the lib/udev farm without a clash. A file, not a directory link:
+  # /usr/lib/udev is systemd's farm.
+  hwdbLinks = {
+    "/usr/lib/udev/hwdb.bin" = {
+      target = "${p.hwdb}/lib/udev/hwdb.bin";
       kind = "explicit";
     };
   };
@@ -158,7 +168,14 @@ let
 in
 {
   links =
-    shLinks // toolLinks // farmLinks // dlopenLinks // pamLinks // caBundleLinks // zoneinfoLinks;
+    shLinks
+    // toolLinks
+    // farmLinks
+    // dlopenLinks
+    // pamLinks
+    // caBundleLinks
+    // zoneinfoLinks
+    // hwdbLinks;
 
   # /etc is created by tmpfiles at boot, and an admin file at either path wins (L, not L+)
   tmpfiles = caBundleTmpfiles;
