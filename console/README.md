@@ -60,6 +60,11 @@ any, and restarts each consumer once. Rotation is `set` and `push` again. `age` 
 `ssh` are programs on the deploy host: `GOLCONDA_AGE` and `GOLCONDA_SSH` replace them, with
 arguments.
 
+A pushed value goes to whichever machine answers for the host name: ssh's own host-key check is what
+makes it the right one. Keep it on (`known_hosts`, or step-ca host certificates with a
+`@cert-authority` line), and never give `GOLCONDA_SSH` an option that turns it off, such as
+`StrictHostKeyChecking=no`.
+
 An option is a module path and an option path inside it, dotted below the first level. iets comes
 from PATH, or `GOLCONDA_IETS`. The document must be inside a Golconda checkout (a directory above it
 has `lib/system.nix`): evaluation is pure and reads files under the checkout only.

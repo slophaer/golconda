@@ -66,6 +66,35 @@ pub fn word(s: &str) -> Result<&str> {
     }
 }
 
+/// A unit name as Golconda's grammar has it (modules/lib/fragment.nix unitName): letters, digits
+/// and `: _ . @ -`, not first a dash, and a unit suffix. Consumers become words of a command on
+/// the machine's shell.
+pub fn unit(s: &str) -> Result<&str> {
+    let suffix = [
+        ".service", ".target", ".socket", ".timer", ".path", ".mount", ".slice",
+    ]
+    .iter()
+    .any(|x| s.len() > x.len() && s.ends_with(x));
+    let ok = suffix
+        && !s.starts_with('-')
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, ':' | '_' | '.' | '@' | '-'));
+    if ok {
+        Ok(s)
+    } else {
+        err(format!("'{s}' is not a unit name"))
+    }
+}
+
+/// A name to write `file` through in `dir`: one of its own for every call, so two `set` at
+/// once do not share it.
+fn temporary(dir: &Path, file: &str) -> PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static N: AtomicU64 = AtomicU64::new(0);
+    let n = N.fetch_add(1, Ordering::Relaxed);
+    dir.join(format!(".{file}.tmp-{}-{n}", std::process::id()))
+}
+
 /// The manifests in `text`: the concatenated JSON documents `cat vars.d/*.json` prints.
 pub fn parse_manifests(text: &str) -> Result<Vec<Manifest>> {
     let strings = |v: &Value, key: &str| -> Result<Vec<String>> {
@@ -91,11 +120,15 @@ pub fn parse_manifests(text: &str) -> Result<Vec<Manifest>> {
         for f in &files {
             word(f)?;
         }
+        let consumers = strings(&v, "consumers")?;
+        for c in &consumers {
+            unit(c)?;
+        }
         out.push(Manifest {
             name,
             class,
             files,
-            consumers: strings(&v, "consumers")?,
+            consumers,
         });
     }
     Ok(out)
@@ -199,7 +232,7 @@ impl Store {
         }
         let dir = path.parent().expect("a file in a directory");
         std::fs::create_dir_all(dir).map_err(|e| Error(format!("{}: {e}", dir.display())))?;
-        let tmp = dir.join(format!(".{}.tmp", word(file)?));
+        let tmp = temporary(dir, word(file)?);
         let (r, t) = (recipients.to_string_lossy(), tmp.to_string_lossy());
         self.age.run(&["-e", "-R", &r, "-o", &t], Some(value))?;
         std::fs::rename(&tmp, &path).map_err(|e| Error(format!("{}: {e}", path.display())))?;
@@ -509,6 +542,33 @@ esac
         assert!(parse_manifests(r#"{"class":"x","name":"a","files":[]}"#).is_err());
         assert!(parse_manifests(r#"{"class":"admin","name":"../a","files":[]}"#).is_err());
         assert!(parse_manifests("{").is_err());
+    }
+
+    #[test]
+    fn consumers_are_unit_names() {
+        let with = |c: &str| {
+            parse_manifests(&format!(
+                r#"{{"class":"admin","consumers":[{c}],"files":["f"],"name":"a"}}"#
+            ))
+        };
+        assert!(with(r#""sshd.service", "getty@tty1.service", "a:b-c_d.socket""#).is_ok());
+        // they become words of `systemctl try-restart` on the machine's shell
+        for bad in [
+            r#""x; reboot""#,
+            r#""$(id).service""#,
+            r#""-H.service""#,
+            r#""""#,
+            r#""sshd""#,
+        ] {
+            assert!(with(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn each_set_writes_through_a_name_of_its_own() {
+        let dir = Path::new("/v/web1/c");
+        assert_ne!(temporary(dir, "cert"), temporary(dir, "cert"));
+        assert_eq!(temporary(dir, "cert").parent(), Some(dir));
     }
 
     #[test]
