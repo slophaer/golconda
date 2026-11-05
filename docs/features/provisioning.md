@@ -73,8 +73,8 @@ The boot test proves this in QEMU ([What is proven](../proven.md)):
 
 - [Boot: Bootstrap credentials](../design/boot.md#bootstrap-credentials) and
   [First boot](../design/boot.md#first-boot).
-- [Hetzner Cloud](../reference/hetzner-cloud.md#4-the-machines-credentials): the ESP route end to
-  end.
+- [Hetzner Cloud](../reference/hetzner-cloud.md#4-the-machines-credentials) *(planned)*: the ESP
+  route end to end.
 - [Image artifacts](../reference/image.md): the `--esp-creds` test.
 - [Trust: Secrets and vars](../design/trust.md#secrets-and-vars).
 - [Login by ssh](ssh-login.md).

@@ -48,7 +48,7 @@ scripts/provision-esp disk.raw --hostname web1 --authorized-keys admin.pub
 ```
 
 `ssh.authorized_keys.root` is the second credential. The first boot reads both. The
-[Hetzner page](../reference/hetzner-cloud.md) uses the ESP route. The
+[Hetzner page](../reference/hetzner-cloud.md) *(planned)* uses the ESP route. The
 [Walkthrough](../reference/walkthrough.md) goes from `examples/server.toml` to a booted machine.
 
 ## Status

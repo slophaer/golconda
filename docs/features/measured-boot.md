@@ -39,7 +39,8 @@ scripts/make-keys /srv/golconda-keys
 }
 ```
 
-Then enrol `secureboot/db.crt` in the firmware. For a host with no Secure Boot, such as Hetzner:
+Then enrol `secureboot/db.crt` in the firmware. For a host with no Secure Boot, such as Hetzner
+*(planned)*:
 
 ```toml
 ["/system"]
@@ -47,7 +48,8 @@ secureBoot = false
 ```
 
 `lib.mkImage` is required for that mode. The procedure is in
-[Making a release](../reference/release.md) and the [Hetzner page](../reference/hetzner-cloud.md).
+[Making a release](../reference/release.md) and the [Hetzner page](../reference/hetzner-cloud.md)
+*(planned)*.
 
 ## Status
 
