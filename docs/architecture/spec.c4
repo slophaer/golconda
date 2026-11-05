@@ -1,0 +1,86 @@
+// The C4 vocabulary of the Golconda model. LikeC4 ships no C4 kinds, so each
+// kind is declared here with a notation, and the legend reads as C4.
+
+specification {
+  element person {
+    notation "Person"
+    style {
+      shape person
+      color green
+    }
+  }
+  element system {
+    notation "Software System"
+    style {
+      color primary
+    }
+  }
+  element container {
+    notation "Container: a process or program that must run"
+    style {
+      color blue
+    }
+  }
+  element datastore {
+    notation "Container: a data store (a file, a partition, a directory)"
+    style {
+      shape storage
+      color indigo
+    }
+  }
+  element component {
+    notation "Component: a part inside one container"
+    style {
+      shape component
+      color sky
+    }
+  }
+  element content {
+    notation "Content: a part of a data store, with one origin"
+    style {
+      shape document
+      color slate
+    }
+  }
+
+  deploymentNode environment {
+    notation "Environment"
+    style {
+      color gray
+    }
+  }
+  deploymentNode host {
+    notation "Machine (physical or virtual)"
+    style {
+      color gray
+    }
+  }
+  deploymentNode disk {
+    notation "Disk partition"
+    style {
+      color slate
+    }
+  }
+
+  // A relationship that does not exist yet: drawn dotted.
+  relationship planned {
+    notation "Planned relationship"
+    line dotted
+    color muted
+  }
+
+  // Not built yet: designed in docs/design or ~/kb, marked (planned) or (after v1).
+  tag planned
+  // Owned by someone else: an upstream project, a vendor, the hosting platform.
+  tag external
+  // A module of the adios tree in modules/.
+  tag module
+  // A fragment the build adds itself, not a module (lib/image/*Fragment, modules.json "fragments").
+  tag buildfragment
+  // A file the build writes directly, outside any fragment.
+  tag buildwritten
+  // On the build host.
+  tag buildside
+  // On the server.
+  tag machineside
+}

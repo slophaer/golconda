@@ -1,0 +1,119 @@
+// The /usr image and where each part of it comes from: a module's fragment,
+// a fragment the build adds itself (not a module), or a file the build
+// writes directly. /usr/lib/golconda/attribution.json records the same origins
+// on the image; modules.json lists the build's fragments under "fragments".
+// Sources: docs/reference/image.md (/usr tree), docs/design/layout.md,
+// lib/system.nix, lib/usr-tree.nix, lib/image/{loader,index}.nix, packages/hwdb.
+
+model {
+  extend golconda {
+    usr = datastore "/usr image" {
+      #buildside #machineside
+      description """
+        The operating system: erofs under dm-verity, signed root hash. Built once,
+        written to slot A of the disk or to the inactive slot by an update, and
+        mounted read-only by `usrhash=`. Holds no per-machine value.
+      """
+      technology "erofs (lz4hc), dm-verity, PKCS#7 root-hash signature"
+
+      // -- from module fragments (the composer's maps) --
+      store = content "Store closure" {
+        description "`/usr/nix/store/<hash>-*`: the runtime closure of every fragment's `packages`, relocatable, so no path is absolute."
+        technology "/usr/nix/store"
+      }
+      farm = content "Symlink farm" {
+        description "`/usr/bin`, `/usr/lib`, `/usr/share`: relative links into the store, one map keyed by path with kind package, farm, dlopen or explicit."
+        technology "symlinks"
+      }
+      units = content "Units and enable links" {
+        description "`/usr/lib/systemd/system/*` and static `.wants` / `.requires` links; enablement needs no first-boot step."
+        technology "systemd unit files"
+      }
+      sysconf = content "System configuration" {
+        description "`sysusers.d`, `tmpfiles.d`, `sysctl.d`, `systemd/network`, `/usr/lib/sshd/`, the timesyncd and journald drop-ins."
+        technology "systemd and sshd configuration files"
+      }
+      transfers = content "sysupdate transfers" {
+        description "`/usr/lib/sysupdate.d/10-usr.transfer` and the three others, `Path=` from `/system.updateSource`, `Verify=yes`; absent when the source is null."
+        technology "systemd-sysupdate .transfer files"
+      }
+      repartdef = content "Root partition definition" {
+        description "`/usr/lib/repart.d/30-root.conf`: ext4, `GrowFileSystem=`, `FactoryReset=`, the directories made inside."
+        technology "systemd-repart .conf"
+      }
+      factoryetc = content "/etc seed" {
+        description "`/usr/share/factory/etc`: `pam.d`, `ssl/` and the other seed files that tmpfiles links into `/etc`."
+        technology "files, tmpfiles L lines"
+      }
+      scripts = content "Golconda scripts" {
+        description "`golconda-var-run`, `golconda-etc-links`, `golconda-loader-update`, and `/usr/lib/golconda/loader.conf`."
+        technology "dash scripts"
+      }
+
+      hwdb = content "hwdb.bin" {
+        description """
+          `/usr/lib/udev/hwdb.bin`: the compiled hardware database (PCI and USB names,
+          DMI, IMDS, TPM2, interface naming), from the package `packages/hwdb`, which
+          the build machine's systemd-hwdb compiles from the target systemd's `hwdb.d`.
+          udev and networkd read only the compiled file; without it every hwdb lookup
+          fails silently, and `systemd-hwdb-update.service` would write it to `/etc`.
+        """
+        technology "systemd hwdb, binary, about 8 MB"
+      }
+
+      // -- from the build's own fragments (not modules) --
+      bootloader = content "Signed systemd-boot" {
+        #buildfragment
+        description "`/usr/lib/systemd/boot/efi/systemd-boot<arch>.efi.signed`: the same file the disk step puts on the ESP; the loader update copies it from here."
+        technology "UEFI PE, Secure Boot signature"
+      }
+      pubring = content "Release keyring and GnuPG" {
+        #buildfragment
+        description "`/usr/lib/systemd/import-pubring.pgp` (the release key only; systemd's vendor keyring is dropped) and the gpg that systemd-pull runs."
+        technology "OpenPGP keyring, GnuPG 2.4"
+      }
+
+      // -- written by the build directly, outside any fragment --
+      osrelease = content "os-release" {
+        #buildwritten
+        description "`/usr/lib/os-release`: `ID=` the image id, the version, the architecture. Rendered from image/os-release.nix."
+        technology "os-release(5)"
+      }
+      inventory = content "Configuration and SBOM data" {
+        #buildwritten
+        description "`/usr/lib/golconda/{config,schema,modules,sbom}.json`: the normalized options, the schema, the module and fragment inventory, the CycloneDX SBOM."
+        technology "JSON, JSON Schema 2020-12, CycloneDX 1.5"
+      }
+      attribution = content "Attribution data" {
+        #buildwritten
+        description "`/usr/lib/golconda/packages.json` and `attribution.json`: which fragment brought each package, file, link, unit and line."
+        technology "JSON"
+      }
+    }
+
+    // ---- who writes each part ----
+
+    evaluation.composer -> usr.store "lists the closure roots of"
+    evaluation.composer -> usr.farm "maps every link of"
+    evaluation.composer -> usr.transfers "renders"
+    evaluation.mbase -> usr.units "writes the core units and health units of"
+    evaluation.msshd -> usr.units "writes sshd.service and its var unit into"
+    evaluation.mnetwork -> usr.sysconf "writes the networkd files of"
+    evaluation.msecurity -> usr.sysconf "writes the sysctl file of"
+    evaluation.msshd -> usr.sysconf "writes sshd_config into"
+    evaluation.mbase -> usr.repartdef "writes"
+    evaluation.mbase -> usr.hwdb "links the hwdb package's compiled database as"
+    evaluation.mfactory -> usr.factoryetc "writes"
+    evaluation.mbase -> usr.scripts "installs the etc-links and loader-update scripts of"
+    evaluation.mvars -> usr.scripts "installs the var runner of"
+
+    evaluation.floader -> usr.bootloader "links"
+    evaluation.findex -> usr.pubring "links"
+    imagechain.loaderstep -> usr.bootloader "signs"
+    imagechain.indexkeyring -> usr.pubring "builds the keyring of"
+
+    usrtreebuilder -> usr.osrelease "writes"
+    usrtreebuilder -> usr.attribution "writes"
+    evaluation.sbomgen -> usr.inventory "writes"
+  }
+}

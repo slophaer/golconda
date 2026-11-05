@@ -1,0 +1,278 @@
+// Machine side: what runs on a Golconda server, from firmware to sshd.
+// Sources: docs/design/{boot,bootloader,updates,trust,layout,kernel,recovery}.md,
+// modules/base, modules/services/sshd, modules/vars.
+
+model {
+  extend golconda {
+
+    // ---- data stores on the disk ----
+
+    esp = datastore "EFI System Partition (ESP)" {
+      #machineside
+      description """
+        `EFI/systemd/` and `EFI/BOOT/` (signed systemd-boot), `EFI/Linux/<id>_<version>+3-0.efi`
+        (one UKI per slot, with its boot counter), `loader/loader.conf` (`timeout 0`,
+        `editor no`), optional `loader/credentials/*.cred`. Unencrypted and unsigned
+        apart from the PE files.
+      """
+      technology "FAT, 512 MiB, mounted at /boot by gpt-auto"
+    }
+
+    state = datastore "State partition" {
+      #machineside
+      description """
+        The root partition, made on first boot and grown to the disk: `/etc` (links
+        into the factory, admin files win), `/var` (service state, vars), `/home`,
+        `/root`, `/etc/credstore.encrypted`. Unencrypted in v1.
+      """
+      technology "ext4, GPT root type, FactoryReset=yes"
+    }
+
+    luks = datastore "Encrypted state (after v1)" {
+      #machineside #planned
+      description "(after v1) The same partition as LUKS2, unlocked in the initrd by a key sealed to the PCR 11 policy."
+      technology "LUKS2, TPM2"
+    }
+
+    // ---- boot chain ----
+
+    sdboot = container "systemd-boot" {
+      #machineside
+      description "Picks the newest UKI, decrements its `+N-M` counter, and falls back to the other entry after three failed tries."
+      technology "UEFI application, systemd 262, signed with the db key"
+    }
+
+    kernel = container "Linux kernel" {
+      #machineside
+      description """
+        6.18 LTS, monolithic (no modules), built with LLVM. IPE enforces \"execute only
+        from a dm-verity volume with a verified signature\"; lockdown=integrity, Yama.
+        Checks the verity signature against the platform keyring (the firmware `db`),
+        or its built-in key when Secure Boot is off.
+      """
+      technology "Linux 6.18, IPE, dm-verity, inside the UKI with systemd-stub"
+    }
+
+    initrd = container "initrd" {
+      #machineside
+      description "systemd as PID 1 in a zstd cpio from the UKI; a minimal `/usr` tree from the same store. Finds and verifies `/usr`, makes root on first boot, then switches root."
+      technology "systemd 262 in the initrd"
+
+      gptauto = component "Partition discovery" {
+        description "Derives the two DPS partition UUIDs from `usrhash=`, mounts root and the ESP; no fstab."
+        technology "systemd-gpt-auto-generator, systemd-veritysetup-generator"
+      }
+      veritysetup = component "Verity activation" {
+        description "Attaches `/dev/mapper/usr` with the root-hash signature from the cmdline (`crypt_activate_by_signed_key`)."
+        technology "systemd-veritysetup@usr, libcryptsetup, lvm2 dm udev rules"
+      }
+      repart = component "Root partition creation" {
+        description "First boot or after a factory reset: creates and grows root from `30-root.conf`."
+        technology "systemd-repart"
+      }
+      etclinks = component "Enable-link rewriter" {
+        description "Rewrites `/etc/systemd/system` links that point at a store path to `/usr/lib/systemd/system/<unit>`, so an update that moves systemd leaves none dangling."
+        technology "golconda-etc-links.service, dash"
+      }
+      luksunlock = component "State unlock (after v1)" {
+        #planned
+        description "(after v1) Unseals the LUKS2 key with the TPM2 and opens the state partition."
+        technology "systemd-cryptsetup, TPM2"
+      }
+    }
+
+    // ---- runtime ----
+
+    systemd = container "systemd system manager" {
+      #machineside
+      description "PID 1 after switch-root, and the systemd services every image has. The one init, logger, network stack and time client."
+      technology "systemd 262"
+
+      pid1 = component "PID 1" {
+        description "Sets the host name from the `system.hostname` credential, writes `machine-id`, imports bootstrap credentials, runs `preset-all` once, starts the units."
+        technology "systemd"
+      }
+      firstboot = component "First-boot setup" {
+        description "Writes passwd, group and shadow from `sysusers.d`; links factory files into `/etc`; firstboot runs without prompts. Once per version (`ConditionNeedsUpdate=`)."
+        technology "systemd-sysusers, systemd-tmpfiles, systemd-firstboot"
+      }
+      journald = component "journald" {
+        description "The only log; size bounded by `/base.journalMaxUse`, mirrored to tty1."
+        technology "systemd-journald"
+      }
+      udevd = component "udevd" {
+        description "Device events and properties; reads the compiled hwdb."
+        technology "systemd-udevd"
+      }
+      networkd = component "networkd and resolved" {
+        description "DHCP on every wired link by default, static addresses from `/network.networks`; DNS per link with fallback servers."
+        technology "systemd-networkd, systemd-resolved"
+      }
+      timesyncd = component "timesyncd" {
+        description "SNTP against the default pool or `/base.ntp`."
+        technology "systemd-timesyncd"
+      }
+      factoryreset = component "Factory reset" {
+        description "`factory-reset.target` sets the request; the next boot's repart deletes and remakes the state partition, keeping the slots and the ESP."
+        technology "systemd-factory-reset"
+      }
+      journalupload = component "Journal upload (after v1)" {
+        #planned
+        description "(after v1) Sends the journal to a collector; journal Forward Secure Sealing for tamper evidence."
+        technology "systemd-journal-upload, TLS"
+      }
+      trustextract = component "CA trust extraction (planned)" {
+        #planned
+        description "(planned) p11-kit `trust extract` over factory anchors and a blocklist; until then the cacert bundle is the whole store."
+        technology "p11-kit"
+      }
+    }
+
+    dbus = container "D-Bus broker" {
+      #machineside
+      description "The system bus, socket-activated (`dbus.socket`), aliased as `dbus.service`."
+      technology "dbus-broker (main, with its Rust parts)"
+    }
+
+    sshd = container "sshd" {
+      #machineside
+      description """
+        The only way in. Keys and OpenSSH certificates only, no password path; root login,
+        identity = certificate principal and key id in the log (`LogLevel VERBOSE`).
+        PAM for account and session only.
+      """
+      technology "OpenSSH, PAM, LoadCredentialEncrypted="
+    }
+
+    varrunner = container "Var runner" {
+      #machineside
+      description """
+        One oneshot unit per var. Local vars (the sshd host key) are generated at first
+        boot and sealed; admin vars (host certificate, KRL) are sealed once pushed.
+        Writes `/etc/credstore.encrypted/<var>.<file>` and a `done` marker.
+      """
+      technology "golconda-var-run (dash), systemd-creds --with-key=auto --tpm2-public-key-pcrs=11"
+    }
+
+    bootgate = container "Boot-complete gate" {
+      #machineside
+      description "Decides whether a counted boot is good, then installs the loader that came with it."
+      technology "systemd oneshot services"
+
+      healthnet = component "Network health check" {
+        description "Fails unless a link is routable within 60 s; required by `boot-complete.target`."
+        technology "golconda-health-network.service, networkd-wait-online"
+      }
+      healthsshd = component "sshd health check" {
+        description "Fails unless `sshd.service` is active; required by `boot-complete.target`."
+        technology "golconda-health-sshd.service"
+      }
+      blessboot = component "Boot blessing" {
+        description "Removes the `+N-M` counter from the UKI name once `boot-complete.target` is reached."
+        technology "systemd-bless-boot"
+      }
+      loaderupdate = component "Loader update" {
+        description "After a blessed boot, copies the signed systemd-boot and `loader.conf` from `/usr` to the ESP when they differ; keeps the old loader as fallback."
+        technology "golconda-loader-update.service, dash"
+      }
+    }
+
+    sysupdate = container "systemd-sysupdate" {
+      #machineside
+      description """
+        On a timer: finds a newer version at the update source, checks the signed
+        `SHA256SUMS` with gpg, writes usr, verity and signature into the inactive slot
+        and the UKI to the ESP at `+3-0`. Keeps two versions, never the running one.
+      """
+      technology "systemd-sysupdate-update.timer, systemd-pull, GnuPG"
+    }
+
+    // ---- boot chain relationships ----
+
+    sdboot -> esp "reads loader.conf and the UKIs from"
+    sdboot -> esp "renames the UKI to count a try on"
+    sdboot -> kernel "verifies the UKI's signature and starts" {
+      technology "UEFI LoadImage, Secure Boot"
+    }
+    kernel -> initrd "starts PID 1 (rdinit=/init) of"
+    initrd.gptauto -> esp "mounts at /boot"
+    initrd.gptauto -> initrd.veritysetup "passes usrhash= and the signature to"
+    initrd.veritysetup -> usr "verifies and mounts read-only" {
+      technology "dm-verity"
+    }
+    initrd.veritysetup -> kernel "has the root-hash signature checked by"
+    initrd.repart -> state "creates and grows, on first boot,"
+    initrd.repart -> usr.repartdef "reads"
+    initrd.etclinks -> state "rewrites store-path enable links in /etc of"
+    initrd.luksunlock -[planned]-> luks "unlocks" {
+      #planned
+    }
+    initrd -> systemd "switches root to"
+    kernel -> usr "allows execution only from (IPE)"
+
+    // ---- runtime relationships ----
+
+    systemd.pid1 -> usr.units "loads"
+    systemd.pid1 -> esp "imports bootstrap credentials from loader/credentials/ on"
+    systemd.firstboot -> state "writes passwd, group, shadow and /etc links into"
+    systemd.firstboot -> usr.factoryetc "links /etc entries to"
+    systemd.udevd -> usr.hwdb "reads device properties from"
+    systemd.networkd -> usr.sysconf "reads its .network files from"
+    systemd.factoryreset -> initrd.repart "asks, on the next boot, to remake the state partition through"
+    systemd.trustextract -[planned]-> usr.factoryetc "reads the anchors and blocklist from" {
+      #planned
+    }
+    systemd.journalupload -[planned]-> systemd.journald "reads the journal of" {
+      #planned
+    }
+    systemd -> dbus "starts"
+    systemd -> sshd "starts after the host key var finishes"
+    systemd -> varrunner "runs the var units of"
+    varrunner -> state "seals credentials into /etc/credstore.encrypted on"
+    sshd -> state "loads its sealed host key, host certificate and KRL from" {
+      technology "LoadCredentialEncrypted="
+    }
+    sshd -> usr.sysconf "reads sshd_config and the CA keys from"
+
+    bootgate.healthnet -> systemd.networkd "waits for a routable link from"
+    bootgate.healthsshd -> sshd "checks that it is active"
+    bootgate.blessboot -> esp "marks the UKI as good on"
+    bootgate.loaderupdate -> usr.bootloader "copies"
+    bootgate.loaderupdate -> esp "installs the signed loader and loader.conf on"
+
+    sysupdate -> usr.transfers "reads its transfer definitions from"
+    sysupdate -> usr.pubring "verifies the index with"
+    sysupdate -> esp "writes the new UKI at +3-0 to"
+    sysupdate -> usr "writes the next version into the inactive slot of"
+
+    imagechain.diskstep -> esp "fills, offline, the first"
+  }
+
+  // ---- outside systems at container level ----
+
+  platform -> golconda.sdboot "verifies the signature (db) of and starts" {
+    technology "UEFI Secure Boot"
+  }
+  golconda.kernel -> platform "loads the db certificates into the platform keyring from"
+  golconda.kernel -> platform "measures the UKI into PCR 11 of" {
+    technology "systemd-stub, TPM2"
+  }
+  golconda.varrunner -> platform "seals credentials to the signed PCR 11 policy with" {
+    technology "TPM2"
+  }
+  golconda.sshd -> platform "unseals its host key with" {
+    technology "TPM2"
+  }
+  golconda.systemd.pid1 -> platform "reads bootstrap credentials from SMBIOS and fw_cfg of"
+  golconda.sysupdate -> updateserver "fetches SHA256SUMS, its signature and the artifacts from" {
+    technology "HTTP(S), systemd-pull"
+  }
+  operator -> golconda.sshd "logs in as root with an SSH certificate to" {
+    technology "SSH"
+  }
+  stepca -> golconda.sshd "is trusted, through TrustedUserCAKeys and the principals file, by"
+  golconda.systemd.journalupload -[planned]-> logcollector "uploads the journal to" {
+    #planned
+    technology "HTTPS"
+  }
+}

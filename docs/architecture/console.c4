@@ -1,0 +1,102 @@
+// Planned: the Golconda console and the admin-var deploy tool. Nothing here is
+// built. Sources: ~/kb/projects/golconda/ui-design.md (revised and approved
+// 2026-11-03), docs/design/trust.md (Secrets and vars), docs/design/scope.md.
+
+model {
+  extend golconda {
+
+    golcondad = container "golcondad (planned)" {
+      #planned #buildside
+      description """
+        The console daemon, at first on the deploy host. The only writer of the
+        configuration repository: one shared candidate per system, operations on option
+        paths, conflicts by path, commits with the operator as author. Runs inspect and
+        validate, queues build, push, reboot and confirm jobs, and sends live updates.
+      """
+      technology "Rust, axum, toml_edit, git, Server-Sent Events"
+    }
+
+    webpages = container "Console web pages (planned)" {
+      #planned #buildside
+      description "Server-rendered HTML that works without JavaScript; one optional script under 10 KB for live updates and presence."
+      technology "HTML from golcondad, optional SSE script"
+    }
+
+    cli = container "golconda CLI and TUI (planned)" {
+      #planned #buildside
+      description "Talks to golcondad with `--server`; without one, works directly on a checkout (single user, CI)."
+      technology "Rust, golconda-core"
+    }
+
+    auditlog = datastore "Audit log (planned)" {
+      #planned #buildside
+      description "One signed commit per action, signed with the daemon's SSH key and a step-ca certificate; pushed to a remote that refuses force-pushes; also journald fields."
+      technology "git repository, SSH signatures"
+    }
+
+    varsdeploy = container "Vars deploy tool (planned)" {
+      #planned #buildside
+      description "Keeps admin vars (host certificate, KRL) age-encrypted on the deploy host and pushes them over SSH; the machine seals them. The on-machine side exists."
+      technology "age, SSH"
+    }
+
+    webpages -[planned]-> golcondad "sends operations and reads pages from" {
+      #planned
+      technology "HTTP, HTML forms, SSE"
+    }
+    cli -[planned]-> golcondad "sends operations to" {
+      #planned
+      technology "HTTP, JSON"
+    }
+    golcondad -[planned]-> configdoc "is the only writer of" {
+      #planned
+      technology "git, toml_edit (comments kept)"
+    }
+    golcondad -[planned]-> auditlog "appends a signed commit to" {
+      #planned
+    }
+    golcondad -[planned]-> evaluation "inspects and validates a candidate through" {
+      #planned
+      technology "iets"
+    }
+    golcondad -[planned]-> systemd "reads state and drives reboots on" {
+      #planned
+      technology "varlink over ssh-unix: (io.systemd.*)"
+    }
+    golcondad -[planned]-> sysupdate "starts and checks updates with" {
+      #planned
+      technology "varlink over SSH"
+    }
+    golcondad -[planned]-> usr.inventory "reads the running configuration and SBOM from" {
+      #planned
+    }
+    varsdeploy -[planned]-> sshd "pushes admin var values over" {
+      #planned
+      technology "SSH"
+    }
+    varsdeploy -[planned]-> varrunner "has the pushed values sealed by" {
+      #planned
+    }
+  }
+
+  operator -[planned]-> golconda.webpages "edits a shared candidate in" {
+    #planned
+    technology "HTTPS, OIDC sign-in"
+  }
+  operator -[planned]-> golconda.cli "edits and deploys with" {
+    #planned
+  }
+  operator -[planned]-> golconda.varsdeploy "pushes and rotates admin vars with" {
+    #planned
+  }
+  golconda.golcondad -[planned]-> idp "signs operators in with" {
+    #planned
+    technology "OIDC; read-only access from a group claim"
+  }
+  golconda.golcondad -[planned]-> stepca "gets the certificate for its signing key from" {
+    #planned
+  }
+  golconda.varsdeploy -[planned]-> stepca "takes host certificates and the KRL from" {
+    #planned
+  }
+}

@@ -65,4 +65,5 @@ else is a module the document names with its table ([Configuration](config.md)).
 | systemd-boot, stub, bless-boot | boot, counting, measurement                                                        | ESP                                                |
 | systemd-sysupdate              | A/B updates                                                                        | `/usr/lib/sysupdate.d`                             |
 
-See [Layout](layout.md) for the on-disk result and [Boot](boot.md) for the sequence.
+See [Layout](layout.md) for the on-disk result and [Boot](boot.md) for the sequence. The C4 model in
+[Architecture diagrams](../architecture/README.md) draws these parts and how they connect.

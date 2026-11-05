@@ -1,0 +1,311 @@
+// Build side: from a TOML document to a signed release. Everything here runs on
+// the build host; the server runs none of it.
+// Sources: docs/design/{architecture,config,modules,packaging,releases}.md,
+// docs/reference/{image,outputs,walkthrough,build-host,release}.md,
+// lib/system.nix, lib/image/*.nix.
+
+model {
+  extend golconda {
+
+    // ---- data stores ----
+
+    configdoc = datastore "Configuration document" {
+      #buildside
+      description """
+        `server.toml`: one table per module path (`[\"/services/sshd\"]`), checked
+        against the JSON Schema exported from the module tree. Holds no secret
+        and no per-machine value. `examples/server.toml` is the example.
+      """
+      technology "TOML, in a git repository"
+    }
+
+    keyset = datastore "Deployment key set" {
+      #buildside
+      description """
+        `secureboot/db.{key,crt}` signs the loader, the UKI and the verity root
+        hash; `pcr/pcr.{key,pub}` signs the PCR 11 policy; `release/index.key`
+        signs `SHA256SUMS`. A path value enters the store, a string is read in
+        place through `extra-sandbox-paths`.
+      """
+      technology "PEM and OpenPGP key files, made by scripts/make-keys"
+    }
+
+    release = datastore "Release directory" {
+      #buildside
+      description """
+        `release/`: the four artifacts of one version (`<id>_<version>.usr.<uuid>.raw`,
+        `.usr-verity.<uuid>.raw`, `.usr-verity-sig.raw`, `.efi`), `SHA256SUMS`
+        with four lines in a fixed order, and `SHA256SUMS.gpg`. What an HTTP
+        server publishes as the update source.
+      """
+      technology "files in the Nix store"
+    }
+
+    diskimage = datastore "Disk image" {
+      #buildside
+      description """
+        `disk.raw`: a sparse GPT disk (Discoverable Partitions Specification)
+        with the ESP (signed systemd-boot, `loader.conf`, the UKI), slot A
+        filled and slot B labelled `_empty`. Root is made on the machine.
+      """
+      technology "raw GPT image, systemd-repart --offline"
+    }
+
+    // ---- the evaluation ----
+
+    evaluation = container "System evaluation" {
+      #buildside
+      description """
+        `lib.mkSystem` / `lib.mkImage`: loads the document, selects the modules,
+        evaluates the adios tree, adds the build's own fragments, composes one
+        system, and hands it to the `/usr` tree builder.
+      """
+      technology "Nix expressions, evaluated by iets (or classic Nix)"
+
+      tomlloader = component "TOML loader" {
+        description "Turns the document into module options; refuses an unknown table, a misspelt option by name, and `/pkgs.target`."
+        technology "lib/config.nix"
+      }
+      schemaexport = component "Schema exporter" {
+        description "Exports the module tree's korora types as JSON Schema 2020-12, with `x-golconda-declaredIn` and `x-golconda-inputs`."
+        technology "lib/schema.nix, lib/schema/registry-*.nix"
+      }
+      selection = component "Component selection" {
+        description "Walks `modules/` once and decides which modules enter the system: the built-ins, then each optional module the document has a table for."
+        technology "lib/components.nix, lib/tree.nix"
+      }
+
+      // -- modules of the adios tree --
+      mpkgs = component "/pkgs" {
+        #module
+        description "Carries the repkgs sets (`target`, `build`) into the tree; the only way a module reaches a package."
+        technology "adios module, modules/pkgs"
+      }
+      mbase = component "/base" {
+        #module
+        description "Built in. systemd, dbus-broker, dash, uutils coreutils, tpm2-tss, e2fsprogs, cacert, tzdata, hwdb (the compiled hardware database, `packages/hwdb`), the kernel; networkd, resolved, timesyncd units; the health and loader-update units; `repart.d/30-root.conf`."
+        technology "adios module, modules/base"
+      }
+      mnetwork = component "/network" {
+        #module
+        description "Built in. networkd `.network` files: DHCP on every wired link unless the document says otherwise; fallback DNS."
+        technology "adios module, modules/network"
+      }
+      msecurity = component "/security" {
+        #module
+        description "Built in. `/usr/lib/sysctl.d/50-golconda.conf`: Yama, kptr_restrict, dmesg_restrict, no unprivileged BPF, no kexec."
+        technology "adios module, modules/security"
+      }
+      mfactory = component "/factory" {
+        #module
+        description "Built in. The `/etc` seed in `/usr/share/factory/etc` and the tmpfiles `L` lines that link it into `/etc`."
+        technology "adios module, modules/factory"
+      }
+      mvars = component "/vars" {
+        #module
+        description "Built in. Installs the var runner `golconda-var-run`; the var helpers live in modules/lib/var.nix."
+        technology "adios module, modules/vars"
+      }
+      msshd = component "/services/sshd" {
+        #module
+        description "Optional, by its table. `sshd.service`, `sshd_config` (keys and certificates only), the host-key var unit, `golconda-health-sshd.service`."
+        technology "adios module, modules/services/sshd"
+      }
+      mlocal = component "/local modules" {
+        #module
+        description "A downstream repository's own modules, under the module path `/local`."
+        technology "adios modules, downstream repository"
+      }
+      composer = component "/system composer" {
+        #module
+        description """
+          Unions the fragments into `{ units; files; sysusers; tmpfiles; packages; links }`
+          with one duplicate check over (path, origin) that names both origins. Records
+          each item's origin. Renders the sysupdate transfers from `/system.updateSource`.
+        """
+        technology "adios module, modules/system, modules/lib/merge.nix"
+      }
+
+      // -- the build's own fragments: not modules, listed in modules.json "fragments" --
+      floader = component "/image/loader fragment" {
+        #buildfragment
+        description "Puts the signed systemd-boot into the `/usr` closure and links it under `/usr/lib/systemd/boot/efi/`. Added by the image chain."
+        technology "lib/image/loader.nix loaderFragment"
+      }
+      findex = component "/image/index fragment" {
+        #buildfragment
+        description "Adds GnuPG and links `/usr/lib/systemd/import-pubring.pgp` to the release key's public half. Added by the image chain."
+        technology "lib/image/index.nix indexFragment"
+      }
+      finitrd = component "/image/initrd fragment" {
+        #buildfragment
+        description "Adds lvm2 (dmsetup, device-mapper udev rules) and cryptsetup to the initrd's own system; nothing else is in the initrd but /base."
+        technology "lib/image/initrd.nix initrdSystem"
+      }
+      fsmoke = component "/smoke/jq fragment" {
+        #buildfragment
+        description "Test output only (`usr-tree-smoke`): adds jq to prove that a named fragment reaches the tree."
+        technology "nix/default.nix"
+      }
+
+      sbomgen = component "SBOM and inventory generator" {
+        #buildwritten
+        description "Writes the normalized options (`config.json`), the schema, the module inventory (`modules.json`) and the CycloneDX SBOM (`sbom.json`) as files of the tree, outside any fragment."
+        technology "lib/system.nix, CycloneDX 1.5"
+      }
+      kernelkey = component "Kernel trusted-key override" {
+        #buildwritten
+        description "With `/system.secureBoot = false`, rebuilds the kernel with `CONFIG_SYSTEM_TRUSTED_KEYS` naming the db certificate, so the kernel itself trusts the verity signature."
+        technology "lib/system.nix, set-level kbuild config merge"
+      }
+    }
+
+    usrtreebuilder = container "/usr tree builder" {
+      #buildside
+      description """
+        Renders the composed system into the complete `/usr` directory: the store
+        closure, the symlink farm, units and config, and the files it writes itself
+        (`os-release`, `packages.json`, `attribution.json`). Refuses absolute links,
+        setuid bits, unresolved `dlopen` links and unknown top-level directories.
+      """
+      technology "Nix CA derivation, nushell (lib/usr-tree.nix, lib/usr-tree/main.nu)"
+    }
+
+    imagechain = container "Image chain" {
+      #buildside
+      description "One content-addressed derivation per step, each a nushell builder over repkgs tools only; `lib.mkImage` returns the steps and `release`."
+      technology "Nix CA derivations, nushell (lib/image/), parameters as data in image/"
+
+      loaderstep = component "Loader signer" {
+        description "Signs systemd-boot with the db key and certificate."
+        technology "lib/image/loader.nu, systemd-sbsign"
+      }
+      indexkeyring = component "Index keyring" {
+        description "Builds the OpenPGP keyring from the release key's public half."
+        technology "lib/image/index.nix, GnuPG"
+      }
+      erofsstep = component "erofs step" {
+        description "Packs the `/usr` tree; timestamp (`-T`) and UUID from the version, so a rebuild is byte-identical."
+        technology "lib/image/erofs.nu, mkfs.erofs -zlz4hc"
+      }
+      veritystep = component "verity step" {
+        description "Builds the hash tree and signs the hex root hash (PKCS#7, no certificates) with the db key."
+        technology "lib/image/verity.nu, veritysetup, openssl smime"
+      }
+      initrdstep = component "initrd step" {
+        description "A second, smaller `/usr` tree from the same store (/base, lvm2, cryptsetup, no kernel), with `/init`, `/etc/initrd-release` and the dm udev rules."
+        technology "lib/image/initrd.nu, zstd cpio"
+      }
+      ukistep = component "UKI step" {
+        description """
+          Joins the stub, kernel, initrd, os-release and the fixed cmdline (`usrhash=`,
+          the verity signature, `ipe.enforce=1`). Signs for Secure Boot, signs four PCR 11
+          phase paths into `.pcrsig`, and checks both against its own certificate.
+        """
+        technology "lib/image/uki.nu, ukify, systemd-measure, systemd-sbsign"
+      }
+      diskstep = component "disk and release step" {
+        description "Lays out the GPT disk, fills the ESP with mtools, writes `release/` and `SHA256SUMS`, and signs the index with a reproducible time."
+        technology "lib/image/disk.nu, systemd-repart --offline, mtools, gpg"
+      }
+    }
+
+    // ---- developer and operator tools ----
+
+    lint = container "Lint" {
+      #buildside
+      description "Strict iets lint over every output, the pure module tests (tests/eval/), and the sandboxed checks (treefmt, docs links, boundary, schema)."
+      technology "scripts/lint, iets, Nix checks"
+    }
+    boottest = container "Boot test harness" {
+      #buildside
+      description "Boots the disk in QEMU with OVMF (and swtpm), checks named markers over the serial line and SSH: Secure Boot, TPM unseal, A/B update, fallback, key rotation, factory reset."
+      technology "scripts/boot-test, QEMU, OVMF, swtpm"
+    }
+    makekeys = container "Key maker" {
+      #buildside
+      description "Writes a deployment key set outside the store."
+      technology "scripts/make-keys, ukify genkey, gpg"
+    }
+    provisionesp = container "ESP provisioner" {
+      #buildside
+      description "Writes null-key bootstrap credentials (host name, root's authorized keys) into `loader/credentials/` of a disk image."
+      technology "scripts/provision-esp, systemd-creds"
+    }
+
+    // ---- relationships inside the build ----
+
+    evaluation.tomlloader -> configdoc "reads"
+    evaluation.tomlloader -> evaluation.schemaexport "validates the document against"
+    evaluation.selection -> evaluation.tomlloader "takes the options and table names from"
+    evaluation.selection -> evaluation.composer "passes the selected modules' fragments, built-ins first, to"
+    evaluation.mbase -> evaluation.mpkgs "reads its packages from"
+    evaluation.msshd -> evaluation.mpkgs "reads openssh from"
+    evaluation.mbase -> evaluation.composer "returns its fragment to"
+    evaluation.mnetwork -> evaluation.composer "returns its fragment to"
+    evaluation.msecurity -> evaluation.composer "returns its fragment to"
+    evaluation.mfactory -> evaluation.composer "returns its fragment to"
+    evaluation.mvars -> evaluation.composer "returns its fragment to"
+    evaluation.msshd -> evaluation.composer "returns its fragment to"
+    evaluation.mlocal -> evaluation.composer "returns its fragment to"
+    evaluation.floader -> evaluation.composer "is added after the modules, as a named fragment, to"
+    evaluation.findex -> evaluation.composer "is added after the modules, as a named fragment, to"
+    evaluation.finitrd -> evaluation.composer "is added to the initrd's own composition by"
+    evaluation.fsmoke -> evaluation.composer "is added (test output only) to"
+    evaluation.floader -> imagechain.loaderstep "links the output of"
+    evaluation.findex -> imagechain.indexkeyring "links the output of"
+    evaluation.composer -> usrtreebuilder "hands the composed system to" {
+      technology "Nix attribute set"
+    }
+    evaluation.sbomgen -> usrtreebuilder "adds config, schema, modules and SBOM JSON to"
+    evaluation.sbomgen -> evaluation.composer "reads package origins and the inventory from"
+    evaluation.kernelkey -> keyset "reads the db certificate from"
+
+    usrtreebuilder -> imagechain.erofsstep "is packed by"
+    imagechain.erofsstep -> imagechain.veritystep "is hashed and signed by"
+    imagechain.initrdstep -> imagechain.ukistep "is embedded in the UKI by"
+    imagechain.veritystep -> imagechain.ukistep "gives the root hash and signature to"
+    imagechain.ukistep -> imagechain.diskstep "is placed on the ESP and in release/ by"
+    imagechain.loaderstep -> imagechain.diskstep "is placed on the ESP by"
+    imagechain.veritystep -> imagechain.diskstep "gives slot A's partitions to"
+    imagechain.loaderstep -> keyset "signs with the db key from"
+    imagechain.veritystep -> keyset "signs with the db key from"
+    imagechain.ukistep -> keyset "signs with the db and PCR keys from"
+    imagechain.diskstep -> keyset "signs SHA256SUMS with the release key from"
+    imagechain.indexkeyring -> keyset "reads the release public key from"
+    imagechain.diskstep -> release "writes"
+    imagechain.diskstep -> diskimage "writes"
+
+    makekeys -> keyset "writes"
+    provisionesp -> diskimage "writes bootstrap credentials into the ESP of"
+    boottest -> diskimage "boots a copy of"
+    boottest -> release "serves over HTTP and installs, with --next,"
+    lint -> evaluation "evaluates every output of"
+  }
+
+  // ---- people and outside systems at container level ----
+
+  operator -> golconda.configdoc "writes"
+  operator -> golconda.makekeys "runs"
+  operator -> golconda.evaluation "builds an image with `lib.mkImage` through" {
+    technology "iets or nix-build"
+  }
+  developer -> golconda.lint "runs"
+  developer -> golconda.boottest "runs"
+  operator -> golconda.provisionesp "runs"
+  operator -> updateserver "copies the release directory to"
+
+  golconda.evaluation.mpkgs -> repkgs "takes the target and build package sets from"
+  golconda.evaluation -> adios "evaluates its module tree with"
+  golconda.evaluation -> iets "is evaluated by"
+  golconda.lint -> iets "runs the strict lint with"
+  golconda.usrtreebuilder -> nixdaemon "is built by" {
+    technology "Nix daemon protocol"
+  }
+  golconda.imagechain -> nixdaemon "is built, step by step, by" {
+    technology "Nix daemon protocol"
+  }
+  downstream -> golconda.evaluation.mlocal "provides"
+  downstream -> golconda.configdoc "holds its own"
+  updateserver -> golconda.release "publishes"
+}

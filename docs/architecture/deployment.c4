@@ -1,0 +1,96 @@
+// Deployment: where each container runs. One build environment, one fleet.
+// Sources: docs/reference/{build-host,hetzner-cloud,layout,image}.md,
+// ~/kb/projects/golconda/ui-design.md (deploy host).
+
+deployment {
+  environment build "Build environment" {
+    description "The operator's machines. The servers never build anything."
+
+    host buildhost "Build host" {
+      description """
+        Runs the Nix daemon with `ca-derivations`, `dynamic-derivations` and
+        `builder-rpc-v0`, iets, and the boot test (QEMU, OVMF, swtpm). Holds the
+        key set (outside the store when given as a string).
+      """
+      technology "Linux, patched Nix 2.36 pre"
+      instanceOf golconda.configdoc
+      instanceOf golconda.keyset
+      instanceOf golconda.evaluation
+      instanceOf golconda.usrtreebuilder
+      instanceOf golconda.imagechain
+      instanceOf golconda.release
+      instanceOf golconda.diskimage
+      instanceOf golconda.lint
+      instanceOf golconda.boottest
+      instanceOf golconda.makekeys
+      instanceOf golconda.provisionesp
+    }
+
+    host deployhost "Deploy host (planned)" {
+      #planned
+      description "(planned) Runs the console daemon and the vars deploy tool, at first beside the builder; can move to its own host."
+      technology "Linux"
+      instanceOf golconda.golcondad
+      instanceOf golconda.webpages
+      instanceOf golconda.auditlog
+      instanceOf golconda.varsdeploy
+    }
+
+    host updatehost "Update server" {
+      description "Any HTTP server; serves the release directory as `/system.updateSource`."
+      technology "HTTP(S) static files"
+      published = instanceOf golconda.release
+    }
+  }
+
+  environment fleet "Servers" {
+    description "QEMU with OVMF is proven; Hetzner Cloud (no Secure Boot) is documented, not run."
+
+    host server "Golconda server" {
+      description "UEFI with Secure Boot and TPM2, x86_64. No Nix, no build tools, no local login."
+      technology "x86_64, UEFI, TPM2"
+
+      disk esppart "ESP" {
+        technology "GPT ESP, 512 MiB"
+        instanceOf golconda.esp
+      }
+      disk usra "usr-a slot" {
+        description "usr, usr-verity and usr-verity-sig partitions, labelled `usr_<version>`."
+        technology "GPT usr partitions, 10 GiB"
+        slota = instanceOf golconda.usr
+      }
+      disk usrb "usr-b slot" {
+        description "Empty (`_empty`) until the first update writes it."
+        technology "GPT usr partitions, 10 GiB"
+        slotb = instanceOf golconda.usr
+      }
+      disk rootpart "root" {
+        description "Made on first boot, grows to the disk."
+        technology "GPT root partition, ext4"
+        instanceOf golconda.state
+      }
+
+      instanceOf golconda.sdboot
+      instanceOf golconda.kernel
+      instanceOf golconda.initrd
+      instanceOf golconda.systemd
+      instanceOf golconda.dbus
+      instanceOf golconda.sshd
+      instanceOf golconda.varrunner
+      instanceOf golconda.bootgate
+      instanceOf golconda.sysupdate
+    }
+  }
+}
+
+views {
+  deployment view deployment-overview {
+    title "Golconda - deployment"
+    description "Where each container runs. Muted: planned."
+    include build.**, fleet.**
+    style build.deployhost, build.deployhost.* {
+      color muted
+    }
+    autoLayout LeftRight
+  }
+}

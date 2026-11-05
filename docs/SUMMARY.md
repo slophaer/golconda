@@ -33,6 +33,7 @@
 - [Principles](design/principles.md)
 - [Scope](design/scope.md)
 - [Architecture](design/architecture.md)
+  - [Architecture diagrams](architecture/README.md)
 - [Layout](design/layout.md)
 - [Boot](design/boot.md)
 - [Boot loader](design/bootloader.md)

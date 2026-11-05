@@ -1,0 +1,77 @@
+// Dynamic views: one use case each, numbered steps.
+// Sources: docs/reference/walkthrough.md, docs/design/boot.md (First boot),
+// docs/design/updates.md, docs/design/releases.md.
+
+views {
+  dynamic view build-release {
+    title "Dynamic - build a release from server.toml"
+    description "`lib.mkImage { config; keys; }` from the document to a published release directory."
+
+    operator -> golconda.configdoc "writes server.toml"
+    operator -> golconda.evaluation.tomlloader "builds with lib.mkImage, which loads the document"
+    golconda.evaluation.tomlloader -> golconda.evaluation.schemaexport "validates the document against the schema"
+    golconda.evaluation.selection -> golconda.evaluation.tomlloader "reads which tables the document has"
+    golconda.evaluation.selection -> golconda.evaluation.composer "passes built-ins, then the tables' modules"
+    golconda.evaluation.floader -> golconda.evaluation.composer "adds /image/loader"
+    golconda.evaluation.findex -> golconda.evaluation.composer "adds /image/index"
+    golconda.evaluation.composer -> golconda.usrtreebuilder "hands over the union, duplicates refused"
+    golconda.evaluation.sbomgen -> golconda.usrtreebuilder "adds config, schema, modules and SBOM JSON"
+    golconda.usrtreebuilder -> golconda.imagechain.erofsstep "is packed with the version's timestamp"
+    golconda.imagechain.erofsstep -> golconda.imagechain.veritystep "is hashed; the root hash is signed with db"
+    golconda.imagechain.initrdstep -> golconda.imagechain.ukistep "gives the initrd"
+    golconda.imagechain.veritystep -> golconda.imagechain.ukistep "gives usrhash= and the signature for the cmdline"
+    golconda.imagechain.ukistep -> golconda.keyset "signs the UKI and four PCR 11 phase paths"
+    golconda.imagechain.ukistep -> golconda.imagechain.diskstep "gives the signed UKI"
+    golconda.imagechain.diskstep -> golconda.release "writes four artifacts and SHA256SUMS, signed"
+    golconda.imagechain.diskstep -> golconda.diskimage "writes disk.raw with slot A"
+    operator -> updateserver "copies release/ to the update source"
+  }
+
+  dynamic view first-boot {
+    title "Dynamic - first boot of a fresh disk"
+    description "From firmware to a blessed entry, with Secure Boot and a TPM2. Later boots run the same units as no-ops."
+
+    platform -> golconda.sdboot "verifies the loader against db and starts it"
+    golconda.sdboot -> golconda.esp "counts a try: +3-0 becomes +2-1"
+    golconda.sdboot -> golconda.kernel "verifies and starts the UKI"
+    golconda.kernel -> platform "measures kernel, initrd and cmdline into PCR 11"
+    golconda.kernel -> golconda.initrd "starts systemd as PID 1"
+    golconda.initrd.gptauto -> golconda.initrd.veritysetup "derives the usr partitions from usrhash="
+    golconda.initrd.veritysetup -> golconda.usr "attaches /dev/mapper/usr, signature checked"
+    golconda.initrd.repart -> golconda.state "creates root, ext4, grown to the disk"
+    golconda.initrd -> golconda.systemd "switches root"
+    golconda.systemd.pid1 -> platform "reads system.hostname and authorized keys from SMBIOS"
+    golconda.systemd.firstboot -> golconda.state "writes users and links /etc to the factory"
+    golconda.systemd -> golconda.varrunner "runs the sshd host key var"
+    golconda.varrunner -> platform "seals the host key to the PCR 11 policy"
+    golconda.systemd -> golconda.sshd "starts sshd"
+    golconda.bootgate.healthnet -> golconda.systemd.networkd "waits for a routable link"
+    golconda.bootgate.healthsshd -> golconda.sshd "checks sshd is active"
+    golconda.bootgate.blessboot -> golconda.esp "renames the UKI: entry good"
+    golconda.bootgate.loaderupdate -> golconda.esp "installs the loader from /usr if it differs"
+  }
+
+  dynamic view update-and-fallback {
+    title "Dynamic - A/B update, and fallback after three failed boots"
+    description "systemd-sysupdate writes the inactive slot; boot counting decides whether the new version stays."
+
+    golconda.sysupdate -> updateserver "fetches SHA256SUMS and SHA256SUMS.gpg"
+    golconda.sysupdate -> golconda.usr.pubring "verifies the index with the release key"
+    golconda.sysupdate -> updateserver "downloads usr, verity, signature and UKI"
+    golconda.sysupdate -> golconda.usr "writes the inactive slot, labelled usr_<version>"
+    golconda.sysupdate -> golconda.esp "writes EFI/Linux/<id>_<version>+3-0.efi"
+    platform -> golconda.sdboot "reboot: starts the loader"
+    golconda.sdboot -> golconda.kernel "starts the newest UKI, counting a try"
+    golconda.initrd.etclinks -> golconda.state "rewrites store-path enable links"
+    alt {
+      when "health checks pass" {
+        golconda.bootgate.blessboot -> golconda.esp "marks the new entry good"
+        golconda.bootgate.loaderupdate -> golconda.esp "installs the new release's loader"
+      }
+      else "health check fails three times" {
+        golconda.sdboot -> golconda.esp "finds the entry at +0-3 and prefers the other"
+        golconda.sdboot -> golconda.kernel "boots the previous UKI and its slot"
+      }
+    }
+  }
+}

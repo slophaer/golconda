@@ -1,0 +1,241 @@
+// Static views. Each view stays at one C4 level.
+// Colours: kinds have their own colour (see the legend). Two tag colours are
+// added below and named in each view that uses them: amber for a fragment the
+// build adds itself (not a module), red for a file the build writes outside
+// any fragment. Anything planned is muted and says (planned) or (after v1) in its
+// title; its relationships are dotted. (opacity and border apply only to
+// compound nodes in LikeC4, so they cannot mark a leaf.)
+
+views {
+  style element.tag = #buildfragment {
+    color amber
+  }
+  style element.tag = #buildwritten {
+    color red
+  }
+  style element.tag = #external {
+    color gray
+  }
+
+  style element.tag = #planned {
+    color muted
+  }
+
+  view index {
+    title "Golconda - system context"
+    description """
+      Golconda, the people who use it, and the systems it depends on. Grey boxes
+      are owned by someone else; muted boxes and dotted lines are planned.
+    """
+    include operator, developer, golconda
+    group "Build-time dependencies (pinned by npins)" {
+      include repkgs, adios, iets, flakeincompat, pele, nixdaemon, forge, downstream
+    }
+    group "Around a running server" {
+      include platform, updateserver, stepca, idp, logcollector
+    }
+    autoLayout LeftRight
+  }
+
+  view build-containers of golconda {
+    title "Golconda - containers on the build host"
+    description """
+      From `server.toml` to a signed release. The server runs none of this.
+      Indigo cylinders are data stores; muted boxes are planned.
+    """
+    include
+      golconda.configdoc,
+      golconda.keyset,
+      golconda.evaluation,
+      golconda.usrtreebuilder,
+      golconda.imagechain,
+      golconda.usr,
+      golconda.release,
+      golconda.diskimage,
+      golconda.lint,
+      golconda.boottest,
+      golconda.makekeys,
+      golconda.provisionesp,
+      operator,
+      developer,
+      repkgs,
+      adios,
+      iets,
+      nixdaemon,
+      downstream,
+      updateserver
+    autoLayout LeftRight
+  }
+
+  view machine-containers of golconda {
+    title "Golconda - containers on a server"
+    description """
+      The boot chain, the disk and the services of a running machine. Indigo
+      cylinders are partitions; muted boxes and dotted lines are after v1.
+    """
+    include
+      golconda.esp,
+      golconda.usr,
+      golconda.state,
+      golconda.luks,
+      golconda.sdboot,
+      golconda.kernel,
+      golconda.initrd,
+      golconda.systemd,
+      golconda.dbus,
+      golconda.sshd,
+      golconda.varrunner,
+      golconda.bootgate,
+      golconda.sysupdate,
+      platform,
+      updateserver,
+      operator,
+      stepca,
+      logcollector
+    autoLayout TopBottom
+  }
+
+  view console-containers of golconda {
+    title "Golconda - planned console and vars deploy tool (containers)"
+    description """
+      Planned, designed in ~/kb/projects/golconda/ui-design.md (approved 2026-11-03)
+      and docs/design/trust.md. Nothing muted exists yet; the coloured boxes are the
+      existing containers it talks to.
+    """
+    include
+      golconda.golcondad,
+      golconda.webpages,
+      golconda.cli,
+      golconda.auditlog,
+      golconda.varsdeploy,
+      golconda.configdoc,
+      golconda.evaluation,
+      golconda.systemd,
+      golconda.sysupdate,
+      golconda.sshd,
+      golconda.varrunner,
+      golconda.usr,
+      operator,
+      idp,
+      stepca
+    autoLayout LeftRight
+  }
+
+  view evaluation-components of golconda.evaluation {
+    title "System evaluation - components (modules and the build's own fragments)"
+    description """
+      Blue-sky components are the loader, the selection and the adios modules;
+      amber components are fragments the build adds itself, not modules (listed in
+      `modules.json` under \"fragments\"); red ones write files outside any fragment.
+    """
+    include *
+    include
+      golconda.configdoc,
+      golconda.usrtreebuilder,
+      golconda.keyset,
+      golconda.imagechain.loaderstep,
+      golconda.imagechain.indexkeyring,
+      repkgs,
+      downstream
+    exclude golconda.usr
+    autoLayout LeftRight
+  }
+
+  view usr-origins of golconda.usr {
+    title "/usr image - contents and where each comes from"
+    description """
+      Every part of `/usr` and its one origin. Slate parts come from module
+      fragments; amber parts from fragments the build adds itself (the signed loader
+      and the release keyring), not from the module system; red parts are
+      files the build writes outside any fragment. The image records the same
+      origins in `/usr/lib/golconda/attribution.json`.
+    """
+    include golconda.usr, golconda.usr.*
+    group "Module fragments (adios tree)" {
+      include
+        golconda.evaluation.mbase,
+        golconda.evaluation.mnetwork,
+        golconda.evaluation.msecurity,
+        golconda.evaluation.mfactory,
+        golconda.evaluation.mvars,
+        golconda.evaluation.msshd,
+        golconda.evaluation.composer
+    }
+    group "Build fragments, not modules" {
+      include
+        golconda.evaluation.floader,
+        golconda.evaluation.findex,
+        golconda.imagechain.loaderstep,
+        golconda.imagechain.indexkeyring
+    }
+    group "Written by the build, outside any fragment" {
+      include golconda.evaluation.sbomgen, golconda.usrtreebuilder
+    }
+    exclude golconda.evaluation.* -> golconda.evaluation.*
+    exclude golconda.evaluation.* -> golconda.usrtreebuilder
+    autoLayout LeftRight
+  }
+
+  view usr-readers of golconda.usr {
+    title "/usr image - who reads each part on a server"
+    description "The machine-side consumers of `/usr`. Amber and red parts as in the origins view."
+    include golconda.usr, golconda.usr.*
+    include
+      golconda.initrd._,
+      golconda.systemd._,
+      golconda.bootgate._,
+      golconda.sshd,
+      golconda.sysupdate,
+      golconda.kernel
+    autoLayout LeftRight
+  }
+
+  view imagechain-components of golconda.imagechain {
+    title "Image chain - components (one derivation per step)"
+    description "The steps of `lib.mkImage`, the keys each one signs with, and what each writes."
+    include *
+    include
+      golconda.usrtreebuilder,
+      golconda.keyset,
+      golconda.release,
+      golconda.diskimage,
+      golconda.esp,
+      golconda.evaluation.floader,
+      golconda.evaluation.findex,
+      nixdaemon
+    exclude golconda.usr
+    autoLayout LeftRight
+  }
+
+  view initrd-components of golconda.initrd {
+    title "initrd - components"
+    description "What the initrd does before switch-root. Muted: after v1."
+    include *
+    include golconda.esp, golconda.usr, golconda.state, golconda.luks, golconda.kernel, golconda.systemd
+    autoLayout LeftRight
+  }
+
+  view runtime-components of golconda.systemd {
+    title "systemd system manager - components"
+    description "PID 1 and the systemd services every image has. Muted: planned or after v1."
+    include *
+    include
+      golconda.state,
+      golconda.esp,
+      golconda.dbus,
+      golconda.sshd,
+      golconda.varrunner,
+      golconda.initrd.repart,
+      platform,
+      logcollector
+    autoLayout LeftRight
+  }
+
+  view bootgate-components of golconda.bootgate {
+    title "Boot-complete gate - components"
+    description "What must pass before a counted boot is blessed, and what happens after."
+    include *
+    include golconda.esp, golconda.sshd, golconda.systemd.networkd, golconda.usr.bootloader
+    autoLayout LeftRight
+  }
+}

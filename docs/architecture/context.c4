@@ -1,0 +1,169 @@
+// System context: Golconda, the people who use it, and the systems it talks to.
+// Sources: README.md, docs/design/architecture.md, docs/design/trust.md,
+// docs/reference/build-host.md, ~/kb/projects/golconda.md.
+
+model {
+  operator = person "Operator" {
+    description """
+      Writes the machine's `server.toml`, holds the deployment keys, builds and
+      publishes releases, enrols the `db` certificate in firmware, and logs in
+      as root over SSH with a short-lived certificate.
+    """
+  }
+
+  developer = person "Golconda developer" {
+    description """
+      Changes modules, packages and the image chain; runs the strict lint and
+      the QEMU boot test before a fast-forward merge.
+    """
+  }
+
+  golconda = system "Golconda" {
+    description """
+      Immutable systemd server OS built with Nix but without nixpkgs or NixOS.
+      One TOML document becomes one signed image: a read-only, verity-protected
+      `/usr` with the Nix store inside, booted by a signed unified kernel image
+      (UKI), updated A/B by systemd-sysupdate. The machine runs no Nix.
+    """
+  }
+
+  // ---- upstream projects, pinned by npins (npins/sources.json) ----
+
+  repkgs = system "repkgs (Golconda fork)" {
+    #external
+    description """
+      Mic92's relocatable package set and build system; the pin follows fork branch `upstream-prep`.
+      Every output refers to other store paths only relative to itself, so the
+      store can live at `/usr/nix/store` inside a read-only image.
+    """
+    technology "Nix CA derivations, nushell builders"
+    link https://code.in.a.flawed.cloud/yolobox/repkgs "Fork"
+  }
+
+  adios = system "adios" {
+    #external
+    description "Typed module system with korora types, composed by explicit function application."
+    technology "Nix library"
+  }
+
+  iets = system "iets" {
+    #external
+    description "numtide's Rust Nix evaluator: evaluates the outputs, runs the strict lints, and drives the builds on the Nix daemon."
+    technology "Rust CLI"
+  }
+
+  flakeincompat = system "flake-incompat" {
+    #external
+    description "Gives `default.nix` the flake output schema and per-system arguments."
+    technology "Nix library"
+  }
+
+  pele = system "pele" {
+    #external
+    description "Renders the Mermaid diagrams of the mdBook documentation."
+    technology "documentation renderer"
+  }
+
+  nixdaemon = system "Nix daemon" {
+    #external
+    description """
+      The build host's daemon: patched Nix master (2.36 pre) with
+      `ca-derivations`, `dynamic-derivations` and the system feature
+      `builder-rpc-v0`. Builds every package, the `/usr` tree and each image step.
+    """
+    technology "Nix, chroot or system store"
+  }
+
+  forge = system "Forgejo forge" {
+    #external
+    description "Hosts the Golconda repository and the repkgs and korora forks; every fetch needs sign-in (netrc)."
+    technology "Forgejo, HTTPS"
+    link https://code.in.a.flawed.cloud/yolobox/golconda "Repository"
+  }
+
+  downstream = system "Downstream repository" {
+    #external
+    description """
+      A user's own repository: its `server.toml`, its own modules under `/local`
+      and its own packages. A package that replaces one of Golconda's must be
+      named in `[golconda] replaces`.
+    """
+    technology "git repository"
+  }
+
+  // ---- around a running machine ----
+
+  updateserver = system "Update server" {
+    #external
+    description "Any static HTTP server that publishes a release directory as the update source (`/system.updateSource`)."
+    technology "HTTP(S), static files"
+  }
+
+  platform = system "Server hardware or hosting platform" {
+    #external
+    description """
+      UEFI firmware with the Secure Boot variable store (`db`), a TPM2 (PCR 11),
+      SMBIOS OEM strings and, under QEMU, fw_cfg. QEMU with OVMF is proven;
+      Hetzner Cloud (no Secure Boot) is documented, not run.
+    """
+    technology "UEFI, TPM2, SMBIOS, qemu fw_cfg"
+  }
+
+  stepca = system "step-ca SSH certificate authority" {
+    #external
+    description """
+      Issues short-lived OpenSSH user certificates after an OIDC sign-in, and
+      host certificates and the key revocation list (KRL). Runs outside the
+      image; its signing key sits on PKCS#11 hardware.
+    """
+    technology "smallstep step-ca, OIDC provisioner"
+  }
+
+  idp = system "OIDC identity provider" {
+    #external
+    description "Authenticates people for step-ca and, planned, for the Golconda console."
+    technology "OpenID Connect"
+  }
+
+  logcollector = system "Log collector (after v1)" {
+    #external #planned
+    description "(after v1) Receives the journal from `systemd-journal-upload` over TLS for tamper-proof audit."
+    technology "systemd-journal-remote, TLS"
+  }
+
+  // ---- context relationships ----
+
+  operator -> golconda "describes a machine in TOML, builds and signs releases with"
+  operator -> golconda "logs in as root over SSH, with a certificate, to" {
+    technology "SSH"
+  }
+  developer -> golconda "changes, lints and boot-tests"
+  operator -> stepca "signs in and gets a short-lived SSH certificate from" {
+    technology "OIDC, HTTPS"
+  }
+  operator -> platform "enrols the db certificate and writes the disk to"
+  operator -> updateserver "publishes the release directory to"
+  stepca -> idp "verifies the operator's identity with" {
+    technology "OIDC"
+  }
+
+  golconda -> repkgs "takes packages, the toolchain and the platform record from"
+  golconda -> adios "types and composes its modules with"
+  golconda -> flakeincompat "gets its output schema from"
+  golconda -> pele "renders the documentation's diagrams with"
+  golconda -> iets "is evaluated and linted by"
+  golconda -> nixdaemon "is built by"
+  golconda -> forge "fetches pinned sources from" {
+    technology "HTTPS, netrc"
+  }
+  downstream -> golconda "adds its own modules and packages to"
+  golconda -> updateserver "fetches the signed index and new releases from" {
+    technology "HTTP(S), systemd-pull"
+  }
+  golconda -> platform "boots on, seals secrets to, and reads bootstrap credentials from"
+  stepca -> golconda "certifies the host key of, and revokes keys on (as admin vars)"
+  golconda -[planned]-> logcollector "uploads the journal to" {
+    #planned
+    technology "systemd-journal-upload, TLS"
+  }
+}
