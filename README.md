@@ -51,9 +51,13 @@ limits.
   binaries.
 - **[Factory reset and recovery](docs/features/factory-reset.md).** One command wipes the state and
   keeps the slots. The other slot, the boot menu and a reflash are the other ways back.
-- **[One of each](docs/features/one-of-each.md).** One libc, one toolchain (LLVM), one TLS stack,
-  one CA store, one init, one logger, one network stack, one shell. Package features and lints
-  enforce it; the one exception is listed.
+- **[One of each](docs/features/one-of-each.md).** The base system has one libc, one toolchain
+  (LLVM), one TLS stack, one CA store, one init, one logger, one network stack and one shell, each
+  in one version. This is a deliberate break with NixOS, where one system can hold several libcs and
+  several versions of the same package side by side. Golconda gives that up so that there is one
+  thing to patch, audit and reason about. A service that needs another version brings it inside its
+  own boundary: a relocatable repkgs closure, or a container. Package features and lints enforce the
+  rule where they can; the one exception is listed.
 - **[Typed modules, duplicates are errors](docs/features/typed-modules.md).** A module returns a
   typed fragment and the composer unions them. Two sources for one file are an error that names
   both: no priorities, no overrides.
