@@ -36,8 +36,14 @@
   #                               and from verity volumes whose signature the kernel verified.
   #                               Needs the signer in the firmware db: without it /usr is unsigned
   #                               and PID 1's switch-root re-exec is denied (docs/design/trust.md)
+  # systemd.machine_id=firmware: /etc is read-only (lib/etc.nix), so PID 1 mounts the machine
+  #   id over an empty /etc/machine-id at every boot. It must be the same every time: the
+  #   systemd-creds host secret that seals the vars is bound to it. PID 1 takes it from the
+  #   system.machine_id credential if there is one, else from the SMBIOS/DMI product UUID, which
+  #   by itself it reads only in a VM; this asks for the UUID on bare metal too. A board without
+  #   a UUID gets a random id at every boot: give it the credential (machine-id(5)).
   # The builder appends rdinit= (lib/image/initrd.nix says why)
-  cmdlineTemplate = "usrhash={usrhash} systemd.verity_usr_options=root-hash-signature=base64:{usrhashSig} rw lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=1 console=tty0 console=ttyS0,115200";
+  cmdlineTemplate = "usrhash={usrhash} systemd.verity_usr_options=root-hash-signature=base64:{usrhashSig} rw lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=1 systemd.machine_id=firmware console=tty0 console=ttyS0,115200";
 
   # PCR policy signing (for measured boot and credential decryption): the phase paths to
   # sign. A phase path is the colon-separated chain of words systemd has measured into

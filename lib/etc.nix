@@ -13,12 +13,12 @@
 # - /etc/machine-id is empty: PID 1 takes the id from the VM's SMBIOS UUID, the
 #   system.machine_id credential or at random (machine-id(5)), and mounts it over the file.
 #   An empty file is not a first boot, so first-boot presets do not run.
-# - passwd, group and shadow come from sysusers at build time; at boot sysusers finds every
-#   user and writes nothing.
-# - The store makes every file 0444 and every directory 0555, so /etc/shadow is
-#   world-readable. It holds no password: Golconda has none (docs/design/trust.md).
-# - tmpfiles lines for /etc ran at build time; etc/tmpfiles.d/ drops them for the boot, and a
-#   credential such as network.hosts (an `f^ /etc/hosts` line) has no effect.
+# - passwd and group come from sysusers at build time, with `!*` in the password field: every
+#   account is locked and has no password, so there is no shadow or gshadow (the store makes
+#   every file 0444, so a shadow file would be world-readable).
+# - tmpfiles lines for /etc ran at build time; etc/tmpfiles.d/ drops them for the boot. A line
+#   that writes a credential into /etc (network.hosts for /etc/hosts) moves to
+#   /run/golconda/etc, and /etc links there.
 # - An administrator changes nothing in /etc: a change is a new image.
 _:
 let

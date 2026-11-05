@@ -2,7 +2,7 @@
 # scripts/boot-test: VM boot test for Golconda images.
 #
 # Usage: boot-test <disk.raw> --keys DIR [--secure-boot] [--tpm] [--timeout SECONDS]
-#                  [--ssh-test [--esp-creds]] [--next DIR [--rotate | --fail-health]] [--factory-reset]
+#                  [--ssh-test [--esp-creds]] [--next DIR [--rotate | --fail-health]] [--factory-reset] [--machine-id-credential]
 #
 # The script boots the image in QEMU with:
 #   - a 40 GiB qcow2 overlay (room for root partition)
@@ -124,11 +124,12 @@ SSH_TEST=0
 NEXT=""
 ROTATE=0
 FAIL_HEALTH=0
+MID_CRED=0
 FACTORY_RESET=0
 ESP_CREDS=0
 
 usage() {
-  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot] [--tpm] [--timeout SECONDS] [--ssh-test [--esp-creds]] [--next DIR [--rotate | --fail-health]] [--factory-reset]"
+  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot] [--tpm] [--timeout SECONDS] [--ssh-test [--esp-creds]] [--next DIR [--rotate | --fail-health]] [--factory-reset] [--machine-id-credential]"
   exit 1
 }
 
@@ -142,6 +143,7 @@ while [ $# -gt 0 ]; do
     --next) NEXT="$2"; SSH_TEST=1; shift 2 ;;
     --rotate) ROTATE=1; shift ;;
     --fail-health) FAIL_HEALTH=1; shift ;;
+    --machine-id-credential) MID_CRED=1; shift ;;
     --factory-reset) FACTORY_RESET=1; shift ;;
     --esp-creds) ESP_CREDS=1; shift ;;
     --help|-h) usage ;;
@@ -160,6 +162,15 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
+
+# the machine id the guest must have: the -uuid QEMU gives, or the credential
+if [ "$MID_CRED" = 1 ]; then
+  EXPECT_MACHINE_ID=0a1b2c3d4e5f40718293a4b5c6d7e8f9
+  MACHINE_ID_SOURCE="system.machine_id credential"
+else
+  EXPECT_MACHINE_ID=6f1a2c3e0b4d4e5f8a9b0c1d2e3f4a5b
+  MACHINE_ID_SOURCE="SMBIOS UUID"
+fi
 
 if [ -z "$DISK" ]; then
   echo "Error: disk image required" >&2
@@ -472,6 +483,9 @@ start_qemu() {
   fi
 
   SMBIOS_HOSTNAME="-smbios type=11,value=io.systemd.credential:system.hostname=boot-test"
+  # network.hosts: a tmpfiles credential into /etc, which is read-only; lib/image/etc.nu moves it
+  # to /run/golconda/etc/hosts. Binary (base64), because the value has a space.
+  SMBIOS_HOSTNAME="$SMBIOS_HOSTNAME -smbios type=11,value=io.systemd.credential.binary:network.hosts=$(printf '192.0.2.10 boot-test-hosts\n' | base64 -w0)"
   if [ "$ESP_CREDS" = 1 ]; then
     SMBIOS_HOSTNAME=""
   fi
@@ -479,8 +493,15 @@ start_qemu() {
   # The machine's SMBIOS UUID, as a cloud VM has one: /etc is read-only, so PID 1 takes the
   # machine id from it (machine-id(5)), and the vars' host secret is bound to that id. Without
   # it the id is random at every boot and a sealed credential no longer opens after a reboot.
+  # --machine-id-credential: a board without a UUID; the id comes from the system.machine_id
+  # credential, which wins over the firmware (the UKI says systemd.machine_id=firmware)
+  if [ "$MID_CRED" = 1 ]; then
+    MACHINE_UUID="-smbios type=11,value=io.systemd.credential:system.machine_id=$EXPECT_MACHINE_ID"
+  else
+    MACHINE_UUID="-uuid 6f1a2c3e-0b4d-4e5f-8a9b-0c1d2e3f4a5b"
+  fi
   QEMU_ARGS="-machine q35,accel=kvm:tcg \
-    -uuid 6f1a2c3e-0b4d-4e5f-8a9b-0c1d2e3f4a5b \
+    $MACHINE_UUID \
     -cpu max \
     -m 2G \
     -smp 2 \
@@ -650,9 +671,29 @@ test_ssh() {
   guest "touch /etc/boot-test 2>&1" | grep -q 'Read-only file system' || RC=1
   ID=$(guest cat /etc/machine-id 2>/dev/null) || RC=1
   echo "machine-id: ${ID:-none}"
-  # PID 1 took it from the SMBIOS UUID QEMU gives (-uuid above)
-  [ "$ID" = "6f1a2c3e0b4d4e5f8a9b0c1d2e3f4a5b" ] || RC=1
-  verdict "etc-read-only (/etc is the confext overlay, ro; machine-id from the SMBIOS UUID)" $RC
+  # PID 1 took it from the SMBIOS UUID QEMU gives (-uuid), or from the credential
+  [ "$ID" = "$EXPECT_MACHINE_ID" ] || RC=1
+  verdict "etc-read-only (/etc is the confext overlay, ro; machine-id $EXPECT_MACHINE_ID from the $MACHINE_ID_SOURCE)" $RC
+
+  # no shadow: every account is locked and has no password, so passwd says !* (not x)
+  RC=0
+  guest "test ! -e /etc/shadow && test ! -e /etc/gshadow" || RC=1
+  R=$(guest "head -1 /etc/passwd" 2>/dev/null) || RC=1
+  echo "passwd: $R"
+  [ "$R" = "root:!*:0:0:Super User:/root:/bin/sh" ] || RC=1
+  verdict "no-shadow (no /etc/shadow; root is locked in passwd, and ssh login works)" $RC
+
+  # a tmpfiles credential into /etc still works: /etc/hosts links to /run/golconda/etc/hosts
+  if [ "$ESP_CREDS" != 1 ]; then
+    RC=0
+    H=$(guest cat /etc/hosts 2>&1) || RC=1
+    echo "/etc/hosts -> $(guest readlink /etc/hosts 2>&1): $H"
+    [ "$H" = "192.0.2.10 boot-test-hosts" ] || RC=1
+    Q=$(guest resolvectl query --legend=no boot-test-hosts 2>&1) || RC=1
+    echo "resolvectl: $Q"
+    echo "$Q" | grep -q '192.0.2.10' || RC=1
+    verdict "hosts-credential (network.hosts reaches /etc/hosts through /run)" $RC
+  fi
 
   # an empty /etc/machine-id is not a first boot (machine-id(5)): systemd-firstboot is skipped
   # by its condition, so it can neither prompt nor write
@@ -1222,6 +1263,16 @@ test_reboot() {
   echo ""
   echo "=== Reboot test (TPM credential unsealing) ==="
   echo "host key of the first boot: $(ssh-keygen -lf "$WORKDIR/known_hosts" 2>/dev/null)"
+
+  # An attacker with root plants a confext directory on the state partition, so that it would
+  # persist into every later boot's /etc (a unit, a pam.d file). systemd-confext merges
+  # directories from /var/lib/confexts without any signature; the initrd must hide it. The plant
+  # first undoes the guard mount at runtime, as root can.
+  PLANT=/var/lib/confexts/boot-test-planted
+  RC=0
+  guest "systemd-umount /var/lib/confexts >/dev/null 2>&1; mkdir -p $PLANT/etc/extension-release.d && cp /etc/extension-release.d/extension-release.golconda $PLANT/etc/extension-release.d/extension-release.boot-test-planted && echo planted > $PLANT/etc/boot-test-planted && test -s $PLANT/etc/boot-test-planted" || RC=1
+  verdict "confext-planted ($PLANT, a valid confext for this image and version)" $RC
+
   echo "Rebooting..."
   guest systemctl reboot 2>&1 || true
 
@@ -1242,6 +1293,12 @@ test_reboot() {
   echo "sshd.service: $ACTIVE"
   RC=0; [ "$ACTIVE" = "active" ] || RC=1
   verdict "sshd-active-after-reboot" $RC
+
+  echo "confexts merged: $(guest systemd-confext status 2>&1 | tr -s ' \n' ' ')"
+  RC=0
+  guest "test ! -e /etc/boot-test-planted" || RC=1
+  guest systemd-confext status 2>&1 | grep -q boot-test-planted && RC=1
+  verdict "confext-planted-refused (the planted confext did not reach /etc)" $RC
 
   echo ""
   echo "=== systemctl --failed (second boot) ==="

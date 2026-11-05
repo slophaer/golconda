@@ -196,6 +196,8 @@ in
       "golconda-loader-update.service"
       "golconda-var-sshd-hostkey.service"
       "sshd.service"
+      "sysroot-run-confexts.mount"
+      "sysroot-var-lib-confexts.mount"
     ]
   ))
 ]

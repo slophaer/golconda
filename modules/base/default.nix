@@ -18,7 +18,10 @@
 #! systemd enables it only by preset, and no boot is a first boot). In the
 #! initrd, systemd-confext-sysroot.service (in initrd.target.wants) merges the
 #! image's read-only `/etc` onto /sysroot/etc before switch-root
-#! (docs/design/layout.md, "The read-only /etc"). The `dbus.socket` unit is written as a file, not as a
+#! (docs/design/layout.md, "The read-only /etc"). Before it, the initrd mounts
+#! sysroot-var-lib-confexts.mount and sysroot-run-confexts.mount, an empty
+#! read-only tmpfs each, so no confext root planted on the writable root
+#! partition merges; the merge Requires= them and fails closed. The `dbus.socket` unit is written as a file, not as a
 #! typed unit: dbus-broker does not ship it.
 #!
 #! Boot health: `golconda-health-network.service` fails unless networkd has a

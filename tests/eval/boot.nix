@@ -60,6 +60,8 @@
         "golconda-etc-links.service"
         "golconda-health-network.service"
         "golconda-loader-update.service"
+        "sysroot-run-confexts.mount"
+        "sysroot-var-lib-confexts.mount"
       ]
       && linksNaming baseOnly "golconda-health-sshd" == [ ]
     ))

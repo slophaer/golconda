@@ -72,6 +72,29 @@ in
   (check "etc: the credential store on /var is made at boot, root only" (
     elem "d ${credstore} 0700 root root -" system.tmpfiles
   ))
+  (check "etc: the machine id comes from the firmware UUID on bare metal too (a credential wins)" (
+    hasInfix " systemd.machine_id=firmware " (import ../../image/uki.nix).cmdlineTemplate
+  ))
+  (check "etc: the initrd hides the writable confext directories before the merge" (
+    let
+      u = sys.composed.units;
+      guard =
+        where: unit:
+        (
+          hasInfix "Where=${where}\n" unit
+          && hasInfix "Type=tmpfs\n" unit
+          && hasInfix "Options=ro," unit
+          && hasInfix "Before=systemd-confext-sysroot.service\n" unit
+          && hasInfix "ConditionPathExists=/etc/initrd-release\n" unit
+        );
+      requires =
+        n: sys.composed.links ? "/usr/lib/systemd/system/systemd-confext-sysroot.service.requires/${n}";
+    in
+    guard "/sysroot/var/lib/confexts" (u."sysroot-var-lib-confexts.mount" or "")
+    && guard "/sysroot/run/confexts" (u."sysroot-run-confexts.mount" or "")
+    && requires "sysroot-var-lib-confexts.mount"
+    && requires "sysroot-run-confexts.mount"
+  ))
   (check "etc: overlayfs is in the kernel (systemd-confext merges /etc with it)" (
     hasInfix "\nCONFIG_OVERLAY_FS=y\n" (readFile ../../packages/kernel/golconda.config)
   ))
