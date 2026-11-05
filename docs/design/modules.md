@@ -133,6 +133,9 @@ configuration:
 
 - The app's files go to `/usr/lib/<name>/<file>`. The unit says
   `ExecStart=/usr/bin/<program> <argv…>`, and a config path in `argv` is that literal path.
+  `program` defaults to the first name the package declares in `bin`, else the package's name.
+  Evaluation checks `program` only against a declared `bin`; the image builder fails when
+  `/usr/bin/<program>` does not exist in the finished tree.
 - A secret is a typed reference in `argv`, `{ credential = "n"; }`, rendered as `%d/n` and checked
   against the service's `credentials`. The credential reaches the program from
   `LoadCredentialEncrypted=`, never from a file in the image.

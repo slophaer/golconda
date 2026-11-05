@@ -51,6 +51,7 @@ class BuilderTests(unittest.TestCase):
             "allowedDirs": ["bin", "lib", "share", "nix"],
             "packageBins": [],
             "attribution": {},
+            "programs": [],
         }
         self.source = FIXTURES / "a/lib/systemd/system/demo.service"
 
@@ -270,6 +271,22 @@ class BuilderTests(unittest.TestCase):
             "/usr/bin/extra": ["/base", "/services/a"],
             "/usr/bin/tool": ["/base", "/services/a"],
         })
+
+    def test_a_units_program_must_exist_in_usr_bin(self):
+        self.attrs["packageBins"] = [package("a", ["tool"])]
+        self.attrs["programs"] = [{"name": "tool", "origins": ["/a"]}]
+        self.succeeds()
+
+    def test_a_missing_program_fails(self):
+        # the package does not declare bin, and its build installed no `sshd`
+        self.attrs["packageBins"] = [package("b")]
+        self.attrs["programs"] = [{"name": "sshd", "origins": ["/services/sshd"]}]
+        self.fails("golconda: /usr/bin/sshd does not exist in the /usr tree, but /services/sshd runs it")
+
+    def test_a_program_behind_a_dangling_link_fails(self):
+        self.attrs["links"] = [link("/usr/bin/tool", "missing")]
+        self.attrs["programs"] = [{"name": "tool", "origins": ["/x"]}]
+        self.fails("/usr/bin/tool does not exist")
 
     def test_initrd_without_system_metadata_or_sbom_succeeds(self):
         self.succeeds()

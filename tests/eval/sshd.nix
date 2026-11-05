@@ -84,6 +84,20 @@ in
       kind = "farm";
     }
   ))
+  # the image builder fails when the program a unit runs is not in /usr/bin
+  # (tests/usr-tree/builder.py): the fragment and the usr tree carry it with its origin
+  (check "sshd: the usr tree checks that /usr/bin/sshd exists" (
+    sshd.programs == [ "sshd" ]
+    && system.programs == [ "sshd" ]
+    && system.origins.programs.sshd == [ "/services/sshd" ]
+    &&
+      mkSystemFixture.usrTree.programs == [
+        {
+          name = "sshd";
+          origins = [ "/services/sshd" ];
+        }
+      ]
+  ))
   (check "sshd: the package's other tools are in the farm" (
     elem "ssh-keygen" opensshBins.declared && elem "ssh" opensshBins.declared
   ))

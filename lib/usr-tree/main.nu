@@ -10,6 +10,8 @@
 #     (args.bin) when the package declares them
 #   attribution: { files, links, ... } for lib/golconda/attribution.json; the bin/ links
 #     are added here, with their package's origins
+#   programs: list of { name, origins }: /usr/bin/<name> that a unit runs; it must exist
+#     once the tree is built
 #   files: attrset of path -> { text, mode, dest }
 #   units: attrset of name -> text
 #   sysusers, tmpfiles: lists of lines
@@ -397,6 +399,15 @@ export def build [] {
   let bad = ($top_level | where { $in not-in $allowed and $in != "sbin" })
   if ($bad | length) > 0 {
     error make {msg: $"files outside allowed dirs: ($bad | str join ', ')"}
+  }
+
+  # 11e: Every program a unit runs is in bin/: a name the package does not install, or
+  # a link that dangles, fails here and not at boot
+  for program in $attrs.programs {
+    if not ($"($out)/bin/($program.name)" | path exists) {
+      let who = if ($program.origins | is-empty) { "a unit" } else { $program.origins | str join ', ' }
+      error make {msg: $"golconda: /usr/bin/($program.name) does not exist in the /usr tree, but ($who) runs it"}
+    }
   }
 
   log "verification passed"

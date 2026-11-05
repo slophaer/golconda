@@ -6,6 +6,7 @@
   check,
   compose,
   f,
+  fr,
   hasInfix,
   named,
   openssh,
@@ -331,6 +332,29 @@ in
         program = "httpd";
       }
     )
+  ))
+  # the program reaches the usr tree builder, which fails when /usr/bin/<program> does not
+  # exist (tests/usr-tree/builder.py): set, declared or the package's name
+  (check "app.program: every service's program is one the image builder checks" (
+    let
+      programsOf =
+        app:
+        (s.render {
+          name = "x";
+          inherit app;
+          user = "dynamic";
+          sandbox = "strict";
+        }).programs;
+    in
+    programsOf { package = standIn; } == [ "jq" ]
+    &&
+      programsOf {
+        package = standIn;
+        program = "jq-other";
+      } == [ "jq-other" ]
+    && programsOf { package = openssh; } == [ "ssh" ]
+    && (compose [ ]).programs == [ ]
+    && fr.fragment.verify { programs = [ "a/b" ]; } != null
   ))
   # a package without the eval-time `bin` attribute (repkgs bf721c4): only `args.bin`, what
   # package.nix declares, is known before the build
