@@ -81,6 +81,21 @@ in
   (check "sshd: valid options compose (sshdThrows has teeth)" (
     !(sshdThrows { }) && !(sshdThrows { port = 2222; })
   ))
+  # a TCP port to listen on: 1 to 65535 (0 would be any port, and -1 none)
+  (check "sshd: port is a TCP port, in the module and in the schema" (
+    let
+      port = (import ../../default.nix).schema.properties."/services/sshd".properties.port;
+    in
+    !(sshdThrows { port = 1; })
+    && !(sshdThrows { port = 65535; })
+    && sshdThrows { port = 0; }
+    && sshdThrows { port = -1; }
+    && sshdThrows { port = 65536; }
+    && sshdThrows { port = "22"; }
+    && port.type == "integer"
+    && port.minimum == 1
+    && port.maximum == 65535
+  ))
   (check "sshd: the program must be one of the package's executables" (sshdThrows {
     package = standIn;
   }))

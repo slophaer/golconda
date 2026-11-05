@@ -21,6 +21,18 @@ let
   v = import ../../lib/var.nix { inherit types; };
   merge = import ../../lib/merge.nix;
 
+  # A TCP port to listen on: 1 to 65535. 0 would be a port the kernel picks, unknown to anyone
+  # who connects.
+  port = types.typedef' "port" (
+    v:
+    if !builtins.isInt v then
+      "Expected an integer"
+    else if v < 1 || v > 65535 then
+      "${toString v} is not a TCP port (1 to 65535)"
+    else
+      null
+  );
+
   hostkeyVar = "sshd-hostkey";
   # /usr/lib/sshd: sshd_config, ca.pub, authorized_keys/<user>, principals/<user>
   dir = s.filesDir "sshd";
@@ -51,7 +63,7 @@ in
       description = "OpenSSH; default repkgs `openssh` from `/pkgs` (its `bin` lists `sshd`).";
     };
     port = {
-      type = types.int;
+      type = port;
       default = 22;
       description = "Listening port.";
     };

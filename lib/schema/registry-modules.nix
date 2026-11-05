@@ -1,5 +1,5 @@
 # The registry entries of the types that modules/<dir>/default.nix declares for itself
-# (factory, system, network, pkgs). The types shared between modules mirror
+# (factory, system, network, pkgs, services/sshd). The types shared between modules mirror
 # modules/lib/<file>.nix, one registry file each.
 #
 # An attribute set of registry entries, keyed by the type's base name; lib/schema.nix
@@ -32,6 +32,14 @@
     description = "An IANA zone name, such as UTC or Europe/Berlin: /etc/localtime links to `/usr/share/zoneinfo/<timezone>`.";
     type = "string";
     pattern = pattern "timezone";
+  };
+
+  # modules/services/sshd
+  port = {
+    description = "A TCP port: 1 to 65535.";
+    type = "integer";
+    minimum = 1;
+    maximum = 65535;
   };
 
   # modules/system/default.nix: the image id and version, one grammar each
