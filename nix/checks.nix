@@ -22,6 +22,8 @@ let
           ".direnv"
           "book"
           "generated"
+          # cargo's build tree (console/target)
+          "target"
         ];
       in
       !(builtins.elem b ignored) && !(pkgs.lib.hasPrefix "result" b);
