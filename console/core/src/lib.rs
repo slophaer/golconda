@@ -5,6 +5,7 @@
 //! options up in the schema ([`schema`]) and finds them in the document ([`document`]).
 
 pub mod check;
+pub mod diff;
 pub mod document;
 pub mod eval;
 pub mod schema;

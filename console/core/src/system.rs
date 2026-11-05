@@ -31,6 +31,8 @@ pub enum Error {
     /// no Golconda checkout (a directory with lib/system.nix) contains the document
     NoCheckout(PathBuf),
     Eval(eval::Error),
+    /// git could not give the document at a revision
+    Git(String, String),
 }
 
 impl fmt::Display for Error {
@@ -44,6 +46,7 @@ impl fmt::Display for Error {
                 p.display()
             ),
             Error::Eval(e) => e.fmt(f),
+            Error::Git(rev, msg) => write!(f, "the document at {rev}: {msg}"),
         }
     }
 }
@@ -80,6 +83,47 @@ impl System {
             config: v["config"].clone(),
             schema: v["schema"].clone(),
             module_docs: v["moduleDocs"].clone(),
+        })
+    }
+
+    /// `text` evaluated as if it were `document`: written beside it (so its relative paths and
+    /// pure evaluation's root are the same), loaded, removed. For another revision of it.
+    pub fn load_text(
+        iets: &Iets,
+        document: &Path,
+        text: &str,
+        system: &str,
+    ) -> Result<System, Error> {
+        let name = document.file_name().unwrap_or_default().to_string_lossy();
+        let copy = document.with_file_name(format!(".{name}.golconda-old-{}", std::process::id()));
+        std::fs::write(&copy, text).map_err(|e| Error::Read(copy.clone(), e))?;
+        let loaded = System::load(iets, &copy, system);
+        let _ = std::fs::remove_file(&copy);
+        loaded
+    }
+
+    /// The document as git has it at `rev`.
+    pub fn git_text(document: &Path, rev: &str) -> Result<String, Error> {
+        let dir = match document.parent() {
+            Some(d) if !d.as_os_str().is_empty() => d,
+            _ => Path::new("."),
+        };
+        let name = document.file_name().unwrap_or_default().to_string_lossy();
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(["show", &format!("{rev}:./{name}")])
+            .output()
+            .map_err(|e| Error::Read(document.into(), e))?;
+        if !out.status.success() {
+            let msg = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            return Err(Error::Git(rev.to_string(), msg));
+        }
+        String::from_utf8(out.stdout).map_err(|e| {
+            Error::Git(
+                rev.to_string(),
+                format!("{}: not UTF-8: {e}", document.display()),
+            )
         })
     }
 
