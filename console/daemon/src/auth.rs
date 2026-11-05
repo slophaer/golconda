@@ -14,11 +14,16 @@ use ring::rand::{SecureRandom, SystemRandom};
 use ring::signature::{self, UnparsedPublicKey};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::{Mutex, RwLock};
+use std::sync::{Mutex, MutexGuard, PoisonError, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+/// A lock that a panicked holder left behind is still good: every update here is one call.
+fn locked<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
 /// How long a session lasts, and how long a browser has to come back from the provider.
-const SESSION: Duration = Duration::from_secs(12 * 3600);
+const SESSION: Duration = Duration::from_hours(12);
 const PENDING: Duration = Duration::from_secs(600);
 /// Clock difference allowed between the provider and this host.
 const LEEWAY: i64 = 60;
@@ -199,7 +204,7 @@ impl Oidc {
             &ring::digest::SHA256,
             verifier.as_bytes(),
         ));
-        let mut pending = self.pending.lock().unwrap();
+        let mut pending = locked(&self.pending);
         pending.retain(|_, p| p.since.elapsed() < PENDING);
         pending.insert(
             state.clone(),
@@ -229,10 +234,7 @@ impl Oidc {
     /// Returns the session id and where to go next.
     pub fn finish(&self, code: &str, state: &str) -> Result<(String, String), Refused> {
         // a state is good once, and only for a while
-        let p = self
-            .pending
-            .lock()
-            .unwrap()
+        let p = locked(&self.pending)
             .remove(state)
             // shortcut: untested, it needs a clock the tests can move; a state is 32 random
             // bytes and good once, so an old one is no easier to use than a guessed one
@@ -291,7 +293,7 @@ impl Oidc {
         }
         let who = self.identity(&claims)?;
         let id = self.random();
-        let mut sessions = self.sessions.lock().unwrap();
+        let mut sessions = locked(&self.sessions);
         sessions.retain(|_, s| s.since.elapsed() < SESSION);
         sessions.insert(
             id.clone(),
@@ -380,7 +382,11 @@ impl Oidc {
         if !good {
             return Err("its signature does not check".into());
         }
-        let claims = json(body)?;
+        self.check_claims(json(body)?)
+    }
+
+    /// The claims if they name this issuer and client and are in time.
+    fn check_claims(&self, claims: Value) -> Result<Value, String> {
         if claims["iss"] != self.config.issuer.as_str() {
             return Err(format!("issued by {}", claims["iss"]));
         }
@@ -403,7 +409,7 @@ impl Oidc {
         }
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map_or(0, |d| d.as_secs() as i64);
+            .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
         if claims["nbf"].as_i64().is_some_and(|nbf| nbf - LEEWAY > now) {
             return Err("it is not valid yet".into());
         }
@@ -444,13 +450,13 @@ impl Oidc {
     }
 
     pub fn session(&self, id: &str) -> Option<Identity> {
-        let sessions = self.sessions.lock().unwrap();
+        let sessions = locked(&self.sessions);
         let s = sessions.get(id)?;
         (s.since.elapsed() < SESSION).then(|| s.who.clone())
     }
 
     pub fn end(&self, id: &str) {
-        self.sessions.lock().unwrap().remove(id);
+        locked(&self.sessions).remove(id);
     }
 }
 

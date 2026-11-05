@@ -177,22 +177,22 @@ fn keys<'a>(a: &'a Map<String, Value>, b: &'a Map<String, Value>) -> Vec<&'a Str
 mod tests {
     use super::*;
 
-    fn texts(before: Value, after: Value) -> Vec<String> {
-        diff(&before, &after).iter().map(Change::to_text).collect()
+    fn texts(before: &Value, after: &Value) -> Vec<String> {
+        diff(before, after).iter().map(Change::to_text).collect()
     }
 
     #[test]
     fn nothing_changed() {
         let c = json!({ "/a": { "x": { "explicit": true, "value": 1 } } });
-        assert_eq!(texts(c.clone(), c), Vec::<String>::new());
+        assert_eq!(texts(&c, &c), Vec::<String>::new());
     }
 
     #[test]
     fn set_over_a_value_and_over_a_default() {
         assert_eq!(
             texts(
-                json!({ "/a": { "x": { "explicit": true, "value": 1 }, "y": { "explicit": false, "value": "d" } } }),
-                json!({ "/a": { "x": { "explicit": true, "value": 2 }, "y": { "explicit": true, "value": "e" } } })
+                &json!({ "/a": { "x": { "explicit": true, "value": 1 }, "y": { "explicit": false, "value": "d" } } }),
+                &json!({ "/a": { "x": { "explicit": true, "value": 2 }, "y": { "explicit": true, "value": "e" } } })
             ),
             vec![
                 "set /a x 2 (was 1)",
@@ -205,8 +205,8 @@ mod tests {
     fn delete_back_to_the_default_or_to_nothing() {
         assert_eq!(
             texts(
-                json!({ "/a": { "x": { "explicit": true, "value": 2 }, "p": { "explicit": true, "value": "q" } } }),
-                json!({ "/a": { "x": { "explicit": false, "value": 1 }, "p": { "explicit": false } } })
+                &json!({ "/a": { "x": { "explicit": true, "value": 2 }, "p": { "explicit": true, "value": "q" } } }),
+                &json!({ "/a": { "x": { "explicit": false, "value": 1 }, "p": { "explicit": false } } })
             ),
             vec![
                 "delete /a p (was \"q\")",
@@ -220,8 +220,8 @@ mod tests {
         // the document now says it: a later default change no longer applies
         assert_eq!(
             texts(
-                json!({ "/a": { "x": { "explicit": false, "value": 1 } } }),
-                json!({ "/a": { "x": { "explicit": true, "value": 1 } } })
+                &json!({ "/a": { "x": { "explicit": false, "value": 1 } } }),
+                &json!({ "/a": { "x": { "explicit": true, "value": 1 } } })
             ),
             vec!["set /a x 1 (was 1, the default)"]
         );
@@ -238,7 +238,7 @@ mod tests {
             "wan": { "match": {} }
         }}}});
         assert_eq!(
-            texts(before, after),
+            texts(&before, &after),
             vec![
                 "set /n networks.lan.network.DHCP \"yes\" (was none)",
                 // a list is one value
@@ -253,8 +253,8 @@ mod tests {
     fn a_table_set_where_there_was_a_default_is_one_change() {
         assert_eq!(
             texts(
-                json!({ "/n": { "networks": { "explicit": false, "value": {} } } }),
-                json!({ "/n": { "networks": { "explicit": true, "value": { "lan": { "match": {} } } } } })
+                &json!({ "/n": { "networks": { "explicit": false, "value": {} } } }),
+                &json!({ "/n": { "networks": { "explicit": true, "value": { "lan": { "match": {} } } } } })
             ),
             vec!["set /n networks { lan = { match = {} } } (was {}, the default)"]
         );

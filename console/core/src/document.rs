@@ -1,15 +1,15 @@
 //! The TOML document as written: where it sets a path, and values printed as TOML.
 
 use serde_json::Value;
+use std::iter;
+use toml_edit::Value as T;
 use toml_edit::{Array, Document, DocumentMut, InlineTable, Item, Table, TableLike};
 
 /// The 1-based line where the document sets `module` `path`: the key's line, or the header's
 /// for a table with one. None when the document does not set it (or does not parse).
 pub fn line_of(text: &str, module: &str, path: &[&str]) -> Option<usize> {
     let doc = Document::parse(text.to_string()).ok()?;
-    let segs: Vec<&str> = std::iter::once(module)
-        .chain(path.iter().copied())
-        .collect();
+    let segs: Vec<&str> = iter::once(module).chain(path.iter().copied()).collect();
     let mut table: &dyn TableLike = doc.as_table();
     let mut start = None;
     for (i, seg) in segs.iter().enumerate() {
@@ -27,7 +27,7 @@ pub fn line_of(text: &str, module: &str, path: &[&str]) -> Option<usize> {
 }
 
 /// A JSON value as a TOML value; None for null, which TOML has no word for.
-pub fn toml_value(v: &Value) -> Option<toml_edit::Value> {
+pub fn toml_value(v: &Value) -> Option<T> {
     Some(match v {
         Value::Null => return None,
         Value::Bool(b) => (*b).into(),
@@ -147,8 +147,7 @@ fn item_json(item: &Item) -> Option<Value> {
     }
 }
 
-fn value_json(v: &toml_edit::Value) -> Value {
-    use toml_edit::Value as T;
+fn value_json(v: &T) -> Value {
     match v {
         T::String(s) => Value::String(s.value().clone()),
         T::Integer(i) => (*i.value()).into(),
@@ -297,7 +296,7 @@ fn delete_in(t: &mut dyn TableLike, path: &[&str]) -> Option<()> {
     }
     let sub = t.get_mut(seg)?;
     delete_in(sub.as_table_like_mut()?, &path[1..])?;
-    if sub.as_table_like().is_some_and(|s| s.is_empty()) {
+    if sub.as_table_like().is_some_and(TableLike::is_empty) {
         t.remove(seg);
     }
     Some(())

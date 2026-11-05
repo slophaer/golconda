@@ -17,6 +17,8 @@ use std::ffi::OsString;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::{env, fs, result};
+use tempfile::Builder;
 
 /// Where the machine keeps the manifests, the runner, the sealed credentials and the publics.
 const VARS_D: &str = "/usr/lib/golconda/vars.d";
@@ -45,7 +47,7 @@ pub struct Manifest {
 #[error("{0}")]
 pub struct Error(pub String);
 
-type Result<T> = std::result::Result<T, Error>;
+type Result<T> = result::Result<T, Error>;
 
 fn err<T>(msg: impl Into<String>) -> Result<T> {
     Err(Error(msg.into()))
@@ -86,26 +88,16 @@ pub fn unit(s: &str) -> Result<&str> {
     }
 }
 
-/// A name to write `file` through in `dir`: one of its own for every call, so two `set` at
-/// once do not share it.
-fn temporary(dir: &Path, file: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static N: AtomicU64 = AtomicU64::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    dir.join(format!(".{file}.tmp-{}-{n}", std::process::id()))
-}
-
 /// The manifests in `text`: the concatenated JSON documents `cat vars.d/*.json` prints.
 pub fn parse_manifests(text: &str) -> Result<Vec<Manifest>> {
     let strings = |v: &Value, key: &str| -> Result<Vec<String>> {
         v.get(key)
             .and_then(Value::as_array)
-            .map(|a| {
+            .map_or(Some(Vec::new()), |a| {
                 a.iter()
                     .map(|x| x.as_str().map(str::to_owned))
                     .collect::<Option<_>>()
             })
-            .unwrap_or(Some(Vec::new()))
             .ok_or_else(|| Error(format!("manifest field {key} is not a list of strings")))
     };
     let mut out = Vec::new();
@@ -148,7 +140,7 @@ pub struct Program {
 impl Program {
     /// `var`'s value split at spaces, or `default` when it is unset or empty.
     pub fn from_env(var: &str, default: &str) -> Program {
-        let value = std::env::var_os(var).filter(|v| !v.is_empty());
+        let value = env::var_os(var).filter(|v| !v.is_empty());
         let text = value
             .as_deref()
             .unwrap_or(default.as_ref())
@@ -230,12 +222,20 @@ impl Store {
                 recipients.display()
             ));
         }
-        let dir = path.parent().expect("a file in a directory");
-        std::fs::create_dir_all(dir).map_err(|e| Error(format!("{}: {e}", dir.display())))?;
-        let tmp = temporary(dir, word(file)?);
+        let dir = path
+            .parent()
+            .ok_or_else(|| Error(format!("{} has no directory", path.display())))?;
+        fs::create_dir_all(dir).map_err(|e| Error(format!("{}: {e}", dir.display())))?;
+        // age writes into a directory of its own (new, mode 0700, removed on drop), so two
+        // `set` of one file at once do not share a name and nothing planted is followed
+        let scratch = Builder::new()
+            .prefix(&format!(".{}.tmp-", word(file)?))
+            .tempdir_in(dir)
+            .map_err(|e| Error(format!("{}: {e}", dir.display())))?;
+        let tmp = scratch.path().join("out");
         let (r, t) = (recipients.to_string_lossy(), tmp.to_string_lossy());
         self.age.run(&["-e", "-R", &r, "-o", &t], Some(value))?;
-        std::fs::rename(&tmp, &path).map_err(|e| Error(format!("{}: {e}", path.display())))?;
+        fs::rename(&tmp, &path).map_err(|e| Error(format!("{}: {e}", path.display())))?;
         Ok(path)
     }
 
@@ -400,27 +400,8 @@ pub fn list(store: &Store, remote: &Remote, host: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
     use std::os::unix::fs::PermissionsExt;
-
-    /// A scratch directory under the system's temporary directory, removed on drop.
-    struct Scratch(PathBuf);
-
-    impl Scratch {
-        fn new(name: &str) -> Scratch {
-            let p =
-                std::env::temp_dir().join(format!("golconda-vars-{name}-{}", std::process::id()));
-            let _ = fs::remove_dir_all(&p);
-            fs::create_dir_all(&p).unwrap();
-            Scratch(p)
-        }
-    }
-
-    impl Drop for Scratch {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.0);
-        }
-    }
+    use tempfile::{Builder, TempDir};
 
     fn script(dir: &Path, name: &str, body: &str) -> Program {
         let p = dir.join(name);
@@ -491,15 +472,18 @@ esac
         fs::write(p.join("key.pub"), "ssh-ed25519 AAAA host").unwrap();
     }
 
-    fn setup(name: &str) -> (Scratch, Store, Remote, PathBuf) {
-        let s = Scratch::new(name);
-        machine(&s.0);
-        let store = Store::new(s.0.join("vars"), fake_age(&s.0));
-        fs::create_dir_all(s.0.join("vars")).unwrap();
-        fs::write(s.0.join("vars/recipients.txt"), "age1op\n").unwrap();
-        let id = s.0.join("id.txt");
+    fn setup(name: &str) -> (TempDir, Store, Remote, PathBuf) {
+        let s = Builder::new()
+            .prefix(&format!("golconda-vars-{name}-"))
+            .tempdir()
+            .unwrap();
+        machine(s.path());
+        let store = Store::new(s.path().join("vars"), fake_age(s.path()));
+        fs::create_dir_all(s.path().join("vars")).unwrap();
+        fs::write(s.path().join("vars/recipients.txt"), "age1op\n").unwrap();
+        let id = s.path().join("id.txt");
         fs::write(&id, "AGE-SECRET-KEY-1").unwrap();
-        let remote = Remote::new(fake_ssh(&s.0), "web1").unwrap();
+        let remote = Remote::new(fake_ssh(s.path()), "web1").unwrap();
         (s, store, remote, id)
     }
 
@@ -538,7 +522,7 @@ esac
                 },
             ]
         );
-        assert!(parse_manifests("").unwrap().is_empty());
+        assert_eq!(parse_manifests("").unwrap(), vec![]);
         assert!(parse_manifests(r#"{"class":"x","name":"a","files":[]}"#).is_err());
         assert!(parse_manifests(r#"{"class":"admin","name":"../a","files":[]}"#).is_err());
         assert!(parse_manifests("{").is_err());
@@ -565,16 +549,9 @@ esac
     }
 
     #[test]
-    fn each_set_writes_through_a_name_of_its_own() {
-        let dir = Path::new("/v/web1/c");
-        assert_ne!(temporary(dir, "cert"), temporary(dir, "cert"));
-        assert_eq!(temporary(dir, "cert").parent(), Some(dir));
-    }
-
-    #[test]
     fn program_from_env() {
         // SAFETY: tests in this module touch only their own variable names
-        unsafe { std::env::set_var("GOLCONDA_TEST_PROG", "ssh -p 10022 -o X=y") };
+        unsafe { env::set_var("GOLCONDA_TEST_PROG", "ssh -p 10022 -o X=y") };
         let p = Program::from_env("GOLCONDA_TEST_PROG", "ssh");
         assert_eq!(p.argv, ["ssh", "-p", "10022", "-o", "X=y"]);
         let d = Program::from_env("GOLCONDA_TEST_UNSET", "age");
@@ -587,7 +564,7 @@ esac
         let p = store
             .set("web1", "sshd-host-cert", "cert", b"CERT")
             .unwrap();
-        assert_eq!(p, s.0.join("vars/web1/sshd-host-cert/cert.age"));
+        assert_eq!(p, s.path().join("vars/web1/sshd-host-cert/cert.age"));
         assert_eq!(fs::read_to_string(&p).unwrap(), "AGE(age1op)CERT");
         assert!(store.has("web1", "sshd-host-cert", "cert"));
         assert_eq!(
@@ -604,7 +581,7 @@ esac
     #[test]
     fn store_needs_recipients() {
         let (s, store, _, _) = setup("norecipients");
-        fs::remove_file(s.0.join("vars/recipients.txt")).unwrap();
+        fs::remove_file(s.path().join("vars/recipients.txt")).unwrap();
         let e = store.set("web1", "v", "f", b"x").unwrap_err();
         assert!(e.0.contains("recipients.txt"), "{e}");
     }
@@ -626,12 +603,12 @@ esac
                 restarted: vec!["sshd.service".into()],
             }
         );
-        let m = s.0.join(format!("machine{CREDSTORE}"));
+        let m = s.path().join(format!("machine{CREDSTORE}"));
         assert_eq!(
             fs::read_to_string(m.join("sshd-host-cert.cert")).unwrap(),
             "CERT"
         );
-        let log = fs::read_to_string(s.0.join("ssh.log")).unwrap();
+        let log = fs::read_to_string(s.path().join("ssh.log")).unwrap();
         // one restart, after the last seal
         assert_eq!(log.matches("systemctl try-restart").count(), 1);
         assert!(
@@ -652,7 +629,7 @@ esac
             .unwrap();
         let e = push(&store, &id, &remote, "web1", &[]).unwrap_err();
         assert!(e.0.contains("sshd-revoked-keys/krl"), "{e}");
-        let log = fs::read_to_string(s.0.join("ssh.log")).unwrap();
+        let log = fs::read_to_string(s.path().join("ssh.log")).unwrap();
         assert!(!log.contains("--admin"), "nothing is pushed: {log}");
     }
 

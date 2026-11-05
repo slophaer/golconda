@@ -3,10 +3,12 @@
 
 use crate::document::{EditError, line_of, path_name, to_json};
 use crate::eval::{self, Arg, Iets};
-use crate::system::{self, System, beside, write_new};
+use crate::system::{self, System, write_beside};
 use crate::validate::Validator;
 use serde_json::Value;
-use std::path::{Path, PathBuf};
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf, absolute};
 
 /// Every check the modules make, without building: the /usr tree's derivation.
 const CHECK_EXPR: &str = "{ config, system }: \
@@ -59,7 +61,7 @@ pub fn evaluate(
     document: &Path,
     system: &str,
 ) -> Result<(), eval::Error> {
-    let abs = std::path::absolute(document).unwrap_or_else(|_| document.to_path_buf());
+    let abs = absolute(document).unwrap_or_else(|_| document.to_path_buf());
     iets.eval_json(
         root,
         CHECK_EXPR,
@@ -80,7 +82,7 @@ pub enum Error {
     #[error(transparent)]
     Eval(eval::Error),
     #[error("cannot write {path}: {1}", path = .0.display())]
-    Write(PathBuf, std::io::Error),
+    Write(PathBuf, io::Error),
 }
 
 /// One line per problem: `doc:line: module option: message`.
@@ -125,21 +127,18 @@ pub fn apply(
     if !problems.is_empty() {
         return Err(Error::Invalid(sys.document, problems));
     }
-    let copy = beside(document, "new");
-    write_new(&copy, &text).map_err(|e| Error::Write(copy.clone(), e))?;
+    let copy =
+        write_beside(document, "new", &text).map_err(|e| Error::Write(document.into(), e))?;
     let checked = evaluate(iets, &sys.root, &copy, system).map_err(Error::Eval);
     // the document's mode stays; through a symlink, its target changes, the link stays
-    let target = std::fs::canonicalize(document).unwrap_or_else(|_| document.to_path_buf());
+    let target = fs::canonicalize(document).unwrap_or_else(|_| document.to_path_buf());
     let write = |e| Error::Write(target.clone(), e);
-    let done = checked.and_then(|()| {
-        let mode = std::fs::metadata(&target).map_err(write)?.permissions();
-        std::fs::set_permissions(&copy, mode).map_err(write)?;
-        std::fs::rename(&copy, &target).map_err(write)
-    });
-    if done.is_err() {
-        let _ = std::fs::remove_file(&copy);
-    }
-    done
+    // a failed check or move drops `copy`, which removes it
+    checked.and_then(|()| {
+        let mode = fs::metadata(&target).map_err(write)?.permissions();
+        fs::set_permissions(&copy, mode).map_err(write)?;
+        copy.persist(&target).map_err(|e| write(e.error))
+    })
 }
 
 #[cfg(test)]

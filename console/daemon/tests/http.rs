@@ -4,6 +4,7 @@
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode, header};
 use golcondad::app::{App, Identity, Level, Signin, router};
+use std::fs;
 use std::path::PathBuf;
 use tower::ServiceExt;
 
@@ -69,7 +70,7 @@ async fn a_module_page_shows_its_options_and_the_selected_one() {
     assert!(body.contains("<h4>/services/sshd port</h4>"), "{body}");
     assert!(body.contains("<dd>examples/server.toml:11</dd>"), "{body}");
     // the line of `port = {` in the module, found rather than written down
-    let module = std::fs::read_to_string(checkout().join("modules/services/sshd/default.nix"))
+    let module = fs::read_to_string(checkout().join("modules/services/sshd/default.nix"))
         .expect("the sshd module");
     let line = module
         .lines()
