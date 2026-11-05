@@ -152,7 +152,7 @@ in
     hasInfix "LoadCredentialEncrypted=sshd-revoked-keys.krl\n" certUnit
     && hasInfix " -o RevokedKeys=%d/sshd-revoked-keys.krl" certUnit
   ))
-  (check "sshd: the admin vars are declared when their options are on" (
+  (check "sshd: the admin vars are declared, with sshd as their consumer" (
     builtins.fromJSON certSshd.files."/usr/lib/golconda/vars.d/sshd-host-cert.json".text == {
       name = "sshd-host-cert";
       class = "admin";
@@ -163,9 +163,15 @@ in
     &&
       (builtins.fromJSON certSshd.files."/usr/lib/golconda/vars.d/sshd-revoked-keys.json".text)
       .credentials == [ "sshd-revoked-keys.krl" ]
-    && !(system.files ? "/usr/lib/golconda/vars.d/sshd-host-cert.json")
-    && !(system.files ? "/usr/lib/golconda/vars.d/sshd-revoked-keys.json")
     && !(certSshd.units ? "golconda-var-sshd-host-cert.service")
+  ))
+  # the image accepts them before it uses them: the bootstrap pushes to a release that has the
+  # options off, then a release with them on reads what was pushed (docs/design/trust.md)
+  (check "sshd: the admin vars are declared with their options off, and nothing loads them" (
+    system.files ? "/usr/lib/golconda/vars.d/sshd-host-cert.json"
+    && system.files ? "/usr/lib/golconda/vars.d/sshd-revoked-keys.json"
+    && !hasInfix "sshd-host-cert" system.units."sshd.service"
+    && !hasInfix "sshd-revoked-keys" system.units."sshd.service"
   ))
   (check "sshd: the fixed lines survive the certificate options" (
     hasInfix "\nPasswordAuthentication no\n" certConfig

@@ -86,8 +86,18 @@ fn explain_says_what_an_option_is_and_where_it_is_set() {
         "{out}"
     );
     assert!(out.contains("default   22\n"), "{out}");
+    // the line of `port = {` in the module, found rather than written down
+    let module = std::fs::read_to_string(checkout().join("modules/services/sshd/default.nix"))
+        .expect("the sshd module");
+    let line = module
+        .lines()
+        .position(|l| l == "    port = {")
+        .expect("a port option")
+        + 1;
     assert!(
-        out.contains("declared  modules/services/sshd/default.nix:52\n"),
+        out.contains(&format!(
+            "declared  modules/services/sshd/default.nix:{line}\n"
+        )),
         "{out}"
     );
 }
