@@ -62,7 +62,9 @@ credentials.hostkey = v.credentialId "sshd-hostkey" "key";  # sshd-hostkey.key
 after = [ (v.unitName "sshd-hostkey") ];
 ```
 
-For an admin var, write one call: `v.admin { name = "sshd-host-cert"; files = [ "cert" ]; }`.
+For an admin var, write one call:
+`v.admin { name = "sshd-host-cert"; files = [ "cert" ]; consumers = [ "sshd.service" ]; }`. A push
+restarts the `consumers`.
 
 ## Status
 
@@ -78,8 +80,11 @@ The boot test proves the sshd host key. With `--ssh-test --tpm` it checks these 
 
 See [What is proven](../proven.md).
 
-The on-machine side of admin vars exists: the manifest, the credential ids and the consumer in sshd.
-The deploy tool that pushes and seals them is *(planned)*. No boot test covers an admin var.
+Admin vars are pushed with the console: `golconda vars set`, `push`, `list`, `pub`
+([console/README.md](../../console/README.md)). With `--next` the boot test pushes sshd's host
+certificate and revocation list with it (`admin-vars-pushed`, `admin-vars-sealed`), the next release
+reads them (`host-cert-presented`, `cert-revoked-refused`), and a second push rotates the revocation
+list (`krl-rotated`).
 
 ## Limits
 

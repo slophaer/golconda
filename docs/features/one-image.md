@@ -63,7 +63,6 @@ ESP). `hostkey-sealed-with-tpm2` checks the sealed host key. See [What is proven
   ESP is not encrypted.
 - ESP credentials use the null key. With Secure Boot and a TPM2 together, PID 1 refuses them. Use
   SMBIOS or fw_cfg there.
-- The deploy tool that pushes admin vars is *(planned)*. Only the machine side exists.
 - `authorizedKeys` in the document goes into the image for every machine. Leave it out when machines
   must differ.
 - Nix on the machine, for debugging, is *(after v1)* as a separate debug image.

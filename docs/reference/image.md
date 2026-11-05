@@ -261,11 +261,13 @@ scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-te
   --factory-reset --timeout 480
 ```
 
-`BOOT_TEST_SSH_PORT` sets the host port for the guest's sshd (default 10022). `BOOT_TEST_HTTP_PORT`
-sets the port of the release HTTP server for `--next` (default 8074). The test image's
-`updateSource` names 8074, so another port needs an image built with that `updateSource`.
-`BOOT_TEST_STORE_ROOT` names the root of a chroot store (`--store 'local?root=DIR'`): the harness
-follows a `/nix/store` symlink under it.
+`--next` pushes admin vars with the console, as an operator does: build it
+(`nix-build -A packages.x86_64-linux.golconda-console`) and name its binary in `BOOT_TEST_GOLCONDA`,
+and put `age`, `age-keygen` and `ssh-keygen` on PATH. `BOOT_TEST_SSH_PORT` sets the host port for
+the guest's sshd (default 10022). `BOOT_TEST_HTTP_PORT` sets the port of the release HTTP server for
+`--next` (default 8074). The test image's `updateSource` names 8074, so another port needs an image
+built with that `updateSource`. `BOOT_TEST_STORE_ROOT` names the root of a chroot store
+(`--store 'local?root=DIR'`): the harness follows a `/nix/store` symlink under it.
 
 The image enforces IPE (`ipe.enforce=1`): `/usr` executes only from a dm-verity mapping whose root
 hash signature the kernel verified. The signature is signed with the Secure Boot db key and its
@@ -321,17 +323,19 @@ firstboot ran.
 
 With `--ssh-test` (the harness logs in as root with `tests/fixtures/snakeoil-ssh`):
 
-| marker                       | what it proves                                                                |
-| ---------------------------- | ----------------------------------------------------------------------------- |
-| `ssh-login`                  | an ssh login with the test key works                                          |
-| `hostname`                   | `hostname` prints `boot-test`: PID 1 applied the `system.hostname` credential |
-| `esp-authorized-keys`        | with `--esp-creds`: `/root/.ssh/authorized_keys` holds the generated key      |
-| `no-failed-units`            | `systemctl --failed` lists no unit                                            |
-| `varlinkctl-list-interfaces` | `io.systemd.Manager` answers on its varlink socket                            |
-| `secure-boot-enabled`        | `bootctl status` says `Secure Boot: enabled` (with `--secure-boot`)           |
-| `hwdb`                       | `/usr/lib/udev/hwdb.bin` answers for DMI, PCI and USB; none in `/etc`         |
-| `ipe-denies-copy`            | a copy of `/usr/bin/sh` in `/var/tmp` gets EACCES, and IPE logs the denial    |
-| `index-keyring`              | `/usr/lib/systemd/import-pubring.pgp` is the key set's `release/index.pgp`    |
+| marker                         | what it proves                                                                                                              |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `ssh-login`                    | an ssh login with the test key works                                                                                        |
+| `hostname`                     | `hostname` prints `boot-test`: PID 1 applied the `system.hostname` credential                                               |
+| `esp-authorized-keys`          | with `--esp-creds`: `/root/.ssh/authorized_keys` holds the generated key                                                    |
+| `no-failed-units`              | `systemctl --failed` lists no unit                                                                                          |
+| `varlinkctl-list-interfaces`   | `io.systemd.Manager` answers on its varlink socket                                                                          |
+| `secure-boot-enabled`          | `bootctl status` says `Secure Boot: enabled` (with `--secure-boot`)                                                         |
+| `hwdb`                         | `/usr/lib/udev/hwdb.bin` answers for DMI, PCI and USB; none in `/etc`                                                       |
+| `ipe-denies-copy`              | a copy of `/usr/bin/sh` in `/var/tmp` gets EACCES, and IPE logs the denial                                                  |
+| `cert-login`                   | a certificate from the test user CA (`tests/fixtures/snakeoil-user-ca`) logs in as root for the principal `boot-test-admin` |
+| `cert-wrong-principal-refused` | a certificate for another principal is refused                                                                              |
+| `index-keyring`                | `/usr/lib/systemd/import-pubring.pgp` is the key set's `release/index.pgp`                                                  |
 
 The loader checks ([Boot loader](../design/bootloader.md)) run on the first boot, again after an
 update, and after a rotation:
@@ -355,21 +359,26 @@ With `--tpm` (and `--ssh-test`):
 
 With `--next DIR` ([The update test](#the-update-test)):
 
-| marker                                                                 | what it proves                                                                                               |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `release-index`                                                        | `SHA256SUMS` has four lines in the fixed order, the digests match, none lists itself                         |
-| `http-source`                                                          | the guest's own `10-usr.transfer` has `Type=url-file` and `Path=http://10.0.2.2:<port>/`                     |
-| `http-fetch`                                                           | the sysupdate journal names the release over `http`, so the guest fetched it, not a local file               |
-| `sysupdate-installed`                                                  | `systemd-sysupdate-update.service` installed the release                                                     |
-| `boots-next`                                                           | after the reboot `IMAGE_VERSION` is the new version                                                          |
-| `etc-links-stable`                                                     | links under `/etc/systemd/system` exist, none names a store path, none dangles                               |
-| `no-failed-units-after-update`                                         | the updated system has no failed unit                                                                        |
-| `loader-replaced`                                                      | when the loader bytes differ, the new loader is on the ESP and the old one is `systemd-boot-fallbackx64.efi` |
-| `bootctl-list-both-slots`                                              | `bootctl list` shows the entries of both versions                                                            |
-| `loader-reinstall`                                                     | a damaged `BOOTX64.EFI` is reinstalled by `golconda-loader-update`                                           |
-| `set-oneshot-other-slot`, `other-slot-keeps-loader`, `oneshot-is-once` | `bootctl set-oneshot` boots the other slot once and installs nothing                                         |
-| `set-default-other-slot`, `set-default-cleared`                        | `bootctl set-default` boots the other slot until it is cleared                                               |
-| `reboot-to-firmware`                                                   | `bootctl reboot-to-firmware` reaches OVMF's boot menu                                                        |
+| marker                                                                 | what it proves                                                                                                                                              |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `release-index`                                                        | `SHA256SUMS` has four lines in the fixed order, the digests match, none lists itself                                                                        |
+| `http-source`                                                          | the guest's own `10-usr.transfer` has `Type=url-file` and `Path=http://10.0.2.2:<port>/`                                                                    |
+| `http-fetch`                                                           | the sysupdate journal names the release over `http`, so the guest fetched it, not a local file                                                              |
+| `sysupdate-installed`                                                  | `systemd-sysupdate-update.service` installed the release                                                                                                    |
+| `admin-vars-pushed`                                                    | before the update, `golconda vars` stored and pushed the host certificate (the guest's host key signed by `snakeoil-host-ca`) and a KRL, and restarted sshd |
+| `admin-vars-sealed`                                                    | `golconda vars list` says both are stored and sealed                                                                                                        |
+| `host-cert-presented`                                                  | the next release presents the host certificate to a strict `@cert-authority` known_hosts                                                                    |
+| `cert-login-after-update`, `cert-revoked-refused`                      | the good certificate logs in; the one the KRL names is refused                                                                                              |
+| `krl-pushed-again`, `krl-rotated`                                      | a second KRL, pushed while the release runs, refuses the good certificate too                                                                               |
+| `boots-next`                                                           | after the reboot `IMAGE_VERSION` is the new version                                                                                                         |
+| `etc-links-stable`                                                     | links under `/etc/systemd/system` exist, none names a store path, none dangles                                                                              |
+| `no-failed-units-after-update`                                         | the updated system has no failed unit                                                                                                                       |
+| `loader-replaced`                                                      | when the loader bytes differ, the new loader is on the ESP and the old one is `systemd-boot-fallbackx64.efi`                                                |
+| `bootctl-list-both-slots`                                              | `bootctl list` shows the entries of both versions                                                                                                           |
+| `loader-reinstall`                                                     | a damaged `BOOTX64.EFI` is reinstalled by `golconda-loader-update`                                                                                          |
+| `set-oneshot-other-slot`, `other-slot-keeps-loader`, `oneshot-is-once` | `bootctl set-oneshot` boots the other slot once and installs nothing                                                                                        |
+| `set-default-other-slot`, `set-default-cleared`                        | `bootctl set-default` boots the other slot until it is cleared                                                                                              |
+| `reboot-to-firmware`                                                   | `bootctl reboot-to-firmware` reaches OVMF's boot menu                                                                                                       |
 
 With `--rotate`:
 
