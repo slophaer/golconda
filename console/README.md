@@ -10,6 +10,8 @@ Golconda package (`console/package.nix`, `packages.<system>.golconda-console`).
 - `core/src/vars.rs`: admin vars from the deploy host: the age-encrypted store, the machine's
   manifests over ssh, the push.
 - `cli/`: the `golconda` binary.
+- `daemon/`: `golcondad`, the daemon. This first part shows each system's configuration and its
+  changes against git as web pages and JSON, and changes nothing.
 
 ## Use
 
@@ -61,6 +63,26 @@ arguments.
 An option is a module path and an option path inside it, dotted below the first level. iets comes
 from PATH, or `GOLCONDA_IETS`. The document must be inside a Golconda checkout (a directory above it
 has `lib/system.nix`): evaluation is pure and reads files under the checkout only.
+
+## The daemon
+
+```sh
+golcondad --system server=examples/server.toml --dev-identity alice:operator
+# http://127.0.0.1:8796/systems/server/config/services/sshd?option=port
+```
+
+Pages: `/systems/NAME/config` (the module tree and every module's documentation),
+`/systems/NAME/config/MODULE?option=OPTION` (option rows and the option's detail),
+`/systems/NAME/changes` (the working tree against git's HEAD, as `golconda diff`). Each answers JSON
+for `Accept: application/json`. The pages are server-rendered HTML with no script and no request to
+another origin; the content security policy allows only the daemon's own stylesheet and fonts. The
+look is the mockups'. The IBM Plex fonts (packages/ibm-plex-web) are compiled in when
+`GOLCONDA_FONTS` names their directory at build time; without it the pages use the system's fonts.
+
+Sign-in is not there yet. `--dev-identity NAME:LEVEL` signs everyone in as NAME at LEVEL (`operator`
+or `read-only`), and the daemon then listens on a loopback address only; without it, it does not
+start. `--read-only` makes the whole daemon say it changes nothing (nothing writes yet in any case).
+Every page evaluates its system again (0.1 to 0.4 s; two evaluations for Changes).
 
 ## Develop
 

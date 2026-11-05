@@ -200,7 +200,7 @@ fn toml_key(k: &str) -> String {
 }
 
 /// What `golconda config explain` says about one option.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Explanation {
     pub module: String,
     /// the option path inside the module, dotted
