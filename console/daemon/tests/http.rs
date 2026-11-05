@@ -3,7 +3,7 @@
 
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode, header};
-use golcondad::app::{App, Identity, Level, router};
+use golcondad::app::{App, Identity, Level, Signin, router};
 use std::path::PathBuf;
 use tower::ServiceExt;
 
@@ -15,10 +15,11 @@ fn app(read_only: bool) -> axum::Router {
     let root = checkout();
     router(App::new(
         vec![("server".into(), root.join("examples/server.toml"))],
-        Identity {
+        Signin::Dev(Identity {
+            id: "dev:alice".into(),
             name: "alice".into(),
             level: Level::Operator,
-        },
+        }),
         read_only,
     ))
 }
