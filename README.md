@@ -31,8 +31,8 @@ limits.
 - **[Only signed code runs](docs/features/execution-policy.md).** The kernel's IPE policy lets a
   program run only from the verified `/usr`, so a binary copied to `/var` does not run.
 - **[Secure Boot and measured boot](docs/features/measured-boot.md).** systemd-boot and each UKI are
-  signed; the UKI is measured into the TPM. Hosts without Secure Boot, such as Hetzner Cloud, still
-  check `/usr`.
+  signed; the UKI is measured into the TPM. Hosts without Secure Boot, such as Hetzner Cloud
+  *(planned)*, still check `/usr`.
 - **[A/B updates with health-checked rollback](docs/features/updates.md).** systemd-sysupdate writes
   the next release to the other slot. The new entry is blessed only when the network is routable and
   sshd is up; after three failed boots the previous slot boots again.
@@ -121,7 +121,8 @@ scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-te
 1. [Walkthrough](docs/reference/walkthrough.md): from `examples/server.toml` to a booted machine.
 1. [Principles](docs/design/principles.md), then the design pages in order: they say why.
 1. The reference pages: they say what exists. [Making a release](docs/reference/release.md) and
-   [Deploying to Hetzner Cloud](docs/reference/hetzner-cloud.md) are step-by-step guides.
+   [Deploying to Hetzner Cloud](docs/reference/hetzner-cloud.md) *(planned: not yet run on Hetzner)*
+   are step-by-step guides.
 
 Contributing: [CONTRIBUTING](CONTRIBUTING.md).
 

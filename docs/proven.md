@@ -32,6 +32,8 @@ of it. The image for a host without Secure Boot (`/system.secureBoot = false`,
 Not proven:
 
 - **Enrolment on real firmware.** The harness enrols keys offline in the variable store.
+- **An unseal after an update.** The TPM markers run on one release. No marker checks that the next
+  release unseals the host key without re-sealing; `--tpm` with `--next` has to show it.
 - **Certificate login and admin vars.** The ssh test logs in with a plain key. No marker covers an
   OpenSSH user certificate, `TrustedUserCAKeys`, principals, the revocation list, the host
   certificate, or the push of any admin var.

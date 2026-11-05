@@ -1,8 +1,8 @@
-# Deploying to Hetzner Cloud
+# Deploying to Hetzner Cloud *(planned)*
 
 This page is the procedure for one Golconda machine on a Hetzner Cloud server: build an image for a
 host without Secure Boot, put the machine's host name and ssh key on its ESP, write the disk from
-the rescue system, and update it. *(not yet run on Hetzner)*: every step is proven in QEMU on plain
+the rescue system, and update it. The guide is *(planned)*: every step is proven in QEMU on plain
 OVMF without Secure Boot (`scripts/boot-test --esp-creds` without `--secure-boot`); none has run on
 a Hetzner server.
 
