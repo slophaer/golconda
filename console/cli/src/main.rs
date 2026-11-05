@@ -1,5 +1,7 @@
-//! `golconda`: read and explain a Golconda system's configuration, and push its admin vars.
+//! `golconda`: read, explain and change a Golconda system's configuration, and push its
+//! admin vars.
 
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use golconda_core::check;
 use golconda_core::diff::{Change, against_git, diff};
 use golconda_core::document::{self, parse_path, parse_value};
@@ -10,153 +12,151 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage:
-  golconda --version | --help
-  golconda config show [--set] [--json] [-f FILE] [--system SYSTEM]
-  golconda config explain [--json] [-f FILE] [--system SYSTEM] MODULE OPTION
-  golconda vars set [--vars DIR] HOST VAR FILE      (the value on stdin)
-  golconda vars push [--vars DIR] -i IDENTITY HOST [VAR...]
-  golconda vars list [--vars DIR] HOST
-  golconda vars pub HOST VAR FILE
-  golconda config set [-f FILE] [--system SYSTEM] MODULE [OPTION] VALUE
-  golconda config delete [-f FILE] [--system SYSTEM] MODULE [OPTION]
-  golconda config validate [-f FILE] [--system SYSTEM]
-  golconda diff [--json] [-f FILE] [--system SYSTEM] [REV | --from OTHER]
-
-  -f FILE          the system's document (default: server.toml)
-  --system SYSTEM  the Nix system to evaluate for (default: this machine's)
-  --set            only what the document sets
-  --json           JSON instead of text
-  --from OTHER     diff: against the document OTHER (default: git's REV, default HEAD)
-  --vars DIR       the age-encrypted admin vars, DIR/HOST/VAR/FILE.age, encrypted to the
-                   keys in DIR/recipients.txt (default: vars)
-  -i IDENTITY      the age identity that decrypts them (or GOLCONDA_AGE_IDENTITY)
-
-OPTION is a TOML dotted key below the module (networks.lan.network.DNS, networks.\"lan.1\").
-VALUE is TOML (22, \"22\", [\"a\"], { a = 1 }); text that is not TOML is a string. After --,
-every argument is an operand: `-- /m opt -x`. set and delete write the document only
-when the result passes the schema and evaluates; comments and layout stay as written.
-diff lists the set and delete operations from the other side's effective configuration to
-FILE's, defaults included.
-
-iets comes from PATH, or GOLCONDA_IETS. ssh and age come from PATH, or GOLCONDA_SSH and
-GOLCONDA_AGE (a program and its arguments, such as \"ssh -p 2222\" or rage).";
-
-struct Args {
-    group: String,
-    command: String,
-    file: PathBuf,
-    system: String,
-    set_only: bool,
-    json: bool,
-    vars: PathBuf,
-    identity: Option<PathBuf>,
-    from: Option<PathBuf>,
-    rest: Vec<String>,
+/// Read, explain and change a Golconda system's configuration.
+///
+/// OPTION is a TOML dotted key below the module (networks.lan.network.DNS, networks."lan.1").
+/// VALUE is TOML (22, "22", ["a"], { a = 1 }); text that is not TOML is a string; a value
+/// that starts with a dash and is not a number goes after `--`. set and delete write the
+/// document only when the result passes the schema and evaluates; comments and layout stay
+/// as written. iets comes from PATH, or GOLCONDA_IETS; ssh and age from PATH, or GOLCONDA_SSH
+/// and GOLCONDA_AGE (a program and its arguments, such as "ssh -p 2222" or rage).
+#[derive(Parser)]
+#[command(version, verbatim_doc_comment)]
+struct Cli {
+    #[command(subcommand)]
+    command: Command,
 }
 
-fn parse(argv: &[String]) -> Result<Args, String> {
-    let mut it = argv.iter();
-    let group = it.next().cloned().ok_or("give a command")?;
-    // diff has no subcommand: the word after it is an operand
-    let command = if group == "diff" {
-        "diff".to_string()
-    } else {
-        it.next().cloned().unwrap_or_default()
-    };
-    let known = match group.as_str() {
-        "config" => ["show", "explain", "set", "delete", "validate"].contains(&command.as_str()),
-        "vars" => ["set", "push", "list", "pub"].contains(&command.as_str()),
-        "diff" => true,
-        _ => return Err(format!("unknown command {group}")),
-    };
-    if !known {
-        return Err(format!("unknown command {group} {command}"));
-    }
-    let mut a = Args {
-        group,
-        command,
-        file: "server.toml".into(),
-        system: format!("{}-linux", std::env::consts::ARCH),
-        set_only: false,
-        json: false,
-        vars: "vars".into(),
-        identity: std::env::var_os("GOLCONDA_AGE_IDENTITY")
-            .filter(|v| !v.is_empty())
-            .map(PathBuf::from),
-        from: None,
-        rest: Vec::new(),
-    };
-    // the document flags: config and diff
-    let config = a.group == "config" || a.group == "diff";
-    let mut flags = true;
-    while let Some(arg) = it.next() {
-        if !flags {
-            a.rest.push(arg.clone());
-            continue;
-        }
-        let mut value = || it.next().cloned().ok_or(format!("{arg} needs a value"));
-        match arg.as_str() {
-            // the rest are operands, such as a VALUE that starts with a dash
-            "--" => flags = false,
-            "-f" | "--file" if config => a.file = value()?.into(),
-            "--system" if config => a.system = value()?,
-            "--set" if a.command == "show" => a.set_only = true,
-            "--json" if ["show", "explain", "diff"].contains(&a.command.as_str()) => a.json = true,
-            "--from" if a.command == "diff" => a.from = Some(value()?.into()),
-            "--vars" if !config && a.command != "pub" => a.vars = value()?.into(),
-            "-i" | "--identity" if a.command == "push" => a.identity = Some(value()?.into()),
-            // a negative number is a VALUE
-            f if f.starts_with('-')
-                && f.len() > 1
-                && !f[1..].starts_with(|c: char| c.is_ascii_digit()) =>
-            {
-                return Err(format!("unknown flag {f}"));
-            }
-            _ => a.rest.push(arg.clone()),
-        }
-    }
-    let (min, max) = match (a.group.as_str(), a.command.as_str()) {
-        ("config", "explain") => (2, 2),
-        ("config", "set") => (2, 3),
-        ("config", "delete") => (1, 2),
-        ("config", _) => (0, 0),
-        ("diff", _) if a.from.is_none() => (0, 1),
-        ("diff", _) => (0, 0),
-        ("vars", "set" | "pub") => (3, 3),
-        ("vars", "list") => (1, 1),
-        _ => (1, usize::MAX), // vars push HOST [VAR...]
-    };
-    if a.rest.len() < min || a.rest.len() > max {
-        return Err(format!("{} {} takes other operands", a.group, a.command));
-    }
-    if a.command == "push" && a.identity.is_none() {
-        return Err("vars push needs -i IDENTITY (or GOLCONDA_AGE_IDENTITY)".into());
-    }
-    Ok(a)
+#[derive(Subcommand)]
+enum Command {
+    /// Show, explain, set, delete or validate options
+    #[command(subcommand)]
+    Config(Config),
+    /// The set and delete operations from another revision's (or document's) effective
+    /// configuration to FILE's, defaults included
+    Diff {
+        #[command(flatten)]
+        doc: Doc,
+        /// JSON instead of text
+        #[arg(long)]
+        json: bool,
+        /// Against this document instead of a git revision
+        #[arg(long, value_name = "OTHER", conflicts_with = "rev")]
+        from: Option<PathBuf>,
+        /// The git revision to compare with
+        #[arg(default_value = "HEAD")]
+        rev: String,
+    },
+    /// Admin vars: values a machine's image names but never contains, kept age-encrypted
+    /// here and pushed over ssh
+    #[command(subcommand)]
+    Vars(Vars),
+}
+
+#[derive(Subcommand)]
+enum Vars {
+    /// Store a value, read from stdin, age-encrypted to the keys in DIR/recipients.txt
+    Set {
+        #[command(flatten)]
+        store: VarStore,
+        host: String,
+        var: String,
+        file: String,
+    },
+    /// Push every admin var HOST declares (or only the VARs named), and restart their units
+    Push {
+        #[command(flatten)]
+        store: VarStore,
+        /// The age identity that decrypts them (or GOLCONDA_AGE_IDENTITY)
+        #[arg(short = 'i', long)]
+        identity: Option<PathBuf>,
+        host: String,
+        vars: Vec<String>,
+    },
+    /// Per file: stored here? sealed there?
+    List {
+        #[command(flatten)]
+        store: VarStore,
+        host: String,
+    },
+    /// Print a local var's public file, such as the host key a CA signs
+    Pub {
+        host: String,
+        var: String,
+        file: String,
+    },
+}
+
+#[derive(Args)]
+struct VarStore {
+    /// The age-encrypted admin vars, DIR/HOST/VAR/FILE.age
+    #[arg(long = "vars", value_name = "DIR", default_value = "vars")]
+    dir: PathBuf,
+}
+
+#[derive(Subcommand)]
+enum Config {
+    /// Every option with its value, defaults marked
+    Show {
+        #[command(flatten)]
+        doc: Doc,
+        /// Only what the document sets
+        #[arg(long)]
+        set: bool,
+        /// JSON instead of text
+        #[arg(long)]
+        json: bool,
+    },
+    /// What an option is, its value, and where it is declared and set
+    Explain {
+        #[command(flatten)]
+        doc: Doc,
+        /// JSON instead of text
+        #[arg(long)]
+        json: bool,
+        module: String,
+        option: String,
+    },
+    /// Set an option (or, without OPTION, a module's whole table)
+    #[command(
+        allow_negative_numbers = true,
+        override_usage = "golconda config set [OPTIONS] <MODULE> [OPTION] <VALUE>"
+    )]
+    Set {
+        #[command(flatten)]
+        doc: Doc,
+        module: String,
+        /// The option (a TOML dotted key), then the value (TOML, or else a string)
+        #[arg(num_args = 1..=2, required = true, value_name = "[OPTION] VALUE")]
+        operands: Vec<String>,
+    },
+    /// Delete an option (or, without OPTION, the module)
+    Delete {
+        #[command(flatten)]
+        doc: Doc,
+        module: String,
+        option: Option<String>,
+    },
+    /// Check the document: the schema, then evaluation
+    Validate {
+        #[command(flatten)]
+        doc: Doc,
+    },
+}
+
+#[derive(Args)]
+struct Doc {
+    /// The system's document
+    #[arg(short = 'f', long = "file", default_value = "server.toml")]
+    file: PathBuf,
+    /// The Nix system to evaluate for
+    #[arg(long, default_value_t = format!("{}-linux", std::env::consts::ARCH))]
+    system: String,
 }
 
 fn main() -> ExitCode {
-    let argv: Vec<String> = std::env::args().skip(1).collect();
-    match argv.first().map(String::as_str) {
-        Some("--version") => {
-            println!("golconda {}", env!("CARGO_PKG_VERSION"));
-            return ExitCode::SUCCESS;
-        }
-        Some("--help" | "-h") => {
-            println!("{USAGE}");
-            return ExitCode::SUCCESS;
-        }
-        _ => {}
-    }
-    let a = match parse(&argv) {
-        Ok(a) => a,
-        Err(e) => {
-            eprintln!("golconda: {e}\n{USAGE}");
-            return ExitCode::from(2);
-        }
-    };
-    match run(&a) {
+    // usage errors exit 2 (clap's)
+    match run(Cli::parse().command) {
         Ok(out) => {
             print!("{out}");
             ExitCode::SUCCESS
@@ -168,64 +168,75 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(a: &Args) -> Result<String, Box<dyn std::error::Error>> {
-    if a.group == "vars" {
-        return run_vars(a);
-    }
+/// An option path (a TOML dotted key), empty for the module itself.
+fn path(option: Option<&String>) -> Result<Vec<String>, document::EditError> {
+    option.map_or(Ok(Vec::new()), |o| parse_path(o))
+}
+
+fn run(command: Command) -> Result<String, Box<dyn std::error::Error>> {
     let iets = Iets::from_env();
-    let file = a.file.display();
-    // MODULE [OPTION] [VALUE]: the option path (a TOML dotted key), empty for the module itself
-    let path = |option: Option<&String>| -> Result<Vec<String>, document::EditError> {
-        option.map_or(Ok(Vec::new()), |o| parse_path(o))
-    };
-    match a.command.as_str() {
-        "validate" => {
-            check::validate(&iets, &a.file, &a.system)?;
-            return Ok(format!("{file}: valid\n"));
-        }
-        "set" => {
-            let (value, option) = a.rest[1..].split_last().unwrap();
-            let p = path(option.first())?;
-            let p: Vec<&str> = p.iter().map(String::as_str).collect();
-            check::apply(&iets, &a.file, &a.system, |text| {
-                document::set(text, &a.rest[0], &p, parse_value(value))
-            })?;
-            return Ok(String::new());
-        }
-        "delete" => {
-            let p = path(a.rest.get(1))?;
-            let p: Vec<&str> = p.iter().map(String::as_str).collect();
-            check::apply(&iets, &a.file, &a.system, |text| {
-                document::delete(text, &a.rest[0], &p)
-            })?;
-            return Ok(String::new());
-        }
-        "diff" => {
-            let changes = match &a.from {
+    let config = match command {
+        Command::Diff {
+            doc,
+            json,
+            from,
+            rev,
+        } => {
+            let changes = match from {
                 Some(other) => {
-                    let before = System::load(&iets, other, &a.system)?;
-                    let after = System::load(&iets, &a.file, &a.system)?;
+                    let before = System::load(&iets, &other, &doc.system)?;
+                    let after = System::load(&iets, &doc.file, &doc.system)?;
                     diff(&before.config, &after.config)
                 }
-                None => {
-                    let rev = a.rest.first().map_or("HEAD", String::as_str);
-                    against_git(&iets, &a.file, rev, &a.system)?.1
-                }
+                None => against_git(&iets, &doc.file, &rev, &doc.system)?.1,
             };
-            return Ok(if a.json {
+            return Ok(if json {
                 let v: Vec<_> = changes.iter().map(Change::to_json).collect();
                 format!("{:#}\n", serde_json::Value::Array(v))
             } else {
                 changes.iter().map(|c| c.to_text() + "\n").collect()
             });
         }
-        _ => {}
-    }
-    let sys = System::load(&iets, &a.file, &a.system)?;
-    Ok(match a.command.as_str() {
-        "show" if a.json => {
-            let mut config = sys.config.clone();
-            if a.set_only {
+        Command::Config(c) => c,
+        Command::Vars(v) => return run_vars(v),
+    };
+    Ok(match config {
+        Config::Validate { doc } => {
+            check::validate(&iets, &doc.file, &doc.system)?;
+            format!("{}: valid\n", doc.file.display())
+        }
+        Config::Set {
+            doc,
+            module,
+            operands,
+        } => {
+            let (value, option) = operands.split_last().expect("clap: 1 or 2 operands");
+            let p = path(option.first())?;
+            let p: Vec<&str> = p.iter().map(String::as_str).collect();
+            check::apply(&iets, &doc.file, &doc.system, |text| {
+                document::set(text, &module, &p, parse_value(value))
+            })?;
+            String::new()
+        }
+        Config::Delete {
+            doc,
+            module,
+            option,
+        } => {
+            let p = path(option.as_ref())?;
+            let p: Vec<&str> = p.iter().map(String::as_str).collect();
+            check::apply(&iets, &doc.file, &doc.system, |text| {
+                document::delete(text, &module, &p)
+            })?;
+            String::new()
+        }
+        Config::Show { doc, set, json } => {
+            let sys = System::load(&iets, &doc.file, &doc.system)?;
+            if !json {
+                return Ok(sys.show(set));
+            }
+            let mut config = sys.config;
+            if set {
                 for options in config
                     .as_object_mut()
                     .into_iter()
@@ -241,12 +252,17 @@ fn run(a: &Args) -> Result<String, Box<dyn std::error::Error>> {
             }
             format!("{config:#}\n")
         }
-        "show" => sys.show(a.set_only),
-        _ => {
-            let p = path(a.rest.get(1))?;
+        Config::Explain {
+            doc,
+            json,
+            module,
+            option,
+        } => {
+            let sys = System::load(&iets, &doc.file, &doc.system)?;
+            let p = path(Some(&option))?;
             let p: Vec<&str> = p.iter().map(String::as_str).collect();
-            let e = sys.explain(&a.rest[0], &p)?;
-            if a.json {
+            let e = sys.explain(&module, &p)?;
+            if json {
                 format!("{:#}\n", e.to_json())
             } else {
                 e.to_text()
@@ -255,19 +271,43 @@ fn run(a: &Args) -> Result<String, Box<dyn std::error::Error>> {
     })
 }
 
-fn run_vars(a: &Args) -> Result<String, Box<dyn std::error::Error>> {
-    let store = Store::new(&a.vars, Program::from_env("GOLCONDA_AGE", "age"));
-    let remote = || Remote::new(Program::from_env("GOLCONDA_SSH", "ssh"), &a.rest[0]);
-    Ok(match a.command.as_str() {
-        "set" => {
+fn run_vars(command: Vars) -> Result<String, Box<dyn std::error::Error>> {
+    let store = |s: VarStore| Store::new(&s.dir, Program::from_env("GOLCONDA_AGE", "age"));
+    let remote = |host: &str| Remote::new(Program::from_env("GOLCONDA_SSH", "ssh"), host);
+    Ok(match command {
+        Vars::Set {
+            store: s,
+            host,
+            var,
+            file,
+        } => {
             let mut value = Vec::new();
             std::io::stdin().read_to_end(&mut value)?;
-            let path = store.set(&a.rest[0], &a.rest[1], &a.rest[2], &value)?;
+            let path = store(s).set(&host, &var, &file, &value)?;
             format!("stored {}\n", path.display())
         }
-        "push" => {
-            let identity = a.identity.as_deref().expect("parse checks it");
-            let p = vars::push(&store, identity, &remote()?, &a.rest[0], &a.rest[1..])?;
+        Vars::Push {
+            store: s,
+            identity,
+            host,
+            vars: only,
+        } => {
+            // an empty GOLCONDA_AGE_IDENTITY names none; without one it is a usage error (2)
+            let identity = identity
+                .or_else(|| {
+                    std::env::var_os("GOLCONDA_AGE_IDENTITY")
+                        .filter(|v| !v.is_empty())
+                        .map(PathBuf::from)
+                })
+                .unwrap_or_else(|| {
+                    Cli::command()
+                        .error(
+                            clap::error::ErrorKind::MissingRequiredArgument,
+                            "vars push needs -i IDENTITY (or GOLCONDA_AGE_IDENTITY)",
+                        )
+                        .exit()
+                });
+            let p = vars::push(&store(s), &identity, &remote(&host)?, &host, &only)?;
             let mut out = String::new();
             for id in &p.sealed {
                 out.push_str(&format!("sealed {id}\n"));
@@ -277,7 +317,17 @@ fn run_vars(a: &Args) -> Result<String, Box<dyn std::error::Error>> {
             }
             out
         }
-        "list" => vars::list(&store, &remote()?, &a.rest[0])?,
-        _ => String::from_utf8(remote()?.public(&a.rest[1], &a.rest[2])?)?,
+        Vars::List { store: s, host } => vars::list(&store(s), &remote(&host)?, &host)?,
+        Vars::Pub { host, var, file } => String::from_utf8(remote(&host)?.public(&var, &file)?)?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_command_line_is_consistent() {
+        Cli::command().debug_assert();
+    }
 }
