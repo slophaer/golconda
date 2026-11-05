@@ -66,31 +66,53 @@ in
       # Boot test image: authorizedKeys for testing SSH login.
       # The test SSH keypair is a committed test fixture (tests/fixtures/snakeoil-ssh*).
       # See tests/fixtures/README.md for why both keys are committed.
-      testConfig = version: {
-        # the configured workload is a downstream module (tests/fixtures/image-workload/modules)
-        golconda.modules = ../tests/fixtures/image-workload/modules;
-        "/local/test-workload" = { };
-        "/system" = {
-          name = "boot-test";
-          inherit version;
-          # The update test's release server: 10.0.2.2 is the host under QEMU user
-          # networking, where the test serves the next release's disk.release/ with
-          # `python3 -m http.server 8074` (docs/reference/image.md).
-          updateSource = "http://10.0.2.2:8074/";
+      # adminVars: the release after the bootstrap. The first release logs in with the plain
+      # test key and trusts the test user CA; scripts/boot-test pushes the host certificate and the
+      # revocation list to it with `golconda vars`, and the next release turns both on
+      # (the bootstrap in docs/design/trust.md).
+      testConfig =
+        {
+          version,
+          adminVars ? false,
+        }:
+        {
+          # the configured workload is a downstream module (tests/fixtures/image-workload/modules)
+          golconda.modules = ../tests/fixtures/image-workload/modules;
+          "/local/test-workload" = { };
+          "/system" = {
+            name = "boot-test";
+            inherit version;
+            # The update test's release server: 10.0.2.2 is the host under QEMU user
+            # networking, where the test serves the next release's disk.release/ with
+            # `python3 -m http.server 8074` (docs/reference/image.md).
+            updateSource = "http://10.0.2.2:8074/";
+          };
+          "/services/sshd" = {
+            port = 22;
+            # The test SSH public key: committed in tests/fixtures/snakeoil-ssh.pub.
+            authorizedKeys = [ (builtins.readFile ../tests/fixtures/snakeoil-ssh.pub) ];
+            # the test user CA (tests/fixtures/snakeoil-user-ca.pub): a certificate for this
+            # principal logs in as root
+            trustedUserCAKeys = [ (builtins.readFile ../tests/fixtures/snakeoil-user-ca.pub) ];
+            principals.root = [ "boot-test-admin" ];
+          }
+          // (
+            if adminVars then
+              {
+                hostCertificate = true;
+                revokedKeys = true;
+              }
+            else
+              { }
+          );
         };
-        "/services/sshd" = {
-          port = 22;
-          # The test SSH public key: committed in tests/fixtures/snakeoil-ssh.pub.
-          authorizedKeys = [ (builtins.readFile ../tests/fixtures/snakeoil-ssh.pub) ];
-        };
-      };
 
       # The test image for a host without Secure Boot (Hetzner Cloud): the kernel carries
       # the db certificate (/system.secureBoot = false); scripts/boot-test runs it on plain OVMF.
       noSecureBootConfig =
-        version:
+        args:
         let
-          c = testConfig version;
+          c = testConfig args;
         in
         c
         // {
@@ -137,7 +159,7 @@ in
           image-smoke-test =
             (imageChain {
               inherit system;
-              config = testConfig "20261031.1";
+              config = testConfig { version = "20261031.1"; };
               keys = throwawayKeys;
             }).smoke;
 
@@ -145,13 +167,16 @@ in
           image-smoke-test-nosb =
             (imageChain {
               inherit system;
-              config = noSecureBootConfig "20261031.1";
+              config = noSecureBootConfig { version = "20261031.1"; };
               keys = throwawayKeys;
             }).smoke;
           image-smoke-test-nosb-next =
             (imageChain {
               inherit system;
-              config = noSecureBootConfig "20261031.2";
+              config = noSecureBootConfig {
+                version = "20261031.2";
+                adminVars = true;
+              };
               keys = throwawayKeys;
             }).smoke;
 
@@ -160,7 +185,10 @@ in
           image-smoke-test-next =
             (imageChain {
               inherit system;
-              config = testConfig "20261031.2";
+              config = testConfig {
+                version = "20261031.2";
+                adminVars = true;
+              };
               keys = throwawayKeys;
             }).smoke;
 
@@ -171,7 +199,10 @@ in
           image-smoke-test-rotated =
             (imageChain {
               inherit system;
-              config = testConfig "20261031.2";
+              config = testConfig {
+                version = "20261031.2";
+                adminVars = true;
+              };
               keys = rotatedKeys;
               pcrKeys = throwawayKeys;
               # the running image trusts only its own release key: a db rotation keeps it
