@@ -1,0 +1,8 @@
+# shellcheck, run by treefmt (nix/dev/default.nix).
+# The tests and boot-test hand shell code to eval, `guest` and nix in single quotes on purpose.
+disable=SC2016
+# `trap cleanup EXIT` calls the function; shellcheck 0.11 does not see that
+disable=SC2329
+# boot-test sources boot-test-log.sh beside it
+external-sources=true
+source-path=SCRIPTDIR

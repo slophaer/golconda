@@ -118,6 +118,7 @@ if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
 fi
 
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+# shellcheck source=boot-test-log.sh
 . "$SCRIPT_DIR/boot-test-log.sh"
 
 # --- argument parsing ---
@@ -432,6 +433,7 @@ setup_certs() {
   cp "$REPO_DIR/tests/fixtures/snakeoil-user-ca" "$SSH_DIR/user-ca"
   chmod 600 "$SSH_DIR/user-ca"
   for c in "ok boot-test-admin 1" "wrong nobody 2" "revoked boot-test-admin 3"; do
+    # shellcheck disable=SC2086 # split the case into name, principal and serial
     set -- $c
     ssh-keygen -q -t ed25519 -N '' -C "boot-test-$1" -f "$SSH_DIR/cert-$1"
     ssh-keygen -q -s "$SSH_DIR/user-ca" -I "boot-test-$1" -n "$2" -z "$3" "$SSH_DIR/cert-$1.pub"
