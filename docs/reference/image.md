@@ -329,6 +329,8 @@ With `--ssh-test` (the harness logs in as root with `tests/fixtures/snakeoil-ssh
 | `no-failed-units`            | `systemctl --failed` lists no unit                                            |
 | `varlinkctl-list-interfaces` | `io.systemd.Manager` answers on its varlink socket                            |
 | `secure-boot-enabled`        | `bootctl status` says `Secure Boot: enabled` (with `--secure-boot`)           |
+| `hwdb`                       | `/usr/lib/udev/hwdb.bin` answers for DMI, PCI and USB; none in `/etc`         |
+| `index-keyring`              | `/usr/lib/systemd/import-pubring.pgp` is the key set's `release/index.pgp`    |
 
 The loader checks ([Boot loader](../design/bootloader.md)) run on the first boot, again after an
 update, and after a rotation:
@@ -343,12 +345,12 @@ update, and after a rotation:
 
 With `--tpm` (and `--ssh-test`):
 
-| marker                     | what it proves                                                                |
-| -------------------------- | ----------------------------------------------------------------------------- |
-| `hostkey-sealed-with-tpm2` | the header of `sshd-hostkey.key` says TPM2 sealing (the host key alone fails) |
-| `ssh-after-reboot`         | the guest came back with a new boot id                                        |
-| `hostkey-unchanged`        | the second boot presents the first boot's host key: unsealed, not regenerated |
-| `sshd-active-after-reboot` | sshd is active on the second boot                                             |
+| marker                         | what it proves                                                                                                                                                                                              |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hostkey-sealed-with-tpm2`     | the header of `sshd-hostkey.key` says TPM2 and the signed PCR policy                                                                                                                                        |
+| `ssh-after-reboot`             | the guest came back with a new boot id                                                                                                                                                                      |
+| `hostkey-unchanged`            | sshd presents the first boot's host key, the credential has the first boot's bytes (not re-sealed), sshd runs; after the reboot, after an update (`--next`) and after the fallback (`--next --fail-health`) |
+| `no-failed-units-after-reboot` | no failed unit on the second boot                                                                                                                                                                           |
 
 With `--next DIR` ([The update test](#the-update-test)):
 
