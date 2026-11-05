@@ -1,5 +1,7 @@
 [upstream]
 purl = "pkg:github/Cyan4973/xxHash"
+# a CPE with the version placeholder, as Golconda reads it (lib/system.nix)
+cpe = "cpe:2.3:a:example:openssh:{version}:*:*:*:*:*:*:*"
 
 [[source]]
 key = "default"

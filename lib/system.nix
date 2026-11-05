@@ -3,7 +3,7 @@
 # mkSystem { config; platform?; sources?; extraFragments?; } → {
 #   composed;   # the composer output (units, files, links, packages, …)
 #   usrTree;    # the /usr derivation
-#   sbom;       # the SBOM derivation; .bom is its evaluated CycloneDX document
+#   sbom;       # { bom; json; }: the CycloneDX document, and the text of /usr/lib/golconda/sbom.json
 #   config;     # config.json: module path -> option -> { value?; explicit; }, for every
 #               # included component and /system
 #   inventory;  # module path -> { role; inputs; included?; reason?; } (lib/components.nix)
@@ -74,18 +74,19 @@ let
     inherit sources system platform;
     downstream = project.packages;
     inherit (project) replaces;
-    kernelConfig =
-      if secureBoot != false then
-        { }
-      else
-        {
-          SYSTEM_TRUSTED_KEYS =
-            if verityCert == null then
-              throw "golconda: /system.secureBoot = false needs the image's keys: the kernel carries the db certificate, so build it with lib.mkImage"
-            else
-              "${verityCert}";
-        };
+    inherit kernelConfig;
   };
+  kernelConfig =
+    if secureBoot != false then
+      { }
+    else
+      {
+        SYSTEM_TRUSTED_KEYS =
+          if verityCert == null then
+            throw "golconda: /system.secureBoot = false needs the image's keys: the kernel carries the db certificate, so build it with lib.mkImage"
+          else
+            "${verityCert}";
+      };
 
   # The TOML loader: a document in, checked options out (lib/config.nix).
   configLib = import ./config.nix { tree = unloaded; };
@@ -256,49 +257,164 @@ let
     index: n:
     let
       key = drvKey setFull.pkgs.${n};
-      info = setFull.downstream.${n};
+      info = setFull.downstream.${n} // {
+        name = n;
+      };
     in
     index
     // {
       ${key} =
-        if index ? ${key} && index.${key} != info then
+        if index ? ${key} && index.${key}.replaces != info.replaces then
           throw "golconda: downstream SBOM package ${n} has conflicting replacement metadata for the same derivation"
         else
-          info;
+          index.${key} or info;
     }
   ) { } downstreamNames;
 
-  # Build the SBOM derivation (CycloneDX JSON).
-  sbom = setFull.set.sbom {
-    roots = composed.packages;
-    name = "${composed.name}-${composed.version}";
-    extraProperties =
-      pkg:
-      let
-        downstream = downstreamByDrv.${drvKey pkg} or null;
-      in
-      if downstream == null then
+  # The set without the downstream packages: where a replaced package comes from. Evaluated
+  # only for a replacement's ancestor.
+  baseSet = import ../nix/packages.nix {
+    inherit sources system platform;
+    inherit kernelConfig;
+  };
+
+  # Where a package comes from: a downstream package, one of Golconda's packages/ (by its
+  # directory), or repkgs (everything else, the libc stand-in and the toolchain included).
+  golcondaPackagesDir = toString ../packages + "/";
+  originOf =
+    pkg:
+    if downstreamByDrv ? ${drvKey pkg} then
+      "downstream"
+    else if
+      pkg ? dir
+      &&
+        builtins.substring 0 (builtins.stringLength golcondaPackagesDir) (toString pkg.dir)
+        == golcondaPackagesDir
+    then
+      "golconda"
+    else
+      "repkgs";
+
+  # A package's CPE: `[upstream] cpe` in its sources.toml, `{version}` replaced by its version.
+  # nixpkgs' meta.identifiers.cpe is the model; the NixOS security tracker matches CVEs by it.
+  cpeOf =
+    pkg:
+    let
+      file = if pkg ? dir then pkg.dir + "/sources.toml" else null;
+      upstream =
+        if file != null && builtins.pathExists file then
+          (builtins.fromTOML (builtins.readFile file)).upstream or { }
+        else
+          { };
+    in
+    if upstream ? cpe && pkg ? version then
+      builtins.replaceStrings [ "{version}" ] [ pkg.version ] upstream.cpe
+    else
+      null;
+
+  # The replaced package as an ancestor names it: its own SBOM component's name, version and
+  # purl (and cpe), from the set without the downstream packages.
+  ancestorOf =
+    type: n:
+    let
+      orig = baseSet.pkgs.${n};
+      root = builtins.head (
+        builtins.filter (c: c.type == "application")
+          (baseSet.set.sbom {
+            roots = [ orig ];
+            name = "ancestor";
+          }).bom.components
+      );
+      cpe = cpeOf orig;
+    in
+    {
+      inherit type;
+      inherit (root) name version;
+    }
+    // (if root ? purl then { inherit (root) purl; } else { })
+    // (if cpe == null then { } else { inherit cpe; });
+
+  # The fork's SBOM hook adds properties only. Golconda marks each component through it
+  # (by derivation, not by name) and then lifts the markers into CycloneDX fields: `cpe`, and
+  # `pedigree` for a replacement. A fork hook for whole fields can replace this step once the
+  # pin moves.
+  lift = "golconda-lift:";
+  markersOf =
+    pkg:
+    let
+      downstream = downstreamByDrv.${drvKey pkg} or null;
+      cpe = cpeOf pkg;
+    in
+    [
+      {
+        name = "golconda:origin";
+        value = originOf pkg;
+      }
+    ]
+    ++ (
+      if cpe == null then
         [ ]
       else
         [
           {
-            name = "golconda:origin";
-            value = "downstream";
+            name = "${lift}cpe";
+            value = cpe;
           }
         ]
-        ++ (
-          if downstream.replaces == null then
-            [ ]
-          else
-            [
-              {
-                name = "golconda:replaces";
-                value = downstream.replaces;
-              }
-            ]
-        );
-  };
+    )
+    ++ (
+      if downstream == null || downstream.replaces == null then
+        [ ]
+      else
+        [
+          {
+            name = "${lift}replaces";
+            value = builtins.toJSON { inherit (downstream) name replaces; };
+          }
+        ]
+    );
+  liftComponent =
+    c:
+    let
+      props = c.properties or [ ];
+      isLift = p: builtins.substring 0 (builtins.stringLength lift) p.name == lift;
+      value =
+        key:
+        builtins.head (map (p: p.value) (builtins.filter (p: p.name == "${lift}${key}") props) ++ [ null ]);
+      kept = builtins.filter (p: !isLift p) props;
+      cpe = value "cpe";
+      replaced = value "replaces";
+      r = if replaced == null then null else builtins.fromJSON replaced;
+    in
+    builtins.removeAttrs c [ "properties" ]
+    // (if kept == [ ] then { } else { properties = kept; })
+    // (if cpe == null then { } else { inherit cpe; })
+    // (
+      if r == null then
+        { }
+      else
+        {
+          pedigree = {
+            ancestors = [ (ancestorOf c.type r.name) ];
+            notes = "replaced by the downstream package ${r.name}; the original comes from ${r.replaces}";
+          };
+        }
+    );
 
+  # The SBOM (CycloneDX JSON): the fork's document with the markers lifted. `json` is what
+  # /usr/lib/golconda/sbom.json holds.
+  sbomMarked = setFull.set.sbom {
+    roots = composed.packages;
+    name = "${composed.name}-${composed.version}";
+    extraProperties = markersOf;
+  };
+  sbomBom = sbomMarked.bom // {
+    components = map liftComponent sbomMarked.bom.components;
+  };
+  sbom = {
+    bom = sbomBom;
+    json = builtins.toJSON sbomBom;
+  };
   # The files mkSystem adds to /usr/lib/golconda/ (modules/lib/merge.nix reserves the paths).
   artifacts = {
     "/usr/lib/golconda/config.json" = {
@@ -326,7 +442,7 @@ let
     };
     inherit (setFull) platform;
     inherit (composed) version;
-    sbomDrv = sbom;
+    sbomFile = builtins.toFile "sbom.json" sbom.json;
   };
 
 in

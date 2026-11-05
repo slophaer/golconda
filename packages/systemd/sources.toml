@@ -1,6 +1,8 @@
 [upstream]
 url = "https://github.com/systemd/systemd"
 purl = "pkg:github/systemd/systemd"
+# the NVD product name; {version} is the pinned version
+cpe = "cpe:2.3:a:systemd_project:systemd:{version}:*:*:*:*:*:*:*"
 
 [[source]]
 key = "default"
