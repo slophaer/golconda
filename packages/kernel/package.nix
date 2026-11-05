@@ -1,6 +1,7 @@
 # Golconda's x86_64 kernel, built by this directory's package-local kbuild module.
 # nix/packages.nix appends the policy fragment and substitutes the IPE boot policy path.
-# Use raw clang/lld for kernel code; host tools still use the configured host compiler.
+# Kernel code compiles through jig in passthrough (cached, no jig policy flags); host tools
+# use jig's normal policy, which they need for the sysroot.
 {
   package,
   buildPkgs,
@@ -24,8 +25,10 @@ package {
     GOLCONDA_KERNEL_EXTRA_CONFIG = "{}";
     GOLCONDA_KERNEL_FRAGMENTS = "[]";
     GOLCONDA_KERNEL_MAKE = builtins.toJSON [
-      # Use raw clang/lld for kernel code (no jig hardening flags)
-      "CC=clang"
+      # Kernel code through jig in passthrough, set per command as jig documents it: the compile
+      # cache applies, the policy flags (hardening, sysroot, RUNPATH, interpreter, prefix map)
+      # do not. The kernel brings its own.
+      "CC=env JIG_PASSTHROUGH=1 cc"
       "LD=ld.lld"
       "AR=llvm-ar"
       "NM=llvm-nm"
@@ -60,7 +63,7 @@ package {
   # extract-cert needs openssl headers.
   # sorttable needs libunwind for pthread_exit at runtime.
   # These only affect HOSTCC (jig) via -isystem, which the kernel's own code ignores
-  # (it uses raw clang via CC=clang).
+  # (it uses jig in passthrough, CC=env JIG_PASSTHROUGH=1 cc).
   buildDependencies = [
     buildPkgs.flex
     buildPkgs.bison
