@@ -8,6 +8,7 @@
 #               # included component and /system
 #   inventory;  # module path -> { role; inputs; included?; reason?; } (lib/components.nix)
 #   moduleDocs; # module path -> its #! doc text or null, downstream modules included
+#   catalogue;  # every target package: name -> { version; purl?; cpe?; origin; replaces?; } (nix/packages.nix)
 #   fragments;  # the names of the build's own fragments (extraFragments)
 #   packages;   # the downstream packages: name -> { replaces; } ("golconda", "repkgs" or null)
 #               # modules.json is { modules = inventory; fragments; packages; }
@@ -386,6 +387,6 @@ in
   packages = setFull.downstream;
   usrTree = usrTreeDrv;
   config = normalizedConfig;
-  inherit (setFull) platform pkgs;
+  inherit (setFull) catalogue platform pkgs;
   inherit (composed) version name;
 }

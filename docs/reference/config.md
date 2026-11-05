@@ -191,20 +191,21 @@ document is.
 every optional component the document has a table for; an empty table selects one with its defaults;
 [design/modules](../design/modules.md#which-modules-a-system-has)), composes, and returns:
 
-| field             | content                                                                                               |
-| ----------------- | ----------------------------------------------------------------------------------------------------- |
-| `composed`        | the composer output ([Modules](modules/README.md#the-composer-output))                                |
-| `usrTree`         | the `/usr` tree derivation with the artifacts in `/usr/lib/golconda/`                                 |
-| `sbom`            | the SBOM derivation; `.bom` is the evaluated CycloneDX document, its output contains `sbom.json`      |
-| `config`          | the normalized options of every included component and `/system`, derivations replaced by their names |
-| `inventory`       | every module's role and inputs; for a component, `included` and `reason`                              |
-| `moduleDocs`      | module path → its `#!` doc text (or null), downstream modules included                                |
-| `fragments`       | the names of the build's own fragments (`extraFragments`)                                             |
-| `packages`        | the downstream packages: name → `{ replaces; }`, `"golconda"`, `"repkgs"` or null                     |
-| `artifacts`       | the files `mkSystem` adds to `/usr/lib/golconda/`                                                     |
-| `platform`        | the elaborated platform record                                                                        |
-| `version`, `name` | from `/system`                                                                                        |
-| `pkgs`            | the platform's packages                                                                               |
+| field             | content                                                                                                 |
+| ----------------- | ------------------------------------------------------------------------------------------------------- |
+| `composed`        | the composer output ([Modules](modules/README.md#the-composer-output))                                  |
+| `usrTree`         | the `/usr` tree derivation with the artifacts in `/usr/lib/golconda/`                                   |
+| `sbom`            | the SBOM derivation; `.bom` is the evaluated CycloneDX document, its output contains `sbom.json`        |
+| `config`          | the normalized options of every included component and `/system`, derivations replaced by their names   |
+| `inventory`       | every module's role and inputs; for a component, `included` and `reason`                                |
+| `moduleDocs`      | module path → its `#!` doc text (or null), downstream modules included                                  |
+| `catalogue`       | every target package → `{ version; purl?; cpe?; origin; replaces?; }`; unsupported: `supported = false` |
+| `fragments`       | the names of the build's own fragments (`extraFragments`)                                               |
+| `packages`        | the downstream packages: name → `{ replaces; }`, `"golconda"`, `"repkgs"` or null                       |
+| `artifacts`       | the files `mkSystem` adds to `/usr/lib/golconda/`                                                       |
+| `platform`        | the elaborated platform record                                                                          |
+| `version`, `name` | from `/system`                                                                                          |
+| `pkgs`            | the platform's packages                                                                                 |
 
 ```sh
 iets eval -E '(import ./examples/golconda.nix).usrTree.outPath'
