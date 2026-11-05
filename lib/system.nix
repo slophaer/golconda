@@ -8,6 +8,7 @@
 #               # included component and /system
 #   inventory;  # module path -> { role; inputs; included?; reason?; } (lib/components.nix)
 #   moduleDocs; # module path -> its #! doc text or null, downstream modules included
+#   schema;     # the JSON Schema of this tree, downstream modules included (/usr/lib/golconda/schema.json)
 #   catalogue;  # every target package: name -> { version; purl?; cpe?; origin; replaces?; } (nix/packages.nix)
 #   fragments;  # the names of the build's own fragments (extraFragments)
 #   packages;   # the downstream packages: name -> { replaces; } ("golconda", "repkgs" or null)
@@ -383,6 +384,7 @@ in
     inventory
     moduleDocs
     sbom
+    schema
     ;
   packages = setFull.downstream;
   usrTree = usrTreeDrv;

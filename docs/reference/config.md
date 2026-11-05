@@ -199,6 +199,7 @@ every optional component the document has a table for; an empty table selects on
 | `config`          | the normalized options of every included component and `/system`, derivations replaced by their names   |
 | `inventory`       | every module's role and inputs; for a component, `included` and `reason`                                |
 | `moduleDocs`      | module path → its `#!` doc text (or null), downstream modules included                                  |
+| `schema`          | the JSON Schema of this tree, downstream modules included; the image's `schema.json`                    |
 | `catalogue`       | every target package → `{ version; purl?; cpe?; origin; replaces?; }`; unsupported: `supported = false` |
 | `fragments`       | the names of the build's own fragments (`extraFragments`)                                               |
 | `packages`        | the downstream packages: name → `{ replaces; }`, `"golconda"`, `"repkgs"` or null                       |
