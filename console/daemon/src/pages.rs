@@ -136,7 +136,9 @@ fn first_paragraph(doc: &str) -> &str {
 pub fn markdown(text: &str, inline: bool) -> Markup {
     // for each open link: whether it is kept
     let mut links = Vec::new();
-    let events = Parser::new(text).filter_map(|e| match e {
+    let options =
+        pulldown_cmark::Options::ENABLE_TABLES | pulldown_cmark::Options::ENABLE_STRIKETHROUGH;
+    let events = Parser::new_ext(text, options).filter_map(|e| match e {
         Event::Html(h) | Event::InlineHtml(h) => Some(Event::Text(h)),
         Event::Start(Tag::Image { .. }) | Event::End(TagEnd::Image) => None,
         Event::Start(Tag::Link { ref dest_url, .. }) => {
@@ -468,6 +470,13 @@ mod tests {
             "<p><a href=\"https://systemd.io/\">x</a></p>\n"
         );
         assert_eq!(m("![alt](https://example.com/t.png)"), "<p>alt</p>\n");
+        // tables, as module docs write them
+        let t = m("| function | returns |\n| --- | --- |\n| `render var` | a fragment |\n");
+        assert!(t.starts_with("<table><thead><tr><th>function</th>"), "{t}");
+        assert!(
+            t.contains("<td><code>render var</code></td><td>a fragment</td>"),
+            "{t}"
+        );
         // inline: no paragraph around it
         assert_eq!(markdown("a `b`", true).into_string(), "a <code>b</code>");
     }
