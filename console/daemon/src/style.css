@@ -49,7 +49,7 @@ tr.sel td{background:var(--skyBg)}
 .app{border:0;border-radius:0;min-height:100vh}
 a.opt{color:inherit;text-decoration:none}a.opt:hover{background:#F3F6FA}
 .tree a{color:inherit;text-decoration:none}.tree a:hover{color:var(--sky)}
-.main p.doc{margin:0 0 10px;color:var(--mute);font-size:13px;white-space:pre-line}
+.main p.doc{margin:0 0 10px;color:var(--mute);font-size:13px}
 .detail .empty{color:var(--mute);font-size:13px}
 .err{font-family:var(--mono);font-size:12.5px;white-space:pre-wrap;background:var(--redBg);color:var(--red);padding:10px 12px;border-radius:4px}
 .legend{margin-top:12px;font-size:12px;color:var(--mute)}
@@ -57,3 +57,7 @@ a.opt{color:inherit;text-decoration:none}a.opt:hover{background:#F3F6FA}
 .legend .set{color:var(--sky)}
 details.doc{margin:-4px 0 10px}details.doc summary{cursor:pointer;color:var(--sky);font-size:12.5px}
 .body{min-height:calc(100vh - 39px)}
+.md p{margin:0 0 8px}.md p:last-child{margin-bottom:0}.md ul,.md ol{margin:0 0 8px;padding-left:20px}
+.md code,.desc code{font-family:var(--mono);font-size:.92em;background:#F1F3F6;border-radius:3px;padding:0 3px}
+.md pre{font-family:var(--mono);font-size:12px;background:#FAFBFC;border:1px solid var(--line);border-radius:4px;padding:8px 10px;overflow:auto}
+.md a{color:var(--sky)}div.doc{margin:0 0 10px;color:var(--mute);font-size:13px}

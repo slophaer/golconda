@@ -6,7 +6,8 @@ use axum::http::StatusCode;
 use golconda_core::diff::Change;
 use golconda_core::document::{path_name, toml_text};
 use golconda_core::system::{Explanation, System};
-use maud::{DOCTYPE, Markup, html};
+use maud::{DOCTYPE, Markup, PreEscaped, html};
+use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 use serde_json::Value;
 
 #[derive(PartialEq, Clone, Copy)]
@@ -129,6 +130,29 @@ fn first_paragraph(doc: &str) -> &str {
     doc.split("\n\n").next().unwrap_or(doc)
 }
 
+/// Markdown (module docs, option descriptions) as HTML. Raw HTML in it is shown as text,
+/// images are left out (they would load from elsewhere), and a link stays a link only to
+/// http(s); any other link is its text. `inline`: no paragraph around a single line.
+pub fn markdown(text: &str, inline: bool) -> Markup {
+    // for each open link: whether it is kept
+    let mut links = Vec::new();
+    let events = Parser::new(text).filter_map(|e| match e {
+        Event::Html(h) | Event::InlineHtml(h) => Some(Event::Text(h)),
+        Event::Start(Tag::Image { .. }) | Event::End(TagEnd::Image) => None,
+        Event::Start(Tag::Link { ref dest_url, .. }) => {
+            let ok = dest_url.starts_with("https://") || dest_url.starts_with("http://");
+            links.push(ok);
+            ok.then_some(e)
+        }
+        Event::End(TagEnd::Link) => links.pop().unwrap_or(false).then_some(e),
+        Event::Start(Tag::Paragraph) | Event::End(TagEnd::Paragraph) if inline => None,
+        e => Some(e),
+    });
+    let mut out = String::new();
+    pulldown_cmark::html::push_html(&mut out, events);
+    PreEscaped(out)
+}
+
 pub fn config(app: &App, name: &str, sys: &System) -> Markup {
     let main = html! {
         div.three {
@@ -139,7 +163,7 @@ pub fn config(app: &App, name: &str, sys: &System) -> Markup {
                     a.opt href={ "/systems/" (name) "/config" (m) } {
                         span.n { (m) }
                         span.v.def { @if sys.config.get(m.as_str()).is_none() { "not included" } }
-                        @if let Some(d) = doc.as_str() { span.desc { (first_paragraph(d)) } }
+                        @if let Some(d) = doc.as_str() { span.desc { (markdown(first_paragraph(d), true)) } }
                     }
                 }
             }
@@ -209,13 +233,16 @@ pub fn module(
                 }
                 @if let Some(d) = doc {
                     @let (first, rest) = d.split_once("\n\n").unwrap_or((d, ""));
-                    p.doc { (first) }
+                    div.doc.md { (markdown(first, false)) }
                     @if !rest.is_empty() {
-                        details.doc { summary { "More about " (module) } p.doc { (rest) } }
+                        details.doc { summary { "More about " (module) } div.doc.md { (markdown(rest, false)) } }
                     }
                 }
                 @if sys.config.get(module).is_none() {
                     p.doc { "This system does not include " (module) "." }
+                }
+                @if options.is_empty() {
+                    p.doc { "This module has no options." }
                 }
                 @for o in options {
                     a.opt.on[selected.is_some_and(|s| s.option == o.option)]
@@ -225,7 +252,7 @@ pub fn module(
                             Some(v) => span class={ "v " (if o.explicit { "set" } else { "def" }) } { (summary(v)) },
                             None => span.v.def { "none" },
                         }
-                        @if let Some(d) = &o.description { span.desc { (d) } }
+                        @if let Some(d) = &o.description { span.desc { (markdown(d, true)) } }
                     }
                 }
                 div.legend { "default" " · " span.set { "set in " (sys.document.display()) } }
@@ -244,7 +271,7 @@ pub fn module(
 fn detail(e: &Explanation) -> Markup {
     html! {
         h4 { (e.module) " " (e.option) }
-        @if let Some(d) = &e.description { p { (d) } }
+        @if let Some(d) = &e.description { div.md { (markdown(d, false)) } }
         dl {
             dt { "type" } dd { (e.type_name) }
             dt { "value" } dd { (e.value.as_ref().map_or("none".into(), toml_text)) }
@@ -407,10 +434,42 @@ mod tests {
         )
         .into_string();
         assert!(
-            p.contains(r#"<p class="doc">OpenSSH &lt;daemon&gt;.</p><details class="doc">"#),
+            p.contains("<div class=\"doc md\"><p>OpenSSH &lt;daemon&gt;.</p>\n</div><details class=\"doc\">"),
             "{p}"
         );
-        assert!(p.contains(r#"<p class="doc">More.</p></details>"#), "{p}");
+        assert!(
+            p.contains("<div class=\"doc md\"><p>More.</p>\n</div></details>"),
+            "{p}"
+        );
+    }
+
+    #[test]
+    fn markdown_is_rendered_and_nothing_unsafe_gets_through() {
+        let m = |t: &str| markdown(t, false).into_string();
+        assert_eq!(m("a `b` *c*"), "<p>a <code>b</code> <em>c</em></p>\n");
+        assert_eq!(
+            m("x\n\n- y\n- z"),
+            "<p>x</p>\n<ul>\n<li>y</li>\n<li>z</li>\n</ul>\n"
+        );
+        // raw HTML is text
+        assert_eq!(
+            m("<script>alert(1)</script>"),
+            "&lt;script&gt;alert(1)&lt;/script&gt;"
+        );
+        assert_eq!(
+            m("a <b onclick=x>b</b>"),
+            "<p>a &lt;b onclick=x&gt;b&lt;/b&gt;</p>\n"
+        );
+        // only http(s) links are links; images are left out
+        assert_eq!(m("[x](javascript:alert(1))"), "<p>x</p>\n");
+        assert_eq!(m("[x](docs/a.md)"), "<p>x</p>\n");
+        assert_eq!(
+            m("[x](https://systemd.io/)"),
+            "<p><a href=\"https://systemd.io/\">x</a></p>\n"
+        );
+        assert_eq!(m("![alt](https://example.com/t.png)"), "<p>alt</p>\n");
+        // inline: no paragraph around it
+        assert_eq!(markdown("a `b`", true).into_string(), "a <code>b</code>");
     }
 
     #[test]

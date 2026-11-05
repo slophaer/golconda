@@ -189,3 +189,23 @@ async fn assets_and_headers_need_no_evaluation() {
         );
     }
 }
+
+#[tokio::test]
+#[ignore = "needs iets and the Golconda checkout"]
+async fn a_module_without_options_has_a_page() {
+    for m in ["vars", "security"] {
+        let (s, _, body) = get(app(false), &format!("/systems/server/config/{m}"), false).await;
+        assert_eq!(s, StatusCode::OK, "{m}: {body}");
+        assert!(body.contains("This module has no options."), "{m}: {body}");
+    }
+}
+
+#[tokio::test]
+#[ignore = "needs iets and the Golconda checkout"]
+async fn module_docs_and_descriptions_are_markdown() {
+    let (_, _, body) = get(app(false), "/systems/server/config/services/sshd", false).await;
+    // `sshd.service` in the module's text, `openssh` in package's description
+    assert!(body.contains("<code>sshd.service</code>"), "{body}");
+    assert!(body.contains("<code>openssh</code>"), "{body}");
+    assert!(!body.contains('`'), "{body}");
+}
