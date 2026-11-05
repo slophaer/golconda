@@ -1,0 +1,16 @@
+# nu's glob returns directory order, and that order can leak into an image or a log that two
+# builds must agree on. Sort the result before anything picks from it or writes it out.
+id: bare-glob
+language: nu
+severity: error
+message: "glob returns directory order: pipe it through `sort` first"
+rule:
+  kind: pipe_element
+  has:
+    kind: command
+    regex: '^glob\s'
+  not:
+    precedes:
+      kind: pipe_element
+      regex: '^sort\b'
+      stopBy: {kind: pipe_element}

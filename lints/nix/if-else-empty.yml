@@ -1,0 +1,21 @@
+# `on` (modules/lib/on.nix) is the one helper for an optional list or set. Only a literal
+# list or set is flagged: `on` evaluates its value to see the type even when the condition
+# is false, which a literal survives and a call (`walk dir`, `concatMap f v`) may not.
+id: if-else-empty
+language: nix
+severity: error
+message: "`on cond value` instead of if-then-else with an empty set or list"
+ignores:
+  - modules/lib/on.nix
+rule:
+  pattern: if $C then $V else $E
+constraints:
+  V:
+    any:
+      - kind: list_expression
+      - kind: attrset_expression
+      - kind: rec_attrset_expression
+  E:
+    any:
+      - regex: '^\{\s*\}$'
+      - regex: '^\[\s*\]$'

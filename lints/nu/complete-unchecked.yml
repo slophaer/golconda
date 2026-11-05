@@ -1,0 +1,19 @@
+# The record `complete` makes is only safe where something reads it: a binding, a subexpression,
+# or the last pipeline of a command, whose caller gets it as the return value.
+id: complete-unchecked
+language: nu
+severity: error
+message: "`| complete` swallows the failure and nothing here looks at exit_code"
+rule:
+  kind: pipe_element
+  regex: '^complete$'
+  inside:
+    kind: pipeline
+    not:
+      any:
+        - inside:
+            any: [{kind: stmt_let}, {kind: expr_parenthesized}, {kind: assignment}, {kind: val_closure}]
+            stopBy: end
+        - all:
+            - nthChild: {position: 1, reverse: true, ofRule: {kind: pipeline}}
+            - inside: {kind: block, inside: {kind: decl_def}}

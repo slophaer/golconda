@@ -1,0 +1,73 @@
+id: no-allow-dead-code
+valid:
+  - "#[allow(clippy::too_many_lines)] fn f() {}"
+invalid:
+  - "#[allow(dead_code)] fn f() {}"
+  - "#![allow(unused_imports)]"
+---
+id: no-comment-essays
+valid:
+  - |
+    // one
+    // two
+    fn f() {}
+  - |
+    //! a module doc may run long
+    //! 2
+    //! 3
+    //! 4
+    //! 5
+    //! 6
+    //! 7
+    //! 8
+invalid:
+  - |
+    // 1
+    // 2
+    // 3
+    // 4
+    // 5
+    // 6
+    // 7
+    // 8
+    fn f() {}
+---
+id: no-discarded-result
+valid:
+  - "fn f() { let v = x.ok(); }"
+invalid:
+  - "fn f() { std::fs::remove_file(p).ok(); }"
+---
+id: no-function-level-use
+valid:
+  - "use std::io::Write; fn f() {}"
+invalid:
+  - "fn f() { use std::io::Write; }"
+---
+id: no-glob-imports
+valid:
+  - "mod tests { use super::*; }"
+  - "use std::io::{Read, Write};"
+invalid:
+  - "use std::io::*;"
+---
+id: no-inline-absolute-paths
+valid:
+  - "use std::fs::read; fn f() { read(p); }"
+  - "pub(crate) fn f() {}"
+invalid:
+  - "fn f() { std::fs::read(p); }"
+  - "fn f() -> crate::Error { todo() }"
+---
+id: no-pid-names
+valid:
+  - 'fn f() { let d = tempfile::tempdir(); }'
+invalid:
+  - 'fn f() { let p = format!("/tmp/x-{}", std::process::id()); }'
+---
+id: no-placeholder-macros
+valid:
+  - 'fn f() { println!("x"); }'
+invalid:
+  - "fn f() { todo!() }"
+  - "fn f() { dbg!(x); }"
