@@ -1,6 +1,7 @@
 # Checks of the one links map: package links, the fragments' farm, dlopen and explicit links, and their clashes.
 # A function of the harness (./harness.nix); it returns a list of checks.
 {
+  binsFor,
   check,
   compose,
   fr,
@@ -8,6 +9,7 @@
   merge,
   openssh,
   standIn,
+  usrTreeLib,
   withBin,
   ...
 }:
@@ -15,26 +17,28 @@ let
   inherit (builtins) deepSeq elem tryEval;
 in
 [
-  # 5. one links map: /usr/bin from packages, the fragments' farm, dlopen and
-  # explicit links, one duplicate check that names both sources
-  (check "links: a package with two bins is two package links" (
+  # 5. one links map: the fragments' farm, dlopen and explicit links, one duplicate check
+  # that names both sources. /usr/bin from packages is the usr tree builder's: it reads
+  # each package's exports.json (tests/usr-tree/builder.py)
+  (check "links: a package with two declared bins reaches the usr tree builder with both" (
     let
       tool = withBin "tool-1" [
         "foo"
         "bar"
       ];
-      result = compose [ { packages = [ tool ]; } ];
+      frags = [ { packages = [ tool ]; } ];
+      result = compose frags;
     in
-    # compose includes /base links too; check that the tool's links are present
-    result.links."/usr/bin/foo" == {
-      target = "${tool}/bin/foo";
-      kind = "package";
-    }
+    !(result.links ? "/usr/bin/foo")
     &&
-      result.links."/usr/bin/bar" == {
-        target = "${tool}/bin/bar";
-        kind = "package";
-      }
+      map (b: b.declared) (binsFor frags tool) == [
+        [
+          "foo"
+          "bar"
+        ]
+      ]
+    # an undeclared package: the builder links what its exports.json lists
+    && map (b: b.declared) (binsFor [ { packages = [ standIn ]; } ] standIn) == [ null ]
   ))
   (check "links: dlopen and explicit links pass through with their kinds" (
     let
@@ -117,26 +121,41 @@ in
       }
     )
   ))
-  # one path, two links: a package link and an explicit link clash, and so do
-  # two explicit links; neither may keep one of them in silence
-  (check "links: a package link and an explicit link at one path clash, both named" (
+  # one path, two links: a package's /usr/bin name and an explicit link clash in the usr
+  # tree builder (tests/usr-tree/builder.py), and two explicit links clash here; neither may
+  # keep one of them in silence. The builder's message names the link's origin.
+  (check "links: an explicit /usr/bin link reaches the usr tree builder with its origin" (
     let
       frags = [
         { packages = [ standIn ]; }
         {
+          name = "/services/x";
           links."/usr/bin/jq" = {
             target = "/nix/store/other/bin/jq";
             kind = "explicit";
           };
         }
       ];
-      msg = merge.duplicateError frags;
+      tree = usrTreeLib.usrTree {
+        composerOutput = compose frags;
+        platform = {
+          name = "x86_64-linux";
+          cpu = "x86_64";
+        };
+        version = "20261031.1";
+      };
     in
-    !(tryEval (deepSeq (compose frags).links true)).success
-    && !(tryEval (deepSeq (compose frags).packages true)).success
-    && hasInfix "/usr/bin/jq defined twice" msg
-    && hasInfix "package jq" msg
-    && hasInfix "explicit link to /nix/store/other/bin/jq" msg
+    merge.duplicateError frags == null
+    &&
+      builtins.filter (l: l.path == "/usr/bin/jq") tree.links == [
+        {
+          path = "/usr/bin/jq";
+          target = "/nix/store/other/bin/jq";
+          kind = "explicit";
+          origins = [ "/services/x" ];
+        }
+      ]
+    && builtins.length (binsFor frags standIn) == 1
   ))
   (check "links: two explicit links at one path clash, both targets named" (
     let
@@ -161,31 +180,26 @@ in
         (at "a")
       ] != null
   ))
-  (check "links: a module's own merge is a fragment: its package links repeat without a clash" (
+  (check "links: a module's own merge is a fragment: its packages repeat without a clash" (
     let
       inner = merge [
         { packages = [ standIn ]; }
         { packages = [ openssh ]; }
       ];
-      outer = compose [
+      frags = [
         inner
         { packages = [ standIn ]; }
       ];
+      outer = compose frags;
     in
-    inner.links."/usr/bin/jq".kind == "package"
-    && outer.links."/usr/bin/sshd".target == "${openssh}/bin/sshd"
+    inner.links == { }
     # /base adds more packages; check the requested ones are present
     && elem standIn outer.packages
     && elem openssh outer.packages
-    # a package link to another target is still a clash
-    && !(tryEval (
-      deepSeq
-        (compose [
-          inner
-          { packages = [ (withBin "jq-2" [ "jq" ]) ]; }
-        ]).links
-        true
-    )).success
+    # one package, two fragments: one usr tree entry, so one set of /usr/bin links;
+    # another package with a jq is the builder's clash (tests/usr-tree/builder.py)
+    && builtins.length (binsFor frags standIn) == 1
+    && builtins.length (binsFor frags openssh) == 1
   ))
   (check "links: a farm and a dlopen link at one path clash across kinds" (
     let
@@ -244,8 +258,15 @@ in
         "explicit"
         "farm"
         "dlopen"
-        "package"
       ]
+  ))
+  (check "links: kind package is gone: the usr tree builder links /usr/bin from the packages" (
+    fr.links.verify {
+      "/usr/bin/jq" = {
+        target = "${standIn}/bin/jq";
+        kind = "package";
+      };
+    } != null
   ))
   (check "links: distinct paths from every kind are no duplicate" (
     let
@@ -278,7 +299,6 @@ in
     # /base adds links, check the fragment links are present
     && result.links ? "/usr/lib/custom/rules.d"
     && result.links ? "/usr/lib/libfoo.so.1"
-    && result.links ? "/usr/bin/foo"
   ))
   (check "links: a link and a file at one path is an error" (
     let

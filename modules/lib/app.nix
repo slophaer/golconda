@@ -234,11 +234,8 @@ let
             null;
       };
 
-  # The `bin` list a repkgs package declares in its package.nix (`args.bin`),
-  # or null. What a build installs is known only at build time, in its
-  # exports.json, so an undeclared package has no list here. A plain
-  # derivation has `args`, its builder's argv, as a list.
-  declaredBin = p: if builtins.isAttrs (p.args or null) then p.args.bin or null else null;
+  # what package.nix declares in `bin`, or null (merge.nix)
+  inherit (import ./merge.nix) declaredBin;
 
   # The program name: `program`, else the first name the package declares in
   # `bin`, else its pname or name.

@@ -2,6 +2,7 @@
 # A function of the harness (./harness.nix); it returns a list of checks.
 {
   a,
+  binsFor,
   check,
   compose,
   f,
@@ -237,19 +238,49 @@ in
     )
   ))
   (check "app.files must be text" (a.files.verify { x = 1; } != null))
-  # 3b. two packages with one /usr/bin name are a composer error
-  (check "farm refuses one name in two packages" (
-    !(tryEval (
+  # 3b. two packages with one /usr/bin name: the usr tree builder refuses them, naming the
+  # path and both packages (tests/usr-tree/builder.py); evaluation does not see what a
+  # build installs, so it claims no /usr/bin name and passes both packages on
+  (check "farm: one name in two packages is the usr tree builder's error, not the composer's" (
+    let
+      pa = withBin "a-1" [ "x" ];
+      pb = withBin "b-1" [
+        "y"
+        "x"
+      ];
+      result = compose [
+        { packages = [ pa ]; }
+        { packages = [ pb ]; }
+      ];
+    in
+    (tryEval (
       deepSeq (farmOf [
-        (withBin "a-1" [ "x" ])
-        (withBin "b-1" [
-          "y"
-          "x"
-        ])
+        pa
+        pb
       ]) true
     )).success
+    && !(result.links ? "/usr/bin/x")
+    &&
+      map (b: b.declared) (
+        binsFor [
+          { packages = [ pa ]; }
+          { packages = [ pb ]; }
+        ] pa
+      ) == [ [ "x" ] ]
+    &&
+      map (b: b.declared) (
+        binsFor [
+          { packages = [ pa ]; }
+          { packages = [ pb ]; }
+        ] pb
+      ) == [
+        [
+          "y"
+          "x"
+        ]
+      ]
   ))
-  (check "farm accepts distinct names; the same package twice is one package, one link" (
+  (check "farm accepts distinct names; the same package twice is one package, one entry" (
     let
       a = withBin "a-1" [ "x" ];
       b = withBin "b-1" [ "y" ];
@@ -258,22 +289,22 @@ in
         b
         a
       ];
-      result = compose [ { inherit packages; } ];
+      frags = [ { inherit packages; } ];
     in
     # farmOf calls the composer alone (no components): the requested packages are there
     elem a (farmOf packages)
     && elem b (farmOf packages)
-    # the links include these with the right targets
+    # the usr tree builder gets each package once, with its declared names and origins
     &&
-      result.links."/usr/bin/x" == {
-        target = "${a}/bin/x";
-        kind = "package";
-      }
-    &&
-      result.links."/usr/bin/y" == {
-        target = "${b}/bin/y";
-        kind = "package";
-      }
+      binsFor frags a == [
+        {
+          package = "a-1";
+          path = a.outPath;
+          declared = [ "x" ];
+          origins = [ "fragments[0]" ];
+        }
+      ]
+    && map (e: e.declared) (binsFor frags b) == [ [ "y" ] ]
   ))
   # 5b. app.program and the /usr/bin farm
   (check "app.program defaults to the first bin and must be one of them" (
@@ -337,18 +368,28 @@ in
         program = "jq-other";
       } == null
   ))
-  (check "farm: a second package with the same program clashes, whatever it is" (
-    !(tryEval (
-      deepSeq (farmOf [
-        (withBin "dropbear-1" [ "sshd" ])
-        openssh
-      ]) true
-    )).success
-    && !(tryEval (
-      deepSeq (farmOf [
-        openssh
-        (openssh // { outPath = "/nix/store/openssh-10.6p1-other"; })
-      ]) true
-    )).success
+  # a second package with the same program: the usr tree builder refuses it, whatever it is
+  # (tests/usr-tree/builder.py, two packages with one bin name); both reach it as entries
+  (check "farm: a second package with the same program reaches the usr tree builder" (
+    let
+      other = openssh // {
+        outPath = "/nix/store/openssh-10.6p1-other";
+      };
+      dropbear = withBin "dropbear-1" [ "sshd" ];
+      frags = [
+        {
+          packages = [
+            dropbear
+            openssh
+            other
+          ];
+        }
+      ];
+    in
+    builtins.all (p: builtins.length (binsFor frags p) == 1) [
+      dropbear
+      openssh
+      other
+    ]
   ))
 ]

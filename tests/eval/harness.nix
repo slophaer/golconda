@@ -46,12 +46,13 @@ let
   # jq stands in for the type check (the unit then says /usr/bin/jq).
   standIn = pkgs.jq;
 
-  # stand-ins for repkgs packages that declare `bin` in their package.nix (`args.bin`)
+  # stand-ins for repkgs packages that declare `bin` in their package.nix (`args.bin`); no
+  # eval-time `pkg.bin` (repkgs drops it): what a build installs is in its exports.json
   withBin =
     name: bin:
-    pkgs.jq
+    builtins.removeAttrs pkgs.jq [ "bin" ]
     // {
-      inherit name bin;
+      inherit name;
       args = (pkgs.jq.args or { }) // {
         inherit bin;
       };
@@ -170,6 +171,19 @@ let
       }
       // extraOpts;
     };
+  # the /usr/bin entries the usr tree builder gets for a composition (lib/usr-tree.nix):
+  # { package; path; declared; origins; } per package; it links them at build time
+  binsOf =
+    fragments:
+    (usrTreeLib.usrTree {
+      composerOutput = compose fragments;
+      platform = {
+        name = platform;
+        cpu = "x86_64";
+      };
+      version = "20261031.1";
+    }).packageBins;
+  binsFor = fragments: p: builtins.filter (b: b.path == p.outPath) (binsOf fragments);
   # the composer's files, forced: a type error in a file fires here
   filesOf =
     fragments:
@@ -266,6 +280,8 @@ in
   inherit
     a
     adios
+    binsFor
+    binsOf
     check
     compose
     composeWith

@@ -3,23 +3,21 @@
 # must not repeat a key, list fields concatenate. There is no priority and no
 # override (docs/design/modules.md).
 #
-# The /usr symlink farm is one map, path under /usr -> { target; kind; }:
-# - kind "package": /usr/bin/<name> for every name in a package's `bin` list,
-#   derived here from `packages`
-# - the fragments' own `links`: kind "farm" (a directory the image builder
-#   expands file by file), "dlopen" (a soname the builder checks) or
-#   "explicit" (.wants links and the like)
+# The /usr symlink farm is one map, path under /usr -> { target; kind; }: the
+# fragments' own `links`, kind "farm" (a directory the image builder expands
+# file by file), "dlopen" (a soname the builder checks) or "explicit" (.wants
+# links and the like). /usr/bin/<name> for a package's executables is not in
+# it: evaluation cannot see what a build installs, so the image builder links
+# them from each package's exports.json (lib/usr-tree.nix).
 #
-# One duplicate check covers the whole /usr tree. Each fragment claims paths:
-# a unit /usr/lib/systemd/system/<name>, a file its path, a link its path, a
-# package /usr/bin/<name> for each name in its `bin` list. A path claimed
-# twice throws, whatever the kinds, and the message names both claims and both
-# origins. The one exception: a package link that repeats a package link to the
-# same target (one package from two fragments, or a module whose own `merge`
-# already derived the link). The paths the system and the image builder write
-# themselves (os-release, the golconda.conf of sysusers.d and tmpfiles.d,
-# /usr/lib/golconda/*.json) are claimed before any fragment, so a fragment
-# cannot claim one.
+# One duplicate check covers what evaluation knows of the /usr tree. Each
+# fragment claims paths: a unit /usr/lib/systemd/system/<name>, a file its
+# path, a link its path. A path claimed twice throws, whatever the kinds, and
+# the message names both claims and both origins. The image builder applies the
+# same rule to the /usr/bin names of the packages. The paths the system and the
+# image builder write themselves (os-release, the golconda.conf of sysusers.d
+# and tmpfiles.d, /usr/lib/golconda/*.json) are claimed before any fragment, so
+# a fragment cannot claim one.
 #
 # Every value of `files` comes out as { text; mode; }: a plain string is a
 # file with mode "0644" (fragment.nix). The image builder reads one shape.
@@ -31,8 +29,8 @@
 # the origins that emitted it (each once, in first-seen order):
 #   origins.packages   package key (`merge.pkgKey`: name-version)
 #   origins.files      path under /usr
-#   origins.links      path under /usr: the fragment's own links, and the
-#                      /usr/bin links of its packages' `bin` lists
+#   origins.links      path under /usr: the fragment's own links (the image
+#                      builder adds the /usr/bin links of the packages)
 #   origins.units      unit name
 #   origins.sysusers   the line
 #   origins.tmpfiles   the line
@@ -54,8 +52,8 @@ let
     foldl'
     groupBy
     head
+    isAttrs
     isString
-    listToAttrs
     mapAttrs
     tail
     ;
@@ -75,8 +73,13 @@ let
         mode = v.mode or "0644";
       };
 
-  # repkgs packages carry `bin`, their executable names, at evaluation time.
   pkgName = p: p.name or "${p.pname}-${p.version}";
+
+  # The `bin` list a repkgs package declares in its package.nix (`args.bin`),
+  # or null. What a build installs is known only at build time, in its
+  # exports.json `bin`, so an undeclared package has no list here. A plain
+  # derivation (a signed loader) has `args`, its builder's argv, as a list.
+  declaredBin = p: if isAttrs (p.args or null) then p.args.bin or null else null;
 
   # A package's identity: its store path; a stand-in without one goes by name.
   pkgId = p: p.outPath or (pkgName p);
@@ -111,11 +114,7 @@ let
   originsOf = labelled: {
     packages = keyOrigins (f: map pkgKey (f.packages or [ ])) labelled;
     files = keyOrigins (f: attrNames (f.files or { })) labelled;
-    links = keyOrigins (
-      f:
-      concatMap (p: map (b: "/usr/bin/${b}") (p.bin or [ ])) (f.packages or [ ])
-      ++ attrNames (f.links or { })
-    ) labelled;
+    links = keyOrigins (f: attrNames (f.links or { })) labelled;
     units = keyOrigins (f: attrNames (f.units or { })) labelled;
     sysusers = keyOrigins (f: f.sysusers or [ ]) labelled;
     tmpfiles = keyOrigins (f: f.tmpfiles or [ ]) labelled;
@@ -169,8 +168,8 @@ let
       "/usr/lib/golconda/schema.json"
       "/usr/lib/golconda/modules.json"
     ]
-    ++ by "lib/usr-tree.nix" [ "/usr/lib/golconda/attribution.json" ]
     ++ by "lib/usr-tree/main.nu" [
+      "/usr/lib/golconda/attribution.json"
       "/usr/lib/golconda/packages.json"
       "/usr/lib/golconda/sbom.json"
       "/usr/lib/os-release"
@@ -179,9 +178,8 @@ let
     ];
 
   # Every path one labelled fragment claims in the /usr tree, as
-  # { path; what; origin; target?; }: a unit at /usr/lib/systemd/system/<name>,
-  # a file at its path, a link at its path, and /usr/bin/<name> for each name
-  # in a package's `bin` list.
+  # { path; what; origin; }: a unit at /usr/lib/systemd/system/<name>, a file
+  # at its path, a link at its path.
   claimsOf =
     l:
     let
@@ -194,32 +192,10 @@ let
     in
     map (n: claim "/usr/lib/systemd/system/${n}" "unit '${n}'") (attrNames (f.units or { }))
     ++ map (p: claim p "file") (attrNames (f.files or { }))
-    ++ map (
-      p:
-      claim p "${links.${p}.kind} link to ${links.${p}.target}"
-      // {
-        inherit (links.${p}) kind target;
-      }
-    ) (attrNames links)
-    ++ concatMap (
-      p:
-      map (
-        b:
-        claim "/usr/bin/${b}" "package ${pkgName p}"
-        // {
-          kind = "package";
-          target = "${p}/bin/${b}";
-        }
-      ) (p.bin or [ ])
-    ) (f.packages or [ ]);
+    ++ map (p: claim p "${links.${p}.kind} link to ${links.${p}.target}") (attrNames links);
 
-  # The one duplicate check: one path, one claim. The exception is a package
-  # link that repeats a package link to the same target (one package, two
-  # fragments, or a module's own `merge` and the composer). The message names
-  # both claims and both origins. Targets are compared only at a path claimed
-  # twice.
-  samePackageLink =
-    a: b: (a.kind or null) == "package" && (b.kind or null) == "package" && a.target == b.target;
+  # The one duplicate check: one path, one claim. The message names both
+  # claims and both origins.
   duplicateErrorOf =
     labelled:
     let
@@ -230,7 +206,7 @@ let
         path:
         let
           first = head byPath.${path};
-          clash = filter (c: !(samePackageLink first c)) (tail byPath.${path});
+          clash = tail byPath.${path};
         in
         if clash == [ ] then
           null
@@ -261,20 +237,7 @@ let
       err = duplicateErrorOf labelled;
       files = checkFilePaths (mapAttrs normalizeFile (unionAttrs "files" fragments));
       packages = uniquePackages (concat "packages" fragments);
-      links =
-        listToAttrs (
-          concatMap (
-            p:
-            map (b: {
-              name = "/usr/bin/${b}";
-              value = {
-                target = "${p}/bin/${b}";
-                kind = "package";
-              };
-            }) (p.bin or [ ])
-          ) packages
-        )
-        // unionAttrs "links" fragments;
+      links = unionAttrs "links" fragments;
     in
     # Composition itself is the check: forcing the result (even one field)
     # runs the duplicate and path checks, so a collision throws here and not
@@ -293,6 +256,7 @@ let
 in
 {
   inherit
+    declaredBin
     duplicateError
     labelFragments
     pkgKey

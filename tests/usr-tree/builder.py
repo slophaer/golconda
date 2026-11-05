@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -19,6 +20,12 @@ def file(text="replacement", dest=None):
 
 def link(path, target, kind="explicit"):
     return {"path": path, "target": str(target), "kind": kind}
+
+
+def package(name, declared=None, origins=None):
+    """A packageBins entry: fixture pkg-<name>, its declared bin (args.bin) or None."""
+    return {"package": f"{name}-1", "path": str(FIXTURES / f"pkg-{name}"),
+            "declared": declared, "origins": origins or [f"/{name}"]}
 
 
 class BuilderTests(unittest.TestCase):
@@ -42,6 +49,8 @@ class BuilderTests(unittest.TestCase):
             "packageList": [],
             "sbomPath": None,
             "allowedDirs": ["bin", "lib", "share", "nix"],
+            "packageBins": [],
+            "attribution": {},
         }
         self.source = FIXTURES / "a/lib/systemd/system/demo.service"
 
@@ -69,6 +78,16 @@ class BuilderTests(unittest.TestCase):
         self.assertIn("destination conflict", result.stderr)
         self.assertIn(path, result.stderr)
         self.assertEqual(self.source.read_bytes(), b"sentinel")
+
+    def fails(self, *needles):
+        """The build fails with each needle in its message. Nu wraps the message in a
+        gutter (`  | `) anywhere, even inside a path, so whitespace does not count."""
+        result = self.run_builder()
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        squash = lambda s: re.sub(r"\s+", "", re.sub(r"\n\s*\|", "", s))
+        for needle in needles:
+            self.assertIn(squash(needle), squash(result.stderr), result.stderr)
+        return result
 
     def farm(self, path="/usr/lib/systemd", source="a/lib/systemd"):
         self.attrs["links"].append(link(path, FIXTURES / source, "farm"))
@@ -155,7 +174,8 @@ class BuilderTests(unittest.TestCase):
 
     def test_generated_metadata_cannot_replace_farm_files(self):
         for name in ["os-release", "golconda/packages.json", "golconda/sbom.json",
-                     "sysusers.d/golconda.conf", "tmpfiles.d/golconda.conf"]:
+                     "golconda/attribution.json", "sysusers.d/golconda.conf",
+                     "tmpfiles.d/golconda.conf"]:
             with self.subTest(name=name):
                 self.out = self.root / ("out-" + name.replace("/", "-"))
                 self.attrs["outputs"]["out"] = str(self.out)
@@ -181,7 +201,7 @@ class BuilderTests(unittest.TestCase):
     def test_shared_directories_and_normal_links_succeed(self):
         self.attrs["files"] = {"/usr/lib/shared/a": file("a"), "/usr/lib/shared/b": file("b")}
         self.attrs["links"] = [
-            link("/usr/bin/tool", FIXTURES / "a/bin/tool", "package"),
+            link("/usr/bin/tool", FIXTURES / "a/bin/tool"),
             link("/usr/lib/systemd/system/multi-user.target.wants/demo.service", "../demo.service"),
             link("/usr/lib/systemd/system/dbus.service", "demo.service"),
             link("/usr/share/zoneinfo", FIXTURES / "a/share/zoneinfo"),
@@ -201,6 +221,56 @@ class BuilderTests(unittest.TestCase):
         self.assertEqual((self.out / "lib/security/pam/pam.so").read_bytes(), b"pam")
         self.assertEqual((self.out / "lib/systemd/system/dbus.service").read_text(), "[Unit]\n")
 
+    def test_package_bins_come_from_exports_json(self):
+        self.attrs["packageBins"] = [package("a"), package("lib")]
+        self.succeeds()
+        self.assertEqual(sorted(os.listdir(self.out / "bin")), ["extra", "tool"])
+        self.assertEqual((self.out / "bin/tool").read_bytes(), b"a-tool")
+        self.assertEqual((self.out / "bin/extra").read_bytes(), b"a-extra")
+        self.assertFalse(os.readlink(self.out / "bin/tool").startswith("/"))
+
+    def test_declared_bin_links_only_the_declared_names(self):
+        self.attrs["packageBins"] = [package("a", ["tool"])]
+        self.succeeds()
+        self.assertEqual(os.listdir(self.out / "bin"), ["tool"])
+
+    def test_declared_bin_must_be_in_exports_json(self):
+        self.attrs["packageBins"] = [package("a", ["tool", "missing"])]
+        self.fails("a-1", "missing", "exports.json")
+
+    def test_package_without_exports_json_links_nothing(self):
+        # a derivation repkgs did not build (a signed loader, a keyring)
+        self.attrs["packageBins"] = [package("c")]
+        self.succeeds()
+        self.assertEqual(os.listdir(self.out / "bin"), [])
+
+    def test_declared_bin_without_exports_json_fails(self):
+        self.attrs["packageBins"] = [package("c", ["tool"])]
+        self.fails("c-1", "tool", "exports.json")
+
+    def test_two_packages_with_one_bin_name_fail(self):
+        self.attrs["packageBins"] = [package("a"), package("b", origins=["/services/b"])]
+        self.fails("golconda: /usr/bin/tool defined twice: package a-1 from /a, package b-1 from /services/b")
+        self.assertEqual((self.out / "bin/tool").read_bytes(), b"a-tool")
+
+    def test_explicit_link_and_package_bin_at_one_path_fail(self):
+        self.attrs["links"] = [link("/usr/bin/tool", FIXTURES / "a/bin/tool")]
+        self.attrs["packageBins"] = [package("a")]
+        self.fails("golconda: /usr/bin/tool defined twice: explicit link to", "package a-1 from /a")
+        self.assertEqual((self.out / "bin/tool").read_bytes(), b"tool")
+
+    def test_attribution_names_the_package_origins_of_bin_links(self):
+        self.attrs["attribution"] = {"links": {"/usr/lib/x": ["/base"]}, "files": {}}
+        self.attrs["links"] = [link("/usr/lib/x", "y")]
+        self.attrs["packageBins"] = [package("a", origins=["/base", "/services/a"])]
+        self.succeeds()
+        attribution = json.loads((self.out / "lib/golconda/attribution.json").read_text())
+        self.assertEqual(attribution["links"], {
+            "/usr/lib/x": ["/base"],
+            "/usr/bin/extra": ["/base", "/services/a"],
+            "/usr/bin/tool": ["/base", "/services/a"],
+        })
+
     def test_initrd_without_system_metadata_or_sbom_succeeds(self):
         self.succeeds()
         self.assertTrue((self.out / "sbin").is_symlink())
@@ -211,13 +281,18 @@ class BuilderTests(unittest.TestCase):
     def test_metadata_owners_emit_once(self):
         self.attrs["files"] = {
             f"/usr/lib/golconda/{name}.json": file("{}")
-            for name in ["config", "schema", "attribution"]
+            for name in ["config", "schema"]
         }
         self.attrs["sbomPath"] = str(self.source)
         self.attrs["sysusers"] = ["u test -"]
         self.attrs["tmpfiles"] = ["d /test 0755 root root -"]
         self.succeeds()
         self.assertEqual((self.out / "lib/golconda/sbom.json").read_bytes(), b"sentinel")
+        self.assertEqual(json.loads((self.out / "lib/golconda/attribution.json").read_text()), {})
+
+    def test_attribution_is_the_builders_own(self):
+        self.attrs["files"] = {"/usr/lib/golconda/attribution.json": file("sentinel")}
+        self.fails("destination conflict", "/usr/lib/golconda/attribution.json")
 
 
 if __name__ == "__main__":
