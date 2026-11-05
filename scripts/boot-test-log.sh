@@ -1,3 +1,4 @@
+# shellcheck shell=sh
 # Serial boot decisions only. Sourcing this file starts no processes.
 # wait_for_boot uses the caller's SERIAL_LOG and qemu_running function.
 

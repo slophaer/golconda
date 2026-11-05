@@ -4,7 +4,7 @@
 # and requires the message a user needs on stderr. Run from the repo root, inside the dev
 # shell; scripts/lint runs it.
 set -u
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/../.." || exit 1
 failures=0
 count=0
 
