@@ -1,0 +1,10 @@
+[go]
+"c2sp.org/CCTV/age@v0.0.0-20260829155415-4448f2097b2d" = { mod = "sha256-4zHaz4K7jM0oEf/RsQkwATJURZJDdoP2ANN1sYXCFiI=", zip = "sha256-ZyDiajn96hTA+U/hqk0aESsZ0oSZbN0KQZvXHKeJX7E=" }
+"filippo.io/edwards25519@v1.2.0" = { mod = "sha256-dJLHZ9w2G4bpaTPKF5DUksL3w2jD7A4A4QUO3a17qn0=", zip = "sha256-mPLTypuI2qAxsPsvtSG36jhq8f7WG29EWiC+9/o4HBc=" }
+"filippo.io/hpke@v0.4.0" = { mod = "sha256-/msRgItB5zVeHxo1vp0+nIDzE2iXkYbJNVYnYWHNVwI=", zip = "sha256-IEi+QIdfHXAmIlHXhLKDFdmlr2o6cdZgbCckI8iMdDk=" }
+"filippo.io/nistec@v0.0.4" = { mod = "sha256-wCYAndvFbQhHh2kEAkoAHWEjAmimpKgxGKJ3qrMTVoQ=", zip = "sha256-8wINvFARPWeBgVwcr7v2+XsmbVXIpFl85MYafBEAx48=" }
+"github.com/rogpeppe/go-internal@v1.16.0" = { mod = "sha256-H/o/PB0q2dQFE69mEMIdUq4oOWKGeYVN9CEhL2op7Cc=", zip = "sha256-AgSNijruKtD5vN5a5mWaGbaMJEg9I1jLKl8PQdQttcY=" }
+"golang.org/x/crypto@v0.55.0" = { mod = "sha256-Xq4B3PAWdE+zyX9ILuIm2/nueA4vryiQ1bOzeED70Wg=", zip = "sha256-BmC7pHs2Q/4b6xuXr5O2pNK/LtBp2eUqKxvfbxfPPnk=" }
+"golang.org/x/sys@v0.47.0" = { mod = "sha256-V/Q5PqGNVEahI2OzXCOmFthD+hZpxxIacKK8OpZ31mU=", zip = "sha256-zawBPdztAmKSbsKf/NpkXaOWcOYcflt2HlcraxgJuxs=" }
+"golang.org/x/term@v0.45.0" = { mod = "sha256-YsP50aWuEiZKtI4siswIyfIBvalhneFxVE61cUt0rsU=", zip = "sha256-s6OvaJcotDASrhshSCVxo1wDPFRemOAhYGvU/PH3kQg=" }
+"golang.org/x/tools@v0.49.0" = { mod = "sha256-huNO/qNbiqUqq/8OoYwO8hfwdN/2fve0xwCugzloz2I=", zip = "sha256-ur0tWgzPTqxJtsl4W+K545smEJeti4prkleLnySHA9U=" }
