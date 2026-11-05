@@ -34,7 +34,7 @@ export def build [] {
   # lvm2's device-mapper rules call dmsetup by absolute path: {prefix} is /usr here
   let rules = $"($root)/usr/lib/udev/rules.d"
   mkdir $rules
-  for f in (ls $"($a.dmRules)/*.rules" | get name) {
+  for f in (ls ($"($a.dmRules)/*.rules" | into glob) | get name) {
     let dest = $"($rules)/($f | path basename)"
     if ($dest | path exists -n) { error make {msg: $"($dest) exists: two sources for a dm rule"} }
     open --raw $f | str replace -a "{prefix}" "/usr" | save -f $dest
