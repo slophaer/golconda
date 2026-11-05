@@ -204,8 +204,9 @@ let
   app =
     (struct "app" {
       package = derivation;
-      # the executable in the package's `bin` list; default: its first entry. It
-      # becomes /usr/bin/<program>, so it is one name, not a path.
+      # the executable the unit runs; default: the first name the package
+      # declares in `bin`, else its name. It becomes /usr/bin/<program>, so it
+      # is one name, not a path.
       program = optionalAttr programName;
       # default [ ]; strings and credential references
       argv = optionalAttr argv;
@@ -218,20 +219,37 @@ let
     }).override
       {
         unknown = false;
+        # Only a declared `bin` is known at evaluation time; without one, the
+        # image builder checks that /usr/bin/<program> exists.
         verify =
           a:
-          if a ? program && a.package ? bin && !builtins.elem a.program a.package.bin then
+          let
+            declared = declaredBin a.package;
+          in
+          if a ? program && declared != null && !builtins.elem a.program declared then
             "program '${a.program}' is not an executable of ${
               a.package.name or a.package.pname
-            } (bin: [${concatStringsSep ", " a.package.bin}])"
+            } (bin: [${concatStringsSep ", " declared}])"
           else
             null;
       };
 
-  # The program name: `program`, else the first of the package's `bin` list
-  # (repkgs packages carry it at evaluation time, defaulting to the package
-  # name). A stand-in derivation falls back to pname or name.
-  binName = a: a.program or (head (a.package.bin or [ (a.package.pname or a.package.name) ]));
+  # The `bin` list a repkgs package declares in its package.nix (`args.bin`),
+  # or null. What a build installs is known only at build time, in its
+  # exports.json, so an undeclared package has no list here. A plain
+  # derivation has `args`, its builder's argv, as a list.
+  declaredBin = p: if builtins.isAttrs (p.args or null) then p.args.bin or null else null;
+
+  # The program name: `program`, else the first name the package declares in
+  # `bin`, else its pname or name.
+  binName =
+    a:
+    let
+      declared = declaredBin a.package;
+    in
+    a.program or (
+      if declared != null && declared != [ ] then head declared else a.package.pname or a.package.name
+    );
 
   # The path a unit executes: the program in the /usr/bin farm. Keep every
   # ExecStart= path behind this one function.
@@ -243,6 +261,7 @@ in
     argv
     binName
     credentialRef
+    declaredBin
     env
     envName
     envOp

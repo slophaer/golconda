@@ -10,11 +10,11 @@
   sshd,
   sshdConfig,
   sshdDir,
-  standIn,
   system,
   throws,
   types,
   unit,
+  withBin,
   ...
 }:
 let
@@ -96,8 +96,10 @@ in
     && port.minimum == 1
     && port.maximum == 65535
   ))
-  (check "sshd: the program must be one of the package's executables" (sshdThrows {
-    package = standIn;
+  # a package that declares `bin` without sshd: refused at evaluation; an undeclared
+  # package's program is checked by the image builder (tests/usr-tree/builder.py)
+  (check "sshd: the program must be one of the package's declared executables" (sshdThrows {
+    package = withBin "jq-1.8.1" [ "jq" ];
   }))
   (check "sshd: waits for the var" (hasInfix "After=golconda-var-sshd-hostkey.service" unit))
   (check "sshd: sessions outlive a restart; no runtime directory" (
