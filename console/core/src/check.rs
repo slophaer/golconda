@@ -6,7 +6,6 @@ use crate::eval::{self, Arg, Iets};
 use crate::system::{self, System, beside};
 use crate::validate::Validator;
 use serde_json::Value;
-use std::fmt;
 use std::path::{Path, PathBuf};
 
 /// Every check the modules make, without building: the /usr tree's derivation.
@@ -69,45 +68,37 @@ pub fn evaluate(
     .map(drop)
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error(transparent)]
     Load(system::Error),
+    #[error(transparent)]
     Edit(EditError),
     /// the schema's problems, and the document they are in
+    #[error("{}", problems(.0, .1))]
     Invalid(PathBuf, Vec<Problem>),
+    #[error(transparent)]
     Eval(eval::Error),
+    #[error("cannot write {path}: {1}", path = .0.display())]
     Write(PathBuf, std::io::Error),
 }
 
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Error::Load(e) => e.fmt(f),
-            Error::Edit(e) => e.fmt(f),
-            Error::Invalid(doc, problems) => {
-                let doc = doc.display();
-                for (i, p) in problems.iter().enumerate() {
-                    if i > 0 {
-                        writeln!(f)?;
-                    }
-                    match p.line {
-                        Some(l) => write!(f, "{doc}:{l}: ")?,
-                        None => write!(f, "{doc}: ")?,
-                    }
-                    if !p.path.is_empty() {
-                        write!(f, "{}: ", p.path)?;
-                    }
-                    f.write_str(&p.message)?;
-                }
-                Ok(())
-            }
-            Error::Eval(e) => e.fmt(f),
-            Error::Write(p, e) => write!(f, "cannot write {}: {e}", p.display()),
-        }
-    }
+/// One line per problem: `doc:line: module option: message`.
+fn problems(doc: &Path, problems: &[Problem]) -> String {
+    let lines: Vec<String> = problems
+        .iter()
+        .map(|p| {
+            let at = p.line.map_or(String::new(), |l| format!(":{l}"));
+            let path = if p.path.is_empty() {
+                String::new()
+            } else {
+                format!("{}: ", p.path)
+            };
+            format!("{}{at}: {path}{}", doc.display(), p.message)
+        })
+        .collect();
+    lines.join("\n")
 }
-
-impl std::error::Error for Error {}
 
 /// Check the document as it is: the schema, then evaluation.
 pub fn validate(iets: &Iets, document: &Path, system: &str) -> Result<(), Error> {

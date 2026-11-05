@@ -4,7 +4,6 @@ use crate::document::{key, line_of, option_name, toml_text};
 use crate::eval::{self, Arg, Iets};
 use crate::schema::{self, LookupError};
 use serde_json::{Map, Value, json};
-use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -26,33 +25,22 @@ pub struct System {
     pub module_docs: Value,
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("cannot read {path}: {1}", path = .0.display())]
     Read(PathBuf, std::io::Error),
-    /// no Golconda checkout (a directory with lib/system.nix) contains the document
+    #[error(
+        "{} is in no Golconda checkout (a directory above it with lib/system.nix); \
+         pure evaluation reads files under the checkout only",
+        .0.display()
+    )]
     NoCheckout(PathBuf),
+    #[error(transparent)]
     Eval(eval::Error),
     /// git could not give the document at a revision
+    #[error("the document at {0}: {1}")]
     Git(String, String),
 }
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Error::Read(p, e) => write!(f, "cannot read {}: {e}", p.display()),
-            Error::NoCheckout(p) => write!(
-                f,
-                "{} is in no Golconda checkout (a directory above it with lib/system.nix); \
-                 pure evaluation reads files under the checkout only",
-                p.display()
-            ),
-            Error::Eval(e) => e.fmt(f),
-            Error::Git(rev, msg) => write!(f, "the document at {rev}: {msg}"),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
 
 /// A file beside `document` for one evaluation (pure evaluation reads under the checkout only,
 /// and the document's relative paths must hold): a name of its own for every call, so that

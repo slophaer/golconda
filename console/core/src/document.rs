@@ -64,30 +64,20 @@ pub fn toml_text(v: &Value) -> String {
 }
 
 /// What `set` or `delete` cannot do.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum EditError {
-    /// the document is not TOML
+    #[error("the document is not TOML: {0}")]
     Parse(String),
     /// delete: the document does not set this (module, option path)
+    #[error("{0} is not set in the document")]
     NotSet(String),
     /// a key on the way is a value, not a table
+    #[error("{0} is a value in the document, not a table")]
     NotATable(String),
     /// the text is not an option path (a TOML dotted key)
+    #[error("{0:?} is not an option path: {1}")]
     Path(String, String),
 }
-
-impl std::fmt::Display for EditError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            EditError::Parse(e) => write!(f, "the document is not TOML: {e}"),
-            EditError::NotSet(p) => write!(f, "{p} is not set in the document"),
-            EditError::NotATable(p) => write!(f, "{p} is a value in the document, not a table"),
-            EditError::Path(p, e) => write!(f, "{p:?} is not an option path: {e}"),
-        }
-    }
-}
-
-impl std::error::Error for EditError {}
 
 /// A key as TOML writes it: bare when it can be, else quoted.
 pub fn key(k: &str) -> String {
