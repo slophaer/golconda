@@ -3,8 +3,8 @@
 //! A module is `properties.<module path>`; an option path walks `properties` (a struct's
 //! fields), `additionalProperties` (a map's values) and `$ref`s into `$defs`.
 
+use crate::document::path_name;
 use serde_json::Value;
-use std::fmt;
 
 /// An option found in the schema.
 #[derive(Debug)]
@@ -15,26 +15,14 @@ pub struct OptionSchema<'a> {
     pub description: Option<&'a str>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum LookupError {
+    #[error("no module {0}")]
     NoModule(String),
-    /// the module and the option path that exists, then the name that does not
-    NoOption(String, String, String),
+    /// the path that exists ("module option.path"), then the name that does not
+    #[error("{0} has no option {1}")]
+    NoOption(String, String),
 }
-
-impl fmt::Display for LookupError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            LookupError::NoModule(m) => write!(f, "no module {m}"),
-            LookupError::NoOption(m, at, name) if at.is_empty() => {
-                write!(f, "{m} has no option {name}")
-            }
-            LookupError::NoOption(m, at, name) => write!(f, "{m} {at} has no option {name}"),
-        }
-    }
-}
-
-impl std::error::Error for LookupError {}
 
 /// The `$defs` entry a `$ref` names, or the node itself.
 pub fn resolve<'a>(schema: &'a Value, node: &'a Value) -> &'a Value {
@@ -63,9 +51,8 @@ pub fn option<'a>(
         let next = here["properties"]
             .get(*seg)
             .or_else(|| here.get("additionalProperties").filter(|a| a.is_object()));
-        node = next.ok_or_else(|| {
-            LookupError::NoOption(module.to_string(), path[..i].join("."), seg.to_string())
-        })?;
+        node = next
+            .ok_or_else(|| LookupError::NoOption(path_name(module, &path[..i]), seg.to_string()))?;
     }
     let own = resolve(schema, node)["description"]
         .as_str()

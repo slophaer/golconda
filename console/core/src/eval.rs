@@ -32,13 +32,14 @@ pub struct EvalError {
     pub column: Option<u64>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// iets could not be started
+    #[error("cannot run {program}: {1}", program = .0.to_string_lossy())]
     Spawn(OsString, std::io::Error),
-    /// the evaluation failed
+    #[error("evaluation failed: {0}")]
     Eval(EvalError),
     /// iets succeeded but its output is not JSON
+    #[error("iets printed no JSON: {0}")]
     Output(String),
 }
 
@@ -53,18 +54,6 @@ impl fmt::Display for EvalError {
         f.write_str(&self.message)
     }
 }
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Error::Spawn(p, e) => write!(f, "cannot run {}: {e}", p.to_string_lossy()),
-            Error::Eval(e) => write!(f, "evaluation failed: {e}"),
-            Error::Output(m) => write!(f, "iets printed no JSON: {m}"),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
 
 impl Iets {
     pub fn new(program: impl Into<OsString>) -> Self {

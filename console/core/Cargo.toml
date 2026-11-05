@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+thiserror.workspace = true
 serde_json.workspace = true
 toml_edit.workspace = true
 regex.workspace = true

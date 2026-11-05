@@ -14,7 +14,6 @@
 use serde_json::Value;
 use std::collections::BTreeSet;
 use std::ffi::OsString;
-use std::fmt;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -42,16 +41,9 @@ pub struct Manifest {
     pub consumers: Vec<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
 pub struct Error(pub String);
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for Error {}
 
 type Result<T> = std::result::Result<T, Error>;
 
