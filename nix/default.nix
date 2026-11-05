@@ -2,6 +2,7 @@
 # { pkgs, platform, set, system } (default.nix argsFun); the rest is plain.
 { sources, self }:
 let
+  on = import ../modules/lib/on.nix;
   dev = import ./dev { inherit sources; };
   adios = import sources.adios;
   # The adios module tree (modules/); `tree { options = {...}; }` evaluates it.
@@ -96,15 +97,10 @@ in
             trustedUserCAKeys = [ (builtins.readFile ../tests/fixtures/snakeoil-user-ca.pub) ];
             principals.root = [ "boot-test-admin" ];
           }
-          // (
-            if adminVars then
-              {
-                hostCertificate = true;
-                revokedKeys = true;
-              }
-            else
-              { }
-          );
+          // (on adminVars {
+            hostCertificate = true;
+            revokedKeys = true;
+          });
         };
 
       # The test image for a host without Secure Boot (Hetzner Cloud): the kernel carries
@@ -140,114 +136,109 @@ in
     }
     # tests-<name>: a package's own test from tests/packages/ (they moved with the packages)
     // import ../tests/packages { inherit sources set; }
-    // (
-      if pkgs.linux-kernel.supported then
-        {
-          # OS outputs need the local kernel. Do not advertise unsupported image or /usr trees.
-          # nix/packages.nix applies the policy fragment to every `pkgs.linux-kernel`.
-          kernel = pkgs.linux-kernel;
+    // (on pkgs.linux-kernel.supported {
+      # OS outputs need the local kernel. Do not advertise unsupported image or /usr trees.
+      # nix/packages.nix applies the policy fragment to every `pkgs.linux-kernel`.
+      kernel = pkgs.linux-kernel;
 
-          # The image chain (lib/image) over the /base system: erofs, verity, initrd, UKI, disk, and
-          # the proofs in proof.txt. Keys are throwaways made in the store; a release signs with the
-          # deployment's keys (lib.mkImage). image-smoke-<step> exposes each step on its own.
-          image-smoke = imageSmoke.smoke;
-          image-smoke-erofs = imageSmoke.erofs;
-          image-smoke-verity = imageSmoke.verity;
-          image-smoke-initrd = imageSmoke.initrd;
-          image-smoke-uki = imageSmoke.uki;
-          image-smoke-disk = imageSmoke.disk;
-          image-smoke-loader = imageSmoke.loader;
+      # The image chain (lib/image) over the /base system: erofs, verity, initrd, UKI, disk, and
+      # the proofs in proof.txt. Keys are throwaways made in the store; a release signs with the
+      # deployment's keys (lib.mkImage). image-smoke-<step> exposes each step on its own.
+      image-smoke = imageSmoke.smoke;
+      image-smoke-erofs = imageSmoke.erofs;
+      image-smoke-verity = imageSmoke.verity;
+      image-smoke-initrd = imageSmoke.initrd;
+      image-smoke-uki = imageSmoke.uki;
+      image-smoke-disk = imageSmoke.disk;
+      image-smoke-loader = imageSmoke.loader;
 
-          image-smoke-test =
-            (imageChain {
-              inherit system;
-              config = testConfig { version = "20261031.1"; };
-              keys = throwawayKeys;
-            }).smoke;
+      image-smoke-test =
+        (imageChain {
+          inherit system;
+          config = testConfig { version = "20261031.1"; };
+          keys = throwawayKeys;
+        }).smoke;
 
-          # The test image without Secure Boot, and its next release for --next
-          image-smoke-test-nosb =
-            (imageChain {
-              inherit system;
-              config = noSecureBootConfig { version = "20261031.1"; };
-              keys = throwawayKeys;
-            }).smoke;
-          image-smoke-test-nosb-next =
-            (imageChain {
-              inherit system;
-              config = noSecureBootConfig {
-                version = "20261031.2";
-                adminVars = true;
-              };
-              keys = throwawayKeys;
-            }).smoke;
+      # The test image without Secure Boot, and its next release for --next
+      image-smoke-test-nosb =
+        (imageChain {
+          inherit system;
+          config = noSecureBootConfig { version = "20261031.1"; };
+          keys = throwawayKeys;
+        }).smoke;
+      image-smoke-test-nosb-next =
+        (imageChain {
+          inherit system;
+          config = noSecureBootConfig {
+            version = "20261031.2";
+            adminVars = true;
+          };
+          keys = throwawayKeys;
+        }).smoke;
 
-          # The next release of the test image with the same throwaway keys: what
-          # scripts/boot-test --next installs and boots, without --rotate.
-          image-smoke-test-next =
-            (imageChain {
-              inherit system;
-              config = testConfig {
-                version = "20261031.2";
-                adminVars = true;
-              };
-              keys = throwawayKeys;
-            }).smoke;
+      # The next release of the test image with the same throwaway keys: what
+      # scripts/boot-test --next installs and boots, without --rotate.
+      image-smoke-test-next =
+        (imageChain {
+          inherit system;
+          config = testConfig {
+            version = "20261031.2";
+            adminVars = true;
+          };
+          keys = throwawayKeys;
+        }).smoke;
 
-          # The next release of the test image, signed with a new db key: the loader, the UKI and
-          # the verity root hash take rotatedKeys; the PCR policy key stays, so a credential sealed
-          # by 20261031.1 still unseals. scripts/boot-test --next <this> --rotate installs it and
-          # rotates the firmware's db (docs/design/bootloader.md).
-          image-smoke-test-rotated =
-            (imageChain {
-              inherit system;
-              config = testConfig {
-                version = "20261031.2";
-                adminVars = true;
-              };
-              keys = rotatedKeys;
-              pcrKeys = throwawayKeys;
-              # the running image trusts only its own release key: a db rotation keeps it
-              indexKeys = throwawayKeys;
-            }).smoke;
+      # The next release of the test image, signed with a new db key: the loader, the UKI and
+      # the verity root hash take rotatedKeys; the PCR policy key stays, so a credential sealed
+      # by 20261031.1 still unseals. scripts/boot-test --next <this> --rotate installs it and
+      # rotates the firmware's db (docs/design/bootloader.md).
+      image-smoke-test-rotated =
+        (imageChain {
+          inherit system;
+          config = testConfig {
+            version = "20261031.2";
+            adminVars = true;
+          };
+          keys = rotatedKeys;
+          pcrKeys = throwawayKeys;
+          # the running image trusts only its own release key: a db rotation keeps it
+          indexKeys = throwawayKeys;
+        }).smoke;
 
-          # Smoke test for the /usr tree builder: base system + jq via mkSystem.
-          usr-tree-smoke =
-            (mkSystem {
-              inherit system;
-              platform = system;
-              config = {
-                "/system" = {
-                  name = "smoke";
-                  version = "20261031.1";
-                };
-              };
-              extraFragments = [
-                {
-                  name = "/smoke/jq";
-                  packages = [ pkgs.jq ];
-                }
-              ];
-            }).usrTree;
+      # Smoke test for the /usr tree builder: base system + jq via mkSystem.
+      usr-tree-smoke =
+        (mkSystem {
+          inherit system;
+          platform = system;
+          config = {
+            "/system" = {
+              name = "smoke";
+              version = "20261031.1";
+            };
+          };
+          extraFragments = [
+            {
+              name = "/smoke/jq";
+              packages = [ pkgs.jq ];
+            }
+          ];
+        }).usrTree;
 
-          # Smoke test for /base alone: no extra fragments, just the base packages.
-          # Verifies: no absolute symlinks, no GNU coreutils, base packages only.
-          usr-tree-base-smoke =
-            (mkSystem {
-              inherit system;
-              platform = system;
-              config = {
-                "/system" = {
-                  name = "base-smoke";
-                  version = "20261031.1";
-                };
-              };
-            }).usrTree;
+      # Smoke test for /base alone: no extra fragments, just the base packages.
+      # Verifies: no absolute symlinks, no GNU coreutils, base packages only.
+      usr-tree-base-smoke =
+        (mkSystem {
+          inherit system;
+          platform = system;
+          config = {
+            "/system" = {
+              name = "base-smoke";
+              version = "20261031.1";
+            };
+          };
+        }).usrTree;
 
-        }
-      else
-        { }
-    );
+    });
 
   checks =
     { platform, set }:
