@@ -30,6 +30,26 @@ Code enforces what it can:
 - **CA store.** The image ships one bundle, cacert's Mozilla roots, in `/usr`. Tmpfiles links it to
   `/etc/ssl/cert.pem` and `/etc/ssl/certs/ca-certificates.crt`.
 
+## Against NixOS
+
+NixOS lets one system hold several libcs and several versions of the same package side by side: each
+program finds its own dependencies by store path. That flexibility is one of its strengths.
+Golconda's base system does not use it. A second libc or a second OpenSSL in the base is a second
+thing to patch and audit, and a second way for two programs to disagree about the same file,
+certificate or protocol.
+
+A service that needs another version can still have one, inside its own boundary:
+
+- **A relocatable closure.** repkgs outputs find their libraries and their dynamic loader relative
+  to themselves ([Packaging: Why repkgs](../design/packaging.md#why-repkgs)), so a service can carry
+  its own closure without touching what the base links against.
+- **A container.** The workload brings its own userland and runs under systemd. No container runtime
+  is set up in the image today: systemd is built without `machined` and `portabled`
+  (`packages/systemd/package.nix`).
+
+The rule covers the base system: what every image shares. It does not stop a workload from carrying
+what it needs.
+
 ## Using it
 
 You do not choose. A new daemon is a recipe in `packages/` that fits the existing choices. A new
