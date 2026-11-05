@@ -1,7 +1,7 @@
 //! The pages, server-rendered (maud escapes every value). No script and no request to
 //! another origin: a page is complete without either (design: ui-design.md §8).
 
-use crate::app::App;
+use crate::app::{App, Identity, Level, Signin};
 use axum::http::StatusCode;
 use golconda_core::diff::Change;
 use golconda_core::document::{option_name, toml_text};
@@ -19,6 +19,7 @@ enum Tab {
 /// The frame: the strip (system, image, who), the read-only banner, the rail.
 fn layout(
     app: &App,
+    who: &Identity,
     system: Option<(&str, &System)>,
     tab: Option<Tab>,
     title: &str,
@@ -40,10 +41,13 @@ fn layout(
                         span.host { (system.map_or("golconda", |(n, _)| n)) }
                         @if let Some(v) = version { span.pill.p-grey { "image " (v) } }
                         span.cr {
-                            @if app.read_only || app.identity.level == crate::app::Level::ReadOnly {
+                            @if app.read_only || who.level == Level::ReadOnly {
                                 span.pill.p-amber { "read-only" }
                             }
-                            span.pill.p-sky { (app.identity.name) " · " (app.identity.level.name()) }
+                            span.pill.p-sky { (who.name) " · " (who.level.name()) }
+                            @if let Signin::Oidc(_) = app.signin {
+                                form method="post" action="/auth/logout" { button.link { "Sign out" } }
+                            }
                         }
                     }
                     @if app.read_only {
@@ -64,9 +68,10 @@ fn layout(
     }
 }
 
-pub fn index(app: &App, systems: &[(String, std::path::PathBuf)]) -> Markup {
+pub fn index(app: &App, who: &Identity, systems: &[(String, std::path::PathBuf)]) -> Markup {
     layout(
         app,
+        who,
         None,
         None,
         "Systems",
@@ -156,7 +161,7 @@ pub fn markdown(text: &str, inline: bool) -> Markup {
     PreEscaped(out)
 }
 
-pub fn config(app: &App, name: &str, sys: &System) -> Markup {
+pub fn config(app: &App, who: &Identity, name: &str, sys: &System) -> Markup {
     let main = html! {
         div.three {
             (tree(name, sys, None))
@@ -175,6 +180,7 @@ pub fn config(app: &App, name: &str, sys: &System) -> Markup {
     };
     layout(
         app,
+        who,
         Some((name, sys)),
         Some(Tab::Config),
         "Configuration",
@@ -216,6 +222,7 @@ pub fn summary(v: &Value) -> String {
 
 pub fn module(
     app: &App,
+    who: &Identity,
     name: &str,
     sys: &System,
     module: &str,
@@ -268,7 +275,7 @@ pub fn module(
             }
         }
     };
-    layout(app, Some((name, sys)), Some(Tab::Config), module, main)
+    layout(app, who, Some((name, sys)), Some(Tab::Config), module, main)
 }
 
 fn detail(e: &Explanation) -> Markup {
@@ -285,7 +292,7 @@ fn detail(e: &Explanation) -> Markup {
     }
 }
 
-pub fn changes(app: &App, name: &str, sys: &System, changes: &[Change]) -> Markup {
+pub fn changes(app: &App, who: &Identity, name: &str, sys: &System, changes: &[Change]) -> Markup {
     let main = html! {
         h2 { "Changes" }
         p.doc { (sys.document.display()) " in the working tree, against git's HEAD." }
@@ -306,24 +313,31 @@ pub fn changes(app: &App, name: &str, sys: &System, changes: &[Change]) -> Marku
             }
         }
     };
-    layout(app, Some((name, sys)), Some(Tab::Changes), "Changes", main)
+    layout(
+        app,
+        who,
+        Some((name, sys)),
+        Some(Tab::Changes),
+        "Changes",
+        main,
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::{Identity, Level};
     use serde_json::json;
 
     fn app(read_only: bool, level: Level) -> App {
-        App::new(
-            vec![],
-            Identity {
-                name: "bob".into(),
-                level,
-            },
-            read_only,
-        )
+        App::new(vec![], Signin::Dev(who(level)), read_only)
+    }
+
+    fn who(level: Level) -> Identity {
+        Identity {
+            id: "dev:bob".into(),
+            name: "bob".into(),
+            level,
+        }
     }
 
     fn sys() -> System {
@@ -353,6 +367,7 @@ mod tests {
         };
         let page = module(
             &app(false, Level::Operator),
+            &who(Level::Operator),
             "s",
             &sys(),
             "/m",
@@ -385,22 +400,46 @@ mod tests {
 
     #[test]
     fn read_only_shows_in_the_strip_and_a_read_only_daemon_says_so() {
-        let p = config(&app(false, Level::ReadOnly), "s", &sys()).into_string();
+        let p = config(
+            &app(false, Level::ReadOnly),
+            &who(Level::ReadOnly),
+            "s",
+            &sys(),
+        )
+        .into_string();
         assert!(
             p.contains(r#"<span class="pill p-amber">read-only</span>"#),
             "{p}"
         );
         assert!(p.contains("bob · read-only"), "{p}");
         assert!(!p.contains("This console is read-only"), "{p}");
-        let p = config(&app(true, Level::Operator), "s", &sys()).into_string();
+        let p = config(
+            &app(true, Level::Operator),
+            &who(Level::Operator),
+            "s",
+            &sys(),
+        )
+        .into_string();
         assert!(p.contains("This console is read-only"), "{p}");
-        let p = config(&app(false, Level::Operator), "s", &sys()).into_string();
+        let p = config(
+            &app(false, Level::Operator),
+            &who(Level::Operator),
+            "s",
+            &sys(),
+        )
+        .into_string();
         assert!(!p.contains("read-only"), "{p}");
     }
 
     #[test]
     fn the_config_page_lists_modules_with_the_first_paragraph() {
-        let p = config(&app(false, Level::Operator), "s", &sys()).into_string();
+        let p = config(
+            &app(false, Level::Operator),
+            &who(Level::Operator),
+            "s",
+            &sys(),
+        )
+        .into_string();
         assert!(p.contains("OpenSSH &lt;daemon&gt;."), "{p}");
         assert!(!p.contains("More."), "{p}");
         assert!(p.contains("image 20261105.1"), "{p}");
@@ -412,10 +451,19 @@ mod tests {
         let a = app(false, Level::Operator);
         let e = sys().explain("/services/sshd", &["port"]).ok();
         for page in [
-            config(&a, "s", &sys()).into_string(),
-            module(&a, "s", &sys(), "/services/sshd", &[], e.as_ref()).into_string(),
-            changes(&a, "s", &sys(), &[]).into_string(),
-            index(&a, &[("s".into(), "x".into())]).into_string(),
+            config(&a, &who(Level::Operator), "s", &sys()).into_string(),
+            module(
+                &a,
+                &who(Level::Operator),
+                "s",
+                &sys(),
+                "/services/sshd",
+                &[],
+                e.as_ref(),
+            )
+            .into_string(),
+            changes(&a, &who(Level::Operator), "s", &sys(), &[]).into_string(),
+            index(&a, &who(Level::Operator), &[("s".into(), "x".into())]).into_string(),
             problem(StatusCode::NOT_FOUND, "x").into_string(),
         ] {
             assert!(
@@ -429,6 +477,7 @@ mod tests {
     fn a_module_page_puts_the_rest_of_its_doc_in_details() {
         let p = module(
             &app(false, Level::Operator),
+            &who(Level::Operator),
             "s",
             &sys(),
             "/services/sshd",
@@ -512,7 +561,14 @@ mod tests {
                 explicit: true,
             },
         }];
-        let p = changes(&app(false, Level::Operator), "s", &sys(), &c).into_string();
+        let p = changes(
+            &app(false, Level::Operator),
+            &who(Level::Operator),
+            "s",
+            &sys(),
+            &c,
+        )
+        .into_string();
         assert!(p.contains(r#"<span class="hdr">/factory</span>"#), "{p}");
         assert!(
             p.contains(r#"<span class="del">- timezone = &quot;UTC&quot;  (default)</span>"#),

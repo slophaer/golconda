@@ -2,6 +2,7 @@
 //! their changes against git as web pages and JSON; it changes nothing (console/README.md).
 
 pub mod app;
+pub mod auth;
 pub mod pages;
 
 // FONTS: (file name, WOFF2 bytes), from build.rs

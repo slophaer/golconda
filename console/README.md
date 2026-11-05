@@ -79,10 +79,33 @@ another origin; the content security policy allows only the daemon's own stylesh
 look is the mockups'. The IBM Plex fonts (packages/ibm-plex-web) are compiled in when
 `GOLCONDA_FONTS` names their directory at build time; without it the pages use the system's fonts.
 
-Sign-in is not there yet. `--dev-identity NAME:LEVEL` signs everyone in as NAME at LEVEL (`operator`
-or `read-only`), and the daemon then listens on a loopback address only; without it, it does not
-start. `--read-only` makes the whole daemon say it changes nothing (nothing writes yet in any case).
-Every page evaluates its system again (0.1 to 0.4 s; two evaluations for Changes).
+Every page needs someone signed in. In production that is OpenID Connect: the daemon is a client of
+the provider (the authorization code flow with PKCE), and the provider's `groups` claim gives the
+level, operator or read-only; someone in neither group is refused.
+
+```sh
+golcondad --listen 0.0.0.0:8796 --system server=server.toml \
+  --oidc-issuer https://idp.example.com --oidc-client-id golconda-console \
+  --public-url https://console.example.com \
+  --operator-group golconda-operators --read-only-group golconda-readers
+```
+
+The provider must know `<public-url>/auth/callback` as a redirect URI. The daemon checks the ID
+token itself (RS256 or ES256, the issuer, the audience, the expiry, the nonce), keeps sessions in
+memory (a restart signs everyone out) in an `HttpOnly`, `SameSite=Lax` cookie, `Secure` when the
+public URL is https, and answers only to the public URL's host name. `/auth/me` says who is signed
+in, as JSON. A provider that wants a client secret gets it from `--oidc-client-secret-file`. The
+issuer must use https, except on loopback.
+
+For development, `--dev-identity NAME:LEVEL` signs everyone in as NAME at LEVEL (`operator` or
+`read-only`), and the daemon then listens on a loopback address only and answers to loopback names.
+`--read-only` makes the whole daemon say it changes nothing (nothing writes yet in any case). Every
+page evaluates its system again (0.1 to 0.4 s; two evaluations for Changes).
+
+The sign-in tests run a stub provider (daemon/tests/oidc.rs) with the test keys in
+daemon/tests/fixtures: it signs tokens and checks the PKCE verifier, and it issues tokens that must
+be refused (another key, audience, issuer or nonce, expired, `none`, `HS256`, a mislabelled
+algorithm).
 
 ## Develop
 
