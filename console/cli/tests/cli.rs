@@ -141,14 +141,14 @@ fn explain_an_unknown_option_fails_and_names_it() {
 fn usage_errors_exit_2() {
     let o = golconda(&["config", "frobnicate"]);
     assert_eq!(o.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&o.stderr).contains("usage:"));
+    assert!(String::from_utf8_lossy(&o.stderr).contains("Usage: golconda config"));
 }
 
 #[test]
 fn version_and_help() {
     let v = stdout(&golconda(&["--version"]));
     assert_eq!(v, format!("golconda {}\n", env!("CARGO_PKG_VERSION")));
-    assert!(stdout(&golconda(&["--help"])).starts_with("usage:"));
+    assert!(stdout(&golconda(&["--help"])).contains("Usage: golconda <COMMAND>"));
 }
 
 /// `golconda vars` with stand-ins for age and ssh (GOLCONDA_AGE, GOLCONDA_SSH): the wiring of

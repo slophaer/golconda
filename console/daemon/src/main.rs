@@ -1,115 +1,85 @@
-//! `golcondad --listen ADDR --system NAME=DOCUMENT... --dev-identity NAME:LEVEL [--read-only]`
+//! `golcondad`: the console daemon.
 
+use clap::Parser;
 use golcondad::app::{App, Identity, Level, router};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: golcondad [--listen ADDR] --system NAME=DOCUMENT... \
---dev-identity NAME:LEVEL [--read-only]
-
-  --listen ADDR             where to listen (default: 127.0.0.1:8796)
-  --system NAME=DOCUMENT    a system and its TOML document; repeat for more
-  --dev-identity NAME:LEVEL everyone is NAME at LEVEL (operator or read-only), for
-                            development: only on a loopback address
-  --read-only               the whole daemon shows state and changes nothing
-
-Sign-in (OIDC) is not there yet: without --dev-identity golcondad does not start.
-iets comes from PATH, or GOLCONDA_IETS.";
-
-#[derive(Debug)]
+/// Golconda's console daemon: the systems' configuration as web pages and JSON.
+#[derive(Parser, Debug)]
+#[command(
+    version,
+    after_help = "Sign-in (OIDC) is not there yet: without --dev-identity golcondad does not \
+                  start. iets comes from PATH, or GOLCONDA_IETS."
+)]
 pub struct Args {
+    /// Where to listen
+    #[arg(long, default_value = "127.0.0.1:8796")]
     listen: SocketAddr,
+    /// A system and its TOML document; repeat for more
+    #[arg(long = "system", value_name = "NAME=DOCUMENT", required = true, value_parser = system)]
     systems: Vec<(String, PathBuf)>,
-    identity: Identity,
+    /// Everyone is NAME at LEVEL (operator or read-only), for development: only on a
+    /// loopback address
+    #[arg(long = "dev-identity", value_name = "NAME:LEVEL", value_parser = identity)]
+    identity: Option<Identity>,
+    /// The whole daemon shows state and changes nothing
+    #[arg(long)]
     read_only: bool,
 }
 
-fn parse(argv: &[String]) -> Result<Args, String> {
-    let mut listen: SocketAddr = "127.0.0.1:8796".parse().unwrap();
-    let mut systems = Vec::new();
-    let mut identity = None;
-    let mut read_only = false;
-    let mut it = argv.iter();
-    while let Some(arg) = it.next() {
-        let mut value = || it.next().cloned().ok_or(format!("{arg} needs a value"));
-        match arg.as_str() {
-            "--listen" => listen = value()?.parse().map_err(|e| format!("--listen: {e}"))?,
-            "--system" => {
-                let v = value()?;
-                let (n, d) = v.split_once('=').ok_or("--system takes NAME=DOCUMENT")?;
-                if n.is_empty()
-                    || !n
-                        .chars()
-                        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-                {
-                    return Err(format!(
-                        "--system: {n:?} is not a name (letters, digits, - and _)"
-                    ));
-                }
-                if systems.iter().any(|(m, _)| m == n) {
-                    return Err(format!("--system: {n} is given twice"));
-                }
-                systems.push((n.to_string(), PathBuf::from(d)));
-            }
-            "--dev-identity" => {
-                let v = value()?;
-                let (n, l) = v.split_once(':').ok_or("--dev-identity takes NAME:LEVEL")?;
-                let level = match l {
-                    "operator" => Level::Operator,
-                    "read-only" => Level::ReadOnly,
-                    _ => {
-                        return Err(format!(
-                            "--dev-identity: no level {l:?} (operator, read-only)"
-                        ));
-                    }
-                };
-                identity = Some(Identity {
-                    name: n.to_string(),
-                    level,
-                });
-            }
-            "--read-only" => read_only = true,
-            a => return Err(format!("unknown argument {a}")),
+fn system(v: &str) -> Result<(String, PathBuf), String> {
+    let (n, d) = v.split_once('=').ok_or("takes NAME=DOCUMENT")?;
+    if n.is_empty()
+        || !n
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(format!("{n:?} is not a name (letters, digits, - and _)"));
+    }
+    Ok((n.to_string(), PathBuf::from(d)))
+}
+
+fn identity(v: &str) -> Result<Identity, String> {
+    let (n, l) = v.split_once(':').ok_or("takes NAME:LEVEL")?;
+    let level = match l {
+        "operator" => Level::Operator,
+        "read-only" => Level::ReadOnly,
+        _ => return Err(format!("no level {l:?} (operator, read-only)")),
+    };
+    Ok(Identity {
+        name: n.to_string(),
+        level,
+    })
+}
+
+/// What clap cannot check: one document per name, an identity, loopback.
+fn check(a: Args) -> Result<(Args, Identity), String> {
+    for (i, (n, _)) in a.systems.iter().enumerate() {
+        if a.systems[..i].iter().any(|(m, _)| m == n) {
+            return Err(format!("--system: {n} is given twice"));
         }
     }
-    if systems.is_empty() {
-        return Err("give at least one --system".into());
-    }
-    let Some(identity) = identity else {
+    let Some(identity) = a.identity.clone() else {
         return Err("sign-in (OIDC) is not there yet: give --dev-identity".into());
     };
-    if !listen.ip().is_loopback() {
+    if !a.listen.ip().is_loopback() {
         return Err(format!(
-            "--dev-identity signs everyone in: it listens on a loopback address only, not {listen}"
+            "--dev-identity signs everyone in: it listens on a loopback address only, not {}",
+            a.listen
         ));
     }
-    Ok(Args {
-        listen,
-        systems,
-        identity,
-        read_only,
-    })
+    Ok((a, identity))
 }
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    let argv: Vec<String> = std::env::args().skip(1).collect();
-    match argv.first().map(String::as_str) {
-        Some("--version") => {
-            println!("golcondad {}", env!("CARGO_PKG_VERSION"));
-            return ExitCode::SUCCESS;
-        }
-        Some("--help" | "-h") => {
-            println!("{USAGE}");
-            return ExitCode::SUCCESS;
-        }
-        _ => {}
-    }
-    let a = match parse(&argv) {
+    // clap answers --help and --version, and exits 2 on a usage error
+    let (a, identity) = match check(Args::parse()) {
         Ok(a) => a,
         Err(e) => {
-            eprintln!("golcondad: {e}\n{USAGE}");
+            eprintln!("golcondad: {e}");
             return ExitCode::from(2);
         }
     };
@@ -123,8 +93,8 @@ async fn main() -> ExitCode {
     eprintln!(
         "golcondad: http://{} as {} ({}){}, {} system(s), fonts: {}",
         a.listen,
-        a.identity.name,
-        a.identity.level.name(),
+        identity.name,
+        identity.level.name(),
         if a.read_only { ", read-only" } else { "" },
         a.systems.len(),
         if golcondad::FONTS.is_empty() {
@@ -133,7 +103,7 @@ async fn main() -> ExitCode {
             "IBM Plex"
         },
     );
-    let app = router(App::new(a.systems, a.identity, a.read_only));
+    let app = router(App::new(a.systems, identity, a.read_only));
     let served = axum::serve(listener, app)
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
@@ -152,19 +122,28 @@ async fn main() -> ExitCode {
 mod tests {
     use super::*;
 
-    fn args(s: &str) -> Result<Args, String> {
-        parse(&s.split_whitespace().map(str::to_string).collect::<Vec<_>>())
+    fn args(s: &str) -> Result<(Args, Identity), String> {
+        Args::try_parse_from(std::iter::once("golcondad").chain(s.split_whitespace()))
+            .map_err(|e| e.to_string())
+            .and_then(check)
     }
 
     #[test]
     fn a_development_identity_on_loopback() {
-        let a = args("--system server=s.toml --dev-identity alice:operator").unwrap();
+        let (a, i) = args("--system server=s.toml --dev-identity alice:operator").unwrap();
         assert_eq!(a.listen.to_string(), "127.0.0.1:8796");
-        assert_eq!(a.identity.level, Level::Operator);
-        let a = args("--listen [::1]:9000 --system a=x --dev-identity bob:read-only --read-only")
-            .unwrap();
+        assert_eq!(i.level, Level::Operator);
+        let (a, i) =
+            args("--listen [::1]:9000 --system a=x --dev-identity bob:read-only --read-only")
+                .unwrap();
         assert!(a.read_only);
-        assert_eq!(a.identity.level, Level::ReadOnly);
+        assert_eq!(i.level, Level::ReadOnly);
+    }
+
+    #[test]
+    fn the_command_line_is_consistent() {
+        use clap::CommandFactory;
+        Args::command().debug_assert();
     }
 
     #[test]
