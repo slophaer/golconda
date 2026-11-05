@@ -239,11 +239,11 @@ swtpm, checks the sealing of the host key and reboots the guest. Output *(boot, 
 
 ```text
 sshd-hostkey.key sealed with: host key + TPM2 + signed PCR policy (header id afbfeaac...)
-PASS: hostkey-sealed-with-tpm2
+PASS: hostkey-sealed-with-tpm2 (and the signed PCR 11 policy)
 ...
-PASS: ssh-after-reboot (boot id 5d268c9d-e07d-412f-accd-4ff41faacf08 -> 991be2e5-bb6f-4c85-9859-fda7f7fc8518)
-PASS: hostkey-unchanged (unsealed from the TPM, not regenerated)
-PASS: sshd-active-after-reboot
+PASS: ssh-after-reboot (boot id 51d88e2a-0ef2-45ca-8e07-2e714be0c46a -> 62599ab5-261d-46f0-b24c-050350876c70)
+PASS: hostkey-unchanged (after a reboot: the first boot's host key, credential not re-sealed, sshd active)
+PASS: no-failed-units-after-reboot
 ```
 
 The ESP is at `/boot` in the guest, since the image has no XBOOTLDR partition

@@ -56,9 +56,10 @@ secureBoot = false
 Proven in QEMU with OVMF: `secure-boot-enabled`, and after a key rotation `old-loader-refused` (a
 loader signed with a key now in `dbx`). No marker boots an unsigned loader.
 `hostkey-sealed-with-tpm2`, `ssh-after-reboot` and `hostkey-unchanged` (`--tpm`) show the seal and
-the unseal. `boots-after-rotation` and `old-loader-refused` cover a `db` rotation. A deployment key
-set made by `scripts/make-keys` booted on the same markers. The no-Secure-Boot image
-(`image-smoke-test-nosb`) boots and updates. See [What is proven](../proven.md).
+the unseal, also after an update and after a fallback (`--tpm --next`, with `--fail-health`).
+`boots-after-rotation` and `old-loader-refused` cover a `db` rotation. A deployment key set made by
+`scripts/make-keys` booted on the same markers. The no-Secure-Boot image (`image-smoke-test-nosb`)
+boots and updates. See [What is proven](../proven.md).
 
 ## Limits
 

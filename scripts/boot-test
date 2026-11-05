@@ -28,7 +28,11 @@
 #
 # With --ssh-test: logs in with tests/fixtures/snakeoil-ssh and checks
 #   ssh-login, hostname (must be "boot-test", the SMBIOS credential),
-#   systemctl --failed (no failed units), varlinkctl list-interfaces.
+#   systemctl --failed (no failed units), varlinkctl list-interfaces, the loader, hwdb,
+#   index-keyring.
+# With --tpm: the host key is sealed to TPM2 and the signed PCR 11 policy; after a reboot, and
+#   with --next after the update or --fail-health's fallback, it is the first boot's key, its
+#   credential has the first boot's bytes, and sshd runs (hostkey-unchanged).
 # With --esp-creds (needs --ssh-test): provisions through the ESP instead of SMBIOS and the image's
 #   test key (docs/design/boot.md, "Bootstrap credentials"). The harness copies the disk into the
 #   work directory, generates an ssh key pair there, and runs scripts/provision-esp on the copy with
@@ -553,6 +557,36 @@ verdict() {
   fi
 }
 
+# check_no_failed NAME: no unit has failed in the running boot
+check_no_failed() {
+  echo ""
+  echo "=== systemctl --failed ($1) ==="
+  FAILED=$(guest systemctl --failed --no-pager 2>&1) || true
+  echo "$FAILED"
+  RC=0; echo "$FAILED" | grep -q "^0 loaded units listed" || RC=1
+  verdict "$1" $RC
+}
+
+# The sealed sshd host key: a local var's credential (modules/lib/var.nix)
+HOSTKEY_CRED=/etc/credstore.encrypted/sshd-hostkey.key
+
+# check_unsealed WHEN: with --tpm, the host key the first boot sealed still opens, and nothing
+# sealed it again. sshd presents the first boot's key (known_hosts, StrictHostKeyChecking=yes),
+# the credential has the bytes the first boot wrote, and sshd runs. A new key would mean the var
+# ran again; new bytes, that something re-sealed it.
+check_unsealed() {
+  [ "$TPM" = 1 ] || return 0
+  RC=0
+  # shellcheck disable=SC2086
+  ssh $SSH_OPTS -o UserKnownHostsFile="$WORKDIR/known_hosts" -o StrictHostKeyChecking=yes \
+    -i "$WORKDIR/ssh/user" root@localhost true || RC=1
+  H=$(guest_hash "$HOSTKEY_CRED")
+  [ -n "$H" ] && [ "$H" = "$SEALED_HASH" ] || RC=1
+  A=$(guest systemctl is-active sshd.service 2>&1) || true
+  [ "$A" = "active" ] || RC=1
+  verdict "hostkey-unchanged ($1: the first boot's host key, credential not re-sealed, sshd $A)" $RC
+}
+
 test_ssh() {
   echo ""
   echo "=== SSH tests ==="
@@ -590,12 +624,7 @@ test_ssh() {
     verdict "esp-authorized-keys (ssh.authorized_keys.root credential written to /root/.ssh)" $RC
   fi
 
-  echo ""
-  echo "=== systemctl --failed ==="
-  FAILED=$(guest systemctl --failed --no-pager 2>&1) || true
-  echo "$FAILED"
-  RC=0; echo "$FAILED" | grep -q "^0 loaded units listed" || RC=1
-  verdict "no-failed-units" $RC
+  check_no_failed no-failed-units
 
   echo ""
   echo "=== varlinkctl list-interfaces ==="
@@ -651,23 +680,25 @@ test_ssh() {
 
   if [ "$TPM" = 1 ]; then
     echo ""
-    echo "=== /etc/credstore.encrypted (TPM sealed credentials) ==="
-    guest ls -la /etc/credstore.encrypted/ 2>&1 || true
+    echo "=== $(dirname "$HOSTKEY_CRED") (TPM sealed credentials) ==="
+    guest ls -la "$(dirname "$HOSTKEY_CRED")/" 2>&1 || true
     # the sealing key type is the first 16 bytes of the credential (systemd creds-util.h,
     # CRED_AES256_GCM_BY_*); the file is base64, so decode its first 24 characters
-    HDR=$(guest "head -c 24 /etc/credstore.encrypted/sshd-hostkey.key | base64 -d | od -An -tx1 -N4" \
+    HDR=$(guest "head -c 24 $HOSTKEY_CRED | base64 -d | od -An -tx1 -N4" \
       2>/dev/null | tr -d ' \n') || true
     case "$HDR" in
       5a1c6a86 | 55b9ed1d) KIND="host key only"; RC=1 ;;
       058469da) KIND="null key"; RC=1 ;;
-      0c7cc07b | d4062dfb) KIND="TPM2" ; RC=0 ;;
-      93a89409 | ef4ac136 | 14142588 | 2a1f877a) KIND="host key + TPM2"; RC=0 ;;
+      # TPM2 without the signed PCR 11 policy: not what the var asks for (--tpm2-public-key-pcrs=11)
+      0c7cc07b | d4062dfb) KIND="TPM2" ; RC=1 ;;
+      93a89409 | ef4ac136 | 14142588 | 2a1f877a) KIND="host key + TPM2"; RC=1 ;;
       faf7eb93 | 5e2d5c76) KIND="TPM2 + signed PCR policy"; RC=0 ;;
       af4950a8 | adbc4ca3 | afbfeaac | 16e49294) KIND="host key + TPM2 + signed PCR policy"; RC=0 ;;
       *) KIND="unknown"; RC=1 ;;
     esac
     echo "sshd-hostkey.key sealed with: $KIND (header id ${HDR:-none}...)"
-    verdict "hostkey-sealed-with-tpm2" $RC
+    verdict "hostkey-sealed-with-tpm2 (and the signed PCR 11 policy)" $RC
+    SEALED_HASH=$(guest_hash "$HOSTKEY_CRED")
   fi
   return 0
 }
@@ -805,16 +836,6 @@ test_etc_links() {
   verdict "etc-links-stable ($1 links, $2 naming a store path, $3 dangling)" $RC
 }
 
-# test_units_after_update: the updated system starts clean. This is the boot the first boot's
-# /etc links would break, so it is the one that has to have no failed unit.
-test_units_after_update() {
-  echo ""
-  echo "=== systemctl --failed ($NEXT_VERSION) ==="
-  FAILED=$(guest systemctl --failed --no-pager 2>&1) || true
-  echo "$FAILED"
-  RC=0; echo "$FAILED" | grep -q "^0 loaded units listed" || RC=1
-  verdict "no-failed-units-after-update" $RC
-}
 
 # test_fail_health: the three-boot fallback of docs/design/boot.md. A masked health unit keeps
 # boot-complete.target from being reached, so the candidate is never blessed and every boot of it
@@ -860,6 +881,7 @@ test_fail_health() {
   echo "running $V"
   RC=0; [ "$V" = "$OLD_VERSION" ] || RC=1
   verdict "fallback-to-old-slot ($NEXT_VERSION failed 3 times, $V boots)" $RC
+  check_unsealed "after the fallback to $V"
   L=$(guest bootctl list --no-pager 2>&1) || true
   echo "$L" | grep -E " (title|version|tries):" || true
   RC=0; echo "$L" | grep -q "tries: 0 left; 3 done" || RC=1
@@ -917,15 +939,16 @@ test_next() {
     # no blessed boot of the candidate, so no loader and no recovery checks here
     test_fail_health || return 1
     test_etc_links
-    test_units_after_update
+    check_no_failed no-failed-units-after-update
     return 0
   fi
   reboot_guest || return 1
   V=$(guest_version)
   RC=0; [ "$V" = "$NEXT_VERSION" ] || RC=1
   verdict "boots-next ($OLD_VERSION -> $V)" $RC
+  check_unsealed "after the update to $V"
   test_etc_links
-  test_units_after_update
+  check_no_failed no-failed-units-after-update
   test_loader "$NEXT_VERSION, its first good boot" 1
   NEW_LOADER=$(guest_hash "$ESP_REMOVABLE")
   if [ "$NEW_LOADER" != "$OLD_LOADER" ]; then
@@ -1147,10 +1170,7 @@ test_rotate() {
   for c in $AFTER; do echo "$BEFORE" | grep -qxF "$c" || RC=1; done
   verdict "kernel-db-rotated (the kernel keeps the new certificate only)" $RC
   test_loader "after the rotation" 0
-  FAILED=$(guest systemctl --failed --no-pager 2>&1) || true
-  echo "$FAILED"
-  RC=0; echo "$FAILED" | grep -q "^0 loaded units listed" || RC=1
-  verdict "no-failed-units-after-rotation" $RC
+  check_no_failed no-failed-units-after-rotation
   stop_qemu
 
   echo ""
@@ -1182,21 +1202,8 @@ test_reboot() {
   fi
   verdict "ssh-after-reboot (boot id $FIRST_BOOT_ID -> $BOOT_ID)" 0
 
-  # StrictHostKeyChecking=yes refuses a host key that is not the first boot's
-  RC=0
-  # shellcheck disable=SC2086
-  ssh $SSH_OPTS -o UserKnownHostsFile="$WORKDIR/known_hosts" -o StrictHostKeyChecking=yes \
-    -i "$WORKDIR/ssh/user" root@localhost true || RC=1
-  verdict "hostkey-unchanged (unsealed from the TPM, not regenerated)" $RC
-
-  ACTIVE=$(guest systemctl is-active sshd.service 2>&1) || true
-  echo "sshd.service: $ACTIVE"
-  RC=0; [ "$ACTIVE" = "active" ] || RC=1
-  verdict "sshd-active-after-reboot" $RC
-
-  echo ""
-  echo "=== systemctl --failed (second boot) ==="
-  guest systemctl --failed --no-pager 2>&1 || true
+  check_unsealed "after a reboot"
+  check_no_failed no-failed-units-after-reboot
   return 0
 }
 
