@@ -66,7 +66,6 @@ let
     builtins.removeAttrs c [
       "properties"
       "pedigree"
-      "cpe"
     ]
     // (if kept == [ ] then { } else { properties = kept; });
   ordinary = mkSystem {
@@ -216,7 +215,7 @@ in
       (component "openssh").pedigree.ancestors
       == [ (ancestorOf (component "openssh").type base.pkgs.openssh) ]
   ))
-  (check "sbom: only provenance, pedigree and cpe change the baseline BOM" (
+  (check "sbom: only golconda:origin and pedigree change the generator's BOM" (
     fixture.sbom.bom // { components = map withoutProvenance components; } == baseline.bom
   ))
   (check "sbom: sbom.json in /usr is the evaluated document" (
