@@ -147,8 +147,22 @@ in
       make = pkgs.linux-kernel.drvAttrs.spec.env.GOLCONDA_KERNEL_MAKE;
     in
     make == pkgs.linux-kernel.args.env.GOLCONDA_KERNEL_MAKE
-    && elem "CC=clang" (builtins.fromJSON (builtins.unsafeDiscardStringContext make))
   ))
+  # kernel code through jig in passthrough: no jig policy flags (hardening, sysroot, RUNPATH),
+  # but the compile cache; host tools through jig's normal policy (they need the sysroot)
+  (check "kernel: kernel code compiles through jig's cache in passthrough, host tools with its policy"
+    (
+      let
+        make = builtins.fromJSON (
+          builtins.unsafeDiscardStringContext pkgs.linux-kernel.args.env.GOLCONDA_KERNEL_MAKE
+        );
+      in
+      elem "CC=env JIG_PASSTHROUGH=1 cc" make
+      && !(elem "CC=clang" make)
+      && elem "HOSTCC=cc" make
+      && elem "HOSTCXX=c++" make
+    )
+  )
   (check "kernel: the policy fragment reaches the package-local builder" (
     let
       fragments = builtins.fromJSON (
