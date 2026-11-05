@@ -173,9 +173,14 @@ async fn module(
         Ok(s) => s,
         Err(r) => return *r,
     };
-    let Some(props) = sys.schema["properties"][&module]["properties"].as_object() else {
+    // a module with no options of its own (/vars) has no properties
+    if !sys.schema["properties"][&module].is_object() {
         return problem(json, StatusCode::NOT_FOUND, format!("no module {module}"));
-    };
+    }
+    let empty = serde_json::Map::new();
+    let props = sys.schema["properties"][&module]["properties"]
+        .as_object()
+        .unwrap_or(&empty);
     let mut options = Vec::new();
     for o in props.keys() {
         match sys.explain(&module, o) {
