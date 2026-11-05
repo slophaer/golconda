@@ -24,6 +24,7 @@
 #   in schema.toJsonSchema tree
 _:
 let
+  on = import ../modules/lib/on.nix;
   inherit (builtins)
     attrNames
     attrValues
@@ -257,10 +258,10 @@ let
   optionToSchema =
     opt: declaredIn:
     typeToSchema opt.type
-    // (if declaredIn == null then { } else { "x-golconda-declaredIn" = declaredIn; })
-    // (if opt ? description then { inherit (opt) description; } else { })
-    // (if opt ? default && isPlainData opt.default then { inherit (opt) default; } else { })
-    // (if opt ? example && isPlainData opt.example then { examples = [ opt.example ]; } else { });
+    // (on (declaredIn != null) { "x-golconda-declaredIn" = declaredIn; })
+    // (on (opt ? description) { inherit (opt) description; })
+    // (on (opt ? default && isPlainData opt.default) { inherit (opt) default; })
+    // (on (opt ? example && isPlainData opt.example) { examples = [ opt.example ]; });
 
   # path string under root, or null when it is outside it
   relativeTo =

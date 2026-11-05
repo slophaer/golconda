@@ -30,6 +30,7 @@
 #                                    a module (under /local), never a bare fragment.
 _:
 let
+  on = import ../modules/lib/on.nix;
   inherit (builtins)
     attrNames
     attrValues
@@ -93,21 +94,16 @@ let
               filter (p: p != null) (map (i: i.path or null) (attrValues (m.module.inputs or { })))
             );
           }
-          // (
-            if role == "component" then
-              {
-                inherit included;
-                reason =
-                  if elem m.path builtins' then
-                    "builtin"
-                  else if included then
-                    "config"
-                  else
-                    null;
-              }
-            else
-              { }
-          );
+          // (on (role == "component") {
+            inherit included;
+            reason =
+              if elem m.path builtins' then
+                "builtin"
+              else if included then
+                "config"
+              else
+                null;
+          });
         }
       ) (treeLib.modulesOf tree)
     );

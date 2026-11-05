@@ -11,6 +11,7 @@
 #                 files."foo.conf" = "..."; }; user = "dynamic"; sandbox = "strict"; }
 { types }:
 let
+  on = import ./on.nix;
   appLib = import ./app.nix { inherit types; };
   inherit (import ./var.nix { inherit types; }) word;
   inherit (import ./fragment.nix { inherit types; }) targetName unitName;
@@ -271,8 +272,8 @@ let
         sortStrings (map (n: credentials.${n}) (attrNames credentials))
       )
       ++ map (d: "StateDirectory=${d}") (svc.state or [ ])
-      ++ (if svc ? runtimeDirectory then [ "RuntimeDirectory=${svc.runtimeDirectory}" ] else [ ])
-      ++ (if svc ? killMode then [ "KillMode=${svc.killMode}" ] else [ ])
+      ++ (on (svc ? runtimeDirectory) [ "RuntimeDirectory=${svc.runtimeDirectory}" ])
+      ++ (on (svc ? killMode) [ "KillMode=${svc.killMode}" ])
       ++ userLines
       ++ sandboxLines.${svc.sandbox};
 
@@ -332,7 +333,7 @@ let
         {
           inherit files;
           units.${unitFileName} = text + "\n";
-          sysusers = if isSysusersLine svc.user then [ svc.user ] else [ ];
+          sysusers = on (isSysusersLine svc.user) [ svc.user ];
         }
     );
 

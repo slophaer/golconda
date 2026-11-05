@@ -39,6 +39,7 @@
   replaces ? [ ],
 }:
 let
+  on = import ../modules/lib/on.nix;
   inherit (builtins)
     attrNames
     concatMap
@@ -148,7 +149,7 @@ let
           "golconda"
         else
           "repkgs";
-      replacement = if downstreamInfo ? ${n} then { inherit (downstreamInfo.${n}) replaces; } else { };
+      replacement = on (downstreamInfo ? ${n}) { inherit (downstreamInfo.${n}) replaces; };
       supported = (p.supported or true) && (builtins.tryEval (builtins.deepSeq p.version true)).success;
       # the package's own component, as the SBOM generator writes it
       root = builtins.head (

@@ -26,6 +26,7 @@
 #   }
 _:
 let
+  on = import ../modules/lib/on.nix;
   inherit (builtins)
     attrNames
     concatStringsSep
@@ -79,13 +80,13 @@ let
     if !isAttrs s then
       [ ]
     else
-      (if s ? "x-golconda-opaque" then [ s."x-golconda-opaque" ] else [ ])
+      (on (s ? "x-golconda-opaque") [ s."x-golconda-opaque" ])
       ++ builtins.concatMap opaqueNames (
         (s.anyOf or [ ])
         ++ (s.oneOf or [ ])
         ++ (s.prefixItems or [ ])
-        ++ (if isAttrs (s.items or null) then [ s.items ] else [ ])
-        ++ (if isAttrs (s.additionalProperties or null) then [ s.additionalProperties ] else [ ])
+        ++ (on (isAttrs (s.items or null)) [ s.items ])
+        ++ (on (isAttrs (s.additionalProperties or null)) [ s.additionalProperties ])
       );
 
   # One table cell: no newline, no unescaped pipe.

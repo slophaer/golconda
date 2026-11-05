@@ -14,6 +14,7 @@
 #! interface-specific DNS is configured).
 { types, ... }:
 let
+  on = import ../lib/on.nix;
   inherit (builtins) concatStringsSep mapAttrs attrNames;
   inherit (types)
     attrsOf
@@ -150,19 +151,15 @@ in
       }) allNetworks;
 
       # DNS fallback configuration
-      dnsFile =
-        if options.dns != null then
-          {
-            "/usr/lib/systemd/resolved.conf.d/golconda-dns.conf" = {
-              # FallbackDNS=, not DNS=: the option promises servers for the
-              # case where no other DNS server is known, not global servers
-              # that take part next to per-link ones.
-              text = ini.render { Resolve.FallbackDNS = concatStringsSep " " options.dns; };
-              mode = "0644";
-            };
-          }
-        else
-          { };
+      dnsFile = on (options.dns != null) {
+        "/usr/lib/systemd/resolved.conf.d/golconda-dns.conf" = {
+          # FallbackDNS=, not DNS=: the option promises servers for the
+          # case where no other DNS server is known, not global servers
+          # that take part next to per-link ones.
+          text = ini.render { Resolve.FallbackDNS = concatStringsSep " " options.dns; };
+          mode = "0644";
+        };
+      };
     in
     {
       files =

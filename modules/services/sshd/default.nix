@@ -102,8 +102,7 @@ in
         listToAttrs
         ;
       inherit (import ../../lib/text.nix) lines;
-      optional = cond: x: if cond then x else [ ];
-      optionalAttrs = cond: x: if cond then x else { };
+      on = import ../../lib/on.nix;
 
       # The ed25519 host key, generated on the machine on first boot and
       # sealed to its TPM; the public half stays readable for enrolment.
@@ -127,8 +126,8 @@ in
           "Port ${toString options.port}"
           "AuthorizedKeysFile .ssh/authorized_keys ${dir}/authorized_keys/%u"
         ]
-        ++ optional hasCA [ "TrustedUserCAKeys ${dir}/ca.pub" ]
-        ++ optional hasPrincipals [ "AuthorizedPrincipalsFile ${dir}/principals/%u" ]
+        ++ on hasCA [ "TrustedUserCAKeys ${dir}/ca.pub" ]
+        ++ on hasPrincipals [ "AuthorizedPrincipalsFile ${dir}/principals/%u" ]
         ++ [
           # keys and certificates only; PAM does account and session, not auth
           "PasswordAuthentication no"
@@ -158,21 +157,21 @@ in
             "-h"
             (s.credential "hostkey")
           ]
-          ++ optional options.hostCertificate [
+          ++ on options.hostCertificate [
             "-o"
             (s.credentialArg "HostCertificate=" "hostcert")
           ]
-          ++ optional hasKRL [
+          ++ on hasKRL [
             "-o"
             (s.credentialArg "RevokedKeys=" "krl")
           ];
           files = {
             sshd_config = sshdConfig;
           }
-          // optionalAttrs (options.authorizedKeys != [ ]) {
+          // on (options.authorizedKeys != [ ]) {
             "authorized_keys/root" = lines options.authorizedKeys;
           }
-          // optionalAttrs hasCA { "ca.pub" = lines options.trustedUserCAKeys; }
+          // on hasCA { "ca.pub" = lines options.trustedUserCAKeys; }
           // listToAttrs (
             map (u: {
               name = "principals/${u}";
@@ -183,8 +182,8 @@ in
         credentials = {
           hostkey = v.credentialId hostkeyVar "key";
         }
-        // optionalAttrs hasKRL { krl = v.credentialId "sshd-revoked-keys" "krl"; }
-        // optionalAttrs options.hostCertificate { hostcert = v.credentialId "sshd-host-cert" "cert"; };
+        // on hasKRL { krl = v.credentialId "sshd-revoked-keys" "krl"; }
+        // on options.hostCertificate { hostcert = v.credentialId "sshd-host-cert" "cert"; };
         # sshd runs as root and spawns user sessions, which must see the real
         # system: sandbox "trusted" (no directive).
         user = "root";
