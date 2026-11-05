@@ -61,9 +61,9 @@
       },
       "branch": "upstream-prep",
       "submodules": false,
-      "revision": "3053ab5a6afef4945f6abf97a612ae88be371851",
-      "url": "https://code.in.a.flawed.cloud/yolobox/repkgs/archive/3053ab5a6afef4945f6abf97a612ae88be371851.tar.gz",
-      "hash": "sha256-WXje+zUrzJrnXDYl6x/SSAuZAZeasMUtkaHGXWg7N5E="
+      "revision": "5341b3a998b0fe283ad0e83b02e1c022d0e8c9aa",
+      "url": "https://code.in.a.flawed.cloud/yolobox/repkgs/archive/5341b3a998b0fe283ad0e83b02e1c022d0e8c9aa.tar.gz",
+      "hash": "sha256-5MvrlMBTeCTB579G3kc3JrVpY83tcMTipqzuKNbd2oc="
     }
   },
   "version": 7
