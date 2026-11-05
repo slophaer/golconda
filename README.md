@@ -7,9 +7,8 @@ machine in one TOML file. A build host turns that file into one signed disk imag
 the image, checks every block it reads, and updates itself by swapping in the next image. It runs
 systemd and nothing that duplicates it, and it runs no Nix.
 
-It is for people who run a few to a few dozen Linux servers and want each one to be a copy of a
-known, reproducible image: no drift, no package manager on the host, and a rollback that happens by
-itself.
+It is for people who run Linux servers and appliances and want each one to be a copy of a known,
+reproducible image: no drift, no package manager on the host, and a rollback that happens by itself.
 
 ```mermaid
 flowchart TD
