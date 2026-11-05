@@ -258,9 +258,12 @@ path and no option can turn them on
 and session (`pam_systemd`), never for auth: the factory's `/etc/pam.d/sshd` has no `auth` line and
 `/etc/pam.d/other` denies every type. The image carries no setuid binary: linux-pam ships without
 `unix_chkpwd`, so a non-root process cannot verify a password at all, and pam_unix is built with
-`pam_unix-try-getspnam` so that root (sshd's account check) reads `/etc/shadow` itself (repkgs
-`pkgs/li/linux-pam`). `/etc/shadow` is world-readable, because the Nix store makes every file 0444
-([Layout: The read-only /etc](layout.md#the-read-only-etc)); it holds no password.
+`pam_unix-try-getspnam` (repkgs `pkgs/li/linux-pam`). The image has no `/etc/shadow` and no
+`/etc/gshadow`: the password field in `passwd` and `group` is `!*` (locked, not shadowed), and
+pam_unix looks for a shadow entry only when the field is `x` (Linux-PAM
+`modules/pam_unix/passverify.c`, `get_account_info`). So root's account check for sshd reads no
+shadow file. sshd checks a locked account itself only without PAM, and Golconda uses PAM, so a key
+login still works ([Layout: The read-only /etc](layout.md#the-read-only-etc)).
 
 The machine's own identity is its host key, a local var, plus a host certificate and a key
 revocation list, both admin vars; sshd reads them from its credentials directory, never from the
@@ -367,3 +370,13 @@ must hold the signer: without it `/usr` is activated unsigned, and PID 1's re-ex
 is denied, so the machine stops with "Failed to execute /sbin/init". The boot test therefore needs
 `--secure-boot`, which enrols the `db`. Phase 2 is the BPF LSM for `RestrictFileSystems=`; phase 3
 AppArmor profiles generated from the typed service. SELinux is rejected.
+
+Persistence through `/etc` is closed too. `/etc` is the image's confext, but `systemd-confext` also
+merges `/var/lib/confexts` and `/run/confexts`, which need no signature and sit on the writable root
+partition. Root could plant a confext there (a unit, a `pam.d` file) that every later boot merges.
+The initrd hides both directories behind an empty read-only tmpfs before the merge, and the merge
+`Requires=` the two mounts, so it fails closed
+([Layout: The read-only /etc](layout.md#the-read-only-etc)). The `--tpm` reboot test plants a valid
+confext for the image and version, after it unmounts the guard at runtime as root can
+(`confext-planted`). After the reboot the plant is not in `/etc` (`confext-planted-refused`). On an
+image without the guard, the planted confext merged and the marker failed.

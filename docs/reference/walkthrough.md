@@ -76,7 +76,8 @@ iets eval --json -E 'builtins.attrNames (import ./examples/golconda.nix).compose
 
 - `units`: `golconda-etc-links.service`, `golconda-health-network.service`,
   `golconda-health-sshd.service`, `golconda-loader-update.service`,
-  `golconda-var-sshd-hostkey.service`, `sshd.service`.
+  `golconda-var-sshd-hostkey.service`, `sshd.service`, and the two initrd mounts that hide the
+  writable confext directories, `sysroot-run-confexts.mount` and `sysroot-var-lib-confexts.mount`.
 
 - `files` (37), by origin:
 
@@ -211,20 +212,25 @@ What happens, in order, and which marker or file shows it:
 1. systemd-boot runs the UKI `server_20261031.1+3-0.efi`. The stub measures it into PCR 11. The
    initrd finds `usr-a` by `usrhash=`, attaches verity, and repart creates `root` from
    `/usr/lib/repart.d/30-root.conf` (ext4, the rest of the disk).
-1. `systemd-confext-sysroot.service` merges `/usr/lib/confexts/golconda` onto `/sysroot/etc`,
-   read-only. It was built with the image: `passwd`, `group` and `shadow` from
-   `sysusers.d/golconda.conf` (`messagebus`, `sshd`), and `/etc/pam.d/sshd`, `/etc/shells` and the
-   other factory files as symlinks into `/usr/share/factory/etc`; `/etc/localtime`,
-   `/etc/os-release`. `--ssh-test` checks it: `etc-read-only`.
-1. After switch-root, PID 1 takes the machine id from the SMBIOS UUID and mounts it over the empty
-   `/etc/machine-id`. It takes the host name from the `system.hostname` credential at every boot;
-   nothing writes `/etc/hostname`
+1. `sysroot-var-lib-confexts.mount` and `sysroot-run-confexts.mount` put an empty read-only tmpfs
+   over the writable confext directories. Then `systemd-confext-sysroot.service` merges
+   `/usr/lib/confexts/golconda` onto `/sysroot/etc`, read-only. It was built with the image:
+   `passwd` and `group` from `sysusers.d/golconda.conf` (`messagebus`, `sshd`), with `!*` in the
+   password field and no shadow, and `/etc/pam.d/sshd`, `/etc/shells` and the other factory files as
+   symlinks into `/usr/share/factory/etc`; `/etc/localtime`, `/etc/os-release`. `--ssh-test` checks
+   it: `etc-read-only`, `no-shadow`.
+1. After switch-root, PID 1 takes the machine id from the SMBIOS UUID (the cmdline has
+   `systemd.machine_id=firmware`; a `system.machine_id` credential would win) and mounts it over the
+   empty `/etc/machine-id`. It takes the host name from the `system.hostname` credential at every
+   boot; nothing writes `/etc/hostname`
    ([Boot: Bootstrap credentials](../design/boot.md#bootstrap-credentials)). `--ssh-test` checks it:
    `PASS: hostname (system.hostname credential applied)`.
 1. `systemd-firstboot.service` is skipped: an empty `/etc/machine-id` is not a first boot. So is
    `systemd-sysusers.service`, by its drop-in `ConditionPathIsReadWrite=/etc`. Markers: `no-prompt`,
    and `firstboot-skipped` with `--ssh-test`.
 1. systemd-tmpfiles runs `tmpfiles.d/golconda.conf` without its `/etc` lines: `/var/empty` exists.
+   systemd's `provision.conf` writes the harness's `network.hosts` credential to
+   `/run/golconda/etc/hosts`, which `/etc/hosts` links to. Marker: `hosts-credential`.
 1. `golconda-var-sshd-hostkey.service` runs `golconda-var-run sshd-hostkey "key" "key.pub"`:
    `ssh-keygen -q -t ed25519 -N '' -f key` in a runtime directory, then
    `systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11 --name=sshd-hostkey.key` of the
@@ -267,7 +273,7 @@ scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-te
 The harness forwards host port 10022 (`BOOT_TEST_SSH_PORT`) to the guest's port 22 and logs in as
 root with `ssh -i tests/fixtures/snakeoil-ssh -p 10022 root@localhost`. In the run *(boot)*,
 `--ssh-test` printed `PASS: ssh-login`, `PASS: no-failed-units` and
-`PASS: varlinkctl-list-interfaces`; with `--tpm` added, the 17 ssh checks of that run all passed.
+`PASS: varlinkctl-list-interfaces`; with `--tpm` added, the 21 ssh checks of that run all passed.
 
 Certificate login: uncomment the three lines at the end of `examples/server.toml`. The evaluation
 *(eval, with an `admin@example.com` principal)* adds `/usr/lib/sshd/ca.pub` and

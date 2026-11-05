@@ -70,8 +70,9 @@ The boot test proves this in QEMU ([What is proven](../proven.md)):
 - No marker covers a cloud's own OEM strings, or fw_cfg on real hardware.
 - v1 names two credentials. `--credential` writes others. `system.machine_id` and `network.*` have a
   reader ([Boot: Bootstrap credentials](../design/boot.md#bootstrap-credentials)).
-- A credential that systemd's tmpfiles lines write into `/etc` has no effect, because `/etc` is
-  read-only: `network.hosts`, `login.motd` and `login.issue`.
+- A credential that systemd's tmpfiles lines write into `/etc` goes to `/run/golconda/etc`, and
+  `/etc` links there. `network.hosts` works (`hosts-credential`). `login.motd` and `login.issue`
+  have no reader: there is no getty, and sshd's PAM stack has no `pam_motd`.
 
 ## More
 

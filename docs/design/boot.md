@@ -173,12 +173,14 @@ credential when Secure Boot is off or the machine has no TPM2. With Secure Boot 
 present, PID 1 refuses it: anyone who can write the ESP could otherwise plant a credential that the
 measured boot chain never vouched for. On such a machine use SMBIOS or fw_cfg.
 
-Two more credentials matter. `system.machine_id` sets the machine id when the firmware gives no
-SMBIOS UUID ([Layout: The read-only /etc](layout.md#the-read-only-etc)). `network.network.*` and the
-other `network.*` credentials become units in `/run/systemd/network`:
-`systemd-network-generator.service` has a static link in `sysinit.target.wants`. A credential that
-systemd's tmpfiles lines write into `/etc` has no effect, because those lines ran at build time:
-`network.hosts`, `login.motd` and `login.issue`.
+More credentials matter. `system.machine_id` sets the machine id; it wins over the SMBIOS UUID, and
+a board with no UUID, or with one that is not unique, needs it
+([Layout: The read-only /etc](layout.md#the-read-only-etc)). `network.network.*` and the other
+`network.*` credentials become units in `/run/systemd/network`: `systemd-network-generator.service`
+has a static link in `sysinit.target.wants`. A credential that systemd's tmpfiles lines write into
+`/etc` goes to `/run/golconda/etc/<path>`, and `/etc/<path>` links there: `network.hosts` sets
+`/etc/hosts`. `login.motd` and `login.issue` work the same way, but nothing in the image reads them:
+there is no getty, and sshd's PAM stack has no `pam_motd`.
 
 The ESP is not encrypted, and SMBIOS strings are readable by every process: a bootstrap credential
 carries no secret. Secrets are vars ([Trust: Secrets and vars](trust.md#secrets-and-vars)).
@@ -191,10 +193,12 @@ What happens once, on the first boot of a disk:
    `FactoryReset=`), with `/var`, `/home`, `/root` inside.
 1. The initrd merges the image's read-only `/etc` onto `/sysroot/etc`
    ([Layout: The read-only /etc](layout.md#the-read-only-etc)). It holds the factory links and
-   `passwd`, `group`, `shadow` and `gshadow`, all made at build time.
-1. PID 1 takes the machine id from the SMBIOS UUID or the `system.machine_id` credential and mounts
-   it over the empty `/etc/machine-id`. An empty file is not a first boot to systemd, so
-   `systemd-firstboot` is skipped and no presets run. PID 1 sets the hostname from the credential.
+   `passwd` and `group`, all made at build time. Before the merge, two empty read-only tmpfs mounts
+   hide `/sysroot/var/lib/confexts` and `/sysroot/run/confexts`, so no other confext merges.
+1. PID 1 takes the machine id from the `system.machine_id` credential or the SMBIOS UUID
+   (`systemd.machine_id=firmware`) and mounts it over the empty `/etc/machine-id`. An empty file is
+   not a first boot to systemd, so `systemd-firstboot` is skipped and no presets run. PID 1 sets the
+   hostname from the credential.
 1. systemd-tmpfiles makes the state directories. Its `/etc` lines ran at build time.
 1. The var units generate the machine-local secrets and seal them to the TPM
    ([Trust: Secrets and vars](trust.md#secrets-and-vars)).

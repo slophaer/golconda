@@ -41,7 +41,7 @@ root hash, which is how gpt-auto finds the pair the UKI's `usrhash=` names.
 | `/usr/share/factory/etc`                        | image   | `/factory`                                                                                                   |
 | `/usr/lib/confexts/golconda`                    | image   | `lib/etc.nix` via `mkSystem`: the read-only `/etc`, a directory confext                                      |
 | `/etc`                                          | overlay | `systemd-confext-sysroot.service` in the initrd: the confext, read-only, `nosuid`, `nodev`, `noexec`         |
-| `/etc/machine-id`                               | overlay | an empty file in the confext; PID 1 bind-mounts the id over it (SMBIOS UUID, `system.machine_id`, or random) |
+| `/etc/machine-id`                               | overlay | an empty file in the confext; PID 1 bind-mounts the id over it (`system.machine_id`, SMBIOS UUID, or random) |
 | `/var/lib/golconda/credstore.encrypted/`        | root    | the var runner and the deploy tool: sealed credentials (directory from `/vars`, 0700)                        |
 | `/var/lib/golconda/vars/<name>/`                | root    | the var runner: public halves and the `done` marker                                                          |
 | `/var`                                          | root    | services (`StateDirectory=`), tmpfiles                                                                       |

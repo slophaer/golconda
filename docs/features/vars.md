@@ -93,9 +93,9 @@ The deploy tool that pushes and seals them is *(planned)*. No boot test covers a
 - **TPM loss.** A sealed credential dies with its TPM. That is why admin values live on the deploy
   host.
 - Without a TPM2, a local var seals to the host key only.
-- **A stable machine id.** The host secret of `systemd-creds` is bound to the machine id. A VM or a
-  cloud gives an SMBIOS UUID. Bare metal needs the `system.machine_id` credential or
-  `systemd.machine_id=firmware`; this is open
+- **A stable machine id.** The host secret of `systemd-creds` is bound to the machine id. PID 1
+  takes it from the `system.machine_id` credential or the SMBIOS UUID. A board with no UUID, or with
+  one that is not unique, needs the credential
   ([Layout: The read-only /etc](../design/layout.md#the-read-only-etc)).
 - Bootstrap values such as the host name are not vars. They are plain credentials, and they carry no
   secret ([Provisioning](provisioning.md)).

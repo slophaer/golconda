@@ -30,8 +30,9 @@ flowchart LR
   time and puts the result in `/usr/lib/confexts/golconda`. The initrd merges it onto `/etc` with
   overlayfs, read-only, with no upper layer. `/factory` seeds `/usr/share/factory/etc`, and
   `L /etc/<path> - - - - /usr/share/factory/etc/<path>` lines link each file. `/etc/machine-id` is
-  empty: PID 1 mounts the id from the SMBIOS UUID or a credential over it. Nothing writes
-  `hostname`. See [Layout: The read-only /etc](../design/layout.md#the-read-only-etc).
+  empty: PID 1 mounts the id from a credential or the SMBIOS UUID over it. Only this confext merges:
+  the initrd hides `/var/lib/confexts` and `/run/confexts`, where root could plant another. Nothing
+  writes `hostname`. See [Layout: The read-only /etc](../design/layout.md#the-read-only-etc).
 - **`/var` is state.** Services use `StateDirectory=` and so `/var/lib/<app>`. Vars sit under
   `/var/lib/golconda/vars`. `/home` and `/root` are on the same partition. `/tmp` and `/run` are
   tmpfs.
@@ -53,7 +54,8 @@ directory of its own under `/var`.
 ## Status
 
 Proven in QEMU: `multi-user-reached` and `boot-complete` with `ipe.enforce=1`, so the kernel accepts
-the signature. `etc-read-only` shows the read-only `/etc` and the machine id from the SMBIOS UUID.
+the signature. `etc-read-only` shows the read-only `/etc` and the machine id from the SMBIOS UUID or
+the credential. `confext-planted-refused` shows that a planted confext does not merge.
 `sysupdate-installed`, `boots-next` and `etc-follows-update` cover the A/B update.
 `fallback-to-old-slot` and `counter-exhausted` cover the rollback. `state-gone` and `slots-kept`
 cover the factory reset. See [What is proven](../proven.md).
@@ -68,7 +70,6 @@ cover the factory reset. See [What is proven](../proven.md).
 - Nothing checks `/var`.
 - An administrator cannot change `/etc` at all. Signed confexts in `/var/lib/confexts` could allow
   it; this is not designed.
-- `/etc/shadow` is world-readable: the Nix store makes every file 0444. It holds no password.
 - Hardware and real-firmware enrolment have not run.
 
 ## More

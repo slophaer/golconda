@@ -79,8 +79,8 @@ no enable links. A unit that systemd enables only by preset gets a static link t
 `/etc` is a directory confext in the image. `lib/etc.nix` builds it: it runs `systemd-sysusers`,
 then `systemd-tmpfiles --create --boot --prefix=/etc`, over the image's own configuration and
 against an empty root that holds only the factory (`/usr/share/factory/etc`). The result is what a
-first boot wrote before: the factory links, `passwd`, `group`, `shadow` and `gshadow`, the CA links,
-`localtime` and `os-release`. `mkSystem` links it at `/usr/lib/confexts/golconda`. Its
+first boot wrote before: the factory links, `passwd` and `group`, the CA links, `localtime` and
+`os-release`. `mkSystem` links it at `/usr/lib/confexts/golconda`. Its
 `etc/extension-release.d/extension-release.golconda` has `ID=<image id>` and `VERSION_ID=<version>`,
 so it belongs to the `/usr` it came with.
 
@@ -90,24 +90,42 @@ In the initrd, `systemd-confext-sysroot.service` (a static link in `initrd.targe
 use only ([Kernel: overlayfs](kernel.md#overlayfs)). An update brings a new `/etc` with the new
 `/usr`, and a fallback to the other slot brings the old `/etc` back.
 
+Only the image's own confext may merge. `systemd-confext` also merges what it finds in
+`/var/lib/confexts` and `/run/confexts`. A directory there needs no signature, and an image of the
+same name there shadows `/usr/lib/confexts/golconda`, which it searches last. Both are on the
+writable root partition, so root could plant an `/etc` that every later boot merges. `/base`
+therefore has two initrd mount units, `sysroot-var-lib-confexts.mount` and
+`sysroot-run-confexts.mount`. Each puts an empty tmpfs (`ro`, `nosuid`, `nodev`, `noexec`) over the
+directory. They are ordered `Before=systemd-confext-sysroot.service`, which `Requires=` them, so the
+merge fails closed. After switch-root the tmpfs stays on `/var/lib/confexts`. The markers
+`confext-planted` and `confext-planted-refused` prove it ([What is proven](../proven.md)).
+
 The consequences:
 
-- **The machine id.** `/etc/machine-id` is an empty file. PID 1 takes the id from the SMBIOS/DMI
-  product UUID on KVM, QEMU, Xen, Amazon and bhyve, else from the `system.machine_id` credential,
-  else at random, and mounts it over the file (machine-id(5)). The id must be stable: the host
-  secret of `systemd-creds` is bound to it, so with a new id at every boot a sealed var does not
-  open after a reboot. VMs and clouds give a UUID.
+- **The machine id.** `/etc/machine-id` is an empty file. The UKI cmdline has
+  `systemd.machine_id=firmware`, so PID 1 takes the id from the `system.machine_id` credential if
+  there is one, else from the SMBIOS/DMI product UUID, also on bare metal. It mounts the id over the
+  file (machine-id(5)). The id must be stable: the host secret of `systemd-creds` is bound to it, so
+  with a new id at every boot a sealed var does not open after a reboot. A board without a UUID gets
+  a random id at every boot, and a board whose UUID is not unique shares its id with other boards.
+  Give such a board the credential, by SMBIOS, fw_cfg or the ESP
+  ([Boot: Bootstrap credentials](boot.md#bootstrap-credentials)).
 - **No first boot.** An empty `machine-id` file means no boot is a first boot. `systemd-firstboot`
   is skipped and no first-boot presets run; units are enabled by static links
   ([Unit enablement](#unit-enablement)).
-- **Users.** `passwd`, `group`, `shadow` and `gshadow` come from sysusers at build time. A drop-in
-  gives `systemd-sysusers.service` `ConditionPathIsReadWrite=/etc`, because sysusers opens
-  `/etc/.pwd.lock` for writing first. The Nix store makes every file 0444 and every directory 0555,
-  so `/etc/shadow` is world-readable. It holds no password: Golconda has none.
+- **Users.** `passwd` and `group` come from sysusers at build time. `lib/image/etc.nu` then sets
+  their password field to `!*` (locked, not shadowed) and deletes `shadow` and `gshadow`: Golconda
+  has no password, and the Nix store makes every file 0444, so a shadow file would be
+  world-readable. A drop-in gives `systemd-sysusers.service` `ConditionPathIsReadWrite=/etc`,
+  because sysusers opens `/etc/.pwd.lock` for writing first.
 - **tmpfiles.** The `/etc` lines ran at build time. The confext ships `etc/tmpfiles.d/<name>.conf`
   for each configuration that has `/etc` lines, with those lines dropped: a `d` line whose mode
-  differs would chmod the read-only `/etc` and fail with `EROFS`. So a credential that tmpfiles
-  writes into `/etc` has no effect: `network.hosts` (`/etc/hosts`), `login.motd` and `login.issue`.
+  differs would chmod the read-only `/etc` and fail with `EROFS`. A line that writes a credential
+  into `/etc` (a `^` in its type) moves to `/run/golconda/etc/<path>`, and `/etc/<path>` in the
+  confext is a relative link there. It dangles when no credential is given. This covers
+  `network.hosts` (`/etc/hosts`), `login.motd` (`/etc/motd.d/50-provision.conf`) and `login.issue`
+  (`/etc/issue.d/50-provision.conf`). `login.motd` and `login.issue` have no reader in the image:
+  there is no getty, and sshd's PAM stack has no `pam_motd`.
 - **Sealed credentials** live in `/var/lib/golconda/credstore.encrypted`, and units load them by
   absolute path: systemd searches no credstore under `/var`.
 - **No administrator changes.** An administrator cannot change `/etc`. A change is a new image.
@@ -115,10 +133,6 @@ The consequences:
 
 Open:
 
-- **The machine id on bare metal.** PID 1 reads the SMBIOS UUID by itself only in a VM. On bare
-  metal it needs the `system.machine_id` credential, or `systemd.machine_id=firmware` to use the
-  board's UUID (which not every board sets uniquely). Neither is built.
-- **tmpfiles credentials into `/etc`.** `network.hosts`, `login.motd` and `login.issue` do nothing
-  now. Nothing replaces them yet.
-- **An administrator route.** Signed confexts in `/var/lib/confexts` could carry a machine's own
-  `/etc` files. This is not designed.
+- **An administrator route.** Signed confexts could carry a machine's own `/etc` files. The guard
+  now hides `/var/lib/confexts`, so such a route needs a signature check before the merge. This is
+  not designed.

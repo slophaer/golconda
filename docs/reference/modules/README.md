@@ -225,8 +225,11 @@ them first, and a configuration never lists them.
 - **packages**: systemd, dbus-broker, dash, uutils-coreutils, tpm2-tss (only systemd's dlopen
   reaches it), e2fsprogs (`mkfs.ext4` for the root partition), cacert, tzdata, hwdb and
   linux-kernel.
-- **units**: `golconda-health-network.service`, `golconda-loader-update.service` and
-  `golconda-etc-links.service`; `dbus.socket` is a file, because dbus-broker does not ship it.
+- **units**: `golconda-health-network.service`, `golconda-loader-update.service`,
+  `golconda-etc-links.service`, and the initrd mounts `sysroot-var-lib-confexts.mount` and
+  `sysroot-run-confexts.mount` (an empty read-only tmpfs each, which
+  `systemd-confext-sysroot.service` `Requires=`, so only the image's confext merges); `dbus.socket`
+  is a file, because dbus-broker does not ship it.
 - **links**:
   - `.wants` links for `dbus.socket`, `systemd-networkd` (service and socket), `systemd-resolved`
     and `systemd-timesyncd`, with the `dbus.service` alias;
@@ -293,9 +296,9 @@ Built-in seeds:
 - `ssl/blocklist/.keep`;
 - `pkcs11/.keep`.
 
-Never seeded: `passwd`, `group`, `shadow` (systemd-sysusers writes them at build time), `machine-id`
-(an empty file in the confext; PID 1 mounts the id over it) and `hostname` (PID 1 sets it from the
-bootstrap credential).
+Never seeded: `passwd`, `group` (systemd-sysusers writes them at build time, locked with `!*`),
+`shadow` and `gshadow` (the image has none), `machine-id` (an empty file in the confext; PID 1
+mounts the id over it) and `hostname` (PID 1 sets it from the bootstrap credential).
 
 tmpfiles holds:
 

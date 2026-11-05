@@ -199,7 +199,7 @@ This section is the only copy of the command line in the documentation. Other pa
 `cmdlineTemplate` in `image/uki.nix` is:
 
 ```text
-usrhash={usrhash} systemd.verity_usr_options=root-hash-signature=base64:{usrhashSig} rw lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=1 console=tty0 console=ttyS0,115200
+usrhash={usrhash} systemd.verity_usr_options=root-hash-signature=base64:{usrhashSig} rw lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=1 systemd.machine_id=firmware console=tty0 console=ttyS0,115200
 ```
 
 The UKI step (`lib/image/uki.nu`) fills `{usrhash}` and `{usrhashSig}`, appends `rdinit=/init`
@@ -208,16 +208,17 @@ squeezes repeated spaces and fails the build at 2048 bytes, where the EFI stub w
 after the signature. The result is in the UKI's `.cmdline` section and in the step's `cmdline`
 output.
 
-| parameter                                          | meaning                                                                                                                                                   |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `usrhash={usrhash}`                                | the verity root hash; the generators derive the two `/usr` partition UUIDs from it, which is how a UKI finds its own slot                                 |
-| `systemd.verity_usr_options=root-hash-signature=…` | the base64 PKCS#7 signature of that hash; the kernel checks it against the platform keyring (firmware db), and IPE trusts only such volumes               |
-| `rw`                                               | the root partition carries the state; without it the initrd mounts root read-only and the host key var fails to seal. `/usr` stays read-only by dm-verity |
-| `lsm=lockdown,yama,ipe,bpf`                        | the LSM stack order (capability is always first)                                                                                                          |
-| `lockdown=integrity`                               | kernel lockdown level: blocks kexec, `/dev/mem` and similar                                                                                               |
-| `ipe.enforce=1`                                    | IPE runs only the initramfs and verity volumes whose signature the kernel verified                                                                        |
-| `console=tty0 console=ttyS0,115200`                | the local console and the serial line; output only, there is no getty                                                                                     |
-| `rdinit=/init`                                     | what the kernel execs; `/init` links to systemd (`lib/image/initrd.nix` says why a link works before `/proc` exists)                                      |
+| parameter                                          | meaning                                                                                                                                                                                             |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `usrhash={usrhash}`                                | the verity root hash; the generators derive the two `/usr` partition UUIDs from it, which is how a UKI finds its own slot                                                                           |
+| `systemd.verity_usr_options=root-hash-signature=…` | the base64 PKCS#7 signature of that hash; the kernel checks it against the platform keyring (firmware db), and IPE trusts only such volumes                                                         |
+| `rw`                                               | the root partition carries the state; without it the initrd mounts root read-only and the host key var fails to seal. `/usr` stays read-only by dm-verity                                           |
+| `lsm=lockdown,yama,ipe,bpf`                        | the LSM stack order (capability is always first)                                                                                                                                                    |
+| `lockdown=integrity`                               | kernel lockdown level: blocks kexec, `/dev/mem` and similar                                                                                                                                         |
+| `ipe.enforce=1`                                    | IPE runs only the initramfs and verity volumes whose signature the kernel verified                                                                                                                  |
+| `systemd.machine_id=firmware`                      | the machine id from the SMBIOS UUID on bare metal too (PID 1 does so in a VM anyway); the `system.machine_id` credential wins ([Layout: The read-only /etc](../design/layout.md#the-read-only-etc)) |
+| `console=tty0 console=ttyS0,115200`                | the local console and the serial line; output only, there is no getty                                                                                                                               |
+| `rdinit=/init`                                     | what the kernel execs; `/init` links to systemd (`lib/image/initrd.nix` says why a link works before `/proc` exists)                                                                                |
 
 ## Boot test (`scripts/boot-test`)
 
@@ -256,6 +257,10 @@ scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --next n
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --next next \
   --fail-health --timeout 480
 
+# A board without an SMBIOS UUID: the machine id comes from the system.machine_id credential
+scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-test --tpm \
+  --machine-id-credential
+
 # Factory reset: the reset request, the reset boot, and the state checks (two boots)
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-test \
   --factory-reset --timeout 480
@@ -284,6 +289,11 @@ lists the directory. It finds the ESP in the GPT and refuses a path in `/nix/sto
 ([Bootstrap credentials](../design/boot.md#bootstrap-credentials)), so that run fails.
 `BOOT_TEST_ESP_NO_KEY=1` leaves the key out of the ESP: the login must then fail.
 
+`--machine-id-credential` gives QEMU no `-uuid`. The machine id comes instead from the credential
+`system.machine_id=0a1b2c3d4e5f40718293a4b5c6d7e8f9` by SMBIOS, as on a board without a UUID.
+`etc-read-only` then expects that id; with `--tpm`, `hostkey-unchanged` shows that the sealed host
+key opens after a reboot.
+
 `--secure-boot` enrolls the throwaway db key with `virt-fw-vars` (one fixed owner GUID) and boots
 `OVMFFull.fd` with `-machine smm=on`: plain `OVMF.fd` has no Secure Boot support. The guest must
 report `Secure Boot: enabled` (the `secure-boot-enabled` marker); the same disk with an unsigned
@@ -291,11 +301,13 @@ loader on the ESP is refused by firmware, which is the negative control for this
 
 The script creates a 40 GiB qcow2 overlay (room for the root partition), copies the OVMF variable
 store, passes the host name `boot-test` as a credential (`-smbios type=11,...`, not with
-`--esp-creds`), gives the machine the SMBIOS UUID `6f1a2c3e-0b4d-4e5f-8a9b-0c1d2e3f4a5b` (`-uuid`:
-PID 1 takes the machine id from it, and the sealed host key needs a stable id), and logs the serial
-console to a file. QEMU runs with `-display none` and no monitor or QMP socket: the harness reaches
-the guest through the serial log and ssh, and nothing else. QEMU runs with `-no-reboot` unless
-`--tpm`, `--next` or `--factory-reset` is given, because those reboot the guest.
+`--esp-creds`), passes `network.hosts` as a binary SMBIOS credential (`192.0.2.10 boot-test-hosts`,
+not with `--esp-creds`), gives the machine the SMBIOS UUID `6f1a2c3e-0b4d-4e5f-8a9b-0c1d2e3f4a5b`
+(`-uuid`: PID 1 takes the machine id from it, and the sealed host key needs a stable id; not with
+`--machine-id-credential`), and logs the serial console to a file. QEMU runs with `-display none`
+and no monitor or QMP socket: the harness reaches the guest through the serial log and ssh, and
+nothing else. QEMU runs with `-no-reboot` unless `--tpm`, `--next` or `--factory-reset` is given,
+because those reboot the guest.
 
 ### The markers
 
@@ -321,16 +333,18 @@ did not run is `firstboot-skipped`, below.
 
 With `--ssh-test` (the harness logs in as root with `tests/fixtures/snakeoil-ssh`):
 
-| marker                       | what it proves                                                                                                                                                                                       |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ssh-login`                  | an ssh login with the test key works                                                                                                                                                                 |
-| `hostname`                   | `hostname` prints `boot-test`: PID 1 applied the `system.hostname` credential                                                                                                                        |
-| `esp-authorized-keys`        | with `--esp-creds`: `/root/.ssh/authorized_keys` holds the generated key                                                                                                                             |
-| `no-failed-units`            | `systemctl --failed` lists no unit                                                                                                                                                                   |
-| `varlinkctl-list-interfaces` | `io.systemd.Manager` answers on its varlink socket                                                                                                                                                   |
-| `secure-boot-enabled`        | `bootctl status` says `Secure Boot: enabled` (with `--secure-boot`)                                                                                                                                  |
-| `etc-read-only`              | `/etc` is an `overlay` mount, `ro`; `systemd-confext status` names `golconda`; `touch /etc/boot-test` fails with "Read-only file system"; `/etc/machine-id` is the SMBIOS UUID QEMU passes (`-uuid`) |
-| `firstboot-skipped`          | `systemd-firstboot.service` has `ConditionResult=no`: an empty `/etc/machine-id` is not a first boot                                                                                                 |
+| marker                       | what it proves                                                                                                                                                                                                                                              |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ssh-login`                  | an ssh login with the test key works                                                                                                                                                                                                                        |
+| `hostname`                   | `hostname` prints `boot-test`: PID 1 applied the `system.hostname` credential                                                                                                                                                                               |
+| `esp-authorized-keys`        | with `--esp-creds`: `/root/.ssh/authorized_keys` holds the generated key                                                                                                                                                                                    |
+| `no-failed-units`            | `systemctl --failed` lists no unit                                                                                                                                                                                                                          |
+| `varlinkctl-list-interfaces` | `io.systemd.Manager` answers on its varlink socket                                                                                                                                                                                                          |
+| `secure-boot-enabled`        | `bootctl status` says `Secure Boot: enabled` (with `--secure-boot`)                                                                                                                                                                                         |
+| `etc-read-only`              | `/etc` is an `overlay` mount, `ro`; `systemd-confext status` names `golconda`; `touch /etc/boot-test` fails with "Read-only file system"; `/etc/machine-id` is the SMBIOS UUID QEMU passes (`-uuid`), or with `--machine-id-credential` the credential's id |
+| `no-shadow`                  | `/etc/shadow` and `/etc/gshadow` do not exist; the first line of `/etc/passwd` is `root:!*:0:0:Super User:/root:/bin/sh`; the ssh login works                                                                                                               |
+| `hosts-credential`           | not with `--esp-creds`: `/etc/hosts` holds `192.0.2.10 boot-test-hosts` from the `network.hosts` credential, through `/run/golconda/etc/hosts`, and `resolvectl query boot-test-hosts` answers `192.0.2.10`                                                 |
+| `firstboot-skipped`          | `systemd-firstboot.service` has `ConditionResult=no`: an empty `/etc/machine-id` is not a first boot                                                                                                                                                        |
 
 The loader checks ([Boot loader](../design/bootloader.md)) run on the first boot, again after an
 update, and after a rotation:
@@ -345,12 +359,14 @@ update, and after a rotation:
 
 With `--tpm` (and `--ssh-test`):
 
-| marker                     | what it proves                                                                |
-| -------------------------- | ----------------------------------------------------------------------------- |
-| `hostkey-sealed-with-tpm2` | the header of `sshd-hostkey.key` says TPM2 sealing (the host key alone fails) |
-| `ssh-after-reboot`         | the guest came back with a new boot id                                        |
-| `hostkey-unchanged`        | the second boot presents the first boot's host key: unsealed, not regenerated |
-| `sshd-active-after-reboot` | sshd is active on the second boot                                             |
+| marker                     | what it proves                                                                                                                                                     |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `hostkey-sealed-with-tpm2` | the header of `sshd-hostkey.key` says TPM2 sealing (the host key alone fails)                                                                                      |
+| `confext-planted`          | before the reboot, root unmounts the guard at runtime and plants a valid confext for this image and version in `/var/lib/confexts/boot-test-planted`               |
+| `ssh-after-reboot`         | the guest came back with a new boot id                                                                                                                             |
+| `hostkey-unchanged`        | the second boot presents the first boot's host key: unsealed, not regenerated                                                                                      |
+| `sshd-active-after-reboot` | sshd is active on the second boot                                                                                                                                  |
+| `confext-planted-refused`  | after the reboot, `/etc/boot-test-planted` does not exist and `systemd-confext status` does not name the plant; without the guard the plant merged and this failed |
 
 With `--next DIR` ([The update test](#the-update-test)):
 
