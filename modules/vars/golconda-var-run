@@ -9,7 +9,8 @@
 # $STATE_DIRECTORY/pub, the plaintext is removed and `done` is touched. SECRETS
 # and PUBLICS are space-separated file names.
 #
-# Consumers load a secret with LoadCredentialEncrypted=NAME.SECRET and read
+# Consumers load a secret with LoadCredentialEncrypted=NAME.SECRET:PATH (the
+# store is on /var: /etc is read-only) and read
 # a public file at /var/lib/golconda/vars/NAME/pub/PUBLIC.
 set -eu
 
@@ -17,7 +18,7 @@ name=$1
 secrets=$2
 publics=$3
 script=/usr/lib/golconda/vars.d/$name.sh
-credstore=/etc/credstore.encrypted
+credstore=/var/lib/golconda/credstore.encrypted
 
 cd "$RUNTIME_DIRECTORY"
 umask 077

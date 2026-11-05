@@ -7,11 +7,11 @@ serial_marker_present() {
     sshd-active) pattern='sshd.*Listening|Started.*sshd|Started.*OpenSSH' ;;
     var-sshd-hostkey) pattern='Finished.*Generate var sshd-hostkey' ;;
     boot-complete) pattern='Reached target[[:space:]]+(Boot Complete|Boot Completion Check|boot-complete[.]target)([[:space:].]|$)' ;;
-    no-firstboot-prompt)
-      if grep -qi 'Please enter' "$2" 2>/dev/null; then
-        return 1
-      fi
-      pattern='Finished.*Initial Setup'
+    # /etc is read-only, so no boot is a first boot and systemd-firstboot is skipped (the ssh
+    # test checks that); the serial log must show no prompt of any kind
+    no-prompt)
+      ! grep -qi 'Please enter' "$2" 2>/dev/null
+      return
       ;;
     *) return 1 ;;
   esac
@@ -20,7 +20,7 @@ serial_marker_present() {
 }
 
 serial_boot_ready() {
-  for marker in multi-user-reached sshd-active var-sshd-hostkey boot-complete no-firstboot-prompt; do
+  for marker in multi-user-reached sshd-active var-sshd-hostkey boot-complete no-prompt; do
     serial_marker_present "$marker" "$1" || return 1
   done
 }
@@ -44,7 +44,7 @@ check_markers() {
   echo ""
   echo "=== Marker checks (serial log) ==="
 
-  for marker in multi-user-reached sshd-active var-sshd-hostkey boot-complete no-firstboot-prompt; do
+  for marker in multi-user-reached sshd-active var-sshd-hostkey boot-complete no-prompt; do
     if serial_marker_present "$marker" "$SERIAL_LOG"; then
       echo "PASS: $marker"
       PASS=$((PASS + 1))

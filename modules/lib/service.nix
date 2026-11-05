@@ -155,7 +155,8 @@ let
       # the user whose manager starts it
       user = optionalAttr user;
       # argv handle -> credstore id; default { }. The unit loads the credential
-      # under its credstore id (LoadCredentialEncrypted=id, read as %d/id): the
+      # under its credstore id (LoadCredentialEncrypted=id:<credstore>/id, read as
+      # %d/id; the store is on /var, because /etc is read-only): the
       # sealer embeds that id as the credential name and PID 1 checks the
       # embedded name against the id it loads, so a renamed file fails.
       # System scope only: Golconda seals credentials for the system manager.
@@ -186,7 +187,7 @@ let
           else if !isUser svc && !(svc ? user) then
             "a system service names its user: \"dynamic\", \"root\" or a sysusers line"
           else if isUser svc && (svc.credentials or { }) != { } then
-            "a user service cannot load a Golconda credential: credentials are sealed for the system manager in /etc/credstore.encrypted, which the per-user manager does not search (systemd.exec(5), Credentials); make it a system service"
+            "a user service cannot load a Golconda credential: credentials are sealed for the system manager in /var/lib/golconda/credstore.encrypted, which only system units load from (systemd.exec(5), Credentials); make it a system service"
           else
             null;
       };
@@ -267,7 +268,9 @@ let
         "ExecStart=${concatStringsSep " " execStart}"
       ]
       ++ envLines (svc.app.env or { })
-      ++ map (id: "LoadCredentialEncrypted=${id}") (
+      # the sealed file by absolute path: /etc is read-only, and systemd searches no
+      # credstore under /var (systemd.exec(5), LoadCredentialEncrypted=)
+      ++ map (id: "LoadCredentialEncrypted=${id}:/var/lib/golconda/credstore.encrypted/${id}") (
         sortStrings (map (n: credentials.${n}) (attrNames credentials))
       )
       ++ map (d: "StateDirectory=${d}") (svc.state or [ ])

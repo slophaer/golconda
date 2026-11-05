@@ -14,7 +14,11 @@
 #!
 #! Units enabled: dbus.socket (wanted by sockets.target), dbus-broker.service
 #! (as the dbus.service alias), systemd-networkd, systemd-resolved,
-#! systemd-timesyncd. The `dbus.socket` unit is written as a file, not as a
+#! systemd-timesyncd, systemd-network-generator (for `network.*` credentials;
+#! systemd enables it only by preset, and no boot is a first boot). In the
+#! initrd, systemd-confext-sysroot.service (in initrd.target.wants) merges the
+#! image's read-only `/etc` onto /sysroot/etc before switch-root
+#! (docs/design/layout.md, "The read-only /etc"). The `dbus.socket` unit is written as a file, not as a
 #! typed unit: dbus-broker does not ship it.
 #!
 #! Boot health: `golconda-health-network.service` fails unless networkd has a
@@ -50,13 +54,16 @@
 #! paths OpenSSL and curl read by default: `openssl version -d` says
 #! OPENSSLDIR=/etc/ssl, so OpenSSL reads /etc/ssl/cert.pem, and curl is built
 #! with CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt. Both link the one
-#! bundle in /usr, so an update carries it and /etc holds no copy.
+#! bundle in /usr, so an update carries it and /etc holds no copy. The /etc
+#! lines run at build time, into the read-only /etc (`lib/etc.nix`).
 #! `L /etc/localtime` is the factory's line: it links `/usr/share/zoneinfo/<timezone>`, UTC by default.
 #!
 #! Unit drop-ins (a link to /dev/null cannot mask a unit the systemd farm
 #! already ships): systemd-firstboot.service runs without prompts (no local
-#! login, so no root password; it still applies `firstboot.*` credentials),
-#! ldconfig.service skips without /usr/bin/ldconfig, modprobe@.service skips
+#! login, so no root password; with an empty /etc/machine-id no boot is a
+#! first boot, so it is skipped), systemd-sysusers.service runs only on a
+#! writable /etc (the users come from the build), ldconfig.service skips
+#! without /usr/bin/ldconfig, modprobe@.service skips
 #! without /usr/bin/modprobe (monolithic kernel, no kmod).
 #!
 #! Locale: C.UTF-8 via /usr/lib/locale.conf (PID 1 reads it before /etc
@@ -159,6 +166,19 @@ in
         # timesyncd
         "/usr/lib/systemd/system/sysinit.target.wants/systemd-timesyncd.service" = {
           target = "../systemd-timesyncd.service";
+          kind = "explicit";
+        };
+        # The read-only /etc (lib/etc.nix): the initrd merges the image's confext onto
+        # /sysroot/etc before switch-root, so early units see it. The unit checks
+        # /etc/initrd-release, so it does nothing in the system.
+        "/usr/lib/systemd/system/initrd.target.wants/systemd-confext-sysroot.service" = {
+          target = "../systemd-confext-sysroot.service";
+          kind = "explicit";
+        };
+        # network.* credentials become units in /run/systemd/network; systemd enables the
+        # generator only by preset, and an empty /etc/machine-id means no first-boot presets
+        "/usr/lib/systemd/system/sysinit.target.wants/systemd-network-generator.service" = {
+          target = "../systemd-network-generator.service";
           kind = "explicit";
         };
       };

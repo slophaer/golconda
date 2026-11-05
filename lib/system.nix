@@ -11,6 +11,8 @@
 #   packages;   # the downstream packages: name -> { replaces; } ("golconda", "repkgs" or null)
 #               # modules.json is { modules = inventory; fragments; packages; }
 #   artifacts;  # the files mkSystem adds to /usr/lib/golconda/
+#   etcConfext; # the read-only /etc, a directory confext at /usr/lib/confexts/golconda
+#               # (lib/etc.nix)
 #   platform;   # the elaborated platform record
 #   version;    # YYYYMMDD.N from /system
 #   name;       # image id from /system
@@ -354,10 +356,26 @@ let
     };
   };
 
-  # The usr tree with the image artifacts.
+  # The read-only /etc: what a first boot writes, made at build time (lib/etc.nix). The build
+  # tools come from the target set: Golconda builds natively (x86_64 only, docs/design/scope.md).
+  etcConfext = (import ./etc.nix { }).etcConfext {
+    inherit composed;
+    inherit (setFull) pkgs;
+    buildSystem = system;
+  };
+
+  # The usr tree with the image artifacts and the /etc confext. The confext is a store path
+  # in the closure, linked at /usr/lib/confexts/golconda, where systemd-confext finds it.
   usrTreeDrv = usrTreeLib.usrTree {
     composerOutput = composed // {
       files = composed.files // artifacts;
+      packages = composed.packages ++ [ etcConfext ];
+      links = composed.links // {
+        "/usr/lib/confexts/golconda" = {
+          target = "${etcConfext}";
+          kind = "explicit";
+        };
+      };
     };
     inherit (setFull) platform;
     inherit (composed) version;
@@ -369,6 +387,7 @@ in
   inherit
     artifacts
     composed
+    etcConfext
     fragments
     inventory
     sbom

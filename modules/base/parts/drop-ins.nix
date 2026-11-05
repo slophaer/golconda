@@ -26,6 +26,13 @@ in
       ExecStart=
       ExecStart=systemd-firstboot --mute-console=yes
     '';
+    # /etc is the image's read-only confext (lib/etc.nix): passwd, group and shadow come from
+    # sysusers at build time. At boot sysusers would open /etc/.pwd.lock for writing before it
+    # looks at anything, and fail with EROFS.
+    "/usr/lib/systemd/system/systemd-sysusers.service.d/golconda.conf" = dropIn ''
+      [Unit]
+      ConditionPathIsReadWrite=/etc
+    '';
     "/usr/lib/systemd/system/ldconfig.service.d/golconda.conf" = dropIn ''
       [Unit]
       ConditionPathExists=/usr/bin/ldconfig

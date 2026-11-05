@@ -44,6 +44,7 @@ let
     ./hwdb.nix
     ./components.nix
     ./sbom.nix
+    ./etc.nix
   ];
   tests = builtins.concatLists areas;
 in

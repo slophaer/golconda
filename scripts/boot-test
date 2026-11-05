@@ -24,7 +24,7 @@
 #   - sshd-active: sshd.service started (Listening on port)
 #   - var-sshd-hostkey: the host key var finished (it needs a writable root)
 #   - boot-complete: boot-complete.target reached
-#   - no-firstboot-prompt: systemd-firstboot.service finished, and no prompt appeared
+#   - no-prompt: nothing on the serial console asked for input
 #
 # With --ssh-test: logs in with tests/fixtures/snakeoil-ssh and checks
 #   ssh-login, hostname (must be "boot-test", the SMBIOS credential),
@@ -68,9 +68,10 @@
 #   the new chain, then boots the original disk with the rotated store, which firmware must
 #   refuse.
 # With --factory-reset (needs --ssh-test and the test image; a boot of its own): writes a marker
-#   in /etc, reads /etc/machine-id, runs `systemctl start factory-reset.target` in the guest and
+#   in /var, reads /etc/machine-id, runs `systemctl start factory-reset.target` in the guest and
 #   waits for the reset boot. It checks that the marker is gone (state-gone), the machine id
-#   changed (machine-id-new), first boot ran again and multi-user.target was reached
+#   stayed (machine-id-kept: it is the SMBIOS UUID) while the host key is new (hostkey-new), the
+#   var units ran again and multi-user.target was reached
 #   (first-boot-rerun, multi-user-after-reset), and that bootctl list still shows the same entries
 #   (slots-kept). The reset rewrites the root partition only; the ESP and the /usr slots stay.
 #   It prints the serial log of the reset boot. The mode is two boots (the first boot and the
@@ -232,6 +233,10 @@ if [ "$FACTORY_RESET" = 1 ] && { [ -n "$NEXT" ] || [ "$ROTATE" = 1 ] || [ "$FAIL
   exit 1
 fi
 
+if [ "$FAIL_HEALTH" = 1 ] && [ "$TPM" = 1 ]; then
+  echo "Error: --fail-health cannot run with --tpm: PID 1 refuses its null-key ESP credential with Secure Boot and a TPM2" >&2
+  exit 1
+fi
 if [ "$FAIL_HEALTH" = 1 ] && [ -z "$NEXT" ]; then
   echo "Error: --fail-health needs --next" >&2
   exit 1
@@ -471,7 +476,11 @@ start_qemu() {
     SMBIOS_HOSTNAME=""
   fi
 
+  # The machine's SMBIOS UUID, as a cloud VM has one: /etc is read-only, so PID 1 takes the
+  # machine id from it (machine-id(5)), and the vars' host secret is bound to that id. Without
+  # it the id is random at every boot and a sealed credential no longer opens after a reboot.
   QEMU_ARGS="-machine q35,accel=kvm:tcg \
+    -uuid 6f1a2c3e-0b4d-4e5f-8a9b-0c1d2e3f4a5b \
     -cpu max \
     -m 2G \
     -smp 2 \
@@ -629,6 +638,30 @@ test_ssh() {
   guest test ! -e /etc/udev/hwdb.bin || RC=1
   verdict "hwdb (/usr/lib/udev/hwdb.bin answers for DMI, PCI and USB; none in /etc)" $RC
 
+  # /etc is the image's confext (lib/etc.nix): an overlay, read-only, merged from
+  # /usr/lib/confexts/golconda; the machine id is mounted over the empty file
+  echo ""
+  echo "=== read-only /etc ==="
+  RC=0
+  M=$(guest cat /proc/self/mounts 2>/dev/null | awk '$2 == "/etc" { print $3, $4 }' | tail -1)
+  echo "/etc: ${M:-not a mount}"
+  case "$M" in "overlay ro,"*) ;; *) RC=1 ;; esac
+  guest systemd-confext status 2>&1 | grep golconda || RC=1
+  guest "touch /etc/boot-test 2>&1" | grep -q 'Read-only file system' || RC=1
+  ID=$(guest cat /etc/machine-id 2>/dev/null) || RC=1
+  echo "machine-id: ${ID:-none}"
+  # PID 1 took it from the SMBIOS UUID QEMU gives (-uuid above)
+  [ "$ID" = "6f1a2c3e0b4d4e5f8a9b0c1d2e3f4a5b" ] || RC=1
+  verdict "etc-read-only (/etc is the confext overlay, ro; machine-id from the SMBIOS UUID)" $RC
+
+  # an empty /etc/machine-id is not a first boot (machine-id(5)): systemd-firstboot is skipped
+  # by its condition, so it can neither prompt nor write
+  RC=0
+  FB=$(guest systemctl show -P ConditionResult systemd-firstboot.service 2>&1) || RC=1
+  echo "systemd-firstboot ConditionResult=${FB:-none}"
+  [ "$FB" = "no" ] || RC=1
+  verdict "firstboot-skipped (not a first boot; no prompt on the serial console)" $RC
+
   # the signed index's keyring is the key set's release key and nothing else: systemd's own vendor
   # keyring (image vendors' keys) is not in the image (packages/systemd)
   echo ""
@@ -651,11 +684,11 @@ test_ssh() {
 
   if [ "$TPM" = 1 ]; then
     echo ""
-    echo "=== /etc/credstore.encrypted (TPM sealed credentials) ==="
-    guest ls -la /etc/credstore.encrypted/ 2>&1 || true
+    echo "=== /var/lib/golconda/credstore.encrypted (TPM sealed credentials) ==="
+    guest ls -la /var/lib/golconda/credstore.encrypted/ 2>&1 || true
     # the sealing key type is the first 16 bytes of the credential (systemd creds-util.h,
     # CRED_AES256_GCM_BY_*); the file is base64, so decode its first 24 characters
-    HDR=$(guest "head -c 24 /etc/credstore.encrypted/sshd-hostkey.key | base64 -d | od -An -tx1 -N4" \
+    HDR=$(guest "head -c 24 /var/lib/golconda/credstore.encrypted/sshd-hostkey.key | base64 -d | od -An -tx1 -N4" \
       2>/dev/null | tr -d ' \n') || true
     case "$HDR" in
       5a1c6a86 | 55b9ed1d) KIND="host key only"; RC=1 ;;
@@ -778,31 +811,32 @@ test_release_index() {
   verdict "release-index (4 lines: usr, verity, signature, UKI; digests match)" $RC
 }
 
-# test_etc_links: the links the first boot wrote under /etc/systemd/system named the old
-# release's systemd store path. golconda-etc-links.service rewrote them in this boot's initrd,
-# so no link may name a store path, and none may dangle (docs/design/updates.md).
+# test_etc_links: /etc is the read-only confext of the running release (lib/etc.nix): its
+# extension-release names the version that runs (the new one after an update, the old one after
+# --fail-health's fallback), so /etc follows the slot. No boot is a
+# first boot, so no preset wrote enable links under /etc/systemd/system, and none can dangle
+# when systemd's store path changes (docs/design/updates.md).
+# The host key the first release sealed must still open: sshd presents the key in known_hosts
+# (recorded at the first login), so the new release unsealed the old credential (with --tpm:
+# TPM2 and the signed PCR 11 policy, which both releases share).
 test_etc_links() {
   echo ""
-  echo "=== /etc/systemd/system links after the update ==="
-  COUNTS=$(
-    guest '
-      n=0; s=0; d=0
-      for f in /etc/systemd/system/* /etc/systemd/system/*/*; do
-        [ -L "$f" ] || continue
-        n=$((n + 1))
-        case "$(readlink "$f")" in *nix/store*) s=$((s + 1)) ;; esac
-        [ -e "$f" ] || d=$((d + 1))
-      done
-      echo "$n $s $d"'
-  ) || COUNTS="0 0 0"
-  echo "links, store-path targets, dangling: $COUNTS"
-  # shellcheck disable=SC2086
-  set -- $COUNTS
+  echo "=== /etc after the update ==="
+  RUNNING=$(guest_version)
+  ER=$(guest cat /etc/extension-release.d/extension-release.golconda 2>&1) || true
+  echo "$ER"
+  N=$(guest 'n=0; for f in /etc/systemd/system/* /etc/systemd/system/*/*; do [ -L "$f" ] && n=$((n + 1)); done; echo $n' 2>/dev/null) || N=""
+  echo "links under /etc/systemd/system: ${N:-no answer}"
   RC=0
-  [ "${1:-0}" -gt 0 ] || RC=1
-  [ "${2:-1}" = 0 ] || RC=1
-  [ "${3:-1}" = 0 ] || RC=1
-  verdict "etc-links-stable ($1 links, $2 naming a store path, $3 dangling)" $RC
+  [ -n "$RUNNING" ] && echo "$ER" | grep -qx "VERSION_ID=$RUNNING" || RC=1
+  [ "$N" = 0 ] || RC=1
+  verdict "etc-follows-update (/etc is the running ${RUNNING:-?}'s confext; ${N:-?} enable links in /etc)" $RC
+
+  RC=0
+  # shellcheck disable=SC2086
+  ssh $SSH_OPTS -o UserKnownHostsFile="$WORKDIR/known_hosts" -o StrictHostKeyChecking=yes \
+    -i "$WORKDIR/ssh/user" root@localhost true 2>/dev/null || RC=1
+  verdict "hostkey-unsealed-after-update (sshd of ${RUNNING:-?} presents the first boot's host key)" $RC
 }
 
 # test_units_after_update: the updated system starts clean. This is the boot the first boot's
@@ -816,17 +850,23 @@ test_units_after_update() {
   verdict "no-failed-units-after-update" $RC
 }
 
-# test_fail_health: the three-boot fallback of docs/design/boot.md. A masked health unit keeps
-# boot-complete.target from being reached, so the candidate is never blessed and every boot of it
-# loses a try. The mask is in /etc on the state partition, so it applies to every slot until it is
-# removed; the harness removes it at the end. A mask keeps the boots clean and ssh reachable, so
-# the counter can be read after each one.
+# test_fail_health: the three-boot fallback of docs/design/boot.md. A network.network credential
+# on the ESP gives the guest its slirp address with Scope=link and no DHCP: ssh still reaches it,
+# but networkd never calls the link routable, so golconda-health-network.service fails,
+# boot-complete.target is not reached, the candidate is never blessed and every boot of it loses a
+# try. /etc is read-only and /run does not survive a reboot; the ESP does, and systemd-stub hands
+# its credentials to every boot of every slot until the harness removes the file at the end. The
+# credential is null-key, which PID 1 accepts with Secure Boot on only when there is no TPM2, so
+# --fail-health refuses --tpm (docs/design/boot.md, Bootstrap credentials).
+FAIL_CRED=network.network.00-boot-test-no-route
+FAIL_CRED_FILE=/boot/loader/credentials/$FAIL_CRED.cred
 test_fail_health() {
   echo ""
   echo "=== the fallback: $NEXT_VERSION fails its health check three times ==="
   RC=0
-  guest "ln -sf /dev/null /etc/systemd/system/golconda-health-network.service" || RC=1
-  verdict "health-check-broken (a masked health unit, so boot-complete.target is not reached)" $RC
+  guest "mkdir -p /boot/loader/credentials && printf '[Match]\\nName=en*\\n\\n[Network]\\nDHCP=no\\n\\n[Address]\\nAddress=10.0.2.15/24\\nScope=link\\n' | systemd-creds encrypt --with-key=null --name=$FAIL_CRED - $FAIL_CRED_FILE" || RC=1
+  guest test -s "$FAIL_CRED_FILE" || RC=1
+  verdict "health-check-broken (an ESP network credential: link-scoped address, never routable)" $RC
 
   i=1
   while [ "$i" -le 3 ]; do
@@ -850,8 +890,8 @@ test_fail_health() {
   done
 
   echo "--- attempt 4: the counter is exhausted ---"
-  # lift the mask, so the fallback boot is a normal one and the checks below mean what they say
-  guest "rm -f /etc/systemd/system/golconda-health-network.service" || true
+  # lift the credential, so the fallback boot is a normal one and the checks below mean what they say
+  guest "rm -f $FAIL_CRED_FILE" || true
   if ! reboot_guest; then
     verdict "fallback-to-old-slot (no login after the fourth boot)" 1
     return 1
@@ -960,8 +1000,11 @@ test_factory_reset() {
   fi
   verdict "factory-reset-test-image (IMAGE_ID=boot-test)" 0
 
-  MARK=/etc/boot-test-factory-reset
+  # /etc is read-only: the state marker goes to /var, on the root partition the reset deletes
+  MARK=/var/lib/boot-test-factory-reset
+  HOSTKEY_PUB=/var/lib/golconda/vars/sshd-hostkey/pub/key.pub
   OLD_MACHINE_ID=$(guest cat /etc/machine-id 2>/dev/null) || true
+  OLD_HOSTKEY=$(guest cat "$HOSTKEY_PUB" 2>/dev/null) || true
   OLD_VERSION=$(guest_version)
   OLD_ENTRIES=$(guest bootctl list --no-pager 2>/dev/null \
     | sed -n 's/^[[:space:]]*id: //p' | sed 's/+[0-9]*-[0-9]*\.efi$/.efi/' | sort) || true
@@ -1000,13 +1043,19 @@ test_factory_reset() {
   RC=0; [ "$PRESENT" = absent ] || RC=1
   verdict "state-gone ($MARK: ${PRESENT:-no answer})" $RC
 
+  # the machine id is the hardware's (the SMBIOS UUID; /etc is read-only), so a reset keeps it;
+  # the machine's new identity is its host key, which the reset boot generates again
   NEW_MACHINE_ID=$(guest cat /etc/machine-id 2>/dev/null) || true
   RC=0
-  { [ -n "$NEW_MACHINE_ID" ] && [ "$NEW_MACHINE_ID" != "$OLD_MACHINE_ID" ]; } || RC=1
-  verdict "machine-id-new ($OLD_MACHINE_ID -> ${NEW_MACHINE_ID:-no answer})" $RC
+  { [ -n "$NEW_MACHINE_ID" ] && [ "$NEW_MACHINE_ID" = "$OLD_MACHINE_ID" ]; } || RC=1
+  verdict "machine-id-kept ($OLD_MACHINE_ID -> ${NEW_MACHINE_ID:-no answer})" $RC
+  NEW_HOSTKEY=$(guest cat "$HOSTKEY_PUB" 2>/dev/null) || true
+  RC=0
+  { [ -n "$OLD_HOSTKEY" ] && [ -n "$NEW_HOSTKEY" ] && [ "$NEW_HOSTKEY" != "$OLD_HOSTKEY" ]; } || RC=1
+  verdict "hostkey-new (the reset boot generated another ssh host key)" $RC
 
-  RC=0; grep -qi "Finished.*Initial Setup" "$RESET_LOG" || RC=1
-  verdict "first-boot-rerun (systemd-firstboot.service finished on the reset boot)" $RC
+  RC=0; grep -qi "Finished.*Generate var sshd-hostkey" "$RESET_LOG" || RC=1
+  verdict "first-boot-rerun (the var units ran again on the reset boot)" $RC
 
   RC=0; grep -qi "Reached target.*Multi.User" "$RESET_LOG" || RC=1
   verdict "multi-user-after-reset (the reset boot reached multi-user.target)" $RC

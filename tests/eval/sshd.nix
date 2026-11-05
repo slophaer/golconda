@@ -45,7 +45,9 @@ let
     });
 in
 [
-  (check "sshd: LoadCredentialEncrypted" (hasInfix "LoadCredentialEncrypted=sshd-hostkey.key\n" unit))
+  (check "sshd: LoadCredentialEncrypted" (
+    hasInfix "LoadCredentialEncrypted=sshd-hostkey.key:/var/lib/golconda/credstore.encrypted/sshd-hostkey.key\n" unit
+  ))
   (check "sshd: credential ref renders as %d" (hasInfix " -h %d/sshd-hostkey.key" unit))
   (check "sshd: ExecStart is the program from the farm with its config and credential" (
     hasInfix "\nExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config -h %d/sshd-hostkey.key\n" unit
@@ -145,11 +147,11 @@ in
     && hasInfix "\nAuthorizedPrincipalsFile /usr/lib/sshd/principals/%u\n" certConfig
   ))
   (check "sshd: host certificate credential and option" (
-    hasInfix "LoadCredentialEncrypted=sshd-host-cert.cert\n" certUnit
+    hasInfix "LoadCredentialEncrypted=sshd-host-cert.cert:/var/lib/golconda/credstore.encrypted/sshd-host-cert.cert\n" certUnit
     && hasInfix " -o HostCertificate=%d/sshd-host-cert.cert" certUnit
   ))
   (check "sshd: revoked keys credential and option" (
-    hasInfix "LoadCredentialEncrypted=sshd-revoked-keys.krl\n" certUnit
+    hasInfix "LoadCredentialEncrypted=sshd-revoked-keys.krl:/var/lib/golconda/credstore.encrypted/sshd-revoked-keys.krl\n" certUnit
     && hasInfix " -o RevokedKeys=%d/sshd-revoked-keys.krl" certUnit
   ))
   (check "sshd: the admin vars are declared when their options are on" (

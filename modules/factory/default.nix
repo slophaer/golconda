@@ -1,9 +1,11 @@
-#! The seed for `/etc` as symlinks into `/usr/share/factory/etc`.
+#! The files of `/etc`, as symlinks into `/usr/share/factory/etc`.
 #!
 #! Each factory file is a symlink from `/etc/<path>` to
-#! `/usr/share/factory/etc/<path>`. An admin file at the same path (a regular
-#! file, not a symlink) wins: tmpfiles `L` (not `L+`) creates only what is
-#! missing. `find /etc -type f` lists admin changes.
+#! `/usr/share/factory/etc/<path>`, made by a tmpfiles `L` line; `pam.d` is a
+#! copy, because systemd's own `C! /etc/pam.d` line runs first. The lines run
+#! at build time: `/etc` is the image's read-only confext (`lib/etc.nix`,
+#! docs/design/layout.md). An administrator cannot change a file there; a
+#! change is a new image.
 #!
 #! Hostname is not in the factory: it comes from the bootstrap credential
 #! `system.hostname`, which PID 1 reads at every boot (see docs/design/boot.md).
@@ -164,11 +166,11 @@ in
         "/etc/localtime" = "/usr/share/zoneinfo/${options.timezone}";
         "/etc/os-release" = "../usr/lib/os-release";
       };
-      # Tmpfiles lines: L for symlinks into the factory and to the static targets.
-      # Each file is a symlink into the factory (L); an admin file in its place wins.
+      # Tmpfiles lines: L for symlinks into the factory and to the static targets. They run
+      # at build time, when lib/etc.nix makes the read-only /etc; the confext's
+      # etc/tmpfiles.d drops them for the boot.
       tmpfilesLines =
         # L /etc/<path> - - - - /usr/share/factory/etc/<path>
-        # Uses L (not L+): an existing file (admin override) is left alone.
         map (p: "L /etc/${p} - - - - ${factoryDir}/${p}") paths
         # Symlinks to paths outside the factory (os-release, timezone)
         ++ map (p: "L ${p} - - - - ${links.${p}}") (attrNames links);

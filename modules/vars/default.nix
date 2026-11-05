@@ -38,7 +38,7 @@
 #! (`name`, `class: "admin"`, `files`, `credentials`), and no unit: the
 #! consumer's unit waits for the push. The deploy host keeps the value
 #! age-encrypted, pushes it over ssh, and the machine seals it with its own
-#! `systemd-creds` into `/etc/credstore.encrypted/<name>.<file>`. The deploy
+#! `systemd-creds` into `/var/lib/golconda/credstore.encrypted/<name>.<file>`. The deploy
 #! tool *(planned)* reads the manifest from the image, never from evaluation.
 #!
 #! ## On the machine
@@ -49,7 +49,11 @@
 #! 1. Seals each secret file with
 #!    `systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11 --name=<name>.<file>`
 #!    (host+tpm2 with a TPM2, the host key without one).
-#! 1. Installs the sealed credential to `/etc/credstore.encrypted/<name>.<file>`.
+#! 1. Installs the sealed credential to `/var/lib/golconda/credstore.encrypted/<name>.<file>`.
+#!    `/etc` is read-only, so the store is on `/var`; this module adds the tmpfiles
+#!    line `d /var/lib/golconda/credstore.encrypted 0700 root root -`, and a
+#!    consumer loads the credential by path,
+#!    `LoadCredentialEncrypted=<id>:/var/lib/golconda/credstore.encrypted/<id>`.
 #! 1. Copies public files to `/var/lib/golconda/vars/<name>/pub/`.
 #! 1. Touches `done` so the unit does not run again.
 #!
@@ -85,5 +89,9 @@ _: {
       text = builtins.readFile ./golconda-var-run;
       mode = "0755";
     };
+    # The sealed credentials live on /var: /etc is read-only (a confext, lib/etc.nix), and
+    # services load them by absolute path (modules/lib/service.nix). Root only, as systemd
+    # makes its own /etc/credstore.encrypted.
+    tmpfiles = [ "d /var/lib/golconda/credstore.encrypted 0700 root root -" ];
   };
 }

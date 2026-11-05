@@ -18,7 +18,7 @@
 #
 # An admin-supplied var (`admin`) is the second class (docs/design/trust.md):
 # the value is kept age-encrypted on the deploy host, pushed over ssh and
-# sealed by the machine's own systemd-creds into /etc/credstore.encrypted,
+# sealed by the machine's own systemd-creds into /var/lib/golconda/credstore.encrypted,
 # so the image carries only its manifest entry, class "admin", and no unit.
 # The deploy tool reads the manifest from the image. The credential id is
 # the same `<name>.<file>`, so a consumer does not know the class:

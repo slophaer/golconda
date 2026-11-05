@@ -44,7 +44,7 @@ SERIAL_LOG=$WORK/coloured.log
 expect_status 0 "coloured target names" check_markers
 
 # Each required marker must affect the result.
-for marker in 'Initial Setup' 'Generate var' 'Started OpenSSH' 'Multi-User' 'Boot Complete'; do
+for marker in 'Generate var' 'Started OpenSSH' 'Multi-User' 'Boot Complete'; do
   grep -v "$marker" "$FIXTURES/success-human.log" > "$WORK/incomplete.log"
   SERIAL_LOG=$WORK/incomplete.log
   expect_status 1 "missing $marker" check_markers
