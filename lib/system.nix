@@ -7,6 +7,7 @@
 #   config;     # config.json: module path -> option -> { value?; explicit; }, for every
 #               # included component and /system
 #   inventory;  # module path -> { role; inputs; included?; reason?; } (lib/components.nix)
+#   moduleDocs; # module path -> its #! doc text or null, downstream modules included
 #   fragments;  # the names of the build's own fragments (extraFragments)
 #   packages;   # the downstream packages: name -> { replaces; } ("golconda", "repkgs" or null)
 #               # modules.json is { modules = inventory; fragments; packages; }
@@ -165,6 +166,14 @@ let
           treeLib.modulePathsAt "/local" project.modules
         )
     );
+  # Each module's #! doc text (lib/doc-comments.nix), or null: what the console shows beside a
+  # module's options, downstream modules included.
+  moduleDocs = builtins.listToAttrs (
+    map (m: {
+      name = m.path;
+      value = (import ./doc-comments.nix { }).moduleDoc m.filePath;
+    }) moduleFiles
+  );
   schema = schemaLib.toJsonSchemaWith {
     files = moduleFiles;
     root = toString ../.;
@@ -371,6 +380,7 @@ in
     composed
     fragments
     inventory
+    moduleDocs
     sbom
     ;
   packages = setFull.downstream;

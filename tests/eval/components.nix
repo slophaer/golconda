@@ -340,6 +340,17 @@ in
   (check "downstream: no packages/ beside the document, no downstream packages" (
     (mkSystem ../fixtures/downstream-none/server.toml).packages == { }
   ))
+  (check "moduleDocs: the #! text of every module with a file, downstream modules included" (
+    let
+      sys = mkSystem ../fixtures/downstream/server.toml;
+      docs = sys.moduleDocs;
+    in
+    docs."/local/hello"
+    == "A downstream module for the tests: puts the downstream package `hello` in the image."
+    && builtins.substring 0 37 docs."/services/sshd" == "OpenSSH daemon as a service, with its"
+    # every module of the inventory but the /local group, which has no file of its own
+    && attrNames docs == builtins.filter (p: p != "/local") (attrNames sys.inventory)
+  ))
   (check "downstream: a module's schema has its options and the file it is declared in" (
     let
       sys = mkSystem ../fixtures/downstream/server.toml;
