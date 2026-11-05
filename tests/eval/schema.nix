@@ -26,6 +26,21 @@ let
     ;
 in
 [
+  # The console builds a typed editor from every option and type definition; an opaque type would
+  # leave it a raw text field. The published schema therefore has none, $defs included.
+  (check "schema: the published schema has no opaque type" (
+    let
+      opaqueIn =
+        v:
+        if builtins.isAttrs v then
+          v ? "x-golconda-opaque" || any opaqueIn (builtins.attrValues v)
+        else if builtins.isList v then
+          any opaqueIn v
+        else
+          false;
+    in
+    !(opaqueIn (import ../../default.nix).schema)
+  ))
   # 5. JSON Schema export
   (check "schema: exports JSON Schema 2020-12" (
     let
