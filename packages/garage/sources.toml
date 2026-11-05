@@ -1,0 +1,13 @@
+[upstream]
+purl = "pkg:generic/garage?vcs_url=https://git.deuxfleurs.fr/Deuxfleurs/garage"
+
+[[source]]
+key = "default"
+url = "https://git.deuxfleurs.fr/Deuxfleurs/garage/archive/{tag}.tar.gz"
+hash = "sha256-5jWgH+hi0Ouqszapw00KOBHFjxlV/y4T7IB22IRaEHE="
+
+[pin]
+version = "2.5.0"
+tag = "v2.5.0"
+# the C libraries the lock can link; system-libs links ours (builder/sys-libs.json)
+sys = ["libsodium", "sqlite", "zstd"]

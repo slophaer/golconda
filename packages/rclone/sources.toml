@@ -1,0 +1,16 @@
+[upstream]
+purl = "pkg:github/rclone/rclone"
+
+[[source]]
+key = "default"
+url = "https://github.com/rclone/rclone/archive/refs/tags/{tag}.tar.gz"
+hash = "sha256-ozJL6btCki2PPdrRe6VBCpPi4S2yX49pQOg6+XEqi+o="
+
+[pin]
+version = "1.75.2"
+tag = "v1.75.2"
+# go-systemd (journal, sd_notify, socket activation: pure Go); repkgs maps it to systemd
+sys = ["systemd"]
+
+[locks]
+go = "."
