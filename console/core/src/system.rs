@@ -52,6 +52,20 @@ pub(crate) fn beside(document: &Path, tag: &str) -> PathBuf {
     document.with_file_name(format!(".{name}.golconda-{tag}-{}-{n}", std::process::id()))
 }
 
+/// Write a copy made by `beside`: a new file (a name that is there already, a planted
+/// symlink, is refused) that only its owner can read, as the document may hold what others
+/// should not.
+pub(crate) fn write_new(path: &Path, text: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)?
+        .write_all(text.as_bytes())
+}
+
 /// The nearest directory at or above `path` with lib/system.nix.
 pub fn find_root(path: &Path) -> Option<PathBuf> {
     let abs = std::path::absolute(path).ok()?;
@@ -94,7 +108,7 @@ impl System {
         system: &str,
     ) -> Result<System, Error> {
         let copy = beside(document, "old");
-        std::fs::write(&copy, text).map_err(|e| Error::Read(copy.clone(), e))?;
+        write_new(&copy, text).map_err(|e| Error::Read(copy.clone(), e))?;
         let loaded = System::load(iets, &copy, system);
         let _ = std::fs::remove_file(&copy);
         loaded
@@ -388,5 +402,24 @@ mod tests {
         assert_eq!(a.parent(), Some(Path::new("/c")));
         let name = a.file_name().unwrap().to_string_lossy().into_owned();
         assert!(name.starts_with(".server.toml.golconda-old-"), "{name}");
+    }
+
+    #[test]
+    fn a_copy_is_new_and_only_for_its_owner() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("golconda-copy-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let copy = beside(&dir.join("server.toml"), "t");
+        write_new(&copy, "x").unwrap();
+        assert_eq!(
+            std::fs::metadata(&copy).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        // a name that is there already (a planted symlink) is refused, not followed
+        let planted = beside(&dir.join("server.toml"), "t");
+        std::os::unix::fs::symlink(dir.join("target"), &planted).unwrap();
+        assert!(write_new(&planted, "x").is_err());
+        assert!(!dir.join("target").exists());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

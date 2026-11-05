@@ -3,7 +3,7 @@
 
 use crate::document::{EditError, line_of, path_name, to_json};
 use crate::eval::{self, Arg, Iets};
-use crate::system::{self, System, beside};
+use crate::system::{self, System, beside, write_new};
 use crate::validate::Validator;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -126,7 +126,7 @@ pub fn apply(
         return Err(Error::Invalid(sys.document, problems));
     }
     let copy = beside(document, "new");
-    std::fs::write(&copy, &text).map_err(|e| Error::Write(copy.clone(), e))?;
+    write_new(&copy, &text).map_err(|e| Error::Write(copy.clone(), e))?;
     let checked = evaluate(iets, &sys.root, &copy, system).map_err(Error::Eval);
     // the document's mode stays; through a symlink, its target changes, the link stays
     let target = std::fs::canonicalize(document).unwrap_or_else(|_| document.to_path_buf());

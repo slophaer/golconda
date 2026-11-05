@@ -220,3 +220,32 @@ async fn changes_pages_at_the_same_time() {
         assert_eq!(s, StatusCode::OK, "{body}");
     }
 }
+
+#[tokio::test]
+async fn only_a_loopback_host_is_served() {
+    // a page elsewhere whose name resolves to 127.0.0.1 (DNS rebinding) sends its own Host
+    let status = |host: &'static str| async move {
+        let req = Request::get(golcondad::pages::stylesheet()).header(header::HOST, host);
+        app(false)
+            .oneshot(req.body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+            .status()
+    };
+    assert_eq!(
+        status("evil.example:8796").await,
+        StatusCode::MISDIRECTED_REQUEST
+    );
+    assert_eq!(
+        status("127.0.0.1.evil.example").await,
+        StatusCode::MISDIRECTED_REQUEST
+    );
+    for ok in [
+        "127.0.0.1:8796",
+        "localhost:8796",
+        "[::1]:8796",
+        "localhost",
+    ] {
+        assert_eq!(status(ok).await, StatusCode::OK, "{ok}");
+    }
+}

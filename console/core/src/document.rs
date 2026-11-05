@@ -115,9 +115,13 @@ pub fn parse_path(s: &str) -> Result<Vec<String>, EditError> {
     Ok(keys.iter().map(|k| k.get().to_string()).collect())
 }
 
-/// A value as the command line gives it: TOML, or else the text as a string.
+/// A value as the command line gives it: TOML, or else the text as a string. `nan` and `inf`
+/// are text too: no option takes a number that is not finite, and JSON has none.
 pub fn parse_value(s: &str) -> toml_edit::Value {
-    s.parse::<toml_edit::Value>().unwrap_or_else(|_| s.into())
+    match s.parse::<toml_edit::Value>() {
+        Ok(v) if v.as_float().is_none_or(f64::is_finite) => v,
+        _ => s.into(),
+    }
 }
 
 /// The document as JSON, as fromTOML reads it (a date or time becomes its TOML text).
@@ -264,8 +268,10 @@ fn set_in(
     }
 }
 
-/// The document without `module` `path` (`path` empty: without the module). A dotted table
-/// left empty is written as nothing, so it does not set an empty map.
+/// The document without `module` `path` (`path` empty: without the module). A table below
+/// the module that the deletion leaves empty goes too, whether it was written as a header, a
+/// dotted key or inline: otherwise it would still set an empty map. The module's own table
+/// stays, as it includes the component.
 pub fn delete(text: &str, module: &str, path: &[&str]) -> Result<String, EditError> {
     let mut doc: DocumentMut = text
         .parse()
@@ -289,7 +295,12 @@ fn delete_in(t: &mut dyn TableLike, path: &[&str]) -> Option<()> {
     if path.len() == 1 {
         return t.remove(seg).map(drop);
     }
-    delete_in(t.get_mut(seg)?.as_table_like_mut()?, &path[1..])
+    let sub = t.get_mut(seg)?;
+    delete_in(sub.as_table_like_mut()?, &path[1..])?;
+    if sub.as_table_like().is_some_and(|s| s.is_empty()) {
+        t.remove(seg);
+    }
+    Some(())
 }
 
 #[cfg(test)]
@@ -553,5 +564,25 @@ network = { DNS = ["192.0.2.53"] }
             set(doc, "/network", &["defaultDhcp"], v("false")).unwrap(),
             "[\"/system\"]\nname = \"s\"\n\n[\"/network\"]\ndefaultDhcp = false\n\n[\"/network\".networks.lan]\nmatch = {}\n"
         );
+    }
+
+    #[test]
+    fn delete_removes_sub_tables_it_leaves_empty_but_not_the_module() {
+        let doc = "[\"/services/sshd\"]\nport = 22\n\n[\"/services/sshd\".principals]\nroot = [\"a@b\"]\n";
+        let out = delete(doc, "/services/sshd", &["principals", "root"]).unwrap();
+        assert_eq!(out, "[\"/services/sshd\"]\nport = 22\n");
+        // an empty module table still includes the component
+        assert_eq!(
+            delete(&out, "/services/sshd", &["port"]).unwrap(),
+            "[\"/services/sshd\"]\n"
+        );
+    }
+
+    #[test]
+    fn text_that_is_no_finite_number_stays_text() {
+        assert_eq!(parse_value("nan").as_str(), Some("nan"));
+        assert_eq!(parse_value("inf").as_str(), Some("inf"));
+        assert_eq!(parse_value("-inf").as_str(), Some("-inf"));
+        assert_eq!(parse_value("1.5").as_float(), Some(1.5));
     }
 }
