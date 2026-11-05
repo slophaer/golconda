@@ -18,7 +18,18 @@ golconda config show -f examples/server.toml          # every option, defaults m
 golconda config show --set -f examples/server.toml    # what the document sets
 golconda config explain -f examples/server.toml /services/sshd port
 golconda config explain --json -f server.toml /network networks.lan.network.DNS
+golconda config set -f server.toml /services/sshd port 2222
+golconda config set -f server.toml /network networks.lan '{ match = { Name = "en*" } }'
+golconda config delete -f server.toml /services/sshd port
+golconda config validate -f server.toml
 ```
+
+`set` and `delete` change only what they name: comments, order and spacing stay as written. They
+write the document only once the result passes the schema (core/src/validate.rs, the keywords
+lib/schema.nix emits) and evaluates as far as every module's checks (the /usr tree's derivation, not
+built). A schema problem names the line in the document; nothing is written otherwise. A VALUE is
+TOML, and text that is not TOML is a string: `port 2222` is a number, `name web` the string "web",
+`name '"2222"'` the string "2222".
 
 Admin vars ([Trust: Secrets and vars](../docs/design/trust.md#secrets-and-vars)): the values a
 machine's image names but never contains, such as its host certificate. They are kept in the

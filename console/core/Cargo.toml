@@ -8,3 +8,4 @@ license.workspace = true
 [dependencies]
 serde_json.workspace = true
 toml_edit.workspace = true
+regex.workspace = true

@@ -114,9 +114,21 @@ impl Iets {
             .output()
             .map_err(|e| Error::Spawn(self.program.clone(), e))?;
         if !out.status.success() {
-            return Err(Error::Eval(parse_error(&String::from_utf8_lossy(
-                &out.stderr,
-            ))));
+            let mut e = parse_error(&String::from_utf8_lossy(&out.stderr));
+            // a file of the checkout by its path there
+            let root = absolute(dir);
+            if let Some(f) = e
+                .file
+                .as_mut()
+                .filter(|f| Path::new(f.as_str()).starts_with(&root))
+            {
+                *f = Path::new(f.as_str())
+                    .strip_prefix(&root)
+                    .unwrap()
+                    .display()
+                    .to_string();
+            }
+            return Err(Error::Eval(e));
         }
         serde_json::from_slice(&out.stdout).map_err(|e| Error::Output(e.to_string()))
     }
