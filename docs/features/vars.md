@@ -14,6 +14,14 @@ There are two classes of var.
   files. With a TPM2, the credential is bound to that TPM and to the image's PCR 11 signing key.
   (PCR 11 is a TPM register that holds the measurement of the boot image.) Without a TPM2, it is
   bound to the host key only.
+
+  The seal names the key that signs the PCR 11 values, not the values themselves. So the next
+  release unseals without re-sealing, as long as it is signed with the same PCR key, and so does the
+  previous release after a fallback. The same property lets an attacker boot an older signed image
+  and unseal ([Limits](#limits)). A release signed with a new PCR key cannot unseal what the old key
+  sealed, which is why a `db` rotation keeps the PCR key (`pcrKeys`). No boot-test marker covers an
+  unseal after an update yet: the TPM markers run on one release.
+
 - **admin**: the deploy host keeps the value encrypted with age (a file-encryption tool), pushes it
   over ssh, and the machine seals it with its own `systemd-creds`. The image carries only the
   manifest entry, and no unit. The consumer's unit waits for the push.
