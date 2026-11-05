@@ -22,7 +22,7 @@
 # so the image carries only its manifest entry, class "admin", and no unit.
 # The deploy tool reads the manifest from the image. The credential id is
 # the same `<name>.<file>`, so a consumer does not know the class:
-#   v.admin { name = "foo-cert"; files = [ "cert" ]; }
+#   v.admin { name = "foo-cert"; files = [ "cert" ]; consumers = [ "foo.service" ]; }
 #   credentials.cert = v.credentialId "foo-cert" "cert";  # LoadCredentialEncrypted=foo-cert.cert
 #
 # The runner /usr/lib/golconda/golconda-var-run (modules/vars/golconda-var-run)
@@ -31,7 +31,8 @@
 # them. The runner needs /bin/sh, coreutils and systemd-creds in the image.
 { types }:
 let
-  inherit (import ./fragment.nix { inherit types; }) targetName;
+  fragmentTypes = import ./fragment.nix { inherit types; };
+  inherit (fragmentTypes) targetName;
   inherit (types)
     derivation
     listOf
@@ -75,12 +76,14 @@ let
   };
 
   # An admin-supplied var: the files the deploy host pushes, each sealed as
-  # the credential <name>.<file>.
+  # the credential <name>.<file>, and the units that load them: the deploy tool
+  # restarts those after a push, so a new value takes effect (default [ ]).
   # Nothing else: a script or a package would be the local class.
   adminVar =
     (struct "adminVar" {
       name = varName;
       files = listOf word;
+      consumers = optionalAttr (listOf fragmentTypes.unitName);
     }).override
       { unknown = false; };
 
@@ -169,6 +172,7 @@ let
         inherit (v) name files;
         class = "admin";
         credentials = map (credentialId v.name) v.files;
+        consumers = v.consumers or [ ];
       };
     };
 in

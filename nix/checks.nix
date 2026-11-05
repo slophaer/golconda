@@ -118,6 +118,12 @@ in
     touch $out
   '';
 
+  # the var runner's two modes on a scratch tree, with a stub systemd-creds (tests/vars)
+  vars-runner = pkgs.runCommand "check-vars-runner" { } ''
+    sh ${src}/tests/vars/runner.sh
+    touch $out
+  '';
+
   # the kernel's package-local kbuild phases (packages/kernel/kbuild.nu) on a stub tree: no
   # Linux build, the real Nu module against the repkgs builder library
   kernel-builder =

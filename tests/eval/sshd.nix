@@ -158,6 +158,7 @@ in
       class = "admin";
       files = [ "cert" ];
       credentials = [ "sshd-host-cert.cert" ];
+      consumers = [ "sshd.service" ];
     }
     &&
       (builtins.fromJSON certSshd.files."/usr/lib/golconda/vars.d/sshd-revoked-keys.json".text)

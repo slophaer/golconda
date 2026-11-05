@@ -87,7 +87,7 @@ fn explain_says_what_an_option_is_and_where_it_is_set() {
     );
     assert!(out.contains("default   22\n"), "{out}");
     assert!(
-        out.contains("declared  modules/services/sshd/default.nix:50\n"),
+        out.contains("declared  modules/services/sshd/default.nix:52\n"),
         "{out}"
     );
 }

@@ -30,10 +30,12 @@ let
   hostCertVar = v.admin {
     name = "sshd-host-cert";
     files = [ "cert" ];
+    consumers = [ "sshd.service" ];
   };
   revokedKeysVar = v.admin {
     name = "sshd-revoked-keys";
     files = [ "krl" ];
+    consumers = [ "sshd.service" ];
   };
 in
 {

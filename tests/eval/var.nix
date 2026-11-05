@@ -52,7 +52,24 @@ in
           "root-password.hash"
           "root-password.salt"
         ];
+        consumers = [ ];
       }
+  ))
+  (check "var: an admin var names the units a push restarts" (
+    (builtins.fromJSON
+      (v.admin {
+        name = "foo-cert";
+        files = [ "cert" ];
+        consumers = [ "foo.service" ];
+      }).files."/usr/lib/golconda/vars.d/foo-cert.json"
+    ).consumers == [ "foo.service" ]
+    && !(tryEval (
+      deepSeq (v.admin {
+        name = "foo-cert";
+        files = [ "cert" ];
+        consumers = [ "not a unit" ];
+      }) true
+    )).success
   ))
   (check "var: one credential id for both classes" (
     v.credentialId "sshd-hostkey" "key" == "sshd-hostkey.key"
