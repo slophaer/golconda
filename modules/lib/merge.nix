@@ -22,7 +22,10 @@
 # Every value of `files` comes out as { text; mode; }: a plain string is a
 # file with mode "0644" (fragment.nix). The image builder reads one shape.
 #
-#   merge [ fragmentA fragmentB ] -> { units; files; sysusers; tmpfiles; packages; links; }
+#   merge [ fragmentA fragmentB ] -> { units; files; sysusers; tmpfiles; packages; links; programs; }
+#
+# `programs` is one list with each name once: the /usr/bin names the units run,
+# which the image builder checks exist.
 #
 # Attribution: `merge.withOrigins [ { origin; fragment; } ... ]` is the same
 # union plus `origins`, one map per kind of thing a fragment emits, each key ->
@@ -34,6 +37,7 @@
 #   origins.units      unit name
 #   origins.sysusers   the line
 #   origins.tmpfiles   the line
+#   origins.programs   the name in /usr/bin
 # `packageOrigins` stays as an alias of `origins.packages`. The composer
 # labels its inputs by module path ("/base") and a listed fragment by its
 # `name` or "fragments[<i>]". `packages` stays one deduped list.
@@ -118,6 +122,7 @@ let
     units = keyOrigins (f: attrNames (f.units or { })) labelled;
     sysusers = keyOrigins (f: f.sysusers or [ ]) labelled;
     tmpfiles = keyOrigins (f: f.tmpfiles or [ ]) labelled;
+    programs = keyOrigins (f: f.programs or [ ]) labelled;
   };
 
   concat = field: fragments: concatLists (map (f: f.${field} or [ ]) fragments);
@@ -250,6 +255,9 @@ let
         units = unionAttrs "units" fragments;
         sysusers = concat "sysusers" fragments;
         tmpfiles = concat "tmpfiles" fragments;
+        programs = foldl' (acc: n: if elem n acc then acc else acc ++ [ n ]) [ ] (
+          concat "programs" fragments
+        );
       };
 
   union = fragments: unionOf (labelFragments fragments);

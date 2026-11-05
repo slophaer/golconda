@@ -11,7 +11,7 @@
 #! named fragments (`/image/loader`, `/image/index`). A system with no table still has systemd,
 #! dbus-broker, dash, coreutils and the kernel.
 #!
-#! Output: `{ name; version; units; files; sysusers; tmpfiles; packages; packageOrigins; origins; links }`,
+#! Output: `{ name; version; units; files; sysusers; tmpfiles; packages; packageOrigins; origins; links; programs }`,
 #! every file as `{ text; mode; }` and `links` one map, path under `/usr` ->
 #! `{ target; kind; }`: the fragments' own links (`.wants`, directories to
 #! expand, dlopen sonames), with one duplicate check that names both sources of

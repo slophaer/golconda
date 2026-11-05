@@ -23,16 +23,17 @@ this shape: [design/modules](../../design/modules.md).
 `/system` returns
 `{ name; version; updateSource; units; files; sysusers; tmpfiles; packages; packageOrigins; links }`:
 
-| field            | shape                                                                            | installed as                                                                       |
-| ---------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `units`          | `{ unitName = text; }`                                                           | `/usr/lib/systemd/system/<name>`; user units are `files`                           |
-| `files`          | `{ path = { text; mode; }; }`                                                    | the path, a canonical path under `/usr/`                                           |
-| `sysusers`       | `[ line ]`                                                                       | `/usr/lib/sysusers.d/golconda.conf`                                                |
-| `tmpfiles`       | `[ line ]`                                                                       | `/usr/lib/tmpfiles.d/golconda.conf`                                                |
-| `packages`       | `[ drv ]`                                                                        | the closure in `/usr/nix/store`, each package once                                 |
-| `packageOrigins` | `{ "name-version" = [ origin ]; }`                                               | `/usr/lib/golconda/packages.json`: a component's path or a build fragment's `name` |
-| `origins`        | `{ packages; files; links; units; sysusers; tmpfiles }`, each key → `[ origin ]` | `/usr/lib/golconda/attribution.json`; `packageOrigins` is `origins.packages`       |
-| `links`          | `{ path = { target; kind; }; }`                                                  | the fragments' symlinks of `/usr`: expanded directories, dlopen sonames, `.wants`  |
+| field            | shape                                                                                      | installed as                                                                       |
+| ---------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| `units`          | `{ unitName = text; }`                                                                     | `/usr/lib/systemd/system/<name>`; user units are `files`                           |
+| `files`          | `{ path = { text; mode; }; }`                                                              | the path, a canonical path under `/usr/`                                           |
+| `sysusers`       | `[ line ]`                                                                                 | `/usr/lib/sysusers.d/golconda.conf`                                                |
+| `tmpfiles`       | `[ line ]`                                                                                 | `/usr/lib/tmpfiles.d/golconda.conf`                                                |
+| `packages`       | `[ drv ]`                                                                                  | the closure in `/usr/nix/store`, each package once                                 |
+| `packageOrigins` | `{ "name-version" = [ origin ]; }`                                                         | `/usr/lib/golconda/packages.json`: a component's path or a build fragment's `name` |
+| `origins`        | `{ packages; files; links; units; sysusers; tmpfiles; programs }`, each key → `[ origin ]` | `/usr/lib/golconda/attribution.json`; `packageOrigins` is `origins.packages`       |
+| `links`          | `{ path = { target; kind; }; }`                                                            | the fragments' symlinks of `/usr`: expanded directories, dlopen sonames, `.wants`  |
+| `programs`       | `[ name ]`                                                                                 | nowhere: the image builder fails when `/usr/bin/<name>` does not exist             |
 
 Units, files and links are installed into one `/usr` tree, so a path that two of them claim is an
 error that names both claims and both origins (a module path, or a build fragment's `name`). Each
@@ -61,17 +62,17 @@ on one path. `merge.duplicateError` gives the message as a value.
 
 Plain files that modules import. The directory has no `default.nix`, so adios does not load it.
 
-| file           | exports                                                                                                                                                                                                                                       |
-| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fragment.nix` | `fragment`: `{ name; units; files; sysusers; tmpfiles; packages; links }`, every field optional, no other field; `units`, `unitName`, `targetName`, `unitText`, `unitSuffixes`, `file`, `mode`, `links`, `link`, `linkTarget`, `linkKind`     |
-| `merge.nix`    | `merge [ fragment… ]` → the output above without `name`/`version`; `duplicateError` the duplicate check's message or `null`; `labelFragments` the origin labels; `pkgKey` the package key; `declaredBin` a package's declared `bin` or `null` |
-| `path.nix`     | `usrError`, `relativeError`, `componentError`: the canonical-path checks (plain functions, no `types`); `hasControl`, `hasPrefix`                                                                                                             |
-| `app.nix`      | `app`, `argv`, `files`, `perMachineMarkers`, `envOp`, `env`, `envName`, `unitValue`, `programName`, `credentialRef`, `isCredentialRef`, `binName`, `exe`                                                                                      |
-| `service.nix`  | `service`, `render`, `filesDir`, `sandbox`, `sandboxLines`, `killMode`, `scope`, `credentialId`, `stateDirectory`, `credential`, `credentialArg`                                                                                              |
-| `grammar.nix`  | the patterns of names, paths and the version, one each: the typedefs match them and `lib/schema.nix` exports them                                                                                                                             |
-| `var.nix`      | `var`, `word`, `render`, `adminVar`, `admin`, `unitName`, `credentialId`, `stateDir`                                                                                                                                                          |
-| `ini.nix`      | `render`: an attribute set of sections to INI text (sysupdate definitions); a section name and a key are plain words, and a value holds no line break                                                                                         |
-| `text.nix`     | `lines`: a list of lines to the text of a file, each line ended by a newline                                                                                                                                                                  |
+| file           | exports                                                                                                                                                                                                                                             |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fragment.nix` | `fragment`: `{ name; units; files; sysusers; tmpfiles; packages; links; programs }`, every field optional, no other field; `units`, `unitName`, `targetName`, `unitText`, `unitSuffixes`, `file`, `mode`, `links`, `link`, `linkTarget`, `linkKind` |
+| `merge.nix`    | `merge [ fragment… ]` → the output above without `name`/`version`; `duplicateError` the duplicate check's message or `null`; `labelFragments` the origin labels; `pkgKey` the package key; `declaredBin` a package's declared `bin` or `null`       |
+| `path.nix`     | `usrError`, `relativeError`, `componentError`: the canonical-path checks (plain functions, no `types`); `hasControl`, `hasPrefix`                                                                                                                   |
+| `app.nix`      | `app`, `argv`, `files`, `perMachineMarkers`, `envOp`, `env`, `envName`, `unitValue`, `programName`, `credentialRef`, `isCredentialRef`, `binName`, `exe`                                                                                            |
+| `service.nix`  | `service`, `render`, `filesDir`, `sandbox`, `sandboxLines`, `killMode`, `scope`, `credentialId`, `stateDirectory`, `credential`, `credentialArg`                                                                                                    |
+| `grammar.nix`  | the patterns of names, paths and the version, one each: the typedefs match them and `lib/schema.nix` exports them                                                                                                                                   |
+| `var.nix`      | `var`, `word`, `render`, `adminVar`, `admin`, `unitName`, `credentialId`, `stateDir`                                                                                                                                                                |
+| `ini.nix`      | `render`: an attribute set of sections to INI text (sysupdate definitions); a section name and a key are plain words, and a value holds no line break                                                                                               |
+| `text.nix`     | `lines`: a list of lines to the text of a file, each line ended by a newline                                                                                                                                                                        |
 
 ### `fragment`
 
@@ -86,6 +87,7 @@ The return type of every module.
 | `tmpfiles` | list of string                               | `/usr/lib/tmpfiles.d/` lines                                                  |
 | `packages` | list of derivation                           | `/usr/nix/store` closure; each executable becomes `/usr/bin/<name>`           |
 | `links`    | attrs path under `/usr` → `{ target; kind }` | the other symlinks of `/usr`: `.wants`, directories to expand, dlopen sonames |
+| `programs` | list of `programName`                        | nowhere: the names in `/usr/bin` the units run, checked by the image builder  |
 
 A `link` is `{ target; kind; }`; its path is the key. `kind` is one of:
 

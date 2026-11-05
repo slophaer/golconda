@@ -20,6 +20,8 @@
 #     units, sysusers, tmpfiles: key -> the origins that emitted it): which module put each
 #     path in the tree; a bin/<name> link of a package has that package's origins
 #   files from composerOutput.files (paths are /usr/...; the /usr prefix is stripped)
+#   composerOutput.programs: the /usr/bin names the units run; the build fails when one
+#     does not exist in the finished tree
 #
 # Cross-compilation: `buildSystem` is where the derivation runs (the build host);
 # `platform` is the target. os-release includes the architecture. The packages in
@@ -27,7 +29,8 @@
 #
 # The tree is reproducible. mtimes cannot live in a store path (Nix sets them to 1); the
 # version-derived timestamp is passed on for mkfs.erofs -T, see image/erofs.nix.
-# Build-time verification: no absolute symlinks, dlopen links resolve, no setuid/setgid.
+# Build-time verification: no absolute symlinks, dlopen links resolve, no setuid/setgid, every
+# program a unit runs is in bin/.
 #
 # See: docs/design/layout.md, docs/reference/image.md
 _:
@@ -220,6 +223,12 @@ in
 
       # The packages' bin/ links and the attribution they join
       inherit packageBins attribution;
+
+      # The programs the units run, with the origins that run them
+      programs = map (name: {
+        inherit name;
+        origins = origins.programs.${name} or [ ];
+      }) (composerOutput.programs or [ ]);
 
       # Files to write (path -> { text, mode })
       files = builtins.mapAttrs (path: v: {

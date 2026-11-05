@@ -18,6 +18,7 @@ let
     ;
   path = import ./path.nix;
   grammar = import ./grammar.nix;
+  inherit (import ./app.nix { inherit types; }) programName;
   inherit (builtins)
     any
     attrNames
@@ -198,6 +199,9 @@ let
     # path under /usr -> { target; kind; }: the symlinks of the farm (.wants, a
     # directory to expand, a dlopen soname); the composer refuses a path with two sources
     links = optionalAttr links;
+    # names in /usr/bin the units run; the image builder fails when one does not exist
+    # once the tree is built (evaluation cannot see what a package installs)
+    programs = optionalAttr (listOf programName);
   };
   # no unknown field: a stale or misspelt one is an error, not ignored
   fragment = fragmentStruct.override { unknown = false; };

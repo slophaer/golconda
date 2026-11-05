@@ -11,7 +11,7 @@
 {
   # modules/lib/fragment.nix
   fragment = {
-    description = "A module fragment with units, files, sysusers, tmpfiles, packages and links.";
+    description = "A module fragment with units, files, sysusers, tmpfiles, packages, links and programs.";
     type = "object";
     additionalProperties = false;
     properties = {
@@ -56,6 +56,13 @@
       };
       links = {
         "$ref" = "#/$defs/links";
+      };
+      programs = {
+        type = "array";
+        items = {
+          "$ref" = "#/$defs/programName";
+        };
+        description = "Names in /usr/bin the units run; the image builder fails when one does not exist.";
       };
     };
   };

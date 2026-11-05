@@ -19,6 +19,7 @@ let
   grammar = import ./grammar.nix;
   inherit (appLib)
     app
+    binName
     exe
     isCredentialRef
     ;
@@ -321,6 +322,8 @@ let
       links = wantsLinks;
       # StateDirectory= creates and owns the state; no tmpfiles lines needed
       packages = [ svc.app.package ];
+      # the image builder checks that /usr/bin/<program> exists once the tree is built
+      programs = [ (binName svc.app) ];
     }
     // (
       if user then
