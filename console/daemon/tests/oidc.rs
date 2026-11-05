@@ -17,10 +17,16 @@ use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use golcondad::app::{App, router};
 use golcondad::auth::{Oidc, OidcConfig};
 use ring::signature;
+use rustls::pki_types::pem::PemObject;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::io::{Read, Write};
+use std::net::TcpListener;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tower::ServiceExt;
 
 const PUBLIC: &str = "http://console.test";
@@ -84,10 +90,11 @@ fn jwk(file: &str, kid: &str, alg: &str) -> Value {
 impl Stub {
     fn token(&self, g: &Grant) -> String {
         let mode = *self.mode.lock().unwrap();
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_secs() as i64;
+            .as_secs()
+            .cast_signed();
         let groups: Vec<&str> = match g.user.as_str() {
             "alice" => vec!["golconda-operators", "staff"],
             "bob" => vec!["golconda-readers"],
@@ -658,9 +665,6 @@ async fn the_issuer_must_use_https_except_on_loopback() {
 /// The stub's discovery document and keys over https, with a certificate from the test CA,
 /// on a thread of its own: the daemon trusts it only with that CA.
 fn https_stub() -> String {
-    use rustls::pki_types::pem::PemObject;
-    use rustls::pki_types::{CertificateDer, PrivateKeyDer};
-    use std::io::{Read, Write};
     let certs =
         vec![CertificateDer::from_pem_slice(include_bytes!("fixtures/tls-server.pem")).unwrap()];
     let key = PrivateKeyDer::from_pem_slice(include_bytes!("fixtures/tls-server.key")).unwrap();
@@ -674,7 +678,7 @@ fn https_stub() -> String {
         .with_single_cert(certs, key)
         .unwrap(),
     );
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let issuer = format!("https://{}", listener.local_addr().unwrap());
     let doc = json!({
         "issuer": issuer,
@@ -682,7 +686,7 @@ fn https_stub() -> String {
         "token_endpoint": format!("{issuer}/token"),
         "jwks_uri": format!("{issuer}/jwks"),
     });
-    std::thread::spawn(move || {
+    thread::spawn(move || {
         for stream in listener.incoming().flatten() {
             let conn = rustls::ServerConnection::new(config.clone()).unwrap();
             let mut tls = rustls::StreamOwned::new(conn, stream);

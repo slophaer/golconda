@@ -57,7 +57,7 @@ impl<'a> Validator<'a> {
             out.push(Violation {
                 path: path.clone(),
                 message,
-            })
+            });
         };
         if node.get("$ref").is_some() {
             return self.check(resolve(self.schema, node), v, path, out);
@@ -108,8 +108,7 @@ impl<'a> Validator<'a> {
         {
             let what = n["pattern"]
                 .as_str()
-                .map(|p| format!("match {p}"))
-                .unwrap_or_else(|| format!("be {}", type_name(n)));
+                .map_or_else(|| format!("be {}", type_name(n)), |p| format!("match {p}"));
             fail(path, format!("{} must not {what}", shown(v)));
         }
         for (key, one) in [("anyOf", false), ("oneOf", true)] {
@@ -194,7 +193,7 @@ impl<'a> Validator<'a> {
             out.push(Violation {
                 path: path.clone(),
                 message,
-            })
+            });
         };
         if let Some(n) = node["minItems"].as_u64().filter(|n| (xs.len() as u64) < *n) {
             fail(
@@ -286,10 +285,10 @@ mod tests {
         })
     }
 
-    fn errors(instance: Value) -> Vec<(String, String)> {
+    fn errors(instance: &Value) -> Vec<(String, String)> {
         let s = schema();
         Validator::new(&s)
-            .validate(&instance)
+            .validate(instance)
             .into_iter()
             .map(|v| (v.path.join(" "), v.message))
             .collect()
@@ -306,13 +305,13 @@ mod tests {
             "/services/sshd": { "port": 22, "keys": ["k"], "pair": ["a", 1], "principals": { "root": [] } },
             "/network": { "networks": { "lan": { "match": {}, "network": { "DNS": ["x", 1], "DHCP": true } } } }
         });
-        assert_eq!(errors(ok), vec![]);
+        assert_eq!(errors(&ok), vec![]);
     }
 
     #[test]
     fn modules_and_options() {
         assert_eq!(
-            errors(json!({ "/nope": {}, "/services/sshd": { "prot": 1 } })),
+            errors(&json!({ "/nope": {}, "/services/sshd": { "prot": 1 } })),
             vec![
                 e("", "missing /system"),
                 e("/nope", "no such module"),
@@ -325,7 +324,7 @@ mod tests {
     fn scalars() {
         assert_eq!(
             errors(
-                json!({ "/system": { "name": "", "kind": "c", "v": 2 }, "/services/sshd": { "port": 1.5 } })
+                &json!({ "/system": { "name": "", "kind": "c", "v": 2 }, "/services/sshd": { "port": 1.5 } })
             ),
             vec![
                 e("/services/sshd port", "expected integer, got 1.5"),
@@ -336,7 +335,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            errors(json!({ "/system": { "name": 3 } })),
+            errors(&json!({ "/system": { "name": 3 } })),
             vec![e("/system name", "expected string, got 3")]
         );
     }
@@ -344,7 +343,7 @@ mod tests {
     #[test]
     fn lists_maps_and_refs() {
         assert_eq!(
-            errors(json!({ "/system": {}, "/services/sshd": {
+            errors(&json!({ "/system": {}, "/services/sshd": {
                 "keys": ["ok", "a\nb", 7],
                 "pair": ["a"],
                 "principals": { "Root": [] , "x": "y" }
@@ -368,7 +367,7 @@ mod tests {
     #[test]
     fn required_inside_a_map_and_choices() {
         assert_eq!(
-            errors(json!({ "/system": {}, "/network": { "networks": {
+            errors(&json!({ "/system": {}, "/network": { "networks": {
                 "lan": { "network": { "DNS": [true], "DHCP": 1 } }
             }}})),
             vec![
@@ -398,8 +397,8 @@ mod tests {
                 .map(|v| v.message)
                 .collect()
         };
-        assert!(errors(json!(1)).is_empty());
-        assert!(errors(json!(65535)).is_empty());
+        assert_eq!(errors(json!(1)), Vec::<String>::new());
+        assert_eq!(errors(json!(65535)), Vec::<String>::new());
         assert_eq!(errors(json!(0)), vec!["0 is less than 1"]);
         assert_eq!(errors(json!(-1)), vec!["-1 is less than 1"]);
         assert_eq!(errors(json!(65536)), vec!["65536 is more than 65535"]);

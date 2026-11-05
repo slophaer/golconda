@@ -8,18 +8,19 @@ use golconda_core::document::{self, parse_path, parse_value};
 use golconda_core::eval::Iets;
 use golconda_core::system::System;
 use golconda_core::vars::{self, Program, Remote, Store};
-use std::io::Read;
+use std::env::{self, consts};
+use std::error;
+use std::io::{self, Read};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 /// Read, explain and change a Golconda system's configuration.
 ///
 /// OPTION is a TOML dotted key below the module (networks.lan.network.DNS, networks."lan.1").
-/// VALUE is TOML (22, "22", ["a"], { a = 1 }); text that is not TOML is a string; a value
-/// that starts with a dash and is not a number goes after `--`. set and delete write the
-/// document only when the result passes the schema and evaluates; comments and layout stay
-/// as written. iets comes from PATH, or GOLCONDA_IETS; ssh and age from PATH, or GOLCONDA_SSH
-/// and GOLCONDA_AGE (a program and its arguments, such as "ssh -p 2222" or rage).
+/// VALUE is TOML (22, "22", [1, 2], { a = 1 }); text that is not TOML is a string; a value
+/// that starts with a dash and is not a number goes after `--`. set and delete write only
+/// when the result passes the schema and evaluates; comments and layout stay. iets, ssh and
+/// age come from PATH, or GOLCONDA_IETS, GOLCONDA_SSH, GOLCONDA_AGE ("ssh -p 2222", rage).
 #[derive(Parser)]
 #[command(version, verbatim_doc_comment)]
 struct Cli {
@@ -150,7 +151,7 @@ struct Doc {
     #[arg(short = 'f', long = "file", default_value = "server.toml")]
     file: PathBuf,
     /// The Nix system to evaluate for
-    #[arg(long, default_value_t = format!("{}-linux", std::env::consts::ARCH))]
+    #[arg(long, default_value_t = format!("{}-linux", consts::ARCH))]
     system: String,
 }
 
@@ -173,7 +174,7 @@ fn path(option: Option<&String>) -> Result<Vec<String>, document::EditError> {
     option.map_or(Ok(Vec::new()), |o| parse_path(o))
 }
 
-fn run(command: Command) -> Result<String, Box<dyn std::error::Error>> {
+fn run(command: Command) -> Result<String, Box<dyn error::Error>> {
     let iets = Iets::from_env();
     let config = match command {
         Command::Diff {
@@ -271,7 +272,7 @@ fn run(command: Command) -> Result<String, Box<dyn std::error::Error>> {
     })
 }
 
-fn run_vars(command: Vars) -> Result<String, Box<dyn std::error::Error>> {
+fn run_vars(command: Vars) -> Result<String, Box<dyn error::Error>> {
     let store = |s: VarStore| Store::new(&s.dir, Program::from_env("GOLCONDA_AGE", "age"));
     let remote = |host: &str| Remote::new(Program::from_env("GOLCONDA_SSH", "ssh"), host);
     Ok(match command {
@@ -282,7 +283,7 @@ fn run_vars(command: Vars) -> Result<String, Box<dyn std::error::Error>> {
             file,
         } => {
             let mut value = Vec::new();
-            std::io::stdin().read_to_end(&mut value)?;
+            io::stdin().read_to_end(&mut value)?;
             let path = store(s).set(&host, &var, &file, &value)?;
             format!("stored {}\n", path.display())
         }
@@ -295,7 +296,7 @@ fn run_vars(command: Vars) -> Result<String, Box<dyn std::error::Error>> {
             // an empty GOLCONDA_AGE_IDENTITY names none; without one it is a usage error (2)
             let identity = identity
                 .or_else(|| {
-                    std::env::var_os("GOLCONDA_AGE_IDENTITY")
+                    env::var_os("GOLCONDA_AGE_IDENTITY")
                         .filter(|v| !v.is_empty())
                         .map(PathBuf::from)
                 })

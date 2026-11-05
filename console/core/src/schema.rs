@@ -79,7 +79,7 @@ pub fn type_name(node: &Value) -> String {
         return alts.iter().map(type_name).collect::<Vec<_>>().join(" or ");
     }
     if let Some(values) = node["enum"].as_array() {
-        let names: Vec<String> = values.iter().map(|v| v.to_string()).collect();
+        let names: Vec<String> = values.iter().map(ToString::to_string).collect();
         return format!("one of {}", names.join(", "));
     }
     let inner = |n: &Value| {

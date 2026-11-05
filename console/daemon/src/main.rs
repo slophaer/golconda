@@ -3,6 +3,7 @@
 use clap::Parser;
 use golcondad::app::{App, Identity, Level, Signin, router};
 use golcondad::auth::{Oidc, OidcConfig};
+use std::fs;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -112,7 +113,7 @@ fn check(a: Args) -> Result<(Args, Mode), String> {
     }
     let client_secret = match &a.oidc_client_secret_file {
         Some(f) => Some(
-            std::fs::read_to_string(f)
+            fs::read_to_string(f)
                 .map_err(|e| format!("--oidc-client-secret-file {}: {e}", f.display()))?
                 .trim()
                 .to_string(),
@@ -121,8 +122,7 @@ fn check(a: Args) -> Result<(Args, Mode), String> {
     };
     let ca_pem = match &a.oidc_ca_file {
         Some(f) => Some(
-            std::fs::read_to_string(f)
-                .map_err(|e| format!("--oidc-ca-file {}: {e}", f.display()))?,
+            fs::read_to_string(f).map_err(|e| format!("--oidc-ca-file {}: {e}", f.display()))?,
         ),
         None => None,
     };
@@ -201,9 +201,11 @@ async fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::CommandFactory;
+    use std::iter;
 
     fn args(s: &str) -> Result<(Args, Mode), String> {
-        Args::try_parse_from(std::iter::once("golcondad").chain(s.split_whitespace()))
+        Args::try_parse_from(iter::once("golcondad").chain(s.split_whitespace()))
             .map_err(|e| e.to_string())
             .and_then(check)
     }
@@ -243,7 +245,6 @@ mod tests {
 
     #[test]
     fn the_command_line_is_consistent() {
-        use clap::CommandFactory;
         Args::command().debug_assert();
     }
 

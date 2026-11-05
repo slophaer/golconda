@@ -4,8 +4,11 @@ use crate::document::{key, line_of, option_name, toml_text};
 use crate::eval::{self, Arg, Iets};
 use crate::schema::{self, LookupError};
 use serde_json::{Map, Value, json};
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::fs;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf, absolute};
+use std::process::Command;
+use tempfile::{Builder, TempPath};
 
 /// What one evaluation returns: the outputs the console reads, nothing that builds.
 const EXPR: &str = "{ config, system }: \
@@ -28,7 +31,7 @@ pub struct System {
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("cannot read {path}: {1}", path = .0.display())]
-    Read(PathBuf, std::io::Error),
+    Read(PathBuf, io::Error),
     #[error(
         "{} is in no Golconda checkout (a directory above it with lib/system.nix); \
          pure evaluation reads files under the checkout only",
@@ -42,33 +45,25 @@ pub enum Error {
     Git(String, String),
 }
 
-/// A file beside `document` for one evaluation (pure evaluation reads under the checkout only,
-/// and the document's relative paths must hold): a name of its own for every call, so that
-/// evaluations at the same time in one process do not share it.
-pub(crate) fn beside(document: &Path, tag: &str) -> PathBuf {
-    static N: AtomicU64 = AtomicU64::new(0);
+/// A copy of `text` beside `document` for one evaluation (pure evaluation reads under the
+/// checkout only, and the document's relative paths must hold). The name is dot-prefixed with
+/// `tag` and random; the file is created new (a planted symlink is refused) and readable by its
+/// owner only, as the document may hold what others should not. Dropping the result removes it.
+pub(crate) fn write_beside(document: &Path, tag: &str, text: &str) -> io::Result<TempPath> {
+    let dir = match document.parent() {
+        Some(d) if !d.as_os_str().is_empty() => d,
+        _ => Path::new("."),
+    };
     let name = document.file_name().unwrap_or_default().to_string_lossy();
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    document.with_file_name(format!(".{name}.golconda-{tag}-{}-{n}", std::process::id()))
-}
-
-/// Write a copy made by `beside`: a new file (a name that is there already, a planted
-/// symlink, is refused) that only its owner can read, as the document may hold what others
-/// should not.
-pub(crate) fn write_new(path: &Path, text: &str) -> std::io::Result<()> {
-    use std::io::Write;
-    use std::os::unix::fs::OpenOptionsExt;
-    std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(path)?
-        .write_all(text.as_bytes())
+    let prefix = format!(".{name}.golconda-{tag}-");
+    let mut file = Builder::new().prefix(&prefix).tempfile_in(dir)?;
+    file.write_all(text.as_bytes())?;
+    Ok(file.into_temp_path())
 }
 
 /// The nearest directory at or above `path` with lib/system.nix.
 pub fn find_root(path: &Path) -> Option<PathBuf> {
-    let abs = std::path::absolute(path).ok()?;
+    let abs = absolute(path).ok()?;
     abs.ancestors()
         .skip(1)
         .find(|d| d.join("lib/system.nix").is_file())
@@ -78,10 +73,9 @@ pub fn find_root(path: &Path) -> Option<PathBuf> {
 impl System {
     /// Read `document` and evaluate it for `system` (a Nix system double).
     pub fn load(iets: &Iets, document: &Path, system: &str) -> Result<System, Error> {
-        let text =
-            std::fs::read_to_string(document).map_err(|e| Error::Read(document.into(), e))?;
+        let text = fs::read_to_string(document).map_err(|e| Error::Read(document.into(), e))?;
         let root = find_root(document).ok_or_else(|| Error::NoCheckout(document.into()))?;
-        let abs = std::path::absolute(document).map_err(|e| Error::Read(document.into(), e))?;
+        let abs = absolute(document).map_err(|e| Error::Read(document.into(), e))?;
         let v = iets
             .eval_json(
                 &root,
@@ -107,11 +101,9 @@ impl System {
         text: &str,
         system: &str,
     ) -> Result<System, Error> {
-        let copy = beside(document, "old");
-        write_new(&copy, text).map_err(|e| Error::Read(copy.clone(), e))?;
-        let loaded = System::load(iets, &copy, system);
-        let _ = std::fs::remove_file(&copy);
-        loaded
+        let copy =
+            write_beside(document, "old", text).map_err(|e| Error::Read(document.into(), e))?;
+        System::load(iets, &copy, system)
     }
 
     /// The document as git has it at `rev`.
@@ -121,7 +113,7 @@ impl System {
             _ => Path::new("."),
         };
         let name = document.file_name().unwrap_or_default().to_string_lossy();
-        let out = std::process::Command::new("git")
+        let out = Command::new("git")
             .arg("-C")
             .arg(dir)
             .args(["show", &format!("{rev}:./{name}")])
@@ -246,7 +238,7 @@ impl Explanation {
         };
         match &self.set_at {
             Some((f, l)) if self.explicit => {
-                out += &format!("value     {value}  (set at {f}:{l})\n")
+                out += &format!("value     {value}  (set at {f}:{l})\n");
             }
             _ => out += &format!("value     {value}  (default)\n"),
         }
@@ -282,6 +274,8 @@ fn wrap(text: &str, width: usize, indent: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
+    use tempfile::TempDir;
 
     fn system() -> System {
         System {
@@ -376,50 +370,47 @@ mod tests {
 
     #[test]
     fn keys_that_need_quotes() {
-        assert_eq!(crate::document::key("port"), "port");
-        assert_eq!(crate::document::key("a.b"), "\"a.b\"");
-        assert_eq!(crate::document::key(""), "\"\"");
+        assert_eq!(key("port"), "port");
+        assert_eq!(key("a.b"), "\"a.b\"");
+        assert_eq!(key(""), "\"\"");
     }
 
     #[test]
     fn the_checkout_is_found_above_the_document() {
-        let tmp = std::env::temp_dir().join(format!("golconda-core-{}", std::process::id()));
-        std::fs::create_dir_all(tmp.join("lib")).unwrap();
-        std::fs::create_dir_all(tmp.join("a/b")).unwrap();
-        std::fs::write(tmp.join("lib/system.nix"), "").unwrap();
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join("lib")).unwrap();
+        fs::create_dir_all(root.join("a/b")).unwrap();
+        fs::write(root.join("lib/system.nix"), "").unwrap();
         // the document's own directory counts, and so does every one above it
-        assert_eq!(find_root(&tmp.join("server.toml")), Some(tmp.clone()));
-        assert_eq!(find_root(&tmp.join("a/b/server.toml")), Some(tmp.clone()));
-        std::fs::remove_dir_all(&tmp).unwrap();
+        assert_eq!(find_root(&root.join("server.toml")), Some(root.into()));
+        assert_eq!(find_root(&root.join("a/b/server.toml")), Some(root.into()));
         assert_eq!(find_root(Path::new("/server.toml")), None);
     }
 
     #[test]
     fn copies_beside_the_document_have_names_of_their_own() {
-        let a = beside(Path::new("/c/server.toml"), "old");
-        let b = beside(Path::new("/c/server.toml"), "old");
-        assert_ne!(a, b);
-        assert_eq!(a.parent(), Some(Path::new("/c")));
+        let dir = TempDir::new().unwrap();
+        let document = dir.path().join("server.toml");
+        let a = write_beside(&document, "old", "a").unwrap();
+        let b = write_beside(&document, "old", "b").unwrap();
+        assert_ne!(a.to_path_buf(), b.to_path_buf());
+        assert_eq!(a.parent(), Some(dir.path()));
         let name = a.file_name().unwrap().to_string_lossy().into_owned();
         assert!(name.starts_with(".server.toml.golconda-old-"), "{name}");
     }
 
     #[test]
-    fn a_copy_is_new_and_only_for_its_owner() {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = std::env::temp_dir().join(format!("golconda-copy-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let copy = beside(&dir.join("server.toml"), "t");
-        write_new(&copy, "x").unwrap();
+    fn a_copy_is_new_only_for_its_owner_and_gone_when_dropped() {
+        let dir = TempDir::new().unwrap();
+        let copy = write_beside(&dir.path().join("server.toml"), "t", "x").unwrap();
+        assert_eq!(fs::read_to_string(&copy).unwrap(), "x");
         assert_eq!(
-            std::fs::metadata(&copy).unwrap().permissions().mode() & 0o777,
+            fs::metadata(&copy).unwrap().permissions().mode() & 0o777,
             0o600
         );
-        // a name that is there already (a planted symlink) is refused, not followed
-        let planted = beside(&dir.join("server.toml"), "t");
-        std::os::unix::fs::symlink(dir.join("target"), &planted).unwrap();
-        assert!(write_new(&planted, "x").is_err());
-        assert!(!dir.join("target").exists());
-        std::fs::remove_dir_all(&dir).unwrap();
+        let path = copy.to_path_buf();
+        drop(copy);
+        assert!(!path.exists());
     }
 }

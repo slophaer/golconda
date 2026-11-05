@@ -128,4 +128,5 @@ cargo test -- --include-ignored     # also the CLI against examples/server.toml,
 ```
 
 The ignored tests need iets and the checkout around this directory, which the package build does not
-have. `treefmt` formats the Rust code.
+have. `treefmt` formats the Rust code and runs the ast-grep rules in `lints/rust/`;
+`nix-build -A checks.x86_64-linux.console-clippy` runs clippy at the levels in `Cargo.toml`.

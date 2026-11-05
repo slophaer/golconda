@@ -4,8 +4,12 @@
 //! which a package build does not have, so they are ignored there:
 //! `cargo test -- --include-ignored` runs them (console/README.md).
 
+use std::fs;
+use std::io::Write;
+use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::PathBuf;
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
+use tempfile::{Builder, TempDir};
 
 fn checkout() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -87,7 +91,7 @@ fn explain_says_what_an_option_is_and_where_it_is_set() {
     );
     assert!(out.contains("default   22\n"), "{out}");
     // the line of `port = {` in the module, found rather than written down
-    let module = std::fs::read_to_string(checkout().join("modules/services/sshd/default.nix"))
+    let module = fs::read_to_string(checkout().join("modules/services/sshd/default.nix"))
         .expect("the sshd module");
     let line = module
         .lines()
@@ -155,10 +159,8 @@ fn version_and_help() {
 /// set, push and list. The logic is tested in golconda-core (vars.rs).
 #[test]
 fn vars_set_push_list() {
-    use std::fs;
-    use std::os::unix::fs::PermissionsExt;
-    let dir = std::env::temp_dir().join(format!("golconda-cli-vars-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
+    let tmp = TempDir::new().unwrap();
+    let dir = tmp.path();
     fs::create_dir_all(dir.join("vars")).unwrap();
     fs::write(dir.join("vars/recipients.txt"), "age1op\n").unwrap();
     fs::write(dir.join("id.txt"), "AGE-SECRET-KEY-1").unwrap();
@@ -189,15 +191,14 @@ fn vars_set_push_list() {
     let run = |args: &[&str], stdin: &str| {
         let mut c = Command::new(env!("CARGO_BIN_EXE_golconda"))
             .args(args)
-            .current_dir(&dir)
+            .current_dir(dir)
             .env("GOLCONDA_AGE", &age)
             .env("GOLCONDA_SSH", &ssh)
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
             .unwrap();
-        use std::io::Write;
         c.stdin.take().unwrap().write_all(stdin.as_bytes()).unwrap();
         c.wait_with_output().unwrap()
     };
@@ -220,7 +221,6 @@ fn vars_set_push_list() {
         "{}",
         String::from_utf8_lossy(&o.stderr)
     );
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -239,16 +239,20 @@ fn vars_usage_errors_exit_2() {
 /// A copy of `doc` in a directory of its own under target/ (inside the checkout: evaluation is
 /// pure), and its path relative to the checkout.
 fn scratch(test: &str, doc: &str) -> String {
-    let rel = format!("console/target/cli-tests/{test}-{}", std::process::id());
-    let dir = checkout().join(&rel);
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::copy(checkout().join(doc), dir.join("server.toml")).unwrap();
-    format!("{rel}/server.toml")
+    let parent = checkout().join("console/target/cli-tests");
+    fs::create_dir_all(&parent).unwrap();
+    let dir = Builder::new()
+        .prefix(&format!("{test}-"))
+        .tempdir_in(&parent)
+        .unwrap()
+        .keep();
+    fs::copy(checkout().join(doc), dir.join("server.toml")).unwrap();
+    let rel = dir.strip_prefix(checkout()).unwrap();
+    format!("{}/server.toml", rel.display())
 }
 
 fn read(rel: &str) -> String {
-    std::fs::read_to_string(checkout().join(rel)).unwrap()
+    fs::read_to_string(checkout().join(rel)).unwrap()
 }
 
 fn fails(o: &Output) -> String {
@@ -404,7 +408,7 @@ fn set_refuses_what_only_evaluation_catches() {
     assert_eq!(read(&f), before);
     // nothing left beside the document
     let dir = checkout().join(&f).parent().unwrap().to_path_buf();
-    assert_eq!(std::fs::read_dir(dir).unwrap().count(), 1);
+    assert_eq!(fs::read_dir(dir).unwrap().count(), 1);
 }
 
 #[test]
@@ -444,7 +448,7 @@ fn validate_checks_schema_then_evaluation() {
     );
     let f = scratch("validate", DOC);
     let text = read(&f).replace("\nport = 22\n", "\nport = \"22\"\n");
-    std::fs::write(checkout().join(&f), text).unwrap();
+    fs::write(checkout().join(&f), text).unwrap();
     let err = fails(&golconda(&["config", "validate", "-f", &f]));
     assert!(
         err.contains(&format!("{f}:11: /services/sshd port: expected integer")),
@@ -527,9 +531,9 @@ fn diff_against_a_git_revision() {
     let err = fails(&golconda(&["diff", "-f", DOC, "no-such-rev"]));
     assert!(err.contains("no-such-rev"), "{err}");
     // the old revision was evaluated from a copy beside the document, now gone
-    let left: Vec<_> = std::fs::read_dir(checkout().join("examples"))
+    let left: Vec<_> = fs::read_dir(checkout().join("examples"))
         .unwrap()
-        .filter_map(|e| e.ok())
+        .filter_map(Result::ok)
         .filter(|e| e.file_name().to_string_lossy().contains(".golconda-"))
         .collect();
     assert!(left.is_empty(), "{left:?}");
@@ -570,10 +574,9 @@ fn a_key_with_a_dot_is_quoted() {
 #[test]
 #[ignore = "needs iets and the Golconda checkout"]
 fn an_edit_keeps_the_mode_and_a_symlink() {
-    use std::os::unix::fs::PermissionsExt;
     let f = scratch("mode", DOC);
     let path = checkout().join(&f);
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
     stdout(&golconda(&[
         "config",
         "set",
@@ -584,12 +587,12 @@ fn an_edit_keeps_the_mode_and_a_symlink() {
         "2222",
     ]));
     assert_eq!(
-        std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        fs::metadata(&path).unwrap().permissions().mode() & 0o777,
         0o600
     );
     // a link to the document stays a link, and the document changes
     let link = path.with_file_name("link.toml");
-    std::os::unix::fs::symlink("server.toml", &link).unwrap();
+    symlink("server.toml", &link).unwrap();
     let lf = format!("{}/link.toml", f.rsplit_once('/').unwrap().0);
     stdout(&golconda(&[
         "config",
@@ -601,7 +604,7 @@ fn an_edit_keeps_the_mode_and_a_symlink() {
         "2200",
     ]));
     assert!(
-        std::fs::symlink_metadata(&link)
+        fs::symlink_metadata(&link)
             .unwrap()
             .file_type()
             .is_symlink()

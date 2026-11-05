@@ -5,9 +5,9 @@
 
 use serde_json::Value;
 use std::ffi::OsString;
-use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::{env, fmt, io, path};
 
 /// An argument of the evaluated function.
 pub enum Arg<'a> {
@@ -35,7 +35,7 @@ pub struct EvalError {
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("cannot run {program}: {1}", program = .0.to_string_lossy())]
-    Spawn(OsString, std::io::Error),
+    Spawn(OsString, io::Error),
     #[error("evaluation failed: {0}")]
     Eval(EvalError),
     /// iets succeeded but its output is not JSON
@@ -64,7 +64,7 @@ impl Iets {
 
     /// `GOLCONDA_IETS`, or `iets` from PATH.
     pub fn from_env() -> Self {
-        Iets::new(std::env::var_os("GOLCONDA_IETS").unwrap_or_else(|| "iets".into()))
+        Iets::new(env::var_os("GOLCONDA_IETS").unwrap_or_else(|| "iets".into()))
     }
 
     /// Evaluate the function `expr` with `args`, in `dir`, strictly, to JSON.
@@ -104,16 +104,11 @@ impl Iets {
             let mut e = parse_error(&String::from_utf8_lossy(&out.stderr));
             // a file of the checkout by its path there
             let root = absolute(dir);
-            if let Some(f) = e
-                .file
-                .as_mut()
-                .filter(|f| Path::new(f.as_str()).starts_with(&root))
-            {
-                *f = Path::new(f.as_str())
-                    .strip_prefix(&root)
-                    .unwrap()
-                    .display()
-                    .to_string();
+            let rel = (e.file.as_deref())
+                .and_then(|f| Path::new(f).strip_prefix(&root).ok())
+                .map(|r| r.display().to_string());
+            if rel.is_some() {
+                e.file = rel;
             }
             return Err(Error::Eval(e));
         }
@@ -122,7 +117,7 @@ impl Iets {
 }
 
 fn absolute(p: &Path) -> PathBuf {
-    std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf())
+    path::absolute(p).unwrap_or_else(|_| p.to_path_buf())
 }
 
 /// The first error record on iets' stderr; the last non-empty line when there is none.
@@ -137,13 +132,12 @@ pub fn parse_error(stderr: &str) -> EvalError {
         if r["action"] != "msg" || r["level"] != 0 {
             continue;
         }
-        let message = match r["raw_msg"].as_str() {
-            Some(m) => m.to_string(),
-            None => {
-                let m = r["msg"].as_str().unwrap_or("");
-                let first = m.lines().next().unwrap_or("");
-                first.strip_prefix("error: ").unwrap_or(first).to_string()
-            }
+        let message = if let Some(m) = r["raw_msg"].as_str() {
+            m.to_string()
+        } else {
+            let m = r["msg"].as_str().unwrap_or("");
+            let first = m.lines().next().unwrap_or("");
+            first.strip_prefix("error: ").unwrap_or(first).to_string()
         };
         let line_no = r["line"].as_u64();
         let column = r["column"].as_u64();

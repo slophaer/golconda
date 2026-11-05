@@ -9,6 +9,7 @@ use golconda_core::system::{Explanation, System};
 use maud::{DOCTYPE, Markup, PreEscaped, html};
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 use serde_json::Value;
+use std::path::PathBuf;
 
 #[derive(PartialEq, Clone, Copy)]
 enum Tab {
@@ -23,7 +24,7 @@ fn layout(
     system: Option<(&str, &System)>,
     tab: Option<Tab>,
     title: &str,
-    main: Markup,
+    main: &Markup,
 ) -> Markup {
     let version = system.and_then(|(_, s)| s.config["/system"]["version"]["value"].as_str());
     html! {
@@ -68,26 +69,20 @@ fn layout(
     }
 }
 
-pub fn index(app: &App, who: &Identity, systems: &[(String, std::path::PathBuf)]) -> Markup {
-    layout(
-        app,
-        who,
-        None,
-        None,
-        "Systems",
-        html! {
-            h2 { "Systems" }
-            table {
-                tr { th { "system" } th { "document" } }
-                @for (name, doc) in systems {
-                    tr {
-                        td { a href={ "/systems/" (name) "/config" } { (name) } }
-                        td.m { (doc.display()) }
-                    }
+pub fn index(app: &App, who: &Identity, systems: &[(String, PathBuf)]) -> Markup {
+    let main = html! {
+        h2 { "Systems" }
+        table {
+            tr { th { "system" } th { "document" } }
+            @for (name, doc) in systems {
+                tr {
+                    td { a href={ "/systems/" (name) "/config" } { (name) } }
+                    td.m { (doc.display()) }
                 }
             }
-        },
-    )
+        }
+    };
+    layout(app, who, None, None, "Systems", &main)
 }
 
 pub fn problem(status: StatusCode, message: &str) -> Markup {
@@ -184,7 +179,7 @@ pub fn config(app: &App, who: &Identity, name: &str, sys: &System) -> Markup {
         Some((name, sys)),
         Some(Tab::Config),
         "Configuration",
-        main,
+        &main,
     )
 }
 
@@ -201,8 +196,8 @@ fn count(n: usize, what: &str) -> String {
 pub fn stylesheet() -> String {
     let hash = include_str!("style.css")
         .bytes()
-        .fold(0xcbf29ce484222325u64, |h, b| {
-            (h ^ b as u64).wrapping_mul(0x100000001b3)
+        .fold(0xcbf2_9ce4_8422_2325_u64, |h, b| {
+            (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
         });
     format!("/assets/style.css?v={hash:016x}")
 }
@@ -275,7 +270,14 @@ pub fn module(
             }
         }
     };
-    layout(app, who, Some((name, sys)), Some(Tab::Config), module, main)
+    layout(
+        app,
+        who,
+        Some((name, sys)),
+        Some(Tab::Config),
+        module,
+        &main,
+    )
 }
 
 fn detail(e: &Explanation) -> Markup {
@@ -319,14 +321,16 @@ pub fn changes(app: &App, who: &Identity, name: &str, sys: &System, changes: &[C
         Some((name, sys)),
         Some(Tab::Changes),
         "Changes",
-        main,
+        &main,
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use golconda_core::diff::Side;
     use serde_json::json;
+    use std::slice;
 
     fn app(read_only: bool, level: Level) -> App {
         App::new(vec![], Signin::Dev(who(level)), read_only)
@@ -371,7 +375,7 @@ mod tests {
             "s",
             &sys(),
             "/m",
-            std::slice::from_ref(&e),
+            slice::from_ref(&e),
             Some(&e),
         )
         .into_string();
@@ -548,7 +552,6 @@ mod tests {
 
     #[test]
     fn changes_show_both_sides_and_mark_defaults() {
-        use golconda_core::diff::Side;
         let c = vec![Change {
             module: "/factory".into(),
             path: vec!["timezone".into()],

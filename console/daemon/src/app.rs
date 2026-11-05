@@ -4,7 +4,7 @@
 //! the sign-in routes do not.
 
 use crate::auth::{self, Oidc, Refused};
-use crate::pages;
+use crate::{FONTS, pages};
 use axum::Router;
 use axum::extract::{Extension, Path, Query, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
@@ -14,9 +14,10 @@ use axum::routing::{get, post};
 use golconda_core::diff::{Change, against_git};
 use golconda_core::document::parse_path;
 use golconda_core::eval::Iets;
-use golconda_core::system::System;
+use golconda_core::system::{Explanation, System};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::env::consts;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -69,7 +70,7 @@ impl App {
             signin,
             read_only,
             iets: Iets::from_env(),
-            platform: format!("{}-linux", std::env::consts::ARCH),
+            platform: format!("{}-linux", consts::ARCH),
         }
     }
 
@@ -166,7 +167,7 @@ async fn signed_in(State(app): State<Shared>, mut req: Request, next: Next) -> R
     let Some(who) = who else {
         // /auth/me is JSON whatever the request accepts
         if wants_json(req.headers()) || req.uri().path() == "/auth/me" {
-            return problem(true, StatusCode::UNAUTHORIZED, "sign in first".into());
+            return problem(true, StatusCode::UNAUTHORIZED, "sign in first");
         }
         let here = req.uri().path_and_query().map_or("/", |p| p.as_str());
         return Redirect::to(&format!("/auth/login?next={}", auth::encode(here))).into_response();
@@ -192,7 +193,7 @@ async fn callback(State(app): State<Shared>, Query(q): Query<HashMap<String, Str
         return problem(
             false,
             StatusCode::BAD_REQUEST,
-            format!("the provider refused: {why}"),
+            &format!("the provider refused: {why}"),
         );
     }
     let (code, state) = (
@@ -200,7 +201,7 @@ async fn callback(State(app): State<Shared>, Query(q): Query<HashMap<String, Str
         q.get("state").cloned(),
     );
     let Some(state) = state else {
-        return problem(false, StatusCode::BAD_REQUEST, "no state".into());
+        return problem(false, StatusCode::BAD_REQUEST, "no state");
     };
     let a = app.clone();
     let done = tokio::task::spawn_blocking(move || match &a.signin {
@@ -219,8 +220,8 @@ async fn callback(State(app): State<Shared>, Query(q): Query<HashMap<String, Str
             );
             ([(header::SET_COOKIE, cookie)], Redirect::to(&next)).into_response()
         }
-        Err(Refused::Bad(m)) => problem(false, StatusCode::BAD_REQUEST, m),
-        Err(Refused::NotAllowed(m)) => problem(false, StatusCode::FORBIDDEN, m),
+        Err(Refused::Bad(m)) => problem(false, StatusCode::BAD_REQUEST, &m),
+        Err(Refused::NotAllowed(m)) => problem(false, StatusCode::FORBIDDEN, &m),
     }
 }
 
@@ -248,11 +249,11 @@ fn wants_json(h: &HeaderMap) -> bool {
 }
 
 /// An answer that is not the page: a status and a sentence, as HTML or JSON.
-fn problem(json: bool, status: StatusCode, message: String) -> Response {
+fn problem(json: bool, status: StatusCode, message: &str) -> Response {
     if json {
         (status, axum::Json(serde_json::json!({ "error": message }))).into_response()
     } else {
-        (status, pages::problem(status, &message)).into_response()
+        (status, pages::problem(status, message)).into_response()
     }
 }
 
@@ -260,7 +261,7 @@ fn problem(json: bool, status: StatusCode, message: String) -> Response {
 async fn load(app: &Shared, name: &str, json: bool) -> Result<System, Box<Response>> {
     let Some(doc) = app.document(name).cloned() else {
         let missing = format!("no system {name}");
-        return Err(Box::new(problem(json, StatusCode::NOT_FOUND, missing)));
+        return Err(Box::new(problem(json, StatusCode::NOT_FOUND, &missing)));
     };
     let a = app.clone();
     let loaded = tokio::task::spawn_blocking(move || System::load(&a.iets, &doc, &a.platform))
@@ -270,7 +271,7 @@ async fn load(app: &Shared, name: &str, json: bool) -> Result<System, Box<Respon
         Box::new(problem(
             json,
             StatusCode::INTERNAL_SERVER_ERROR,
-            e.to_string(),
+            &e.to_string(),
         ))
     })
 }
@@ -319,7 +320,7 @@ async fn module(
     };
     // a module with no options of its own (/vars) has no properties
     if !sys.schema["properties"][&module].is_object() {
-        return problem(json, StatusCode::NOT_FOUND, format!("no module {module}"));
+        return problem(json, StatusCode::NOT_FOUND, &format!("no module {module}"));
     }
     let empty = serde_json::Map::new();
     let props = sys.schema["properties"][&module]["properties"]
@@ -329,17 +330,17 @@ async fn module(
     for o in props.keys() {
         match sys.explain(&module, &[o]) {
             Ok(e) => options.push(e),
-            Err(e) => return problem(json, StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+            Err(e) => return problem(json, StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
         }
     }
     let selected = match option.as_deref().map(parse_path) {
         None => None,
-        Some(Err(e)) => return problem(json, StatusCode::NOT_FOUND, e.to_string()),
+        Some(Err(e)) => return problem(json, StatusCode::NOT_FOUND, &e.to_string()),
         Some(Ok(p)) => {
             let p: Vec<&str> = p.iter().map(String::as_str).collect();
             match sys.explain(&module, &p) {
                 Ok(e) => Some(e),
-                Err(e) => return problem(json, StatusCode::NOT_FOUND, e.to_string()),
+                Err(e) => return problem(json, StatusCode::NOT_FOUND, &e.to_string()),
             }
         }
     };
@@ -349,7 +350,7 @@ async fn module(
             "module": module,
             "doc": doc,
             "included": sys.config.get(&module).is_some(),
-            "options": options.iter().map(|e| e.to_json()).collect::<Vec<_>>(),
+            "options": options.iter().map(Explanation::to_json).collect::<Vec<_>>(),
         }))
         .into_response();
     }
@@ -373,7 +374,7 @@ async fn changes(
 ) -> Response {
     let json = wants_json(&h);
     let Some(doc) = app.document(&name).cloned() else {
-        return problem(json, StatusCode::NOT_FOUND, format!("no system {name}"));
+        return problem(json, StatusCode::NOT_FOUND, &format!("no system {name}"));
     };
     let a = app.clone();
     let both = tokio::task::spawn_blocking(move || against_git(&a.iets, &doc, "HEAD", &a.platform))
@@ -381,7 +382,7 @@ async fn changes(
         .expect("evaluation thread");
     let (sys, changes) = match both {
         Ok(x) => x,
-        Err(e) => return problem(json, StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+        Err(e) => return problem(json, StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
     };
     if json {
         return axum::Json(Value::Array(changes.iter().map(Change::to_json).collect()))
@@ -402,7 +403,7 @@ async fn style() -> Response {
 }
 
 async fn font(Path(file): Path<String>) -> Response {
-    match crate::FONTS.iter().find(|(n, _)| *n == file) {
+    match FONTS.iter().find(|(n, _)| *n == file) {
         Some((_, bytes)) => (
             [
                 (header::CONTENT_TYPE, "font/woff2"),
