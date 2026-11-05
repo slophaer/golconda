@@ -58,7 +58,9 @@ golconda vars list web1                              # stored here? sealed there
 `push` reads the manifests from the machine itself, checks that every file is stored before it sends
 any, and restarts each consumer once. Rotation is `set` and `push` again. `age` (or `rage`) and
 `ssh` are programs on the deploy host: `GOLCONDA_AGE` and `GOLCONDA_SSH` replace them, with
-arguments.
+arguments. Golconda packages age (`packages.<system>.age`: `age` and `age-keygen`, the reference
+implementation); put it on PATH beside `golconda`, with any `age-plugin-*` the operators' keys need
+(age finds its plugins on PATH, so a key can stay on a YubiKey or in a TPM).
 
 A pushed value goes to whichever machine answers for the host name: ssh's own host-key check is what
 makes it the right one. Keep it on (`known_hosts`, or step-ca host certificates with a
