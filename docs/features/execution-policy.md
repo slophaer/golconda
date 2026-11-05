@@ -46,9 +46,10 @@ So the boot test needs `--secure-boot`.
 A boot that reaches `multi-user.target` with `ipe.enforce=1` proves that the kernel accepts the
 signature and runs `/usr`. The proof table has no marker of its own for this
 ([What is proven](../proven.md)). The same holds without Secure Boot (`image-smoke-test-nosb`),
-where the kernel's built-in key replaces the firmware `db`. The design docs describe the denial of a
-copy in `/var`, but no boot-test marker covers it. Eval tests check the command line, the kernel
-options and the policy text.
+where the kernel's built-in key replaces the firmware `db`. `ipe-denies-copy` (`--ssh-test`, with
+and without Secure Boot) copies `/usr`'s shell to `/var/tmp` and runs it: the exec fails with
+`Permission denied`, and the kernel logs IPE's `DEFAULT op=EXECUTE action=DENY` for that path. Eval
+tests check the command line, the kernel options and the policy text.
 
 ## Limits
 

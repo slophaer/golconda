@@ -330,6 +330,7 @@ With `--ssh-test` (the harness logs in as root with `tests/fixtures/snakeoil-ssh
 | `varlinkctl-list-interfaces` | `io.systemd.Manager` answers on its varlink socket                            |
 | `secure-boot-enabled`        | `bootctl status` says `Secure Boot: enabled` (with `--secure-boot`)           |
 | `hwdb`                       | `/usr/lib/udev/hwdb.bin` answers for DMI, PCI and USB; none in `/etc`         |
+| `ipe-denies-copy`            | a copy of `/usr/bin/sh` in `/var/tmp` gets EACCES, and IPE logs the denial    |
 | `index-keyring`              | `/usr/lib/systemd/import-pubring.pgp` is the key set's `release/index.pgp`    |
 
 The loader checks ([Boot loader](../design/bootloader.md)) run on the first boot, again after an
