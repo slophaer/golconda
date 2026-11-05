@@ -1,0 +1,63 @@
+id: bare-glob
+valid:
+  - 'let f = (glob "*.efi" | sort | first)'
+invalid:
+  - 'let f = (glob "*.efi" | first)'
+  - 'let f = (glob "*.efi" | first | sort)'
+---
+id: complete-unchecked
+valid:
+  - "let r = (^false | complete)"
+  - |
+    def run []: nothing -> record {
+      ^false | complete
+    }
+invalid:
+  - "^false | complete"
+  - |
+    def run [] {
+      ^false | complete
+      print done
+    }
+---
+id: deprecated-command
+valid:
+  - '"A" | str lowercase'
+invalid:
+  - '"A" | str downcase'
+---
+id: each-if-without-else
+valid:
+  - "[1 2] | each {|x| if $x > 1 { $x } else { 0 } }"
+  - "[1 2] | each {|x| if $x > 1 { $x } } | compact"
+invalid:
+  - "[1 2] | each {|x| if $x > 1 { $x } }"
+---
+id: last-exit-code
+valid:
+  - "let c = (^false | complete).exit_code"
+invalid:
+  - "let c = $env.LAST_EXIT_CODE"
+---
+id: open-save-same-file
+valid:
+  - "let t = (open f.txt); $t | save -f f.txt"
+  - "open a.txt | str trim | save -f b.txt"
+invalid:
+  - "open f.txt | str trim | save -f f.txt"
+---
+id: operator-continuation
+valid:
+  - "let x = ([1] ++ [2])"
+invalid:
+  - |
+    let x = [1]
+      ++ [2]
+---
+id: quoted-glob
+valid:
+  - 'ls ($"($d)/*.rules" | into glob)'
+  - "ls *.rules"
+invalid:
+  - 'ls $"($d)/*.rules"'
+  - 'rm "*.o"'

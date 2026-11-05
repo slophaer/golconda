@@ -45,6 +45,11 @@ directories to a booted machine.
 - **No typed store paths.** A `/nix/store` string in `modules/` or `lib/` is a relocation bug (the
   image's store is `/usr/nix/store`); paths come from derivations. `scripts/lint` fails on one; mark
   a legitimate mention `store-path-ok`.
+- **Lint rules.** `lints/` holds ast-grep rules for Rust (from iets), nu and Nix (from repkgs), each
+  with cases in `lints/tests/` (`checks.lint-rules`); treefmt runs them. A rule that is wrong for a
+  line is fixed in the rule, not silenced at the line. An optional list or set is `on cond value`
+  (`modules/lib/on.nix`), not `if … else [ ]`. The console's clippy levels are pedantic
+  (`console/Cargo.toml`, `checks.console-clippy`).
 - **Docs split.** `docs/design/` says why, `docs/reference/` says what exists in code today. Mark
   what is designed and not started as *(planned)*, and what is deferred past v1 as *(after v1)*. No
   planning or history pages.
@@ -58,7 +63,7 @@ directories to a booted machine.
 
 ```sh
 nix-shell                                   # or: direnv allow
-treefmt                                     # format (nixfmt, statix, deadnix, mdformat, taplo)
+treefmt                                     # format and lint (lints/, nu --ide-check, shellcheck too)
 ./scripts/lint                              # strict iets lint, module tests, sandboxed and native package checks
 scripts/docs                                # generate the module pages, then build the book
 scripts/docs serve                          # the same, then mdbook serve (pages are not committed)
@@ -74,9 +79,10 @@ The required checks include the native tests in `tests/packages/`, also availabl
 `packages.<system>.tests-<name>`. They do not build foreign-target tests or every package output. A
 cold run can build these packages; a cached run reuses their results.
 
-The dev shell carries treefmt, mdbook with the Pele diagram renderer, iets and npins.
-`./scripts/lint` now builds native package tests and needs the same patched Nix client and daemon as
-package builds. The daemon needs `ca-derivations`, `dynamic-derivations` and the system feature
-`builder-rpc-v0`; [reference/build-host](docs/reference/build-host.md) says how to get one. Start
-reading at [README](README.md), then [docs/SUMMARY](docs/SUMMARY.md); the module code is small
-enough to read whole, starting with `modules/system/default.nix` and `modules/lib/`.
+The dev shell carries treefmt, `golconda-ast-grep` (the rules in `lints/`), mdbook with the Pele
+diagram renderer, iets and npins. `./scripts/lint` now builds native package tests and needs the
+same patched Nix client and daemon as package builds. The daemon needs `ca-derivations`,
+`dynamic-derivations` and the system feature `builder-rpc-v0`;
+[reference/build-host](docs/reference/build-host.md) says how to get one. Start reading at
+[README](README.md), then [docs/SUMMARY](docs/SUMMARY.md); the module code is small enough to read
+whole, starting with `modules/system/default.nix` and `modules/lib/`.

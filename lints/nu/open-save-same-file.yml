@@ -1,0 +1,16 @@
+# A file name is `arg` when quoted and `arg_str` when bare in the nu grammar: match the value kind.
+id: open-save-same-file
+language: nu
+severity: error
+message: "`save -f` truncates the file while `open` at the head of the pipeline still streams it: bind the content with `let` first"
+rule:
+  kind: pipeline
+  all:
+    - has:
+        kind: pipe_element
+        nthChild: 1
+        has: {kind: command, regex: '^open\b', has: {pattern: $F, any: [{kind: val_string}, {kind: val_interpolated}, {kind: val_variable}]}}
+    - has:
+        kind: pipe_element
+        nthChild: {position: 1, reverse: true, ofRule: {kind: pipe_element}}
+        has: {kind: command, regex: '^save\b', has: {pattern: $F, any: [{kind: val_string}, {kind: val_interpolated}, {kind: val_variable}]}}

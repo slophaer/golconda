@@ -20,6 +20,48 @@ let
     exit $status
   '';
 
+  # ast-grep with the rules in lints/: Rust and Nix are built in, nu comes from the
+  # tree-sitter grammar nushell maintains. lints/tests/ holds a case for each rule.
+  lints = builtins.path {
+    path = ../../lints;
+    name = "golconda-lints";
+  };
+  sgconfig = pkgs.writeText "sgconfig.yml" (
+    builtins.toJSON {
+      ruleDirs = map (d: "${lints}/${d}") [
+        "rust"
+        "nu"
+        "nix"
+      ];
+      testConfigs = [ { testDir = "${lints}/tests"; } ];
+      customLanguages.nu = {
+        libraryPath = "${pkgs.tree-sitter-grammars.tree-sitter-nu}/parser";
+        extensions = [ "nu" ];
+        expandoChar = "_";
+      };
+    }
+  );
+  # the nu grammar is a native library: allow it, it is the pinned one above
+  ast-grep = pkgs.writeShellScriptBin "golconda-ast-grep" ''
+    exec ${pkgs.ast-grep}/bin/ast-grep "$1" --config=${sgconfig} --custom-languages=allow "''${@:2}"
+  '';
+
+  # nu's own parser and type checker over each file: a misspelt command, a wrong
+  # type, a `use` that does not resolve. The include path is what the builds pass:
+  # the image and /usr tree modules, repkgs' builder and its test library.
+  # cell-path-types: `$rec.field` takes the field's declared type instead of `any`.
+  nu-typecheck = pkgs.writeShellScript "nu-typecheck" ''
+    status=0
+    for f in "$@"; do
+      out=$(${pkgs.nushell}/bin/nu --no-config-file \
+        --include-path "$PWD/lib/image:$PWD/lib/usr-tree:${sources.repkgs}/builder:${sources.repkgs}/tests/builder/lib" \
+        "--experimental-options=[cell-path-types]" --ide-check 50 "$f" \
+        | ${pkgs.jq}/bin/jq -r 'select(.type == "diagnostic" and .severity == "Error") | "\(.span.start): \(.message)"')
+      if [ -n "$out" ]; then printf '%s:\n%s\n' "$f" "$out" >&2; status=1; fi
+    done
+    exit $status
+  '';
+
   treefmt = pkgs.treefmt.withConfig {
     settings = {
       global.excludes = [
@@ -63,6 +105,36 @@ let
           ];
           includes = [ "*.rs" ];
         };
+        # check only: the rules in lints/ (rust, nu, nix)
+        ast-grep = {
+          command = "${ast-grep}/bin/golconda-ast-grep";
+          options = [
+            "scan"
+            "--report-style=short"
+          ];
+          includes = [
+            "*.rs"
+            "*.nu"
+            "*.nix"
+          ];
+        };
+        # check only, nu has no stable formatter
+        nu-typecheck = {
+          command = "${nu-typecheck}";
+          includes = [ "*.nu" ];
+        };
+        # check only; scripts/check-doc-links is Python
+        shellcheck = {
+          command = "${pkgs.shellcheck}/bin/shellcheck";
+          includes = [
+            "*.sh"
+            "scripts/boot-test"
+            "scripts/docs"
+            "scripts/lint"
+            "scripts/make-keys"
+            "scripts/provision-esp"
+          ];
+        };
       };
     };
   };
@@ -93,18 +165,20 @@ in
     mdbook
     mdbook-pele
     iets
+    ast-grep
     ;
 
   shell = pkgs.mkShellNoCC {
     packages = [
       treefmt
+      ast-grep
       mdbook
       mdbook-pele
       iets
       pkgs.npins
     ];
     shellHook = ''
-      echo "golconda dev shell: treefmt | iets lint: ./scripts/lint | docs: scripts/docs serve"
+      echo "golconda dev shell: treefmt | golconda-ast-grep scan|test | iets lint: ./scripts/lint | docs: scripts/docs serve"
     '';
   };
 }

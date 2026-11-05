@@ -142,6 +142,29 @@ in
       '';
 
   # nixpkgs is dev tooling only: the dev pin is referenced nowhere but nix/dev and nix/checks.nix
+  # each ast-grep rule in lints/ against its cases in lints/tests/
+  lint-rules = pkgs.runCommand "check-lint-rules" { nativeBuildInputs = [ dev.ast-grep ]; } ''
+    golconda-ast-grep test --skip-snapshot-tests
+    touch $out
+  '';
+
+  # clippy over the console, tests included; the levels are console/Cargo.toml's
+  # [workspace.lints] (pedantic). The crates come from Cargo.lock, as in the build.
+  console-clippy = pkgs.rustPlatform.buildRustPackage {
+    pname = "check-console-clippy";
+    version = "0";
+    src = "${src}/console";
+    cargoLock.lockFile = ../console/Cargo.lock;
+    nativeBuildInputs = [ pkgs.clippy ];
+    buildPhase = ''
+      runHook preBuild
+      cargo clippy --offline --all-targets -- -D warnings
+      runHook postBuild
+    '';
+    doCheck = false;
+    installPhase = "touch $out";
+  };
+
   boundary = pkgs.runCommand "check-boundary" { } ''
     cd ${src}
     if grep -rn --include='*.nix' 'nixpkgs-dev-only\|<nixpkgs>' . | grep -v '^./nix/dev/' | grep -v '^./nix/checks.nix' | grep -v '^./npins/'; then
