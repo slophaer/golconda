@@ -1,5 +1,5 @@
 //! JSON Schema validation, for the keywords Golconda's schema uses (lib/schema.nix): `$ref`,
-//! `type`, `const`, `enum`, `minLength`, `pattern`, `not`, `anyOf`, `oneOf`, `properties`,
+//! `type`, `const`, `enum`, `minimum`, `maximum`, `minLength`, `pattern`, `not`, `anyOf`, `oneOf`, `properties`,
 //! `additionalProperties`, `required`, `propertyNames`, `items`, `prefixItems`, `minItems`,
 //! `maxItems`. Others are ignored. Each violation has the path of the value it is about, so
 //! the caller can find it in the document.
@@ -93,6 +93,14 @@ impl<'a> Validator<'a> {
                 && !self.matches(p, s)
             {
                 fail(path, format!("{} does not match {p}", shown(v)));
+            }
+        }
+        if let Some(x) = v.as_f64() {
+            if node["minimum"].as_f64().is_some_and(|m| x < m) {
+                fail(path, format!("{v} is less than {}", node["minimum"]));
+            }
+            if node["maximum"].as_f64().is_some_and(|m| x > m) {
+                fail(path, format!("{v} is more than {}", node["maximum"]));
             }
         }
         if let Some(n) = node.get("not")
@@ -377,6 +385,24 @@ mod tests {
                 ),
             ]
         );
+    }
+
+    #[test]
+    fn numbers_within_bounds() {
+        let s =
+            json!({ "properties": { "p": { "type": "integer", "minimum": 1, "maximum": 65535 } } });
+        let errors = |v: Value| -> Vec<String> {
+            Validator::new(&s)
+                .validate(&json!({ "p": v }))
+                .into_iter()
+                .map(|v| v.message)
+                .collect()
+        };
+        assert!(errors(json!(1)).is_empty());
+        assert!(errors(json!(65535)).is_empty());
+        assert_eq!(errors(json!(0)), vec!["0 is less than 1"]);
+        assert_eq!(errors(json!(-1)), vec!["-1 is less than 1"]);
+        assert_eq!(errors(json!(65536)), vec!["65536 is more than 65535"]);
     }
 
     #[test]

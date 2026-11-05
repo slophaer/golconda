@@ -370,6 +370,21 @@ fn set_refuses_a_value_of_the_wrong_type_and_names_the_line() {
     ]));
     assert!(err.contains("/services/sshd prot: no such option"), "{err}");
     assert_eq!(read(&f), before);
+    // a port out of range: the schema refuses it, with its line, before any evaluation
+    let err = fails(&golconda(&[
+        "config",
+        "set",
+        "-f",
+        &f,
+        "/services/sshd",
+        "port",
+        "0",
+    ]));
+    assert!(
+        err.contains(&format!("{f}:11: /services/sshd port: 0 is less than 1")),
+        "{err}"
+    );
+    assert_eq!(read(&f), before);
 }
 
 #[test]
@@ -598,8 +613,8 @@ fn an_edit_keeps_the_mode_and_a_symlink() {
 #[ignore = "needs iets and the Golconda checkout"]
 fn values_that_start_with_a_dash() {
     let f = scratch("dash", DOC);
-    // a negative number is a value, not a flag
-    stdout(&golconda(&[
+    // a negative number is a value, not a flag: the schema, not the parser, refuses it
+    let err = fails(&golconda(&[
         "config",
         "set",
         "-f",
@@ -608,7 +623,7 @@ fn values_that_start_with_a_dash() {
         "port",
         "-1",
     ]));
-    assert!(read(&f).contains("\nport = -1\n"));
+    assert!(err.contains("port: -1 is less than 1"), "{err}");
     // after --, everything is an operand
     let err = fails(&golconda(&[
         "config",
