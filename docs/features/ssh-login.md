@@ -55,19 +55,19 @@ root = ["alice@example.com"]
 
 ## Status
 
-The boot test proves a key login, not a certificate login. With `--ssh-test`, `sshd-active` and
-`ssh-login` show sshd up and root reachable, and `no-failed-units` shows a clean boot. With
-`--esp-creds`, `esp-authorized-keys` shows a key that only the ESP holds. See
+With `--ssh-test`, `sshd-active` and `ssh-login` show sshd up and root reachable, and
+`no-failed-units` shows a clean boot. The test image trusts a test user CA: `cert-login` logs in
+with a certificate for the allowed principal, and `cert-wrong-principal-refused` is refused. With
+`--esp-creds`, `esp-authorized-keys` shows a key that only the ESP holds. With `--next` the harness
+pushes the host certificate and a revocation list, and the next release, which turns both on, passes
+`host-cert-presented`, `cert-revoked-refused` and, after a second push, `krl-rotated`. See
 [What is proven](../proven.md).
-
-No marker covers `TrustedUserCAKeys`, principals, the revocation list or the host certificate. The
-tests in `tests/eval/sshd.nix` check the generated text only.
 
 ## Limits
 
-- **Delivery order.** `revokedKeys` and `hostCertificate` need the pushed credentials, and the
-  deploy tool that pushes them is *(planned)*. If ssh is the only channel, start with
-  `authorizedKeys`, push the credentials, then enable both options.
+- **Delivery order.** `revokedKeys` and `hostCertificate` need the pushed credentials. If ssh is the
+  only channel, start with `authorizedKeys`, push the credentials with `golconda vars push`, then
+  enable both options in the next release.
 - The host certificate needs the host key first: the machine makes its key, then the CA signs it. An
   enrolment service that does both at first boot is not built.
 - A password-less root is the only account. Per-operator records with `run0` and polkit are *(after
