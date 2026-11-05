@@ -301,6 +301,42 @@ in
       }
     )
   ))
+  # a package without the eval-time `bin` attribute (repkgs bf721c4): only `args.bin`, what
+  # package.nix declares, is known before the build
+  (check "app.program: only a declared args.bin is checked at evaluation" (
+    let
+      noBinAttr = p: builtins.removeAttrs p [ "bin" ];
+      declared = noBinAttr openssh;
+      undeclared = noBinAttr standIn // {
+        args = builtins.removeAttrs (standIn.args or { }) [ "bin" ];
+      };
+      empty = noBinAttr (withBin "lib-1" [ ]) // {
+        pname = "lib";
+      };
+    in
+    a.binName { package = declared; } == "ssh"
+    && a.binName { package = undeclared; } == "jq"
+    # a plain derivation: `args` is its builder's argv, a list, and declares nothing
+    &&
+      a.binName {
+        package = undeclared // {
+          args = [ "-c" ];
+        };
+      } == "jq"
+    && a.declaredBin (undeclared // { args = [ "-c" ]; }) == null
+    && a.binName { package = empty; } == "lib"
+    &&
+      a.app.verify {
+        package = declared;
+        program = "httpd";
+      } != null
+    # undeclared: the image builder checks /usr/bin/<program> after the tree is built
+    &&
+      a.app.verify {
+        package = undeclared;
+        program = "jq-other";
+      } == null
+  ))
   (check "farm: a second package with the same program clashes, whatever it is" (
     !(tryEval (
       deepSeq (farmOf [

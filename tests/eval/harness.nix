@@ -46,12 +46,15 @@ let
   # jq stands in for the type check (the unit then says /usr/bin/jq).
   standIn = pkgs.jq;
 
-  # stand-ins for repkgs packages: `bin` exists only on those
+  # stand-ins for repkgs packages that declare `bin` in their package.nix (`args.bin`)
   withBin =
     name: bin:
     pkgs.jq
     // {
       inherit name bin;
+      args = (pkgs.jq.args or { }) // {
+        inherit bin;
+      };
       outPath = "/nix/store/${name}";
     };
   # openssh as repkgs declares it: `bin` lists the client tools first
