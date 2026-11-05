@@ -75,7 +75,7 @@ Every image carries `/usr/lib/golconda/`:
 | `config.json`   | the resolved options of every included component, after type-checking, derivations as names |
 | `modules.json`  | every module's role and inputs; for a component, whether it is included and why             |
 | `schema.json`   | the JSON Schema the image was built against                                                 |
-| `sbom.json`     | CycloneDX SBOM from the closure's `sources.toml` purls                                      |
+| `sbom.json`     | CycloneDX SBOM: purl and cpe per component, its origin, pedigree for a replacement          |
 | `packages.json` | every package with its version, store path and the fragments that brought it                |
 | `vars.d/*.json` | one manifest per var: class, files, credential ids                                          |
 

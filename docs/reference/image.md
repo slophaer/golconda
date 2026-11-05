@@ -65,7 +65,7 @@ The definitions are data. The composer renders `sysupdate.nix` and the root defi
 
 ## `/usr` tree (`lib/usr-tree.nix`)
 
-`usrTree { composerOutput; platform; version; buildSystem ? platform.name; sbomDrv ? null; }`
+`usrTree { composerOutput; platform; version; buildSystem ? platform.name; sbomFile ? null; }`
 produces a derivation whose output **is** the complete `/usr` directory; `mkSystem` calls it with
 the artifacts added ([Configuration](config.md#the-entry-point)):
 
@@ -96,24 +96,41 @@ applies the timestamp derived from the version (`YYYYMMDD.N` → epoch seconds, 
 
 ### Software bill of materials
 
-`lib/golconda/sbom.json` is a CycloneDX 1.5 document for the runtime package closure. Downstream
-components carry these entries in their `properties` array:
+`lib/golconda/sbom.json` is a CycloneDX 1.5 document for the runtime package closure. It follows
+standard identifiers, as the NixOS security tracker does (it links CVEs to packages by name and by
+nixpkgs' `meta.identifiers` CPE): a `purl` from each package's `sources.toml`, a `cpe` where the
+package declares one, and CycloneDX `pedigree` for a replacement. One custom property says where a
+component comes from.
 
 ```json
-[
-  { "name": "golconda:origin", "value": "downstream" },
-  { "name": "golconda:replaces", "value": "repkgs" }
-]
+{
+  "name": "openssh",
+  "version": "0.0.3",
+  "purl": "pkg:github/…@0.0.3",
+  "cpe": "cpe:2.3:a:example:openssh:0.0.3:*:*:*:*:*:*:*",
+  "properties": [ { "name": "golconda:origin", "value": "downstream" } ],
+  "pedigree": {
+    "ancestors": [ { "type": "application", "name": "openssh", "version": "10.6p1", "purl": "pkg:generic/openssh@10.6p1" } ],
+    "notes": "replaced by the downstream package openssh; the original comes from golconda"
+  }
+}
 ```
 
-`golconda:replaces` is `golconda` or `repkgs` when the downstream package replaces that layer's
-package. New packages omit it. Roots and transitive packages use the same rule. Existing properties
-remain; ordinary components do not change. Only target-set package identities receive this
-attribution, not build-host tools. An alias that returns an upstream package keeps its upstream
-origin ([Your own packages](config.md#your-own-packages)).
+- `golconda:origin` is on every component: `downstream` (a downstream package), `golconda` (one of
+  Golconda's `packages/`) or `repkgs` (everything else, the libc and the toolchain included).
+- `cpe` comes from `[upstream] cpe` in the package's `sources.toml`, with `{version}` replaced by
+  the package's version, modelled on nixpkgs' `meta.identifiers.cpe`.
+- `pedigree.ancestors` names the package a downstream package replaced: its name, version, purl and
+  cpe, as the set without the downstream packages describes it. A new package has no `pedigree`.
 
-`mkSystem.sbom.bom` exposes the same document at evaluation time. Building `mkSystem.sbom` writes
-`sbom.json` without building the package outputs.
+Roots and transitive packages use the same rule. Only target-set package identities are matched, by
+derivation and not by display name; an alias that returns an upstream package keeps its upstream
+origin ([Your own packages](config.md#your-own-packages)). The fork's SBOM hook adds properties
+only, so `mkSystem` marks components through it and then lifts the markers into the `cpe` and
+`pedigree` fields; a fork hook for whole fields can replace that step.
+
+`mkSystem.sbom.bom` is the document at evaluation time and `mkSystem.sbom.json` its text, which the
+`/usr` tree installs. Neither builds a package.
 
 ## Built today (`lib/image/`)
 

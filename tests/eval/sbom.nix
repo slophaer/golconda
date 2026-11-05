@@ -1,4 +1,6 @@
-# The actual system SBOM records downstream provenance, not guessed display names.
+# The system SBOM: every component says where it comes from (golconda:origin), a downstream
+# replacement names the package it replaced (CycloneDX pedigree.ancestors), and a sources.toml
+# CPE becomes the component's cpe. Identities, not guessed display names.
 {
   check,
   sources,
@@ -18,8 +20,30 @@ let
   fixture = mkSystem { config = ../fixtures/downstream/server.toml; };
   components = fixture.sbom.bom.components;
   component = name: builtins.head (builtins.filter (c: c.name == name) components);
-  isProvenance = p: p.name == "golconda:origin" || p.name == "golconda:replaces";
-  properties = c: builtins.filter isProvenance (c.properties or [ ]);
+  isProvenance = p: builtins.substring 0 9 p.name == "golconda:";
+  originOf =
+    c: map (p: p.value) (builtins.filter (p: p.name == "golconda:origin") (c.properties or [ ]));
+  # the package set without the downstream directory: where a replaced package comes from
+  base = import ../../nix/packages.nix {
+    inherit sources;
+    system = platform;
+  };
+  # what the SBOM says about one package of that set, as an ancestor names it
+  ancestorOf =
+    type: pkg:
+    let
+      root = builtins.head (
+        builtins.filter (c: c.type == "application")
+          (base.set.sbom {
+            roots = [ pkg ];
+            name = "ancestor";
+          }).bom.components
+      );
+    in
+    {
+      inherit type;
+      inherit (root) name version purl;
+    };
   baseline =
     (import ../../nix/packages.nix {
       inherit sources;
@@ -39,15 +63,12 @@ let
     let
       kept = builtins.filter (p: !isProvenance p) (c.properties or [ ]);
     in
-    builtins.removeAttrs c [ "properties" ] // (if kept == [ ] then { } else { properties = kept; });
-  origin = {
-    name = "golconda:origin";
-    value = "downstream";
-  };
-  replaces = value: {
-    name = "golconda:replaces";
-    inherit value;
-  };
+    builtins.removeAttrs c [
+      "properties"
+      "pedigree"
+      "cpe"
+    ]
+    // (if kept == [ ] then { } else { properties = kept; });
   ordinary = mkSystem {
     config = {
       "/system" = {
@@ -123,38 +144,65 @@ let
   };
 in
 [
-  (check "sbom: a new downstream root records origin without a replacement" (
-    (component "hello-binary").version == "0.0.1" && properties (component "hello-binary") == [ origin ]
+  (check "sbom: a new downstream root has origin downstream and no pedigree" (
+    (component "hello-binary").version == "0.0.1"
+    && originOf (component "hello-binary") == [ "downstream" ]
+    && !((component "hello-binary") ? pedigree)
   ))
-  (check "sbom: a transitive downstream replacement records repkgs" (
-    (component "ripgrep").version == "0.0.2"
+  (check "sbom: a replacement of a repkgs package names it in pedigree.ancestors" (
+    let
+      c = component "ripgrep";
+    in
+    c.version == "0.0.2"
+    && originOf c == [ "downstream" ]
+    && c.pedigree.ancestors == [ (ancestorOf c.type base.pkgs.ripgrep) ]
+    && c.pedigree.notes == "replaced by the downstream package ripgrep; the original comes from repkgs"
+  ))
+  (check "sbom: a replacement of a Golconda package names it, and carries its own cpe" (
+    let
+      c = component "openssh";
+    in
+    c.version == "0.0.3"
+    && originOf c == [ "downstream" ]
+    && c.cpe == "cpe:2.3:a:example:openssh:0.0.3:*:*:*:*:*:*:*"
+    && c.pedigree.ancestors == [ (ancestorOf c.type base.pkgs.openssh) ]
+    && (builtins.head c.pedigree.ancestors).version != "0.0.3"
     &&
-      properties (component "ripgrep") == [
-        origin
-        (replaces "repkgs")
-      ]
+      c.pedigree.notes == "replaced by the downstream package openssh; the original comes from golconda"
   ))
-  (check "sbom: a downstream replacement records golconda" (
-    (component "openssh").version == "0.0.3"
-    &&
-      properties (component "openssh") == [
-        origin
-        (replaces "golconda")
-      ]
+  (check "sbom: a Golconda package has origin golconda and the cpe of its sources.toml" (
+    let
+      c = component "systemd";
+    in
+    originOf c == [ "golconda" ]
+    && c.cpe == "cpe:2.3:a:systemd_project:systemd:${c.version}:*:*:*:*:*:*:*"
+    && !(c ? pedigree)
+    && c == plain "systemd"
   ))
-  (check "sbom: ordinary components remain unchanged" (
-    component "systemd" == plain "systemd"
-    && builtins.all (p: p.name != "golconda:origin" && p.name != "golconda:replaces") (
-      properties (component "systemd")
-    )
+  (check "sbom: a repkgs package has origin repkgs" (
+    originOf (component "glibc") == [ "repkgs" ] && !((component "glibc") ? cpe)
+  ))
+  (check "sbom: every component has exactly one origin, and no marker is left" (
+    builtins.all (c: builtins.length (originOf c) == 1) components
+    && builtins.all (
+      c:
+      builtins.all (
+        p:
+        p.name == "golconda:origin"
+        ||
+          builtins.substring 0 9 p.name != "golconda:" && builtins.substring 0 14 p.name != "golconda-lift:"
+      ) (c.properties or [ ])
+    ) components
   ))
   (check "sbom: a renamed display name retains downstream identity" (
-    properties (identified "different-display-name") == [ origin ]
+    originOf (identified "different-display-name") == [ "downstream" ]
   ))
   (check "sbom: a display name cannot impersonate a downstream package" (
-    properties (identified "hello") == [ ]
+    originOf (identified "hello") == [ "repkgs" ] && !((identified "hello") ? pedigree)
   ))
-  (check "sbom: a downstream alias does not relabel its upstream package" (properties aliasJq == [ ]))
+  (check "sbom: a downstream alias does not relabel its upstream package" (
+    originOf aliasJq == [ "repkgs" ] && !(aliasJq ? pedigree)
+  ))
   (check "sbom: one artifact cannot silently choose conflicting replacement metadata" (
     conflictingPkgs.openssh.drvPath == conflictingPkgs.duplicate.drvPath
     && !(builtins.tryEval (builtins.deepSeq conflict.sbom.bom.components true)).success
@@ -165,12 +213,13 @@ in
   (check "sbom: an alias preserves its downstream target's replacement" (
     fixture.pkgs.openssh-alias.drvPath == fixture.pkgs.openssh.drvPath
     &&
-      properties (component "openssh") == [
-        origin
-        (replaces "golconda")
-      ]
+      (component "openssh").pedigree.ancestors
+      == [ (ancestorOf (component "openssh").type base.pkgs.openssh) ]
   ))
-  (check "sbom: only downstream provenance changes the baseline BOM" (
+  (check "sbom: only provenance, pedigree and cpe change the baseline BOM" (
     fixture.sbom.bom // { components = map withoutProvenance components; } == baseline.bom
+  ))
+  (check "sbom: sbom.json in /usr is the evaluated document" (
+    fixture.sbom.json == builtins.toJSON fixture.sbom.bom
   ))
 ]

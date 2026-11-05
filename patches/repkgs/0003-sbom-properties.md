@@ -20,3 +20,17 @@ Fork commit: `3053ab5a6afef4945f6abf97a612ae88be371851`
 (`sbom: allow callers to add component properties`) on `upstream-prep`, after `481129b`. It follows
 the branch tip without rewriting the published series. Fold it into the SBOM series when preparing
 that series for upstream.
+
+Follow-up, with the next pin bump: properties are not enough for standard fields. Golconda now needs
+`cpe` and `pedigree` (CycloneDX's way to name a replaced package) and gets them by marking
+components with properties and lifting the markers into fields (`lib/system.nix`). Ask for:
+
+- a hook for whole component fields, for example `extraFields = pkg: { }` merged into the component,
+  with `properties` appended rather than replaced;
+- `cpe` read from `[upstream] cpe` in `sources.toml`, `{version}` replaced by the version, in the
+  generator itself, so every user of `set.sbom` gets it (nixpkgs' `meta.identifiers.cpe` is the
+  model).
+
+Then the lifting step in Golconda goes away. Not done now: `upstream-prep` has moved past the pin
+with changes to glibc's bootstrap and jig, and a pin bump for this alone would rebuild every
+package.

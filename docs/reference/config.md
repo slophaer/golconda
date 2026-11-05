@@ -133,12 +133,14 @@ one of the fork's, null for a new name). A package that takes the name of a repk
 repkgs applies its aliases last, so the alias would win.
 
 When a downstream package enters the runtime closure, its SBOM component has
-`golconda:origin = downstream`. A replacement also has `golconda:replaces = golconda` or
-`golconda:replaces = repkgs`; a new package has no `golconda:replaces` property. This includes
-transitive dependencies. The SBOM matches package identities, not display names. Returning an
-upstream package as an alias does not change that package's origin. If one artifact has conflicting
-replacement records, SBOM generation fails rather than choosing one. Unlike `modules.json`, the SBOM
-does not list unused packages ([Image](image.md#software-bill-of-materials)).
+`golconda:origin = downstream`. A replacement also names the package it replaced in CycloneDX
+`pedigree.ancestors` (name, version, purl, cpe); a new package has no `pedigree`. A `cpe` in
+`[upstream]` of the package's `sources.toml` (`{version}` is replaced) becomes the component's
+`cpe`. This includes transitive dependencies. The SBOM matches package identities, not display
+names. Returning an upstream package as an alias does not change that package's origin. If one
+artifact has conflicting replacement records, SBOM generation fails rather than choosing one. Unlike
+`modules.json`, the SBOM does not list unused packages
+([Image](image.md#software-bill-of-materials)).
 
 ## Validation
 
@@ -193,7 +195,7 @@ every optional component the document has a table for; an empty table selects on
 | ----------------- | ----------------------------------------------------------------------------------------------------- |
 | `composed`        | the composer output ([Modules](modules/README.md#the-composer-output))                                |
 | `usrTree`         | the `/usr` tree derivation with the artifacts in `/usr/lib/golconda/`                                 |
-| `sbom`            | the SBOM derivation; `.bom` is the evaluated CycloneDX document, its output contains `sbom.json`      |
+| `sbom`            | `{ bom; json; }`: the CycloneDX document, and the text of `/usr/lib/golconda/sbom.json`               |
 | `config`          | the normalized options of every included component and `/system`, derivations replaced by their names |
 | `inventory`       | every module's role and inputs; for a component, `included` and `reason`                              |
 | `fragments`       | the names of the build's own fragments (`/image/hwdb` and `extraFragments`)                           |
