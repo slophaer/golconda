@@ -263,11 +263,12 @@ scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-te
 
 `--next` pushes admin vars with the console, as an operator does: build it
 (`nix-build -A packages.x86_64-linux.golconda-console`) and name its binary in `BOOT_TEST_GOLCONDA`,
-and put `age`, `age-keygen` and `ssh-keygen` on PATH. `BOOT_TEST_SSH_PORT` sets the host port for
-the guest's sshd (default 10022). `BOOT_TEST_HTTP_PORT` sets the port of the release HTTP server for
-`--next` (default 8074). The test image's `updateSource` names 8074, so another port needs an image
-built with that `updateSource`. `BOOT_TEST_STORE_ROOT` names the root of a chroot store
-(`--store 'local?root=DIR'`): the harness follows a `/nix/store` symlink under it.
+and put `age` and `age-keygen` (`packages.x86_64-linux.age`) and `ssh-keygen` on PATH.
+`BOOT_TEST_SSH_PORT` sets the host port for the guest's sshd (default 10022). `BOOT_TEST_HTTP_PORT`
+sets the port of the release HTTP server for `--next` (default 8074). The test image's
+`updateSource` names 8074, so another port needs an image built with that `updateSource`.
+`BOOT_TEST_STORE_ROOT` names the root of a chroot store (`--store 'local?root=DIR'`): the harness
+follows a `/nix/store` symlink under it.
 
 The image enforces IPE (`ipe.enforce=1`): `/usr` executes only from a dm-verity mapping whose root
 hash signature the kernel verified. The signature is signed with the Secure Boot db key and its

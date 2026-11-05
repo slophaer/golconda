@@ -55,4 +55,8 @@
   ibm-plex-web = ./ibm-plex-web;
   # file encryption for golconda vars, on PATH beside golconda (console/)
   age = ./age;
+  # copies a release to its update source for golconda release publish (local, S3, SFTP)
+  rclone = ./rclone;
+  # an S3-compatible store: the release tool's tests publish to it through rclone
+  garage = ./garage;
 }

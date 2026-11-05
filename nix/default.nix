@@ -133,6 +133,10 @@ in
       inherit (pkgs) golconda-console;
       # what golconda vars encrypts with, on PATH beside it
       inherit (pkgs) age;
+      # copies a release to its update source (golconda release publish), on PATH beside golconda
+      inherit (pkgs) rclone;
+      # an S3-compatible store for the release tool's tests
+      inherit (pkgs) garage;
     }
     # tests-<name>: a package's own test from tests/packages/ (they moved with the packages)
     // import ../tests/packages { inherit sources set; }
