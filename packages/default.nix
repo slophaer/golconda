@@ -51,4 +51,6 @@
   iets = ./iets;
   # the console's command line, for operators' machines (console/)
   golconda-console = ../console;
+  # the fonts golcondad serves its pages in (console/daemon)
+  ibm-plex-web = ./ibm-plex-web;
 }
