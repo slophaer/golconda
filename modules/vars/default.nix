@@ -35,11 +35,12 @@
 #! - `packages`: the packages the script needs.
 #!
 #! `admin adminVar` returns a fragment with one file, `vars.d/<name>.json`
-#! (`name`, `class: "admin"`, `files`, `credentials`), and no unit: the
-#! consumer's unit waits for the push. The deploy host keeps the value
-#! age-encrypted, pushes it over ssh, and the machine seals it with its own
-#! `systemd-creds` into `/etc/credstore.encrypted/<name>.<file>`. The deploy
-#! tool *(planned)* reads the manifest from the image, never from evaluation.
+#! (`name`, `class: "admin"`, `files`, `credentials`, `consumers`), and no
+#! unit: the consumer's unit waits for the push. The deploy host keeps the
+#! value age-encrypted, pushes it over ssh, and the machine seals it with its
+#! own `systemd-creds` into `/etc/credstore.encrypted/<name>.<file>`; the
+#! deploy tool then restarts the `consumers`. The deploy tool *(planned)*
+#! reads the manifest from the machine, never from evaluation.
 #!
 #! ## On the machine
 #!
@@ -52,6 +53,11 @@
 #! 1. Installs the sealed credential to `/etc/credstore.encrypted/<name>.<file>`.
 #! 1. Copies public files to `/var/lib/golconda/vars/<name>/pub/`.
 #! 1. Touches `done` so the unit does not run again.
+#!
+#! For an admin var the deploy host runs
+#! `golconda-var-run --admin <name> <file>` over ssh with the value on stdin.
+#! It seals the value the same way, only when the image's manifest declares
+#! that admin var and file; a second push replaces the value.
 #!
 #! ## Example
 #!

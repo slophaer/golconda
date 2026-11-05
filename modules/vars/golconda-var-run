@@ -1,7 +1,8 @@
 #!/bin/sh
-# golconda-var-run NAME SECRETS PUBLICS: generate one var on the machine, once.
+# golconda-var-run NAME SECRETS PUBLICS: generate one local var on the machine, once.
+# golconda-var-run --admin NAME FILE: seal one file of an admin var, read from stdin.
 #
-# Run by golconda-var-NAME.service (modules/lib/var.nix) with RuntimeDirectory=
+# Local: run by golconda-var-NAME.service (modules/lib/var.nix) with RuntimeDirectory=
 # and StateDirectory= set. The generator script /usr/lib/golconda/vars.d/NAME.sh
 # runs in $RUNTIME_DIRECTORY (tmpfs) and writes its files there. Then every
 # SECRET is sealed as the credential NAME.SECRET (to the host key and, when the
@@ -9,29 +10,62 @@
 # $STATE_DIRECTORY/pub, the plaintext is removed and `done` is touched. SECRETS
 # and PUBLICS are space-separated file names.
 #
+# Admin: the deploy host (golconda vars push) runs this over ssh with the value on
+# stdin. It seals FILE as the credential NAME.FILE, the same way, only when the
+# image's manifest declares NAME as an admin var with that credential: the image
+# says what may be pushed. A second push replaces the value (rotation); the deploy
+# tool then restarts the manifest's consumers.
+#
 # Consumers load a secret with LoadCredentialEncrypted=NAME.SECRET and read
 # a public file at /var/lib/golconda/vars/NAME/pub/PUBLIC.
+# GOLCONDA_CREDSTORE and GOLCONDA_VARS_D move the two directories for
+# tests/vars/runner.sh; nothing on a machine sets them.
 set -eu
+
+credstore=${GOLCONDA_CREDSTORE:-/etc/credstore.encrypted}
+varsd=${GOLCONDA_VARS_D:-/usr/lib/golconda/vars.d}
+
+# seal ID SOURCE: SOURCE (a file, or - for stdin) as the credential ID.
+# --with-key=auto: host+tpm2 when a TPM2 is present, the host key otherwise.
+# --name= is the credstore file name, which is also the id the consumer loads
+# (LoadCredentialEncrypted=ID): PID 1 checks the embedded name against that id,
+# so a sealed file renamed to another credential fails to decrypt.
+seal() {
+  mkdir -p "$credstore"
+  systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11 \
+    --name="$1" "$2" "$credstore/.$1.tmp"
+  mv "$credstore/.$1.tmp" "$credstore/$1"
+}
+
+umask 077
+
+if [ "${1:-}" = --admin ]; then
+  [ $# = 3 ] || { echo "usage: golconda-var-run --admin NAME FILE" >&2; exit 2; }
+  name=$2
+  file=$3
+  for w in "$name" "$file"; do
+    case $w in "" | . | .. | */* | *'"'*) echo "golconda-var-run: '$w' is not a word" >&2; exit 2 ;; esac
+  done
+  manifest=$varsd/$name.json
+  [ -f "$manifest" ] || { echo "golconda-var-run: no var $name in this image" >&2; exit 1; }
+  # the manifest is builtins.toJSON's output: no spaces, and ids are words
+  m=$(cat "$manifest")
+  case $m in *'"class":"admin"'*) ;; *) echo "golconda-var-run: $name is not an admin var" >&2; exit 1 ;; esac
+  case $m in *"\"$name.$file\""*) ;; *) echo "golconda-var-run: $name has no file $file" >&2; exit 1 ;; esac
+  seal "$name.$file" -
+  exit 0
+fi
 
 name=$1
 secrets=$2
 publics=$3
-script=/usr/lib/golconda/vars.d/$name.sh
-credstore=/etc/credstore.encrypted
+script=$varsd/$name.sh
 
 cd "$RUNTIME_DIRECTORY"
-umask 077
 sh -eu "$script"
 
-mkdir -p "$credstore"
 for f in $secrets; do
-  # --with-key=auto: host+tpm2 when a TPM2 is present, the host key otherwise.
-  # --name= is the credstore file name, which is also the id the consumer loads
-  # (LoadCredentialEncrypted=NAME.SECRET): PID 1 checks the embedded name against
-  # that id, so a sealed file renamed to another credential fails to decrypt.
-  systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11 \
-    --name="$name.$f" "$f" "$credstore/.$name.$f.tmp"
-  mv "$credstore/.$name.$f.tmp" "$credstore/$name.$f"
+  seal "$name.$f" "$f"
 done
 
 mkdir -p "$STATE_DIRECTORY/pub"
