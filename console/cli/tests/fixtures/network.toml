@@ -1,0 +1,8 @@
+# For console/cli/tests/cli.rs: an option inside a map of a type definition.
+["/system"]
+name = "net"
+version = "20261105.1"
+
+["/network".networks.lan]
+match = { Name = "en*" }
+network = { DHCP = "yes", DNS = ["192.0.2.53"] }

@@ -1,0 +1,347 @@
+//! One system: its document, and what mkSystem says about it (config, schema, module docs).
+
+use crate::document::{line_of, toml_text};
+use crate::eval::{self, Arg, Iets};
+use crate::schema::{self, LookupError};
+use serde_json::{Map, Value, json};
+use std::fmt;
+use std::path::{Path, PathBuf};
+
+/// What one evaluation returns: the outputs the console reads, nothing that builds.
+const EXPR: &str = "{ config, system }: \
+    let s = import ./lib/system.nix { inherit config system; }; \
+    in { inherit (s) config schema moduleDocs; }";
+
+pub struct System {
+    /// the Golconda checkout the document is evaluated with
+    pub root: PathBuf,
+    /// the document, relative to `root`
+    pub document: PathBuf,
+    pub text: String,
+    /// mkSystem's config: module path -> option -> { value?; explicit; }
+    pub config: Value,
+    pub schema: Value,
+    /// module path -> its #! doc text or null
+    pub module_docs: Value,
+}
+
+#[derive(Debug)]
+pub enum Error {
+    Read(PathBuf, std::io::Error),
+    /// no Golconda checkout (a directory with lib/system.nix) contains the document
+    NoCheckout(PathBuf),
+    Eval(eval::Error),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::Read(p, e) => write!(f, "cannot read {}: {e}", p.display()),
+            Error::NoCheckout(p) => write!(
+                f,
+                "{} is in no Golconda checkout (a directory above it with lib/system.nix); \
+                 pure evaluation reads files under the checkout only",
+                p.display()
+            ),
+            Error::Eval(e) => e.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
+/// The nearest directory at or above `path` with lib/system.nix.
+pub fn find_root(path: &Path) -> Option<PathBuf> {
+    let abs = std::path::absolute(path).ok()?;
+    abs.ancestors()
+        .skip(1)
+        .find(|d| d.join("lib/system.nix").is_file())
+        .map(Path::to_path_buf)
+}
+
+impl System {
+    /// Read `document` and evaluate it for `system` (a Nix system double).
+    pub fn load(iets: &Iets, document: &Path, system: &str) -> Result<System, Error> {
+        let text =
+            std::fs::read_to_string(document).map_err(|e| Error::Read(document.into(), e))?;
+        let root = find_root(document).ok_or_else(|| Error::NoCheckout(document.into()))?;
+        let abs = std::path::absolute(document).map_err(|e| Error::Read(document.into(), e))?;
+        let v = iets
+            .eval_json(
+                &root,
+                EXPR,
+                &[Arg::Path("config", &abs), Arg::Str("system", system)],
+            )
+            .map_err(Error::Eval)?;
+        Ok(System {
+            document: abs.strip_prefix(&root).unwrap_or(&abs).to_path_buf(),
+            root,
+            text,
+            config: v["config"].clone(),
+            schema: v["schema"].clone(),
+            module_docs: v["moduleDocs"].clone(),
+        })
+    }
+
+    pub fn explain(&self, module: &str, option: &str) -> Result<Explanation, LookupError> {
+        let path: Vec<&str> = option.split('.').collect();
+        let found = schema::option(&self.schema, module, &path)?;
+        let entry = &self.config[module][path[0]];
+        let value = path[1..]
+            .iter()
+            .try_fold(&entry["value"], |v, seg| v.get(*seg))
+            .filter(|v| !v.is_null())
+            .cloned();
+        let set_at = line_of(&self.text, module, &path);
+        let declared = &found.node["x-golconda-declaredIn"];
+        Ok(Explanation {
+            module: module.to_string(),
+            option: option.to_string(),
+            type_name: schema::type_name(found.node),
+            description: found.description.map(str::to_string),
+            explicit: entry["explicit"] == true && (path.len() == 1 || set_at.is_some()),
+            value,
+            default: found.node.get("default").cloned(),
+            set_at: set_at.map(|l| (self.document.display().to_string(), l)),
+            declared_at: declared["file"]
+                .as_str()
+                .map(|f| (f.to_string(), declared["line"].as_u64().unwrap_or(0))),
+        })
+    }
+
+    /// The effective configuration as TOML-like text: every module mkSystem reports, every
+    /// option with its value; defaults marked `# default`, an option with neither value nor
+    /// default as a comment. `set_only`: what the document sets.
+    pub fn show(&self, set_only: bool) -> String {
+        let mut out = String::new();
+        let empty = Map::new();
+        for (module, options) in self.config.as_object().unwrap_or(&empty) {
+            let mut lines = String::new();
+            for (name, o) in options.as_object().unwrap_or(&empty) {
+                let explicit = o["explicit"] == true;
+                if set_only && !explicit {
+                    continue;
+                }
+                let key = toml_key(name);
+                match o.get("value") {
+                    None => lines += &format!("# {key}: no value\n"),
+                    // TOML has no null: a comment keeps the text TOML
+                    Some(Value::Null) if explicit => lines += &format!("# {key} = null\n"),
+                    Some(Value::Null) => lines += &format!("# {key} = null  # default\n"),
+                    Some(v) if explicit => lines += &format!("{key} = {}\n", toml_text(v)),
+                    Some(v) => lines += &format!("{key} = {}  # default\n", toml_text(v)),
+                }
+            }
+            if lines.is_empty() && set_only {
+                continue;
+            }
+            if !out.is_empty() {
+                out.push('\n');
+            }
+            out += &format!("[{}]\n{lines}", Value::String(module.clone()));
+        }
+        out
+    }
+}
+
+fn toml_key(k: &str) -> String {
+    if !k.is_empty()
+        && k.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        k.to_string()
+    } else {
+        Value::String(k.to_string()).to_string()
+    }
+}
+
+/// What `golconda config explain` says about one option.
+#[derive(Debug, PartialEq)]
+pub struct Explanation {
+    pub module: String,
+    /// the option path inside the module, dotted
+    pub option: String,
+    pub type_name: String,
+    pub description: Option<String>,
+    /// the effective value; None when there is none
+    pub value: Option<Value>,
+    /// the document sets it
+    pub explicit: bool,
+    pub default: Option<Value>,
+    /// (document, line) where the document sets it
+    pub set_at: Option<(String, usize)>,
+    /// (file, line) where the module declares it
+    pub declared_at: Option<(String, u64)>,
+}
+
+impl Explanation {
+    pub fn to_json(&self) -> Value {
+        json!({
+            "module": self.module,
+            "option": self.option,
+            "type": self.type_name,
+            "description": self.description,
+            "value": self.value,
+            "explicit": self.explicit,
+            "default": self.default,
+            "setAt": self.set_at.as_ref().map(|(f, l)| json!({ "file": f, "line": l })),
+            "declaredIn": self.declared_at.as_ref().map(|(f, l)| json!({ "file": f, "line": l })),
+        })
+    }
+
+    pub fn to_text(&self) -> String {
+        let mut out = format!("{} {}\n", self.module, self.option);
+        if let Some(d) = &self.description {
+            out += &format!("\n{}\n\n", wrap(d, 76, "  "));
+        }
+        out += &format!("type      {}\n", self.type_name);
+        let value = match &self.value {
+            Some(v) => toml_text(v),
+            None => "(none)".into(),
+        };
+        match &self.set_at {
+            Some((f, l)) if self.explicit => {
+                out += &format!("value     {value}  (set at {f}:{l})\n")
+            }
+            _ => out += &format!("value     {value}  (default)\n"),
+        }
+        if let Some(d) = &self.default {
+            out += &format!("default   {}\n", toml_text(d));
+        }
+        if let Some((f, l)) = &self.declared_at {
+            out += &format!("declared  {f}:{l}\n");
+        }
+        out
+    }
+}
+
+fn wrap(text: &str, width: usize, indent: &str) -> String {
+    let mut lines = Vec::new();
+    let mut line = String::new();
+    for word in text.split_whitespace() {
+        if !line.is_empty() && indent.len() + line.len() + 1 + word.len() > width {
+            lines.push(format!("{indent}{line}"));
+            line.clear();
+        }
+        if !line.is_empty() {
+            line.push(' ');
+        }
+        line += word;
+    }
+    if !line.is_empty() {
+        lines.push(format!("{indent}{line}"));
+    }
+    lines.join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn system() -> System {
+        System {
+            root: "/c".into(),
+            document: "server.toml".into(),
+            text: "[\"/services/sshd\"]\nport = 2222\n".into(),
+            config: json!({
+                "/base": { "ntp": { "explicit": false, "value": ["a"] },
+                           "dns": { "explicit": false, "value": null } },
+                "/services/sshd": {
+                    "port": { "explicit": true, "value": 2222 },
+                    "package": { "explicit": false },
+                    "principals": { "explicit": false, "value": {} }
+                }
+            }),
+            schema: json!({ "properties": { "/base": { "properties": { "ntp": {} } },
+                "/services/sshd": { "properties": {
+                "port": { "type": "integer", "default": 22, "description": "Listening port.",
+                          "x-golconda-declaredIn": { "file": "modules/services/sshd/default.nix", "line": 50 } },
+                "package": { "type": "string", "x-golconda": "package" },
+                "principals": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "string" } } }
+            }}}}),
+            module_docs: json!({}),
+        }
+    }
+
+    #[test]
+    fn explain_a_set_option() {
+        let e = system().explain("/services/sshd", "port").unwrap();
+        assert_eq!(
+            e.to_text(),
+            "/services/sshd port\n\n  Listening port.\n\n\
+             type      integer\n\
+             value     2222  (set at server.toml:2)\n\
+             default   22\n\
+             declared  modules/services/sshd/default.nix:50\n"
+        );
+        assert_eq!(
+            e.to_json()["setAt"],
+            json!({ "file": "server.toml", "line": 2 })
+        );
+    }
+
+    #[test]
+    fn explain_an_option_with_no_value() {
+        let e = system().explain("/services/sshd", "package").unwrap();
+        assert_eq!(e.value, None);
+        assert!(!e.explicit);
+        assert!(
+            e.to_text()
+                .contains("type      package\nvalue     (none)  (default)\n")
+        );
+    }
+
+    #[test]
+    fn explain_inside_a_map_has_no_value_where_the_map_has_none() {
+        let e = system()
+            .explain("/services/sshd", "principals.root")
+            .unwrap();
+        assert_eq!(e.type_name, "list of string");
+        assert_eq!(e.value, None);
+        assert!(!e.explicit);
+    }
+
+    #[test]
+    fn explain_a_key_the_document_does_not_set_in_a_map_it_sets() {
+        let mut sys = system();
+        sys.text += "principals = { root = [\"a@b\"] }\n";
+        sys.config["/services/sshd"]["principals"] =
+            json!({ "explicit": true, "value": { "root": ["a@b"] } });
+        let root = sys.explain("/services/sshd", "principals.root").unwrap();
+        assert!(root.explicit);
+        assert_eq!(root.set_at, Some(("server.toml".into(), 3)));
+        let admin = sys.explain("/services/sshd", "principals.admin").unwrap();
+        assert!(!admin.explicit);
+        assert_eq!(admin.set_at, None);
+    }
+
+    #[test]
+    fn show_marks_defaults_and_missing_values() {
+        assert_eq!(
+            system().show(false),
+            "[\"/base\"]\n# dns = null  # default\nntp = [\"a\"]  # default\n\n\
+             [\"/services/sshd\"]\n# package: no value\nport = 2222\nprincipals = {}  # default\n"
+        );
+        assert_eq!(system().show(true), "[\"/services/sshd\"]\nport = 2222\n");
+    }
+
+    #[test]
+    fn keys_that_need_quotes() {
+        assert_eq!(toml_key("port"), "port");
+        assert_eq!(toml_key("a.b"), "\"a.b\"");
+        assert_eq!(toml_key(""), "\"\"");
+    }
+
+    #[test]
+    fn the_checkout_is_found_above_the_document() {
+        let tmp = std::env::temp_dir().join(format!("golconda-core-{}", std::process::id()));
+        std::fs::create_dir_all(tmp.join("lib")).unwrap();
+        std::fs::create_dir_all(tmp.join("a/b")).unwrap();
+        std::fs::write(tmp.join("lib/system.nix"), "").unwrap();
+        // the document's own directory counts, and so does every one above it
+        assert_eq!(find_root(&tmp.join("server.toml")), Some(tmp.clone()));
+        assert_eq!(find_root(&tmp.join("a/b/server.toml")), Some(tmp.clone()));
+        std::fs::remove_dir_all(&tmp).unwrap();
+        assert_eq!(find_root(Path::new("/server.toml")), None);
+    }
+}

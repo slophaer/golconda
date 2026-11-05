@@ -49,4 +49,6 @@
   python-pefile = ./python-pefile;
   # the evaluator the dev shell and lint use
   iets = ./iets;
+  # the console's command line, for operators' machines (console/)
+  golconda-console = ../console;
 }

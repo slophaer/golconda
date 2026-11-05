@@ -111,6 +111,8 @@ in
       # repkgs' own Nix package (stock Nix with a relocation patch), built by repkgs, so it
       # needs a daemon with CA and dynamic derivations first (docs/reference/build-host.md)
       inherit (pkgs) nix;
+      # the console's command line (console/), built by repkgs like nix
+      inherit (pkgs) golconda-console;
     }
     # tests-<name>: a package's own test from tests/packages/ (they moved with the packages)
     // import ../tests/packages { inherit sources set; }
