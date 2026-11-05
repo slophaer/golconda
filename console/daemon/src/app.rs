@@ -82,8 +82,33 @@ pub fn router(app: App) -> Router {
         .with_state(Arc::new(app))
 }
 
+/// Only a loopback name in Host: a page elsewhere whose name resolves to 127.0.0.1 (DNS
+/// rebinding) sends its own, and must not read what the development identity may. A request
+/// without Host is no browser's.
+fn loopback_host(req: &Request) -> bool {
+    let Some(host) = req
+        .headers()
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+    else {
+        return req.headers().get(header::HOST).is_none();
+    };
+    let name = match host.strip_prefix('[') {
+        Some(v6) => v6.split(']').next().unwrap_or(""),
+        None => host.split(':').next().unwrap_or(""),
+    };
+    matches!(name, "localhost" | "127.0.0.1" | "::1")
+}
+
 /// On every answer: nothing from elsewhere, no framing, no sniffing.
 async fn headers(req: Request, next: Next) -> Response {
+    if !loopback_host(&req) {
+        return (
+            StatusCode::MISDIRECTED_REQUEST,
+            "this daemon answers on loopback names only\n",
+        )
+            .into_response();
+    }
     let mut res = next.run(req).await;
     let h = res.headers_mut();
     h.insert(
