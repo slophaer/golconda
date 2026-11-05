@@ -47,6 +47,9 @@ fn parse(argv: &[String]) -> Result<Args, String> {
                         "--system: {n:?} is not a name (letters, digits, - and _)"
                     ));
                 }
+                if systems.iter().any(|(m, _)| m == n) {
+                    return Err(format!("--system: {n} is given twice"));
+                }
                 systems.push((n.to_string(), PathBuf::from(d)));
             }
             "--dev-identity" => {
@@ -177,5 +180,6 @@ mod tests {
         assert!(e("--dev-identity a:operator").contains("--system"));
         assert!(e("--system s=x --dev-identity a:root").contains("no level"));
         assert!(e("--system ../x=y --dev-identity a:operator").contains("not a name"));
+        assert!(e("--system a=x --system a=y --dev-identity a:operator").contains("twice"));
     }
 }
