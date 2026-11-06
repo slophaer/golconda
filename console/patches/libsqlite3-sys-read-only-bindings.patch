@@ -1,0 +1,19 @@
+libsqlite3-sys: replace the bindings a run before left read-only
+
+The bundled bindings are copied from the crate's directory, which in a
+store is read-only, and so is the copy. A second run of the build script
+into the same OUT_DIR (cargo test after cargo build) then fails with
+"Permission denied".
+
+--- a/build.rs
++++ b/build.rs
+@@ -65,6 +65,9 @@
+     } else {
+         format!("{dir}/{bindgen_name}.rs")
+     };
++    // A copy of a read-only source (a crate vendored in a read-only store) is read-only too:
++    // when the script runs again, as a test build after the build does, it must replace it.
++    let _ = std::fs::remove_file(out_path.as_ref());
+     std::fs::copy(from, out_path).expect("Could not copy bindings to output directory");
+ }
+ 
