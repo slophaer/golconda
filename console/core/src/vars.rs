@@ -17,6 +17,8 @@ use std::ffi::OsString;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::thread;
+use std::time;
 use std::{env, fs, result};
 use tempfile::Builder;
 
@@ -158,18 +160,32 @@ impl Program {
             .split_first()
             .ok_or(Error("an empty program".into()))?;
         let name = program.to_string_lossy();
-        let mut child = Command::new(program)
-            .args(lead)
-            .args(args)
-            .stdin(if stdin.is_some() {
-                Stdio::piped()
-            } else {
-                Stdio::null()
-            })
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| Error(format!("cannot run {name}: {e}")))?;
+        let spawn = || {
+            Command::new(program)
+                .args(lead)
+                .args(args)
+                .stdin(if stdin.is_some() {
+                    Stdio::piped()
+                } else {
+                    Stdio::null()
+                })
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+        };
+        // ETXTBSY: the program is still open for writing somewhere, typically a file just
+        // written whose descriptor a process forked meanwhile holds until it execs. That
+        // passes within moments; wait up to half a second for it.
+        let mut tries = 0;
+        let mut child = loop {
+            match spawn() {
+                Err(e) if e.raw_os_error() == Some(26) && tries < 50 => {
+                    tries += 1;
+                    thread::sleep(time::Duration::from_millis(10));
+                }
+                other => break other.map_err(|e| Error(format!("cannot run {name}: {e}")))?,
+            }
+        };
         if let Some(input) = stdin {
             // a child that exits early closes the pipe; its status says why
             let _ = child.stdin.take().expect("piped").write_all(input);
@@ -400,7 +416,10 @@ pub fn list(store: &Store, remote: &Remote, host: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
     use std::os::unix::fs::PermissionsExt;
+    use std::thread;
+    use std::time;
     use tempfile::{Builder, TempDir};
 
     fn script(dir: &Path, name: &str, body: &str) -> Program {
@@ -546,6 +565,26 @@ esac
         ] {
             assert!(with(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn a_program_still_open_for_writing_is_run_once_it_is_closed() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().to_path_buf();
+        let p = dir.join("prog");
+        // open for writing, as a script being written is (or one a forked child still holds)
+        let mut f = fs::File::create(&p).unwrap();
+        f.write_all(b"#!/bin/sh\necho ran\n").unwrap();
+        fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
+        let closer = thread::spawn(move || {
+            thread::sleep(time::Duration::from_millis(50));
+            drop(f);
+        });
+        let prog = Program {
+            argv: vec![p.clone().into_os_string()],
+        };
+        assert_eq!(prog.run(&[], None).unwrap(), b"ran\n");
+        closer.join().unwrap();
     }
 
     #[test]
