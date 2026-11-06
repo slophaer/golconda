@@ -312,6 +312,7 @@ dependencies = [
  "golconda-core",
  "serde_json",
  "tempfile",
+ "ureq",
 ]
 
 [[package]]

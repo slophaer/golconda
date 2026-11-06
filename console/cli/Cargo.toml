@@ -9,6 +9,7 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+ureq.workspace = true
 clap.workspace = true
 golconda-core.workspace = true
 serde_json.workspace = true
