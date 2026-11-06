@@ -59,11 +59,11 @@
         "owner": "yolobox",
         "repo": "repkgs"
       },
-      "branch": "upstream-prep",
+      "branch": "pr/rfc-series",
       "submodules": false,
-      "revision": "2482527ade124804c855ce8ed759ba993471c295",
-      "url": "https://code.in.a.flawed.cloud/yolobox/repkgs/archive/2482527ade124804c855ce8ed759ba993471c295.tar.gz",
-      "hash": "sha256-2XO00omAloLwpGNAjpzsJyU3USkDEvn127s3QTkGk3Q="
+      "revision": "2683a2a843e89c3103dac8e4c92d58b6a6ffd4be",
+      "url": "https://code.in.a.flawed.cloud/yolobox/repkgs/archive/2683a2a843e89c3103dac8e4c92d58b6a6ffd4be.tar.gz",
+      "hash": "sha256-8Cez5a9PqvvmIbnWZBf7jHsJvf+5WMAmegoIyjK5jbU="
     }
   },
   "version": 7
