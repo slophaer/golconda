@@ -136,6 +136,11 @@ golcondad --system server=checkout/server.toml --state /var/lib/golcondad \
   `--push` on the checkout's current branch. A push that fails leaves the commit local.
 - `POST /systems/NAME/discard`; `GET /systems/NAME/candidate`.
 
+The CLI works through such a daemon with `--server URL --name NAME`: `config set` and
+`config delete` become operations on the revision it reads first (or `--base N`), and
+`config candidate`, `config commit -m TEXT` and `config discard` work on the candidate. It cannot
+sign in through OIDC yet (the device flow): today it reaches a daemon in development mode.
+
 The remote is fetched every `--fetch-every` seconds too. Every action and every refusal (a conflict,
 a problem, a write by someone who may only read, or in a `--read-only` daemon: 403) is an audit
 entry, written before the answer; an entry that cannot be written refuses the action. Entries go to
@@ -157,7 +162,14 @@ first, filtered by operator, system, action and day; as JSON with `Accept: appli
 The daemon keeps an audit log in a git repository of its own: one entry per commit, one JSON line
 added to the file of its day (`2026/11/05.jsonl`), the operator as the author, the daemon as the
 committer, signed with its SSH key, and a summary with trailers (`Operator:`, `Action:`, `System:`,
-`Result:`, `Config-Commit:`) as the message.
+`Result:`, `Config-Commit:`) as the message. Anyone with a clone can check it:
+
+```sh
+golconda audit verify --repo audit --allowed-signers allowed_signers
+```
+
+`allowed_signers` names the daemon's key (or its CA, `cert-authority`) in git's format. Every commit
+must be signed by it, add exactly one entry and remove nothing.
 
 ## Develop
 

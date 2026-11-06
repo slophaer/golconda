@@ -4,11 +4,18 @@
 //! which a package build does not have, so they are ignored there:
 //! `cargo test -- --include-ignored` runs them (console/README.md).
 
+use golconda_core::audit::{Audit, Entry};
+use golconda_core::candidate::Operator;
+use golconda_core::git::{Git, Person};
+use std::env;
 use std::fs;
-use std::io::Write;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net;
 use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::PathBuf;
 use std::process::{Command, Output, Stdio};
+use std::sync;
+use std::thread;
 use tempfile::{Builder, TempDir};
 
 fn checkout() -> PathBuf {
@@ -152,7 +159,7 @@ fn usage_errors_exit_2() {
 fn version_and_help() {
     let v = stdout(&golconda(&["--version"]));
     assert_eq!(v, format!("golconda {}\n", env!("CARGO_PKG_VERSION")));
-    assert!(stdout(&golconda(&["--help"])).contains("Usage: golconda <COMMAND>"));
+    assert!(stdout(&golconda(&["--help"])).contains("Usage: golconda [OPTIONS] <COMMAND>"));
 }
 
 /// `golconda vars` with stand-ins for age and ssh (GOLCONDA_AGE, GOLCONDA_SSH): the wiring of
@@ -639,4 +646,252 @@ fn values_that_start_with_a_dash() {
         "--x",
     ]));
     assert!(err.contains("expected integer"), "{err}");
+}
+
+#[test]
+fn audit_verify_checks_every_entry() {
+    let tmp = TempDir::new().unwrap();
+    let dir = tmp.path().to_path_buf();
+    let key = dir.join("key");
+    assert!(
+        Command::new("ssh-keygen")
+            .args(["-q", "-t", "ed25519", "-N", "", "-C", "golcondad", "-f"])
+            .arg(&key)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let public = fs::read_to_string(key.with_extension("pub")).unwrap();
+    let allowed = dir.join("allowed_signers");
+    fs::write(
+        &allowed,
+        format!("golcondad@test namespaces=\"git\" {public}"),
+    )
+    .unwrap();
+    let git = Git {
+        dir: dir.join("audit"),
+        committer: Person {
+            name: "golcondad".into(),
+            id: "golcondad@test".into(),
+        },
+        signing_key: Some(key),
+    };
+    let audit = Audit::open(&git).unwrap();
+    let alice = Operator {
+        id: "alice@example.com".into(),
+        name: "Alice".into(),
+    };
+    for action in ["signin", "config.set"] {
+        audit
+            .record(&Entry::new(&alice, "web", action, "ok"))
+            .unwrap();
+    }
+    let verify = || {
+        golconda(&[
+            "audit",
+            "verify",
+            "--repo",
+            git.dir.to_str().unwrap(),
+            "--allowed-signers",
+            allowed.to_str().unwrap(),
+        ])
+    };
+    assert_eq!(stdout(&verify()), "2 entries, each one signed line\n");
+    // relative paths, from the directory they are relative to
+    let o = Command::new(env!("CARGO_BIN_EXE_golconda"))
+        .args([
+            "audit",
+            "verify",
+            "--repo",
+            "audit",
+            "--allowed-signers",
+            "allowed_signers",
+        ])
+        .current_dir(&dir)
+        .output()
+        .unwrap();
+    assert_eq!(stdout(&o), "2 entries, each one signed line\n");
+    // an unsigned entry
+    let unsigned = Git {
+        signing_key: None,
+        dir: git.dir.clone(),
+        committer: git.committer.clone(),
+    };
+    Audit::open(&unsigned)
+        .unwrap()
+        .record(&Entry::new(&alice, "web", "x", "ok"))
+        .unwrap();
+    let err = fails(&verify());
+    assert!(err.contains("signature"), "{err}");
+}
+
+/// A daemon stand-in: answers each request in turn with the given status and JSON, and keeps
+/// what it was sent (request line, then body).
+fn stub(answers: Vec<(u16, &'static str)>) -> (String, sync::Arc<sync::Mutex<Vec<String>>>) {
+    let listener = net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let seen = sync::Arc::new(sync::Mutex::new(Vec::new()));
+    let log = seen.clone();
+    thread::spawn(move || {
+        for (status, body) in answers {
+            let (mut s, _) = listener.accept().unwrap();
+            let mut r = BufReader::new(s.try_clone().unwrap());
+            let mut line = String::new();
+            r.read_line(&mut line).unwrap();
+            let mut len = 0;
+            loop {
+                let mut h = String::new();
+                r.read_line(&mut h).unwrap();
+                if h == "\r\n" || h.is_empty() {
+                    break;
+                }
+                if let Some(v) = h.to_lowercase().strip_prefix("content-length:") {
+                    len = v.trim().parse().unwrap();
+                }
+            }
+            let mut b = vec![0; len];
+            r.read_exact(&mut b).unwrap();
+            log.lock().unwrap().push(format!(
+                "{}{}",
+                line.trim(),
+                if len > 0 {
+                    format!(" {}", String::from_utf8_lossy(&b))
+                } else {
+                    String::new()
+                }
+            ));
+            write!(s, "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+        }
+    });
+    (url, seen)
+}
+
+#[test]
+fn with_a_server_set_is_an_operation_on_the_revision_it_reads() {
+    let (url, seen) = stub(vec![
+        (200, r#"{"revision":4,"ops":[]}"#),
+        (
+            200,
+            r#"{"rev":5,"base":4,"module":"/services/sshd","path":["port"],"op":"set","value":"2222","by":{"id":"a","name":"Alice"},"via":"cli","at":"t","state":"open","commit":null}"#,
+        ),
+    ]);
+    let out = stdout(&golconda(&[
+        "--server",
+        &url,
+        "--name",
+        "server",
+        "config",
+        "set",
+        "/services/sshd",
+        "port",
+        "2222",
+    ]));
+    assert_eq!(out, "rev 5: set /services/sshd port 2222\n");
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen[0], "GET /systems/server/candidate HTTP/1.1");
+    let body = seen[1]
+        .strip_prefix("POST /systems/server/ops HTTP/1.1 ")
+        .expect("an operation posted");
+    let body: serde_json::Value = serde_json::from_str(body).unwrap();
+    assert_eq!(
+        body,
+        serde_json::json!({ "base": 4, "module": "/services/sshd", "option": "port", "op": "set", "value": "2222" })
+    );
+}
+
+#[test]
+fn with_a_server_a_conflict_and_problems_are_said_plainly() {
+    let (url, _) = stub(vec![(
+        409,
+        r#"{"error":"conflict","yours":{"target":"/services/sshd port","value":2200},"theirs":[{"rev":5,"base":4,"module":"/services/sshd","path":["port"],"op":"set","value":"2222","by":{"id":"a","name":"Alice"},"via":"web","at":"2026-11-05T20:00:00Z","state":"open","commit":null}]}"#,
+    )]);
+    let err = fails(&golconda(&[
+        "--server",
+        &url,
+        "--name",
+        "server",
+        "config",
+        "set",
+        "--base",
+        "4",
+        "/services/sshd",
+        "port",
+        "2200",
+    ]));
+    assert!(
+        err.contains(
+            "conflict: rev 5 set /services/sshd port 2222 by Alice at 2026-11-05T20:00:00Z"
+        ),
+        "{err}"
+    );
+    let (url, _) = stub(vec![(
+        422,
+        r#"{"error":"invalid","problems":[{"line":11,"path":"/services/sshd port","message":"0 is less than 1"}]}"#,
+    )]);
+    let err = fails(&golconda(&[
+        "--server",
+        &url,
+        "--name",
+        "server",
+        "config",
+        "set",
+        "--base",
+        "4",
+        "/services/sshd",
+        "port",
+        "0",
+    ]));
+    assert!(
+        err.contains("/services/sshd port: 0 is less than 1"),
+        "{err}"
+    );
+}
+
+#[test]
+fn with_a_server_commit_discard_and_the_candidate() {
+    let (url, seen) = stub(vec![
+        (
+            200,
+            r#"{"revision":6,"ops":[{"rev":6,"base":5,"module":"/network","path":[],"op":"delete","value":null,"by":{"id":"b","name":"Bob"},"via":"web","at":"t","state":"open","commit":null}]}"#,
+        ),
+        (
+            200,
+            r#"{"commit":"abc123","pushed":false,"ops":[],"outside":[]}"#,
+        ),
+        (200, r#"{"discarded":[]}"#),
+    ]);
+    let srv = ["--server", url.as_str(), "--name", "server"];
+    let run = |rest: &[&str]| golconda(&[&srv[..], rest].concat());
+    assert_eq!(
+        stdout(&run(&["config", "candidate"])),
+        "revision 6\n  6 delete /network (Bob)\n"
+    );
+    assert_eq!(
+        stdout(&run(&["config", "commit", "-m", "drop the network"])),
+        "committed abc123, not pushed yet\n"
+    );
+    assert_eq!(
+        stdout(&run(&["config", "discard"])),
+        "discarded 0 operations\n"
+    );
+    let seen = seen.lock().unwrap();
+    assert!(
+        seen[1].starts_with("POST /systems/server/commit HTTP/1.1"),
+        "{seen:?}"
+    );
+    assert!(
+        seen[1].ends_with(r#"{"message":"drop the network"}"#),
+        "{seen:?}"
+    );
+}
+
+#[test]
+fn candidate_commit_and_discard_need_a_server() {
+    let o = golconda(&["config", "commit", "-m", "x"]);
+    assert_eq!(
+        o.status.code(),
+        Some(2),
+        "{}",
+        String::from_utf8_lossy(&o.stderr)
+    );
 }
