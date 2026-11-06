@@ -4,7 +4,8 @@
 //! the sign-in routes do not.
 
 use crate::auth::{self, Oidc, Refused};
-use crate::{FONTS, pages};
+use crate::write::Outcome;
+use crate::{FONTS, locked, pages, write};
 use axum::Router;
 use axum::extract::{Extension, Path, Query, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
@@ -18,7 +19,7 @@ use golconda_core::system::{Explanation, System};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::env::consts;
-use std::path::PathBuf;
+use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +38,10 @@ impl Level {
 }
 
 /// Who is signed in.
+/// The CSRF token the signed-in person's forms carry.
+#[derive(Debug, Clone)]
+pub struct Csrf(pub String);
+
 #[derive(Debug, Clone)]
 pub struct Identity {
     /// the OIDC subject (`dev:NAME` for the development identity)
@@ -56,6 +61,10 @@ pub struct App {
     /// name -> the system's document
     pub systems: Vec<(String, PathBuf)>,
     pub signin: Signin,
+    /// the journal and the audit log; none: this daemon only reads (no --state)
+    pub writes: Option<write::Writes>,
+    /// the CSRF token of the development identity's forms (with OIDC, each session has one)
+    pub csrf: String,
     /// the whole daemon is read-only (`--read-only`)
     pub read_only: bool,
     pub iets: Iets,
@@ -64,17 +73,31 @@ pub struct App {
 }
 
 impl App {
+    /// # Panics
+    ///
+    /// When the system's random source fails: without it there is no CSRF token.
     pub fn new(systems: Vec<(String, PathBuf)>, signin: Signin, read_only: bool) -> Self {
+        let mut b = [0u8; 32];
+        ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut b).expect("random");
         App {
             systems,
             signin,
+            writes: None,
+            csrf: base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, b),
             read_only,
             iets: Iets::from_env(),
             platform: format!("{}-linux", consts::ARCH),
         }
     }
 
-    fn document(&self, name: &str) -> Option<&PathBuf> {
+    /// This daemon writes, with the journal and audit log in `writes`.
+    #[must_use]
+    pub fn with_writes(mut self, writes: write::Writes) -> Self {
+        self.writes = Some(writes);
+        self
+    }
+
+    pub fn document(&self, name: &str) -> Option<&PathBuf> {
         self.systems.iter().find(|(n, _)| n == name).map(|(_, p)| p)
     }
 }
@@ -82,14 +105,23 @@ impl App {
 type Shared = Arc<App>;
 
 pub fn router(app: App) -> Router {
-    let app = Arc::new(app);
+    router_shared(Arc::new(app))
+}
+
+/// The routes, for an app something else holds too (the fetch timer).
+pub fn router_shared(app: Arc<App>) -> Router {
     let pages = Router::new()
         .route("/", get(index))
         .route("/systems/{name}", get(system_root))
         .route("/systems/{name}/config", get(config))
         .route("/systems/{name}/config/{*module}", get(module))
         .route("/systems/{name}/changes", get(changes))
+        .route("/systems/{name}/candidate", get(candidate))
+        .route("/systems/{name}/ops", post(write_op))
+        .route("/systems/{name}/commit", post(write_commit))
+        .route("/systems/{name}/discard", post(write_discard))
         .route("/auth/me", get(me))
+        .route("/audit", get(audit_log))
         .layer(middleware::from_fn_with_state(app.clone(), signed_in));
     Router::new()
         .merge(pages)
@@ -160,9 +192,15 @@ fn session_cookie(h: &HeaderMap) -> Option<&str> {
 /// Who is signed in, for the pages (an `Identity` extension). Nobody: a browser goes to sign
 /// in and comes back, JSON gets 401.
 async fn signed_in(State(app): State<Shared>, mut req: Request, next: Next) -> Response {
-    let who = match &app.signin {
-        Signin::Dev(who) => Some(who.clone()),
-        Signin::Oidc(o) => session_cookie(req.headers()).and_then(|id| o.session(id)),
+    let (who, csrf) = match &app.signin {
+        Signin::Dev(who) => (Some(who.clone()), Some(app.csrf.clone())),
+        Signin::Oidc(o) => {
+            let id = session_cookie(req.headers());
+            (
+                id.and_then(|id| o.session(id)),
+                id.and_then(|id| o.csrf(id)),
+            )
+        }
     };
     let Some(who) = who else {
         // /auth/me is JSON whatever the request accepts
@@ -173,6 +211,7 @@ async fn signed_in(State(app): State<Shared>, mut req: Request, next: Next) -> R
         return Redirect::to(&format!("/auth/login?next={}", auth::encode(here))).into_response();
     };
     req.extensions_mut().insert(who);
+    req.extensions_mut().insert(Csrf(csrf.unwrap_or_default()));
     next.run(req).await
 }
 
@@ -304,9 +343,11 @@ async fn config(
     pages::config(&app, &who, &name, &sys).into_response()
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn module(
     State(app): State<Shared>,
     Extension(who): Extension<Identity>,
+    Extension(csrf): Extension<Csrf>,
     Path((name, module)): Path<(String, String)>,
     Query(q): Query<HashMap<String, String>>,
     h: HeaderMap,
@@ -354,7 +395,8 @@ async fn module(
         }))
         .into_response();
     }
-    pages::module(
+    let edit = edit_view(&app, &who, &csrf, &name, &sys, q.get("draft").cloned());
+    let page = pages::module(
         &app,
         &who,
         &name,
@@ -362,33 +404,391 @@ async fn module(
         &module,
         &options,
         selected.as_ref(),
-    )
-    .into_response()
+        edit.as_ref(),
+    );
+    page.into_response()
 }
+
+/// The system, what changed, and the candidate's open operations (none without a journal).
+type ChangesView = (
+    System,
+    Vec<Change>,
+    Option<Vec<golconda_core::candidate::Op>>,
+);
 
 async fn changes(
     State(app): State<Shared>,
     Extension(who): Extension<Identity>,
+    Extension(csrf): Extension<Csrf>,
     Path(name): Path<String>,
-    h: HeaderMap,
+    headers: HeaderMap,
 ) -> Response {
-    let json = wants_json(&h);
+    let json = wants_json(&headers);
     let Some(doc) = app.document(&name).cloned() else {
         return problem(json, StatusCode::NOT_FOUND, &format!("no system {name}"));
     };
-    let a = app.clone();
-    let both = tokio::task::spawn_blocking(move || against_git(&a.iets, &doc, "HEAD", &a.platform))
-        .await
-        .expect("evaluation thread");
-    let (sys, changes) = match both {
-        Ok(x) => x,
-        Err(e) => return problem(json, StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
+    let shared = app.clone();
+    let system = name.clone();
+    // with a journal: the candidate against the commit; without: the working tree against HEAD
+    let done = tokio::task::spawn_blocking(move || -> Result<ChangesView, String> {
+        let Some(writes) = &shared.writes else {
+            let (sys, changes) = against_git(&shared.iets, &doc, "HEAD", &shared.platform)
+                .map_err(|e| e.to_string())?;
+            return Ok((sys, changes, None));
+        };
+        let sys = System::load(&shared.iets, &doc, &shared.platform).map_err(|e| e.to_string())?;
+        let (ops, text) = {
+            let journal = locked(&writes.journal);
+            let ops = journal.open_ops(&system).map_err(|e| e.to_string())?;
+            (
+                ops,
+                journal
+                    .candidate(&system, &sys.text)
+                    .map_err(|e| e.to_string())?,
+            )
+        };
+        let changes = if ops.is_empty() {
+            Vec::new()
+        } else {
+            let cand = System::load_text(&shared.iets, &doc, &text, &shared.platform)
+                .map_err(|e| e.to_string())?;
+            golconda_core::diff::diff(&sys.config, &cand.config)
+        };
+        Ok((sys, changes, Some(ops)))
+    })
+    .await
+    .expect("evaluation thread");
+    let (sys, changes, ops) = match done {
+        Ok(view) => view,
+        Err(e) => return problem(json, StatusCode::INTERNAL_SERVER_ERROR, &e),
     };
+    let diff = Value::Array(changes.iter().map(Change::to_json).collect());
     if json {
-        return axum::Json(Value::Array(changes.iter().map(Change::to_json).collect()))
-            .into_response();
+        return match &ops {
+            None => axum::Json(diff).into_response(),
+            Some(ops) => axum::Json(serde_json::json!({
+                "ops": ops.iter().map(golconda_core::candidate::Op::to_json).collect::<Vec<_>>(),
+                "changes": diff,
+            }))
+            .into_response(),
+        };
     }
-    pages::changes(&app, &who, &name, &sys, &changes).into_response()
+    let edit = edit_view(&app, &who, &csrf, &name, &sys, None);
+    pages::changes(
+        &app,
+        &who,
+        &name,
+        &sys,
+        &changes,
+        ops.as_deref(),
+        edit.as_ref(),
+    )
+    .into_response()
+}
+
+/// A request body as JSON: a JSON body as it is, a form's fields as an object of strings.
+fn body_json(h: &HeaderMap, body: &[u8]) -> Result<Value, String> {
+    let ctype = h
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if ctype.starts_with("application/json") {
+        return serde_json::from_slice(body).map_err(|e| format!("the body is not JSON: {e}"));
+    }
+    if ctype.starts_with("application/x-www-form-urlencoded") {
+        let pairs: Vec<(String, String)> =
+            serde_urlencoded::from_bytes(body).map_err(|e| format!("the form: {e}"))?;
+        return Ok(Value::Object(
+            pairs
+                .into_iter()
+                .map(|(k, v)| (k, Value::String(v)))
+                .collect(),
+        ));
+    }
+    Err("send JSON or a form".into())
+}
+
+/// The answer to a write, as JSON.
+fn outcome(o: write::Outcome) -> Response {
+    let (status, v) = match o {
+        Outcome::Done(v) => (StatusCode::OK, v),
+        Outcome::Denied(m) => (StatusCode::FORBIDDEN, serde_json::json!({ "error": m })),
+        Outcome::Conflict { yours, theirs } => (
+            StatusCode::CONFLICT,
+            serde_json::json!({ "error": "conflict", "yours": yours,
+                "theirs": theirs.iter().map(golconda_core::candidate::Op::to_json).collect::<Vec<_>>() }),
+        ),
+        Outcome::Invalid(p) => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            serde_json::json!({ "error": "invalid", "problems": p.iter().map(|p| serde_json::json!({
+                "line": p.line, "path": p.path, "message": p.message })).collect::<Vec<_>>() }),
+        ),
+        Outcome::Bad(m) => (StatusCode::BAD_REQUEST, serde_json::json!({ "error": m })),
+        Outcome::Failed(m) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "error": m }),
+        ),
+    };
+    (status, axum::Json(v)).into_response()
+}
+
+/// A form's POST is this site's own: it carries the session's CSRF token, and an Origin the
+/// browser sent is the Host it sent. (A JSON POST needs neither: a page elsewhere cannot send
+/// one without CORS, which this daemon does not answer.)
+fn own_form(h: &HeaderMap, v: &Value, csrf: &str) -> bool {
+    let token = v["csrf"].as_str().unwrap_or("");
+    // in constant time: how much of a guess was right shows in no timing
+    let same = token.len() == csrf.len()
+        && token
+            .bytes()
+            .zip(csrf.bytes())
+            .fold(0u8, |d, (a, b)| d | (a ^ b))
+            == 0;
+    let origin = match h.get(header::ORIGIN).and_then(|o| o.to_str().ok()) {
+        None => true,
+        Some(o) => {
+            let authority = o.split_once("://").map_or(o, |(_, a)| a);
+            h.get(header::HOST).and_then(|x| x.to_str().ok()) == Some(authority)
+        }
+    };
+    !csrf.is_empty() && same && origin
+}
+
+fn is_form(h: &HeaderMap) -> bool {
+    h.get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|c| c.starts_with("application/x-www-form-urlencoded"))
+}
+
+/// The answer to a form: back where it came from, or a page that says why not.
+fn form_outcome(
+    app: &App,
+    who: &Identity,
+    name: &str,
+    form: &Value,
+    o: write::Outcome,
+) -> Response {
+    let back = auth::safe_next(form["return"].as_str().unwrap_or("/"));
+    match o {
+        Outcome::Done(_) => Redirect::to(&back).into_response(),
+        Outcome::Conflict { yours, theirs } => {
+            let revision = app
+                .writes
+                .as_ref()
+                .and_then(|w| locked(&w.journal).revision(name).ok())
+                .unwrap_or(0);
+            let page = pages::conflict(app, who, name, form, &yours, &theirs, revision, &back);
+            (StatusCode::CONFLICT, page).into_response()
+        }
+        Outcome::Invalid(p) => {
+            (StatusCode::UNPROCESSABLE_ENTITY, pages::problems(&back, &p)).into_response()
+        }
+        Outcome::Denied(m) => problem(false, StatusCode::FORBIDDEN, &m),
+        Outcome::Bad(m) => problem(false, StatusCode::BAD_REQUEST, &m),
+        Outcome::Failed(m) => problem(false, StatusCode::INTERNAL_SERVER_ERROR, &m),
+    }
+}
+
+/// Run a write off the async threads (evaluation, git, SQLite), for a system that exists, on a
+/// daemon that writes. A form gets a form's answer, JSON a JSON one.
+async fn write(
+    app: Shared,
+    name: String,
+    form: Option<(Identity, Value)>,
+    f: impl FnOnce(&App, &write::Writes, &FsPath) -> write::Outcome + Send + 'static,
+) -> Response {
+    let Some(doc) = app.document(&name).cloned() else {
+        return problem(
+            form.is_none(),
+            StatusCode::NOT_FOUND,
+            &format!("no system {name}"),
+        );
+    };
+    if app.writes.is_none() {
+        let m = "this daemon only reads: it has no --state".to_string();
+        return problem(form.is_none(), StatusCode::SERVICE_UNAVAILABLE, &m);
+    }
+    let a = app.clone();
+    let done =
+        tokio::task::spawn_blocking(move || f(&a, a.writes.as_ref().expect("checked"), &doc))
+            .await
+            .expect("write thread");
+    match form {
+        Some((who, v)) => form_outcome(&app, &who, &name, &v, done),
+        None => outcome(done),
+    }
+}
+
+fn via(h: &HeaderMap) -> &'static str {
+    if wants_json(h) { "cli" } else { "web" }
+}
+
+/// A write's body, and for a form, the form: refused (403) unless it is this site's own. A
+/// control's value becomes TOML (write::form_value).
+#[allow(clippy::result_large_err)]
+fn write_body(
+    h: &HeaderMap,
+    body: &[u8],
+    who: &Identity,
+    csrf: &Csrf,
+) -> Result<(Value, Option<(Identity, Value)>), Response> {
+    let mut v = body_json(h, body).map_err(|e| problem(true, StatusCode::BAD_REQUEST, &e))?;
+    if !is_form(h) {
+        return Ok((v, None));
+    }
+    if !own_form(h, &v, &csrf.0) {
+        let m = "this form is not from this console's page: reload it and send it again";
+        return Err(problem(false, StatusCode::FORBIDDEN, m));
+    }
+    if let (Some(kind), Some(raw)) = (
+        v["kind"].as_str().map(str::to_string),
+        v["value"].as_str().map(str::to_string),
+    ) {
+        v["value"] = Value::String(write::form_value(&kind, &raw));
+    }
+    Ok((v.clone(), Some((who.clone(), v))))
+}
+
+async fn write_op(
+    State(app): State<Shared>,
+    Extension(who): Extension<Identity>,
+    Extension(csrf): Extension<Csrf>,
+    Path(name): Path<String>,
+    h: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    let (v, form) = match write_body(&h, &body, &who, &csrf) {
+        Ok(x) => x,
+        Err(r) => return r,
+    };
+    let via = via(&h);
+    let system = name.clone();
+    write(app, name, form, move |app, w, doc| {
+        write::operation(app, w, &who, via, &system, doc, &v)
+    })
+    .await
+}
+
+async fn write_commit(
+    State(app): State<Shared>,
+    Extension(who): Extension<Identity>,
+    Extension(csrf): Extension<Csrf>,
+    Path(name): Path<String>,
+    h: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    let (v, form) = match write_body(&h, &body, &who, &csrf) {
+        Ok(x) => x,
+        Err(r) => return r,
+    };
+    let message = v["message"].as_str().unwrap_or("").to_string();
+    let via = via(&h);
+    let system = name.clone();
+    write(app, name, form, move |app, w, doc| {
+        write::commit(app, w, &who, via, &system, doc, &message)
+    })
+    .await
+}
+
+async fn write_discard(
+    State(app): State<Shared>,
+    Extension(who): Extension<Identity>,
+    Extension(csrf): Extension<Csrf>,
+    Path(name): Path<String>,
+    h: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    let (_, form) = match write_body(&h, &body, &who, &csrf) {
+        Ok(x) => x,
+        Err(r) => return r,
+    };
+    let via = via(&h);
+    let system = name.clone();
+    write(app, name, form, move |app, w, _| {
+        write::discard(app, w, &who, via, &system)
+    })
+    .await
+}
+
+/// What a page needs to offer forms: none when this person may not write here.
+fn edit_view(
+    app: &App,
+    who: &Identity,
+    csrf: &Csrf,
+    name: &str,
+    sys: &System,
+    draft: Option<String>,
+) -> Option<pages::EditView> {
+    let w = app.writes.as_ref()?;
+    if app.read_only || who.level != Level::Operator {
+        return None;
+    }
+    let j = locked(&w.journal);
+    Some(pages::EditView {
+        revision: j.revision(name).ok()?,
+        csrf: csrf.0.clone(),
+        candidate: golconda_core::document::to_json(&j.candidate(name, &sys.text).ok()?)
+            .unwrap_or(Value::Null),
+        ops: j.open_ops(name).ok()?,
+        draft,
+    })
+}
+
+/// The audit log, newest first, filtered by the query's operator, system, action and day.
+async fn audit_log(
+    State(app): State<Shared>,
+    Extension(who): Extension<Identity>,
+    Query(q): Query<HashMap<String, String>>,
+    h: HeaderMap,
+) -> Response {
+    let json = wants_json(&h);
+    let Some(w) = &app.writes else {
+        return problem(
+            json,
+            StatusCode::NOT_FOUND,
+            "this daemon keeps no audit log: it has no --state",
+        );
+    };
+    let f = |k: &str| {
+        q.get(k)
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+    };
+    let (operator, system, action, day) = (f("operator"), f("system"), f("action"), f("day"));
+    // each filter given must be part of its field (the operator's id or name)
+    let has = |field: &Value, want: &Option<String>| {
+        want.as_ref()
+            .is_none_or(|w| field.as_str().is_some_and(|v| v.contains(w.as_str())))
+    };
+    let keep = |e: &Value| {
+        (has(&e["operator"]["id"], &operator) || has(&e["operator"]["name"], &operator))
+            && has(&e["system"], &system)
+            && has(&e["action"], &action)
+            && has(&e["time"], &day)
+    };
+    let entries = w.entries(500, keep);
+    if json {
+        return axum::Json(Value::Array(entries)).into_response();
+    }
+    pages::audit(&app, &who, &entries, &q).into_response()
+}
+
+/// The candidate: its revision and the operations not yet committed.
+async fn candidate(State(app): State<Shared>, Path(name): Path<String>) -> Response {
+    if app.document(&name).is_none() {
+        return problem(true, StatusCode::NOT_FOUND, &format!("no system {name}"));
+    }
+    let Some(w) = &app.writes else {
+        return axum::Json(serde_json::json!({ "revision": 0, "ops": [] })).into_response();
+    };
+    let j = locked(&w.journal);
+    match (j.revision(&name), j.open_ops(&name)) {
+        (Ok(rev), Ok(ops)) => axum::Json(serde_json::json!({
+            "revision": rev, "ops": ops.iter().map(golconda_core::candidate::Op::to_json).collect::<Vec<_>>(),
+        }))
+        .into_response(),
+        (Err(e), _) | (_, Err(e)) => problem(true, StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
+    }
 }
 
 async fn style() -> Response {

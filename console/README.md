@@ -1,8 +1,8 @@
 # console
 
-Golconda's console: the `golconda` command line now, the `golcondad` daemon and its web pages later
-(design: the UI design note in the knowledge base). Rust, built with repkgs' toolchain like every
-Golconda package (`console/package.nix`, `packages.<system>.golconda-console`).
+Golconda's console: the `golconda` command line, and the `golcondad` daemon with its web pages.
+Rust, built with repkgs' toolchain like every Golconda package (`console/package.nix`,
+`packages.<system>.golconda-console`).
 
 - `core/`: the `golconda-core` library. It evaluates a system's document with Golconda's `mkSystem`
   through the `iets` binary, one process per evaluation, and reads its `config`, `schema` and
@@ -115,6 +115,49 @@ The sign-in tests run a stub provider (daemon/tests/oidc.rs) with the test keys 
 daemon/tests/fixtures: it signs tokens and checks the PKCE verifier, and it issues tokens that must
 be refused (another key, audience, issuer or nonce, expired, `none`, `HS256`, a mislabelled
 algorithm).
+
+## Changing the configuration
+
+With `--state DIR` the daemon writes: it keeps a candidate per system, the committed document plus
+the operations not yet committed, in `DIR/journal.db`, and its audit log in `DIR/audit`.
+
+```sh
+golcondad --system server=checkout/server.toml --state /var/lib/golcondad \
+  --signing-key /etc/golcondad/ssh_key --push origin --audit-push origin ...
+```
+
+- `POST /systems/NAME/ops`: `{ base, module, option, op: "set"|"delete", value }` (the value as
+  TOML). Refused with 409 when an operation after `base` touched the same path, a path inside it or
+  one that contains it, and with 422 when it adds a problem the schema finds.
+- `POST /systems/NAME/commit` `{ message }`: fetch the remote (a change made there is recorded as an
+  outside change, and stops the commit if it touched what the candidate changes), write the
+  candidate into the document, validate it (schema, then evaluation), commit it, signed with the
+  `--signing-key`, with the operator as author and the others as `Co-authored-by`, and push it to
+  `--push` on the checkout's current branch. A push that fails leaves the commit local.
+- `POST /systems/NAME/discard`; `GET /systems/NAME/candidate`.
+
+The remote is fetched every `--fetch-every` seconds too. Every action and every refusal (a conflict,
+a problem, a write by someone who may only read, or in a `--read-only` daemon: 403) is an audit
+entry, written before the answer; an entry that cannot be written refuses the action. Entries go to
+the systemd journal as well (`GOLCONDA_ACTION=`, `GOLCONDA_OPERATOR=`, …), and the audit log is
+pushed to `--audit-push` in the background.
+
+In the browser the same works without a script. An operator gets a form in each option's detail: the
+control follows the option's type (two radio buttons, a select, a number field with the schema's
+bounds, a text field, one list item per line, or raw TOML), "Save to candidate", and "Reset to
+default". A value the candidate changed shows amber in the option rows. A conflict answers with the
+conflict page: both values, who and when, and keep theirs, apply mine on top, or edit again. The
+Changes page shows the candidate's operations and what they change against the commit, with "Commit
+and push" and "Discard all". Every form carries the session's CSRF token, and its Origin must be the
+daemon's own; someone who may only read gets no form at all. `/audit` lists the audit log, newest
+first, filtered by operator, system, action and day; as JSON with `Accept: application/json`.
+
+## Audit log
+
+The daemon keeps an audit log in a git repository of its own: one entry per commit, one JSON line
+added to the file of its day (`2026/11/05.jsonl`), the operator as the author, the daemon as the
+committer, signed with its SSH key, and a summary with trailers (`Operator:`, `Action:`, `System:`,
+`Result:`, `Config-Commit:`) as the message.
 
 ## Develop
 

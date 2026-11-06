@@ -1,12 +1,14 @@
 //! `golcondad`: the console daemon.
 
 use clap::Parser;
-use golcondad::app::{App, Identity, Level, Signin, router};
+use golcondad::app::{App, Identity, Level, Signin};
 use golcondad::auth::{Oidc, OidcConfig};
 use std::fs;
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{self, PathBuf};
 use std::process::ExitCode;
+use std::sync;
+use std::time;
 
 /// Golconda's console daemon: the systems' configuration as web pages and JSON.
 #[derive(Parser, Debug)]
@@ -52,6 +54,22 @@ pub struct Args {
     /// The whole daemon shows state and changes nothing
     #[arg(long)]
     read_only: bool,
+    /// Where the daemon keeps its journal (journal.db) and audit log (audit/); without it,
+    /// it only reads
+    #[arg(long, value_name = "DIR")]
+    state: Option<PathBuf>,
+    /// The SSH private key the daemon signs configuration commits and audit entries with
+    #[arg(long, value_name = "FILE", requires = "state")]
+    signing_key: Option<PathBuf>,
+    /// The remote each system's checkout fetches from and pushes to, on its current branch
+    #[arg(long, value_name = "REMOTE", requires = "state")]
+    push: Option<String>,
+    /// The remote the audit repository is pushed to (a branch that refuses force-pushes)
+    #[arg(long, value_name = "REMOTE", requires = "state")]
+    audit_push: Option<String>,
+    /// How often to fetch the systems' remote, in seconds, for changes made elsewhere
+    #[arg(long, value_name = "SECONDS", default_value_t = 300)]
+    fetch_every: u64,
 }
 
 fn system(v: &str) -> Result<(String, PathBuf), String> {
@@ -89,7 +107,15 @@ enum Mode {
 
 /// What clap cannot check: one document per name; one way to sign in; the development
 /// identity on loopback only; a public URL with a scheme.
-fn check(a: Args) -> Result<(Args, Mode), String> {
+fn check(mut a: Args) -> Result<(Args, Mode), String> {
+    // git runs in other directories (the audit repository, each checkout): paths are absolute
+    let abs = |p: &PathBuf| path::absolute(p).map_err(|e| format!("{}: {e}", p.display()));
+    if let Some(p) = &a.signing_key {
+        a.signing_key = Some(abs(p)?);
+    }
+    if let Some(p) = &a.state {
+        a.state = Some(abs(p)?);
+    }
     for (i, (n, _)) in a.systems.iter().enumerate() {
         if a.systems[..i].iter().any(|(m, _)| m == n) {
             return Err(format!("--system: {n} is given twice"));
@@ -183,7 +209,47 @@ async fn main() -> ExitCode {
             "IBM Plex"
         },
     );
-    let app = router(App::new(a.systems, signin, a.read_only));
+    let mut app = App::new(a.systems, signin, a.read_only);
+    if let Some(state) = &a.state {
+        let host = fs::read_to_string("/proc/sys/kernel/hostname")
+            .map_or_else(|_| "localhost".into(), |h| h.trim().to_string());
+        let committer = golconda_core::git::Person {
+            name: "golcondad".into(),
+            id: format!("golcondad@{host}"),
+        };
+        match golcondad::write::Writes::open(
+            state,
+            committer,
+            a.signing_key.clone(),
+            a.push.clone(),
+            a.audit_push.clone(),
+        ) {
+            Ok(w) => app = app.with_writes(w),
+            Err(e) => {
+                eprintln!("golcondad: --state: {e}");
+                return ExitCode::from(1);
+            }
+        }
+    }
+    let app = sync::Arc::new(app);
+    if app.writes.as_ref().is_some_and(|w| w.push.is_some()) {
+        // changes made elsewhere: fetched on a timer and before every commit
+        let (a2, every) = (
+            app.clone(),
+            time::Duration::from_secs(a.fetch_every.max(10)),
+        );
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(every).await;
+                let a3 = a2.clone();
+                let _ = tokio::task::spawn_blocking(move || {
+                    golcondad::write::fetch_all(&a3, a3.writes.as_ref().expect("checked"));
+                })
+                .await;
+            }
+        });
+    }
+    let app = golcondad::app::router_shared(app);
     let served = axum::serve(listener, app)
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
@@ -241,6 +307,16 @@ mod tests {
         assert_eq!(c.operator_group, "golconda-operators");
         assert_eq!(c.read_only_group, "golconda-readers");
         assert_eq!(c.client_secret, None);
+    }
+
+    #[test]
+    fn paths_are_absolute_where_git_runs_elsewhere() {
+        // git signs in the audit repository's directory: a relative key would not be found
+        let (a, _) =
+            args("--system s=x --dev-identity a:operator --state st --signing-key key").unwrap();
+        assert!(a.signing_key.as_ref().unwrap().is_absolute());
+        assert!(a.state.as_ref().unwrap().is_absolute());
+        assert!(a.signing_key.unwrap().ends_with("key"));
     }
 
     #[test]
