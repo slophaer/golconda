@@ -29,6 +29,7 @@ thiserror = "2"
 ureq = { version = "3", default-features = false, features = ["rustls"] }
 ring = "0.17"
 base64 = "0.22"
+rusqlite = { version = "0.41", features = ["bundled"] }
 tempfile = "3.27.0"
 pulldown-cmark = { version = "0.13", default-features = false, features = [
   "html",
