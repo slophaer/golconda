@@ -20,9 +20,11 @@ ureq.workspace = true
 ring.workspace = true
 base64.workspace = true
 thiserror.workspace = true
+serde_urlencoded.workspace = true
 
 [dev-dependencies]
 tower.workspace = true
+tempfile.workspace = true
 # the stub provider over https in tests/oidc.rs: the rustls ureq already brings
 rustls = { version = "0.23", default-features = false, features = [
   "ring",

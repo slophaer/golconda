@@ -8,19 +8,15 @@
 //! in memory: a restart signs everyone out.
 
 use crate::app::{Identity, Level};
+use crate::locked;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ring::rand::{SecureRandom, SystemRandom};
 use ring::signature::{self, UnparsedPublicKey};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::{Mutex, MutexGuard, PoisonError, RwLock};
+use std::sync::{Mutex, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-
-/// A lock that a panicked holder left behind is still good: every update here is one call.
-fn locked<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(PoisonError::into_inner)
-}
 
 /// How long a session lasts, and how long a browser has to come back from the provider.
 const SESSION: Duration = Duration::from_hours(12);
@@ -53,6 +49,8 @@ struct Pending {
 
 struct Session {
     who: Identity,
+    /// what this session's forms carry, so a form elsewhere cannot post as it
+    csrf: String,
     since: Instant,
 }
 
@@ -292,13 +290,14 @@ impl Oidc {
             return Err(bad("the ID token: its nonce is not this sign-in's"));
         }
         let who = self.identity(&claims)?;
-        let id = self.random();
+        let (id, csrf) = (self.random(), self.random());
         let mut sessions = locked(&self.sessions);
         sessions.retain(|_, s| s.since.elapsed() < SESSION);
         sessions.insert(
             id.clone(),
             Session {
                 who,
+                csrf,
                 since: Instant::now(),
             },
         );
@@ -453,6 +452,11 @@ impl Oidc {
         let sessions = locked(&self.sessions);
         let s = sessions.get(id)?;
         (s.since.elapsed() < SESSION).then(|| s.who.clone())
+    }
+
+    /// The CSRF token of a session.
+    pub fn csrf(&self, id: &str) -> Option<String> {
+        locked(&self.sessions).get(id).map(|s| s.csrf.clone())
     }
 
     pub fn end(&self, id: &str) {
