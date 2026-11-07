@@ -50,7 +50,9 @@ A version is `YYYYMMDD.N`: the date and a counter within the day (`20261031.1`, 
 `/system.version` type enforces the format; sysupdate orders versions with `strverscmp`, which this
 format sorts correctly. The machine refuses to go backwards: sysupdate installs only a version newer
 than the ones it has. The composer cannot check that (evaluation does not know the previous
-release); a release script *(planned)* will refuse a non-increasing version on the builder.
+release); `golconda release build` and `publish` refuse a version that does not increase on the
+builder, and a version published again with other files
+([Making a release](../reference/release.md)).
 
 The version also sets the mtime of every file in the image (`mkfs.erofs -T`, the epoch of the date
 plus `N`). systemd's `ConditionNeedsUpdate=` compares `/usr`'s mtime with `/etc/.updated`, so

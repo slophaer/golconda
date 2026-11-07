@@ -77,8 +77,8 @@ The boot test proves this in QEMU with OVMF ([What is proven](../proven.md)):
   operator starts.
 - A fresh disk has one slot. There the loader still boots the exhausted entry, so the machine stays
   up and unblessed until you fill the other slot.
-- The machine supports no downgrade except the boot-counting fallback. A release script that refuses
-  a version that does not increase is *(planned)*.
+- The machine supports no downgrade except the boot-counting fallback. `golconda release` refuses a
+  version that does not increase before it is built or published.
 - Nothing stops an older image signed by the same key from booting. Rollback protection is *(after
   v1)*.
 - The tests use plain HTTP in QEMU. HTTPS, a real update server, the timer and real hardware have no

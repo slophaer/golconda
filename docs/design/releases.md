@@ -113,9 +113,12 @@ releases: one signed with the old key whose image carries the new public key, th
 with the new key. The signature does not stop a replay of an older signed index: sysupdate installs
 only versions newer than the running one, and the A/B slots keep the newest two.
 
-`scripts/boot-test --next` reads the index of the next release before it installs anything: four
-lines, this order, and every digest against its file. Reordering the lines, renaming a file or
-changing a digest fails the test.
+`golconda release check` checks a release directory against this page before it is published: the
+four lines in this order, every digest against its file, one image id and version in the names, the
+UUIDs against the root hash the verity signature names, and the signature against the key set's
+`release/index.pgp` (console/README.md). `scripts/boot-test --next` reads the index of the next
+release before it installs anything: four lines, this order, and every digest against its file.
+Reordering the lines, renaming a file or changing a digest fails the test.
 
 ## Counters and selection
 

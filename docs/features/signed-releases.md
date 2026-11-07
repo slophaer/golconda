@@ -68,7 +68,6 @@ booted on the same markers as the throwaway set. Its next release installed over
   versions, and rollback protection is *(after v1)*.
 - The image trusts only the release key it carries. Changing that key takes two releases.
 - No automated check runs `scripts/make-keys`, and none builds with a string key directory.
-- A release script that refuses a version that does not increase is *(planned)*.
 - The `release/` file mtimes are 1 in the store. Do not read them as a release date.
 - GnuPG stays in the image until systemd can check an x509 signature on the index.
 
