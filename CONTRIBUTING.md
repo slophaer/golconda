@@ -74,6 +74,9 @@ iets eval --expr 'import ./nix/tests.nix { }'   # the module tests alone
 # Boot test (needs KVM, cannot run in the sandbox)
 nix-build -A packages.x86_64-linux.image-smoke-test
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-test --timeout 120
+
+# All of it for one commit: lint, image, boot; stops at the first failure (clean tree)
+scripts/verify                              # --each-commit origin/main for every commit of a branch
 ```
 
 The required checks include the native tests in `tests/packages/`, also available as
