@@ -346,10 +346,8 @@ What uptrack needs, and where that stops this:
   `builder/sys-libs.nu`), so it runs from a repkgs checkout, and `nu` must be on the daemon's PATH.
   The tree it works on can be elsewhere (`UPTRACK_ROOT`).
 - It reads every `sources.toml` of the tree and refuses the whole run if one has a key it does not
-  know. The repkgs tree passes. Golconda's own `packages/` does not: `dbus-broker`, `mtools`,
-  `systemd` and `ukify` have `url` under `[upstream]`, which the pinned uptrack rejects, so
-  `--uptrack-tree packages` ends in "could not check" until those files or uptrack change. The
-  packages of the image that come from Golconda therefore show no upstream version today.
+  know (`checks.uptrack-sources` runs `uptrack list` on Golconda's `packages/`, so a key it refuses
+  fails a check). Both the repkgs tree and Golconda's `packages/` pass.
 - Its names are directory names, and its datasources are the purl types it knows (`github`,
   `gitlab`, `pypi`, `cargo`, `npm`, `hackage`, `gnu`, `generic`, …). A package it cannot resolve
   (`pkg:deb`, `pkg:sourceforge`) shows uptrack's message.

@@ -163,6 +163,17 @@ in
     touch $out
   '';
 
+  # Golconda's sources.toml as uptrack reads them: one it refuses (a key it does not know) fails
+  # its whole run, which the console runs on packages/ for the newest upstream versions. uptrack
+  # checks them itself, so this check keeps no list of its keys. `list` needs no network.
+  uptrack-sources = run "uptrack-sources" [ rp.uptrack ] ''
+    export HOME="$PWD" UPTRACK_ROOT=${src}/packages
+    uptrack list > list.txt
+    # it read them all: Golconda's own systemd is among them
+    grep -q 'systemd' list.txt || { cat list.txt; exit 1; }
+    touch $out
+  '';
+
   # clippy over the console, tests and examples included, as a repkgs cargo build (console/checks)
   console-clippy = rp.golconda-console-clippy;
 
