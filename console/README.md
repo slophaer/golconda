@@ -162,6 +162,14 @@ renewed with the refresh token first, and when the provider refuses that, the CL
 again. `GOLCONDA_CA_FILE` names PEM certificates (our own CA's) that the provider's and the daemon's
 TLS certificates must chain to. A daemon in development mode needs no login.
 
+For a larger change an operator can take the system's lock ("configure exclusive"):
+`POST /systems/NAME/lock` `{ minutes }` (30 without, at most a day), the Changes page's Lock, or
+`golconda --server URL config lock --minutes 90`. While it lasts, only its holder changes the
+candidate: anyone else's operation, commit, discard or unlock answers 423 with who holds it and
+until when, and is an audit entry. Every system page shows the lock in its strip. It ends by itself;
+its holder may give it up (`unlock`), and any operator may break it with a reason (`/lock/break`
+`{ reason }`, `config break-lock --reason TEXT`), which the audit log keeps with the holder's name.
+
 The remote is fetched every `--fetch-every` seconds too. Every action and every refusal (a conflict,
 a problem, a write by someone who may only read, or in a `--read-only` daemon: 403) is an audit
 entry, written before the answer; an entry that cannot be written refuses the action. Entries go to

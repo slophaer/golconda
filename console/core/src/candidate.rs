@@ -126,6 +126,36 @@ pub enum Refused {
     /// the record of it (the audit entry) could not be written, so it was not made
     #[error("not recorded: {0}")]
     Record(String),
+    /// someone else holds the system's exclusive lock
+    #[error("{} holds the lock on this system since {} until {}", .0.by.name, .0.since, .0.until_text())]
+    Locked(Lock),
+}
+
+/// An exclusive lock on a system's candidate ("configure exclusive"): while it lasts, only its
+/// holder changes the candidate. It ends by itself at `until`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Lock {
+    pub by: Operator,
+    pub since: String,
+    /// seconds since 1970
+    pub until: u64,
+}
+
+impl Lock {
+    pub fn until_text(&self) -> String {
+        rfc3339(self.until)
+    }
+
+    pub fn to_json(&self) -> Value {
+        json!({ "by": { "id": self.by.id, "name": self.by.name }, "since": self.since,
+                "until": self.until_text() })
+    }
+}
+
+fn epoch() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
 }
 
 /// The operation journal of every system.
@@ -149,6 +179,13 @@ CREATE TABLE IF NOT EXISTS ops (
     state TEXT NOT NULL DEFAULT 'open' CHECK (state IN ('open', 'committed', 'discarded')),
     commit_id TEXT,               -- the git commit, once committed
     PRIMARY KEY (system, rev)
+);
+CREATE TABLE IF NOT EXISTS locks (
+    system TEXT PRIMARY KEY,
+    operator_id TEXT NOT NULL,
+    operator_name TEXT NOT NULL,
+    since TEXT NOT NULL,
+    until INTEGER NOT NULL        -- seconds since 1970
 );";
 
 impl Journal {
@@ -213,6 +250,11 @@ impl Journal {
         let tx = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if let Some(l) = live_lock(&tx, system)?
+            && l.by.id != r.by.id
+        {
+            return Err(Refused::Locked(l));
+        }
         let revision = revision(&tx, system)?;
         if r.base > revision {
             return Err(Refused::Base {
@@ -262,6 +304,64 @@ impl Journal {
         record(&op).map_err(Refused::Record)?;
         tx.commit()?;
         Ok(op)
+    }
+
+    /// The system's lock, while it lasts.
+    pub fn lock_of(&self, system: &str) -> rusqlite::Result<Option<Lock>> {
+        live_lock(&self.conn, system)
+    }
+
+    /// `by` may change the candidate: nobody else holds its lock.
+    pub fn may_change(&self, system: &str, by: &Operator) -> Result<(), Refused> {
+        match self.lock_of(system)? {
+            Some(l) if l.by.id != by.id => Err(Refused::Locked(l)),
+            _ => Ok(()),
+        }
+    }
+
+    /// Takes the system's lock for `minutes`, or extends the one `by` holds.
+    pub fn lock(&mut self, system: &str, by: &Operator, minutes: u64) -> Result<Lock, Refused> {
+        let tx = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let since = match live_lock(&tx, system)? {
+            Some(l) if l.by.id != by.id => return Err(Refused::Locked(l)),
+            Some(l) => l.since,
+            None => now(),
+        };
+        let l = Lock {
+            by: by.clone(),
+            since,
+            until: epoch() + minutes * 60,
+        };
+        tx.execute(
+            "INSERT OR REPLACE INTO locks (system, operator_id, operator_name, since, until)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![system, l.by.id, l.by.name, l.since, sql(l.until)],
+        )?;
+        tx.commit()?;
+        Ok(l)
+    }
+
+    /// Gives the lock up; only its holder may. Whether there was one.
+    pub fn unlock(&mut self, system: &str, by: &Operator) -> Result<bool, Refused> {
+        match self.lock_of(system)? {
+            Some(l) if l.by.id != by.id => Err(Refused::Locked(l)),
+            Some(_) => {
+                self.conn
+                    .execute("DELETE FROM locks WHERE system = ?1", [system])?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    /// Breaks someone's lock (the caller records why). The lock it broke, if one lasted.
+    pub fn break_lock(&mut self, system: &str) -> rusqlite::Result<Option<Lock>> {
+        let l = self.lock_of(system)?;
+        self.conn
+            .execute("DELETE FROM locks WHERE system = ?1", [system])?;
+        Ok(l)
     }
 
     /// Drop the open operations; the journal keeps them, discarded. Those it dropped.
@@ -377,6 +477,24 @@ fn sql(rev: u64) -> i64 {
 
 fn revision_of(n: i64) -> u64 {
     u64::try_from(n).unwrap_or(0)
+}
+
+fn live_lock(conn: &Connection, system: &str) -> rusqlite::Result<Option<Lock>> {
+    conn.query_row(
+        "SELECT operator_id, operator_name, since, until FROM locks WHERE system = ?1 AND until > ?2",
+        params![system, sql(epoch())],
+        |r| {
+            Ok(Lock {
+                by: Operator {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                },
+                since: r.get(2)?,
+                until: revision_of(r.get(3)?),
+            })
+        },
+    )
+    .optional()
 }
 
 fn revision(conn: &Connection, system: &str) -> rusqlite::Result<u64> {
@@ -823,5 +941,79 @@ mod tests {
         assert_eq!(rfc3339(951_782_400), "2000-02-29T00:00:00Z");
         assert_eq!(rfc3339(1_793_908_800 + 3661), "2026-11-05T21:01:01Z");
         assert_eq!(rfc3339(4_107_542_399), "2100-02-28T23:59:59Z");
+    }
+
+    #[test]
+    fn a_lock_keeps_others_out_until_it_ends_or_is_broken() {
+        let mut j = Journal::in_memory().unwrap();
+        let l = j.lock("s", &who("alice"), 30).unwrap();
+        assert_eq!(j.lock_of("s").unwrap(), Some(l.clone()));
+        // the holder works on; someone else is refused, and so is their discard or commit
+        j.apply(
+            "s",
+            DOC,
+            &schema(),
+            req(0, "/services/sshd", "port", set("2222"), "alice"),
+        )
+        .unwrap();
+        let e = j
+            .apply(
+                "s",
+                DOC,
+                &schema(),
+                req(1, "/system", "name", set("t"), "bob"),
+            )
+            .unwrap_err();
+        assert!(
+            matches!(&e, Refused::Locked(l) if l.by.name == "alice"),
+            "{e}"
+        );
+        assert!(
+            e.to_string()
+                .starts_with("alice holds the lock on this system since"),
+            "{e}"
+        );
+        assert!(j.may_change("s", &who("bob")).is_err());
+        assert!(j.may_change("s", &who("alice")).is_ok());
+        assert!(
+            j.may_change("other", &who("bob")).is_ok(),
+            "one system's lock only"
+        );
+        // only the holder unlocks, and taking it again extends it from the same start
+        assert!(matches!(
+            j.lock("s", &who("bob"), 5),
+            Err(Refused::Locked(_))
+        ));
+        assert!(j.unlock("s", &who("bob")).is_err());
+        assert_eq!(j.lock("s", &who("alice"), 60).unwrap().since, l.since);
+        assert!(j.unlock("s", &who("alice")).unwrap());
+        assert!(!j.unlock("s", &who("alice")).unwrap());
+        // anyone may break it; it says what it broke
+        j.lock("s", &who("alice"), 30).unwrap();
+        assert_eq!(
+            j.break_lock("s").unwrap().map(|l| l.by.name),
+            Some("alice".into())
+        );
+        j.apply(
+            "s",
+            DOC,
+            &schema(),
+            req(1, "/system", "name", set("t"), "bob"),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_lock_ends_by_itself() {
+        let mut j = Journal::in_memory().unwrap();
+        j.lock("s", &who("alice"), 0).unwrap();
+        assert_eq!(j.lock_of("s").unwrap(), None);
+        j.apply(
+            "s",
+            DOC,
+            &schema(),
+            req(0, "/system", "name", set("t"), "bob"),
+        )
+        .unwrap();
     }
 }

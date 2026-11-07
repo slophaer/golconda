@@ -737,3 +737,94 @@ async fn the_audit_log_page_lists_entries_newest_first_and_filters_them() {
     );
     assert!(!p.contains("config.commit"), "{p}");
 }
+
+/// The daemon as `name` (id `name@example.com`), an operator.
+fn app_as(s: &Scene, name: &str) -> axum::Router {
+    let writes = Writes::open(
+        &s.state,
+        Person {
+            name: "golcondad".into(),
+            id: "golcondad@test".into(),
+        },
+        Some(s.key.clone()),
+        Some("origin".into()),
+        None,
+    )
+    .unwrap();
+    let who = Identity {
+        id: format!("{}@example.com", name.to_lowercase()),
+        name: name.into(),
+        level: Level::Operator,
+    };
+    let doc = s.work.join("examples/server.toml");
+    router(App::new(vec![("server".into(), doc)], Signin::Dev(who), false).with_writes(writes))
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_lock_keeps_others_out_and_breaking_it_needs_a_reason() {
+    let s = small_scene();
+    let (alice, bob) = (app_as(&s, "Alice"), app_as(&s, "Bob"));
+    let (st, v) = post(&alice, "/systems/server/lock", json!({ "minutes": 10 })).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(v["lock"]["by"]["name"], "Alice");
+    for path in [
+        "/systems/server/lock",
+        "/systems/server/unlock",
+        "/systems/server/discard",
+        "/systems/server/commit",
+    ] {
+        let (st, v) = post(&bob, path, json!({ "message": "x" })).await;
+        assert_eq!(st, StatusCode::LOCKED, "{path}: {v}");
+        assert_eq!(v["lock"]["by"]["name"], "Alice", "{path}");
+    }
+    let (st, v) = post(&bob, "/systems/server/lock/break", json!({})).await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "{v}");
+    let (st, v) = post(
+        &bob,
+        "/systems/server/lock/break",
+        json!({ "reason": "Alice is on leave" }),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(v["broken"]["by"]["name"], "Alice");
+    let (st, _) = post(&alice, "/systems/server/unlock", json!({})).await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "nothing left to unlock");
+    let unlocks = audit(&s)
+        .iter()
+        .filter(|e| e["action"] == "config.unlock" && e["result"] == "ok")
+        .count();
+    assert_eq!(unlocks, 0, "an unlock that did nothing is no entry");
+    let entries = audit(&s);
+    let actions: Vec<(&str, &str)> = entries
+        .iter()
+        .map(|e| (e["action"].as_str().unwrap(), e["result"].as_str().unwrap()))
+        .collect();
+    assert!(actions.contains(&("config.lock", "ok")), "{actions:?}");
+    assert!(
+        actions.contains(&("config.discard", "refused")),
+        "{actions:?}"
+    );
+    assert!(
+        actions.contains(&("config.commit", "refused")),
+        "{actions:?}"
+    );
+    let broke = entries
+        .iter()
+        .find(|e| e["action"] == "config.lock.break")
+        .unwrap();
+    assert_eq!(broke["target"], "Alice's lock: Alice is on leave");
+    assert_eq!(broke["operator"]["name"], "Bob");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs iets and the Golconda checkout"]
+async fn an_operation_under_someone_elses_lock_is_refused() {
+    let s = scene();
+    let (alice, bob) = (app_as(&s, "Alice"), app_as(&s, "Bob"));
+    post(&alice, "/systems/server/lock", json!({})).await;
+    let op = json!({ "base": 0, "module": "/services/sshd", "option": "port", "op": "set", "value": "2222" });
+    let (st, v) = post(&bob, "/systems/server/ops", op.clone()).await;
+    assert_eq!(st, StatusCode::LOCKED, "{v}");
+    let (st, v) = post(&alice, "/systems/server/ops", op).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+}

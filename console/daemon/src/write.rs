@@ -237,6 +237,8 @@ pub enum Outcome {
     Conflict { yours: Value, theirs: Vec<Op> },
     /// 422: the schema's problems
     Invalid(Vec<Problem>),
+    /// 423: someone else holds the system's lock
+    Locked(Value),
     /// 400: a request that makes no sense
     Bad(String),
     /// 500: the evaluation, git, the journal or the audit log failed
@@ -374,11 +376,129 @@ pub fn operation(
             Outcome::Bad("the base revision is ahead of the candidate".into())
         }
         Err(Refused::Edit(e)) => refusal(Outcome::Bad(e.to_string())),
+        Err(Refused::Locked(l)) => refusal(Outcome::Locked(l.to_json())),
         Err(e) => Outcome::Failed(e.to_string()),
     }
 }
 
-/// The checkout a system's document is in, and the branch it is on.
+/// Someone else's lock refuses `action` of `who`, as an audit entry: the Outcome then.
+fn locked_out(
+    w: &Writes,
+    journal: &Journal,
+    who: &Identity,
+    via: &str,
+    action: &str,
+    system: &str,
+) -> Option<Outcome> {
+    let Err(Refused::Locked(l)) = journal.may_change(system, &operator(who)) else {
+        return None;
+    };
+    let e = Entry {
+        system: Some(system.into()),
+        target: Some(format!("locked by {}", l.by.name)),
+        ..Entry::new(&operator(who), via, action, "refused")
+    };
+    if let Err(err) = w.record(&e) {
+        eprintln!("golcondad: the audit entry of a refusal: {err}");
+    }
+    Some(Outcome::Locked(l.to_json()))
+}
+
+/// Takes (or extends) the system's lock for `minutes`.
+pub fn lock(
+    app: &App,
+    w: &Writes,
+    who: &Identity,
+    via: &str,
+    system: &str,
+    minutes: u64,
+) -> Outcome {
+    if let Some(o) = may_write(app, w, who, via, "config.lock", system) {
+        return o;
+    }
+    let mut journal = locked(&w.journal);
+    let by = operator(who);
+    let l = match journal.lock(system, &by, minutes) {
+        Ok(l) => l,
+        Err(Refused::Locked(theirs)) => return Outcome::Locked(theirs.to_json()),
+        Err(e) => return Outcome::Failed(e.to_string()),
+    };
+    let e = Entry {
+        system: Some(system.into()),
+        target: Some(format!("until {}", l.until_text())),
+        ..Entry::new(&by, via, "config.lock", "ok")
+    };
+    if let Err(err) = w.record(&e) {
+        let _ = journal.unlock(system, &by);
+        return Outcome::Failed(format!("not recorded, so not locked: {err}"));
+    }
+    Outcome::Done(json!({ "lock": l.to_json() }))
+}
+
+/// Gives up the lock `who` holds.
+pub fn unlock(app: &App, w: &Writes, who: &Identity, via: &str, system: &str) -> Outcome {
+    if let Some(o) = may_write(app, w, who, via, "config.unlock", system) {
+        return o;
+    }
+    let mut journal = locked(&w.journal);
+    if let Some(o) = locked_out(w, &journal, who, via, "config.unlock", system) {
+        return o;
+    }
+    // nothing to give up is no action: no entry for it
+    match journal.lock_of(system) {
+        Ok(Some(_)) => {}
+        Ok(None) => return Outcome::Bad("there is no lock".into()),
+        Err(e) => return Outcome::Failed(e.to_string()),
+    }
+    let e = Entry {
+        system: Some(system.into()),
+        ..Entry::new(&operator(who), via, "config.unlock", "ok")
+    };
+    if let Err(err) = w.record(&e) {
+        return Outcome::Failed(format!("not recorded, so not unlocked: {err}"));
+    }
+    match journal.unlock(system, &operator(who)) {
+        Ok(true) => Outcome::Done(json!({ "unlocked": true })),
+        Ok(false) => Outcome::Bad("there is no lock".into()),
+        Err(e) => Outcome::Failed(e.to_string()),
+    }
+}
+
+/// Breaks the system's lock, whoever holds it, with a reason the audit log keeps.
+pub fn break_lock(
+    app: &App,
+    w: &Writes,
+    who: &Identity,
+    via: &str,
+    system: &str,
+    reason: &str,
+) -> Outcome {
+    if let Some(o) = may_write(app, w, who, via, "config.lock.break", system) {
+        return o;
+    }
+    if reason.trim().is_empty() {
+        return Outcome::Bad("breaking a lock needs a reason".into());
+    }
+    let mut journal = locked(&w.journal);
+    let held = match journal.lock_of(system) {
+        Ok(Some(l)) => l,
+        Ok(None) => return Outcome::Bad("there is no lock".into()),
+        Err(e) => return Outcome::Failed(e.to_string()),
+    };
+    let e = Entry {
+        system: Some(system.into()),
+        target: Some(format!("{}'s lock: {}", held.by.name, reason.trim())),
+        ..Entry::new(&operator(who), via, "config.lock.break", "ok")
+    };
+    if let Err(err) = w.record(&e) {
+        return Outcome::Failed(format!("not recorded, so not broken: {err}"));
+    }
+    match journal.break_lock(system) {
+        Ok(_) => Outcome::Done(json!({ "broken": held.to_json() })),
+        Err(e) => Outcome::Failed(e.to_string()),
+    }
+}
+
 /// The checkout around `doc` as the daemon commits in it, the document's path in it, and its
 /// current branch.
 pub(crate) fn repo_of(w: &Writes, doc: &Path) -> Result<(Git, PathBuf, String), String> {
@@ -465,6 +585,9 @@ pub fn commit(
     let by = operator(who);
     let _checkout = locked(&w.checkout);
     let mut journal = locked(&w.journal);
+    if let Some(o) = locked_out(w, &journal, who, via, "config.commit", system) {
+        return o;
+    }
     let done = commit::commit_with(&mut journal, &repo, &eval, system, &by, message, |c| {
         record_outside(w, system, &c.outside);
         w.record(&Entry {
@@ -515,6 +638,9 @@ pub fn discard(app: &App, w: &Writes, who: &Identity, via: &str, system: &str) -
         return o;
     }
     let mut journal = locked(&w.journal);
+    if let Some(o) = locked_out(w, &journal, who, via, "config.discard", system) {
+        return o;
+    }
     let open = match journal.open_ops(system) {
         Ok(o) => o,
         Err(e) => return Outcome::Failed(e.to_string()),

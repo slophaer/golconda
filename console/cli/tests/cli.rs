@@ -1419,3 +1419,48 @@ fn packages_lists_the_sbom_with_what_the_image_names_itself() {
     .unwrap();
     assert_eq!(bom["bomFormat"], "CycloneDX");
 }
+
+#[test]
+fn lock_unlock_and_a_lock_that_refuses() {
+    let (url, seen) = stub(vec![
+        (
+            200,
+            r#"{"lock":{"by":{"name":"Alice"},"until":"2026-11-07T12:30:00Z"}}"#,
+        ),
+        (
+            423,
+            r#"{"error":"locked","lock":{"by":{"name":"Bob"},"until":"2026-11-07T13:00:00Z"}}"#,
+        ),
+        (200, r#"{"broken":{"by":{"name":"Bob"}}}"#),
+    ]);
+    let s = |args: &[&str]| {
+        let mut a = vec!["--server", url.as_str(), "config"];
+        a.extend(args);
+        golconda(&a)
+    };
+    assert_eq!(
+        stdout(&s(&["lock", "--minutes", "90"])),
+        "locked until 2026-11-07T12:30:00Z\n"
+    );
+    let o = s(&["unlock"]);
+    assert_eq!(o.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&o.stderr)
+            .contains("Bob holds the lock on this system until 2026-11-07T13:00:00Z")
+    );
+    assert_eq!(
+        stdout(&s(&["break-lock", "--reason", "Bob left"])),
+        "broke Bob's lock\n"
+    );
+    let seen = seen.lock().unwrap();
+    assert_eq!(
+        seen[0],
+        r#"POST /systems/server/lock HTTP/1.1 {"minutes":90}"#
+    );
+    assert_eq!(
+        seen[2],
+        r#"POST /systems/server/lock/break HTTP/1.1 {"reason":"Bob left"}"#
+    );
+    // without a daemon there is no lock
+    assert_eq!(golconda(&["config", "lock"]).status.code(), Some(2));
+}

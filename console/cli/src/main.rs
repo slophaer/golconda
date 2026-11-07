@@ -302,6 +302,19 @@ enum Config {
     },
     /// With --server: drop the candidate's operations not yet committed
     Discard,
+    /// With --server: take the system's lock, so only you change the candidate; it ends by
+    /// itself after MINUTES. Taking it again extends it
+    Lock {
+        #[arg(long, default_value_t = 30)]
+        minutes: u64,
+    },
+    /// With --server: give up the lock you hold
+    Unlock,
+    /// With --server: break someone's lock; the audit log keeps the reason
+    BreakLock {
+        #[arg(long)]
+        reason: String,
+    },
     /// Check the document: the schema, then evaluation
     Validate {
         #[command(flatten)]
@@ -397,11 +410,28 @@ fn verify_audit(repo: PathBuf, allowed_signers: &Path) -> Result<String, Box<dyn
     Ok(format!("{n} entries, each one signed line\n"))
 }
 
-/// candidate, commit and discard without --server: a usage error, there is no candidate
+/// The config subcommands that work on a daemon's candidate only.
+fn on_a_daemon(c: &Config) -> bool {
+    matches!(
+        c,
+        Config::Candidate
+            | Config::Commit { .. }
+            | Config::Discard
+            | Config::Lock { .. }
+            | Config::Unlock
+            | Config::BreakLock { .. }
+    )
+}
+
+/// candidate, commit, discard and the lock without --server: a usage error, there is no
+/// candidate
 fn needs_server(c: &Config) -> ! {
     let name = match c {
         Config::Candidate => "candidate",
         Config::Commit { .. } => "commit",
+        Config::Lock { .. } => "lock",
+        Config::Unlock => "unlock",
+        Config::BreakLock { .. } => "break-lock",
         _ => "discard",
     };
     Cli::command()
@@ -595,9 +625,7 @@ fn run(command: Command) -> Result<String, Box<dyn error::Error>> {
             from,
             rev,
         } => return run_diff(&iets, &doc, json, from, &rev),
-        Command::Config(c @ (Config::Candidate | Config::Commit { .. } | Config::Discard)) => {
-            needs_server(&c)
-        }
+        Command::Config(c) if on_a_daemon(&c) => needs_server(&c),
         Command::Config(c) => c,
         Command::Vars(v) => return run_vars(v),
         Command::Release(r) => return run_release(r),
@@ -642,7 +670,6 @@ fn run(command: Command) -> Result<String, Box<dyn error::Error>> {
             })?;
             String::new()
         }
-        Config::Candidate | Config::Commit { .. } | Config::Discard => unreachable!("above"),
         Config::Show { doc, set, json } => {
             let sys = System::load(&iets, &doc.file, &doc.system)?;
             if !json {
@@ -681,6 +708,8 @@ fn run(command: Command) -> Result<String, Box<dyn error::Error>> {
                 e.to_text()
             }
         }
+        // candidate, commit, discard and the lock: refused above
+        _ => unreachable!("on_a_daemon"),
     })
 }
 
@@ -790,6 +819,12 @@ mod remote {
                     .collect();
                 Err(p.join("\n").into())
             }
+            423 => Err(format!(
+                "{} holds the lock on this system until {}",
+                v["lock"]["by"]["name"].as_str().unwrap_or("someone"),
+                v["lock"]["until"].as_str().unwrap_or("?")
+            )
+            .into()),
             s => Err(format!("{s}: {}", v["error"].as_str().unwrap_or("no answer")).into()),
         }
     }
@@ -1000,6 +1035,24 @@ mod remote {
                 Ok(format!(
                     "discarded {} operations\n",
                     v["discarded"].as_array().map_or(0, Vec::len)
+                ))
+            }
+            Command::Config(Config::Lock { minutes }) => {
+                let v = answer(d.call("POST", "lock", Some(json!({ "minutes": minutes })))?)?;
+                Ok(format!(
+                    "locked until {}\n",
+                    v["lock"]["until"].as_str().unwrap_or("?")
+                ))
+            }
+            Command::Config(Config::Unlock) => {
+                answer(d.call("POST", "unlock", Some(json!({})))?)?;
+                Ok("unlocked\n".into())
+            }
+            Command::Config(Config::BreakLock { reason }) => {
+                let v = answer(d.call("POST", "lock/break", Some(json!({ "reason": reason })))?)?;
+                Ok(format!(
+                    "broke {}'s lock\n",
+                    v["broken"]["by"]["name"].as_str().unwrap_or("someone")
                 ))
             }
             Command::Machines => machines(&d),
