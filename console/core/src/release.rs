@@ -435,11 +435,332 @@ fn verify_signature(dir: &Path, keyring: &Path, gpgv: &Program) -> Result<()> {
     })
 }
 
+/// The trailers of a release commit, in this order: what `build` writes and `publish` reads.
+pub const TRAILERS: [&str; 8] = [
+    "Release-Image",
+    "Release-Version",
+    "Config",
+    "Usr",
+    "Verity",
+    "Signature",
+    "Uki",
+    "Store-Path",
+];
+
+/// What a release commit records: the image and version, the document's digest as built, the
+/// four files' digests and the build's store path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Record {
+    pub commit: String,
+    pub id: String,
+    pub version: Version,
+    /// `sha256:<hex>` of the document
+    pub config: String,
+    /// usr, verity, signature, UKI: `sha256:<hex>`, in the index's order
+    pub digests: [String; 4],
+    pub store_path: String,
+}
+
+impl Record {
+    /// The trailer lines, `Key: value`, one per line.
+    pub fn trailers(&self) -> String {
+        let values = [
+            self.id.clone(),
+            self.version.to_string(),
+            self.config.clone(),
+            self.digests[0].clone(),
+            self.digests[1].clone(),
+            self.digests[2].clone(),
+            self.digests[3].clone(),
+            self.store_path.clone(),
+        ];
+        TRAILERS
+            .iter()
+            .zip(values)
+            .fold(String::new(), |mut s, (k, v)| {
+                let _ = writeln!(s, "{k}: {v}");
+                s
+            })
+    }
+
+    /// A record from a commit's trailer lines; None when one is missing or malformed.
+    pub fn parse(commit: &str, trailers: &str) -> Option<Record> {
+        let get = |key: &str| {
+            trailers.lines().find_map(|l| {
+                l.strip_prefix(key)
+                    .and_then(|r| r.strip_prefix(": "))
+                    .map(str::trim)
+            })
+        };
+        let digest = |key: &str| {
+            get(key)
+                .filter(|d| d.strip_prefix("sha256:").is_some_and(|h| is_hex(h, 64)))
+                .map(str::to_string)
+        };
+        Some(Record {
+            commit: commit.into(),
+            id: get("Release-Image").filter(|i| is_image_id(i))?.into(),
+            version: get("Release-Version")?.parse().ok()?,
+            config: digest("Config")?,
+            digests: [
+                digest("Usr")?,
+                digest("Verity")?,
+                digest("Signature")?,
+                digest("Uki")?,
+            ],
+            store_path: get("Store-Path")?.into(),
+        })
+    }
+
+    /// Whether `index` lists exactly these four digests.
+    pub fn matches(&self, index: &Index) -> bool {
+        index
+            .files
+            .iter()
+            .zip(&self.digests)
+            .all(|(f, d)| d.strip_prefix("sha256:") == Some(f.digest.as_str()))
+    }
+}
+
+/// The release commits in the repository at `repo`, on any ref, newest first: of image `id`
+/// (every image without it), and with `version` only that version's. The user's git configuration applies: this is their
+/// repository.
+///
+/// # Errors
+///
+/// When git fails.
+pub fn records(
+    git: &Program,
+    repo: &Path,
+    id: Option<&str>,
+    version: Option<Version>,
+) -> Result<Vec<Record>> {
+    let mut args = vec![
+        "-C".to_string(),
+        repo.to_string_lossy().into_owned(),
+        "log".into(),
+        "--all".into(),
+        "-z".into(),
+        "--format=%H%n%(trailers:only,unfold)".into(),
+        "--fixed-strings".into(),
+        format!("--grep=Release-Image: {}", id.unwrap_or_default()),
+    ];
+    if let Some(v) = version {
+        args.push("--all-match".into());
+        args.push(format!("--grep=Release-Version: {v}"));
+    }
+    let out = git.run(&args, None).map_err(|e| Error(e.0))?;
+    let text = String::from_utf8_lossy(&out);
+    Ok(text
+        .split('\0')
+        .filter_map(|c| {
+            let (commit, trailers) = c.trim_start_matches('\n').split_once('\n')?;
+            Record::parse(commit, trailers)
+        })
+        .filter(|r| id.is_none_or(|id| r.id == id) && version.is_none_or(|v| r.version == v))
+        .collect())
+}
+
+/// An rclone destination: a local directory or `remote:path`.
+pub struct Destination<'a> {
+    pub rclone: &'a Program,
+    pub to: &'a str,
+}
+
+/// rclone's exit status for a directory or file that is not there.
+const NOT_FOUND: [i32; 2] = [3, 4];
+
+impl Destination<'_> {
+    fn path(&self, name: &str) -> String {
+        if self.to.ends_with(':') {
+            format!("{}{name}", self.to)
+        } else {
+            format!("{}/{name}", self.to.trim_end_matches('/'))
+        }
+    }
+
+    /// A file at the destination, or None when it is not there.
+    ///
+    /// # Errors
+    ///
+    /// When rclone fails for another reason (no such remote, no access).
+    pub fn read(&self, name: &str) -> Result<Option<Vec<u8>>> {
+        let out = self
+            .rclone
+            .output(&["cat", &self.path(name)], None)
+            .map_err(|e| Error(e.0))?;
+        match out.status.code() {
+            Some(0) => Ok(Some(out.stdout)),
+            Some(c) if NOT_FOUND.contains(&c) => Ok(None),
+            _ => err(format!(
+                "rclone cat {}: {}: {}",
+                self.path(name),
+                out.status,
+                String::from_utf8_lossy(&out.stderr).trim()
+            )),
+        }
+    }
+
+    /// The index the destination serves, or None when it serves none yet.
+    ///
+    /// # Errors
+    ///
+    /// When it cannot be read, or is not an index.
+    pub fn index(&self) -> Result<Option<(Vec<u8>, Index)>> {
+        let Some(bytes) = self.read("SHA256SUMS")? else {
+            return Ok(None);
+        };
+        let text = String::from_utf8(bytes.clone())
+            .map_err(|_| Error(format!("{}: not UTF-8", self.path("SHA256SUMS"))))?;
+        let index =
+            read_index(&text).map_err(|e| Error(format!("{}: {e}", self.path("SHA256SUMS"))))?;
+        Ok(Some((bytes, index)))
+    }
+
+    /// The file names at the destination, none when it does not exist yet.
+    ///
+    /// # Errors
+    ///
+    /// When rclone fails for another reason.
+    pub fn files(&self) -> Result<Vec<String>> {
+        let out = self
+            .rclone
+            .output(&["lsf", "--files-only", self.to], None)
+            .map_err(|e| Error(e.0))?;
+        match out.status.code() {
+            Some(0) => Ok(String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .map(str::to_string)
+                .collect()),
+            Some(c) if NOT_FOUND.contains(&c) => Ok(Vec::new()),
+            _ => err(format!(
+                "rclone lsf {}: {}: {}",
+                self.to,
+                out.status,
+                String::from_utf8_lossy(&out.stderr).trim()
+            )),
+        }
+    }
+
+    /// Uploads one file under its name. `--copy-links`: a release directory holds symlinks
+    /// into the store. `--ignore-times`: every file there has the mtime 1, so rclone would
+    /// skip a new file of the same size as the old one (the index is always 4 lines of the
+    /// same widths).
+    fn upload(&self, file: &Path, name: &str) -> Result<()> {
+        self.rclone
+            .run(
+                &[
+                    "copyto".as_ref(),
+                    "--copy-links".as_ref(),
+                    "--ignore-times".as_ref(),
+                    file.as_os_str(),
+                    self.path(name).as_ref(),
+                ],
+                None,
+            )
+            .map(|_| ())
+            .map_err(|e| Error(e.0))
+    }
+}
+
+/// The versions of image `id` among a destination's file names: those of its UKIs.
+pub fn versions_in(files: &[String], id: &str) -> Vec<Version> {
+    let mut v: Vec<Version> = files
+        .iter()
+        .filter_map(|f| {
+            f.strip_prefix(id)?
+                .strip_prefix('_')?
+                .strip_suffix(".efi")?
+                .parse()
+                .ok()
+        })
+        .collect();
+    v.sort();
+    v
+}
+
+/// What a publish did.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Published {
+    /// the files and then the index were uploaded
+    Uploaded { record: Option<Box<Record>> },
+    /// the destination serves this release already
+    AlreadyThere,
+}
+
+/// Publishes a checked release to `dest`, unless it is not newer than what `dest` serves or its
+/// release commit records other digests (or there is none and not `unrecorded`). The files go
+/// first, the signature and the index last, then the index is read back. Deletes and commits
+/// nothing. An error is the refusal, or the step that failed.
+pub fn publish(
+    release: &Release,
+    dest: &Destination<'_>,
+    git: &Program,
+    repo: &Path,
+    unrecorded: bool,
+) -> Result<Published> {
+    let i = &release.index;
+    let ours =
+        fs::read(release.dir.join("SHA256SUMS")).map_err(|e| Error(format!("SHA256SUMS: {e}")))?;
+    if let Some((theirs, served)) = dest.index()? {
+        if served.id != i.id {
+            return err(format!(
+                "{} serves image {}, not {}",
+                dest.to, served.id, i.id
+            ));
+        }
+        if served.version == i.version && theirs == ours {
+            return Ok(Published::AlreadyThere);
+        }
+        if served.version == i.version {
+            return err(format!(
+                "{} serves {} {} with other files: a version is published once",
+                dest.to, i.id, i.version
+            ));
+        }
+        i.version
+            .newer_than(&[served.version], &format!("what {} serves", dest.to))?;
+    }
+    let found = records(git, repo, Some(&i.id), Some(i.version))?;
+    if let Some(other) = found.iter().find(|r| !r.matches(i)) {
+        return err(format!(
+            "release commit {} records other digests for {} {}: this directory is another build",
+            other.commit, i.id, i.version
+        ));
+    }
+    if found.is_empty() && !unrecorded {
+        return err(format!(
+            "no release commit for {} {} in {}: build it with golconda release build, or give --unrecorded",
+            i.id,
+            i.version,
+            repo.display()
+        ));
+    }
+    let names = i
+        .files
+        .iter()
+        .map(|f| f.name.as_str())
+        .chain(["SHA256SUMS.gpg", "SHA256SUMS"]);
+    for name in names {
+        dest.upload(&release.dir.join(name), name)?;
+    }
+    match dest.index()? {
+        Some((theirs, _)) if theirs == ours => Ok(Published::Uploaded {
+            record: found.into_iter().next().map(Box::new),
+        }),
+        _ => err(format!(
+            "{} does not serve the index just uploaded",
+            dest.to
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::fs::{PermissionsExt, symlink};
     use std::process::Command;
+    use std::time::Duration;
 
     const ROOT: &str = "0123456789abcdef0123456789abcdef89abcdef0123456789abcdef01234567";
 
@@ -783,5 +1104,337 @@ mod tests {
                 .args(["--kill", "gpg-agent"])
                 .status();
         }
+    }
+
+    // publish: real git and rclone, release files as symlinks with the mtime 1, as in the store
+
+    struct Scene {
+        tmp: TempDir,
+        repo: PathBuf,
+        dest: PathBuf,
+        gpgv: Program,
+        git: Program,
+        rclone: Program,
+    }
+
+    fn sh(dir: &Path, program: &str, args: &[&str]) -> String {
+        let out = Command::new(program)
+            .current_dir(dir)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{program} {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    fn scene() -> Scene {
+        let f = fixture();
+        let repo = f.tmp.path().join("repo");
+        fs::create_dir_all(&repo).unwrap();
+        sh(&repo, "git", &["init", "-q", "-b", "main"]);
+        sh(
+            &repo,
+            "git",
+            &[
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "start",
+            ],
+        );
+        Scene {
+            repo,
+            dest: f.tmp.path().join("www"),
+            gpgv: f.gpgv,
+            git: Program::from_env("GOLCONDA_TEST_UNSET_GIT", "git"),
+            rclone: Program::from_env("GOLCONDA_RCLONE", "rclone"),
+            tmp: f.tmp,
+        }
+    }
+
+    impl Scene {
+        /// A checked release of `server` `version`, its files `salt`ed, as symlinks into a
+        /// store directory with the mtime 1.
+        fn release(&self, version: &str, salt: &str) -> Release {
+            let store = self.tmp.path().join(format!("store-{version}-{salt}"));
+            let dir = self.tmp.path().join(format!("release-{version}-{salt}"));
+            fs::create_dir_all(&store).unwrap();
+            fs::create_dir_all(&dir).unwrap();
+            let n = names(&format!("server_{version}"));
+            let mut sig = format!(r#"{{"rootHash":"{ROOT}","s":"{salt}"}}"#).into_bytes();
+            sig.resize(4096, 0);
+            let bodies = [
+                format!("usr {salt}").into_bytes(),
+                format!("verity {salt}").into_bytes(),
+                sig,
+                format!("uki {salt}").into_bytes(),
+            ];
+            let mut index = String::new();
+            for (name, body) in n.iter().zip(&bodies) {
+                fs::write(store.join(name), body).unwrap();
+                index += &format!("{}  {name}\n", sha256(&store.join(name)).unwrap());
+            }
+            fs::write(store.join("SHA256SUMS"), index).unwrap();
+            fs::write(store.join("SHA256SUMS.gpg"), "good").unwrap();
+            for e in fs::read_dir(&store).unwrap() {
+                let e = e.unwrap();
+                let one = UNIX_EPOCH + Duration::from_secs(1);
+                fs::File::options()
+                    .write(true)
+                    .open(e.path())
+                    .unwrap()
+                    .set_modified(one)
+                    .unwrap();
+                symlink(e.path(), dir.join(e.file_name())).unwrap();
+            }
+            let keys = self.tmp.path().join("keys");
+            check(&dir, &keyring(&keys), &self.gpgv).unwrap()
+        }
+
+        /// A release commit for `r`, on the current branch.
+        fn record(&self, r: &Release) -> Record {
+            let rec = Record {
+                commit: String::new(),
+                id: r.index.id.clone(),
+                version: r.index.version,
+                config: format!("sha256:{}", "c".repeat(64)),
+                digests: r
+                    .index
+                    .files
+                    .clone()
+                    .map(|f| format!("sha256:{}", f.digest)),
+                store_path: "/nix/store/x-disk".into(),
+            };
+            let msg = format!("release: {} {}\n\n{}", rec.id, rec.version, rec.trailers());
+            sh(
+                &self.repo,
+                "git",
+                &[
+                    "-c",
+                    "user.name=t",
+                    "-c",
+                    "user.email=t@t",
+                    "commit",
+                    "-q",
+                    "--allow-empty",
+                    "-m",
+                    &msg,
+                ],
+            );
+            Record {
+                commit: sh(&self.repo, "git", &["rev-parse", "HEAD"]),
+                ..rec
+            }
+        }
+
+        fn publish(&self, r: &Release, unrecorded: bool) -> Result<Published> {
+            let to = self.dest.to_string_lossy().into_owned();
+            let dest = Destination {
+                rclone: &self.rclone,
+                to: &to,
+            };
+            publish(r, &dest, &self.git, &self.repo, unrecorded)
+        }
+
+        fn served(&self) -> String {
+            fs::read_to_string(self.dest.join("SHA256SUMS")).unwrap()
+        }
+    }
+
+    fn index_text(r: &Release) -> String {
+        fs::read_to_string(r.dir.join("SHA256SUMS")).unwrap()
+    }
+
+    #[test]
+    fn a_record_round_trips_through_its_trailers() {
+        let s = scene();
+        let r = s.release("20261105.1", "a");
+        let rec = s.record(&r);
+        let found = records(&s.git, &s.repo, Some("server"), Some(r.index.version)).unwrap();
+        assert_eq!(found, vec![rec.clone()]);
+        assert!(rec.matches(&r.index));
+        assert!(!rec.matches(&s.release("20261105.1", "b").index));
+        assert!(Record::parse("x", &rec.trailers().replace("sha256:c", "sha256:C")).is_none());
+        assert!(Record::parse("x", &rec.trailers().replace("Uki", "UKI")).is_none());
+        // another version and another image are not this one
+        assert_eq!(
+            records(&s.git, &s.repo, Some("server"), Some(v("20261105.2"))).unwrap(),
+            vec![]
+        );
+        assert_eq!(
+            records(&s.git, &s.repo, Some("serv"), None).unwrap(),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_record_on_another_branch_counts() {
+        let s = scene();
+        let r = s.release("20261105.1", "a");
+        sh(&s.repo, "git", &["checkout", "-q", "-b", "release"]);
+        let rec = s.record(&r);
+        sh(&s.repo, "git", &["checkout", "-q", "main"]);
+        assert_eq!(
+            records(&s.git, &s.repo, Some("server"), None).unwrap(),
+            vec![rec]
+        );
+    }
+
+    #[test]
+    fn publish_uploads_a_release_and_the_same_one_again_is_no_error() {
+        let s = scene();
+        let r = s.release("20261105.1", "a");
+        let rec = s.record(&r);
+        assert_eq!(
+            s.publish(&r, false).unwrap(),
+            Published::Uploaded {
+                record: Some(Box::new(rec))
+            }
+        );
+        assert_eq!(s.served(), index_text(&r));
+        for f in &r.index.files {
+            assert_eq!(sha256(&s.dest.join(&f.name)).unwrap(), f.digest);
+        }
+        assert_eq!(fs::read(s.dest.join("SHA256SUMS.gpg")).unwrap(), b"good");
+        assert_eq!(s.publish(&r, false).unwrap(), Published::AlreadyThere);
+    }
+
+    #[test]
+    fn a_newer_release_replaces_the_index_of_the_same_size_and_mtime() {
+        let s = scene();
+        let (a, b) = (s.release("20261105.1", "a"), s.release("20261105.2", "b"));
+        s.record(&a);
+        s.record(&b);
+        s.publish(&a, false).unwrap();
+        assert_eq!(index_text(&a).len(), index_text(&b).len());
+        s.publish(&b, false).unwrap();
+        assert_eq!(s.served(), index_text(&b));
+        // the older release's files stay
+        assert!(s.dest.join(&a.index.files[3].name).exists());
+        let files = Destination {
+            rclone: &s.rclone,
+            to: s.dest.to_str().unwrap(),
+        }
+        .files()
+        .unwrap();
+        assert_eq!(
+            versions_in(&files, "server"),
+            vec![v("20261105.1"), v("20261105.2")]
+        );
+    }
+
+    #[test]
+    fn publish_refuses_an_older_version_or_the_same_version_with_other_files() {
+        let s = scene();
+        let (a, b) = (s.release("20261105.1", "a"), s.release("20261105.2", "b"));
+        s.record(&a);
+        s.record(&b);
+        s.publish(&b, false).unwrap();
+        let e = s.publish(&a, false).unwrap_err();
+        assert!(e.0.contains("is not newer than 20261105.2"), "{e}");
+        let b2 = s.release("20261105.2", "c");
+        let e = s.publish(&b2, true).unwrap_err();
+        assert!(e.0.contains("with other files"), "{e}");
+        assert_eq!(s.served(), index_text(&b));
+    }
+
+    #[test]
+    fn publish_refuses_a_release_its_commit_does_not_record() {
+        let s = scene();
+        let r = s.release("20261105.1", "a");
+        let e = s.publish(&r, false).unwrap_err();
+        assert!(
+            e.0.contains("no release commit for server 20261105.1"),
+            "{e}"
+        );
+        assert!(!s.dest.exists(), "nothing uploaded");
+        // a rebuild of the same version that came out different
+        s.record(&s.release("20261105.1", "other build"));
+        let e = s.publish(&r, true).unwrap_err();
+        assert!(e.0.contains("records other digests"), "{e}");
+        assert!(!s.dest.exists());
+    }
+
+    #[test]
+    fn an_unrecorded_release_goes_out_with_unrecorded() {
+        let s = scene();
+        let r = s.release("20261105.1", "a");
+        assert_eq!(
+            s.publish(&r, true).unwrap(),
+            Published::Uploaded { record: None }
+        );
+        assert_eq!(s.served(), index_text(&r));
+    }
+
+    #[test]
+    fn publish_refuses_a_destination_of_another_image() {
+        let s = scene();
+        let r = s.release("20261105.1", "a");
+        fs::create_dir_all(&s.dest).unwrap();
+        let other = index_text(&r).replace("server_", "other_");
+        fs::write(s.dest.join("SHA256SUMS"), other).unwrap();
+        let e = s.publish(&r, true).unwrap_err();
+        assert!(e.0.contains("serves image other"), "{e}");
+    }
+
+    #[test]
+    fn the_index_goes_up_last_and_is_read_back() {
+        let s = scene();
+        let r = s.release("20261105.1", "a");
+        // an rclone that logs and copies nothing: the read-back finds no index
+        let fake = s.tmp.path().join("rclone");
+        fs::write(
+            &fake,
+            format!(
+                "#!/bin/sh\necho \"$1 $(basename \"$4\")\" >> {}/rclone.log\n[ \"$1\" = copyto ] || exit 3\n",
+                s.tmp.path().display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();
+        let rclone = Program::from_env("GOLCONDA_TEST_UNSET_RCLONE", fake.to_str().unwrap());
+        let dest = Destination {
+            rclone: &rclone,
+            to: "remote:bucket/web",
+        };
+        let e = publish(&r, &dest, &s.git, &s.repo, true).unwrap_err();
+        assert!(
+            e.0.contains("does not serve the index just uploaded"),
+            "{e}"
+        );
+        let log = fs::read_to_string(s.tmp.path().join("rclone.log")).unwrap();
+        let copied: Vec<&str> = log
+            .lines()
+            .filter_map(|l| l.strip_prefix("copyto "))
+            .collect();
+        let mut want: Vec<&str> = r.index.files.iter().map(|f| f.name.as_str()).collect();
+        want.extend(["SHA256SUMS.gpg", "SHA256SUMS"]);
+        assert_eq!(copied, want);
+    }
+
+    #[test]
+    fn destination_paths_join_a_remote_or_a_directory() {
+        let rclone = Program::from_env("GOLCONDA_TEST_UNSET_RCLONE", "rclone");
+        let p = |to: &str| {
+            Destination {
+                rclone: &rclone,
+                to,
+            }
+            .path("SHA256SUMS")
+        };
+        assert_eq!(p("hetzner:"), "hetzner:SHA256SUMS");
+        assert_eq!(p("hetzner:updates/web/"), "hetzner:updates/web/SHA256SUMS");
+        assert_eq!(p("/srv/www"), "/srv/www/SHA256SUMS");
     }
 }

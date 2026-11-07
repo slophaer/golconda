@@ -13,6 +13,7 @@ use golconda_core::system::System;
 use golconda_core::vars::{self, Program, Remote, Store};
 use std::env::{self, consts};
 use std::error;
+use std::fmt::Write as _;
 use std::io::{self, Read};
 use std::path::{self, Path, PathBuf};
 use std::process::ExitCode;
@@ -84,6 +85,37 @@ enum Releases {
         /// JSON instead of text
         #[arg(long)]
         json: bool,
+    },
+    /// Check a release directory, then upload it to DEST: refused when DEST serves a newer or
+    /// the same version, or when the release commit records other digests (or there is none).
+    /// The files go first, the signature and the index last; nothing is deleted
+    Publish {
+        /// The release directory
+        dir: PathBuf,
+        /// Where machines fetch from: a directory, or remote:path of rclone's (S3, SFTP, …)
+        #[arg(long, value_name = "DEST")]
+        to: String,
+        /// The key set: its release/index.pgp must have signed the index
+        #[arg(long, value_name = "DIR")]
+        keys: PathBuf,
+        /// The configuration repository with the release commits
+        #[arg(long, value_name = "DIR", default_value = ".")]
+        repo: PathBuf,
+        /// Publish a release no release commit records (one built by hand)
+        #[arg(long)]
+        unrecorded: bool,
+    },
+    /// The release commits, newest first; with --to also what DEST holds and serves
+    List {
+        /// Only this image
+        #[arg(long, value_name = "ID")]
+        image: Option<String>,
+        /// A destination to compare with
+        #[arg(long, value_name = "DEST")]
+        to: Option<String>,
+        /// The configuration repository
+        #[arg(long, value_name = "DIR", default_value = ".")]
+        repo: PathBuf,
     },
 }
 
@@ -295,9 +327,75 @@ fn needs_server(c: &Config) -> ! {
         .exit()
 }
 
+/// One line per release commit, marked when DEST holds or serves it; and what DEST serves
+/// that no release commit here records.
+fn list_releases(
+    git: &Program,
+    rclone: &Program,
+    image: Option<&str>,
+    to: Option<&str>,
+    repo: &Path,
+) -> Result<String, Box<dyn error::Error>> {
+    let recs = release::records(git, repo, image, None)?;
+    let dest = to.map(|to| release::Destination { rclone, to });
+    let (files, served) = match &dest {
+        Some(d) => (d.files()?, d.index()?.map(|(_, i)| (i.id, i.version))),
+        None => (Vec::new(), None),
+    };
+    let mut out = String::new();
+    for r in &recs {
+        let at = if served.as_ref() == Some(&(r.id.clone(), r.version)) {
+            "  served"
+        } else if release::versions_in(&files, &r.id).contains(&r.version) {
+            "  at the destination"
+        } else {
+            ""
+        };
+        let _ = writeln!(out, "{} {}  {}{at}", r.id, r.version, &r.commit[..12]);
+    }
+    if let (Some(d), Some((id, v))) = (&dest, &served)
+        && !recs.iter().any(|r| (&r.id, r.version) == (id, *v))
+    {
+        let _ = writeln!(out, "{} serves {id} {v}: no release commit here", d.to);
+    }
+    Ok(out)
+}
+
 fn run_release(command: Releases) -> Result<String, Box<dyn error::Error>> {
     let gpgv = Program::from_env("GOLCONDA_GPGV", "gpgv");
+    let git = Program::from_env("GOLCONDA_GIT", "git");
+    let rclone = Program::from_env("GOLCONDA_RCLONE", "rclone");
     match command {
+        Releases::Publish {
+            dir,
+            to,
+            keys,
+            repo,
+            unrecorded,
+        } => {
+            let r = release::check(&dir, &release::keyring(&keys), &gpgv)?;
+            let dest = release::Destination {
+                rclone: &rclone,
+                to: &to,
+            };
+            let (id, v) = (&r.index.id, r.index.version);
+            Ok(
+                match release::publish(&r, &dest, &git, &repo, unrecorded)? {
+                    release::Published::AlreadyThere => {
+                        format!("{to} serves {id} {v} already: nothing to upload\n")
+                    }
+                    release::Published::Uploaded { record: Some(c) } => {
+                        format!("{id} {v} published to {to} (release commit {})\n", c.commit)
+                    }
+                    release::Published::Uploaded { record: None } => {
+                        format!("{id} {v} published to {to}, unrecorded\n")
+                    }
+                },
+            )
+        }
+        Releases::List { image, to, repo } => {
+            list_releases(&git, &rclone, image.as_deref(), to.as_deref(), &repo)
+        }
         Releases::Check { dir, keys, json } => {
             let r = release::check(&dir, &release::keyring(&keys), &gpgv)?;
             let i = &r.index;

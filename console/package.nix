@@ -22,11 +22,12 @@ package {
   # rusqlite's bundled SQLite: its build script copies bindings that are read-only here
   cargo.cratePatches.libsqlite3-sys = [ ./patches/libsqlite3-sys-read-only-bindings.patch ];
   # the commit tests run git on scratch repositories and sign with ssh-keygen; the release
-  # tests sign and verify with gpg
+  # tests sign and verify with gpg and publish with rclone
   buildDependencies = [
     buildPkgs.git
     buildPkgs.openssh
     buildPkgs.gnupg
+    buildPkgs.rclone
   ];
   # golcondad compiles its fonts in (console/daemon/build.rs)
   env.GOLCONDA_FONTS = "${pkgs.ibm-plex-web}/share/fonts/ibm-plex";
