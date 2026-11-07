@@ -3,15 +3,59 @@
 # This directory is the ONLY place allowed to import nixpkgs (pin
 # `nixpkgs-dev-only`). Nothing it builds ships in an image or is a dependency
 # of a package; checks/boundary enforces that. It exists because repkgs does not
-# package these tools yet; each one moves to packages/ when it does.
+# package these tools yet; each one moves to packages/ when it does. The ones
+# that moved come from the repkgs set (`rp`), and whatever names them is built
+# with nix/run.nix: a nixpkgs derivation cannot depend on a content-addressed one
+# on this daemon.
 { sources }:
-double:
+double: set:
 let
+  inherit (builtins)
+    attrNames
+    concatStringsSep
+    isList
+    toJSON
+    ;
   pkgs = import sources.nixpkgs-dev-only { system = double; };
+  rp = set.pkgs;
+  run = import ../run.nix set;
+  seed = set.bootstrap.seed;
 
-  statix-each = pkgs.writeShellScript "statix-each" ''
+  # writeScript NAME TEXT: $out/bin/NAME, executable, run by the seed's sh
+  writeScript =
+    name: text:
+    run name [ ] ''
+      mkdir -p $out/bin
+      cat > $out/bin/${name} <<'GOLCONDA_SCRIPT_EOF'
+      #!${seed}/bin/sh
+      ${text}
+      GOLCONDA_SCRIPT_EOF
+      chmod +x $out/bin/${name}
+    '';
+
+  # TOML for treefmt's config: tables of strings and lists of strings (JSON's quoting is TOML's
+  # for these)
+  toTOML =
+    tables:
+    concatStringsSep "\n" (
+      map (
+        t:
+        "[${t}]\n"
+        + concatStringsSep "" (
+          map (
+            k:
+            let
+              v = tables.${t}.${k};
+            in
+            "${k} = ${if isList v then toJSON v else toJSON v}\n"
+          ) (attrNames tables.${t})
+        )
+      ) (attrNames tables)
+    );
+
+  statix-each = writeScript "statix-each" ''
     status=0
-    for f in "$@"; do ${pkgs.statix}/bin/statix check -c ${
+    for f in "$@"; do ${rp.statix}/bin/statix check -c ${
       builtins.path {
         path = ../../statix.toml;
         name = "statix.toml";
@@ -62,82 +106,86 @@ let
     exit $status
   '';
 
-  treefmt = pkgs.treefmt.withConfig {
-    settings = {
+  # treefmt with its config: a wrapper adds --config-file, as nixpkgs' treefmt.withConfig did
+  treefmtConfig = run "treefmt.toml" [ ] ''
+    cat > $out <<'GOLCONDA_TOML_EOF'
+    ${toTOML {
       global.excludes = [
         "npins/*"
         "result*"
         "LICENSE"
       ];
-      formatter = {
-        nix = {
-          command = "${pkgs.nixfmt}/bin/nixfmt";
-          includes = [ "*.nix" ];
-        };
-        nix-statix = {
-          command = "${statix-each}";
-          includes = [ "*.nix" ];
-        };
-        nix-deadnix = {
-          command = "${pkgs.deadnix}/bin/deadnix";
-          options = [
-            "--fail"
-            "--edit"
-          ];
-          includes = [ "*.nix" ];
-        };
-        markdown = {
-          command = "${pkgs.mdformat.withPlugins (p: [ p.mdformat-gfm ])}/bin/mdformat";
-          options = [ "--wrap=100" ];
-          includes = [ "*.md" ];
-        };
-        toml = {
-          command = "${pkgs.taplo}/bin/taplo";
-          options = [ "format" ];
-          includes = [ "*.toml" ];
-        };
-        # console/: the edition is the workspace's (console/Cargo.toml)
-        rust = {
-          command = "${pkgs.rustfmt}/bin/rustfmt";
-          options = [
-            "--edition"
-            "2024"
-          ];
-          includes = [ "*.rs" ];
-        };
-        # check only: the rules in lints/ (rust, nu, nix)
-        ast-grep = {
-          command = "${ast-grep}/bin/golconda-ast-grep";
-          options = [
-            "scan"
-            "--report-style=short"
-          ];
-          includes = [
-            "*.rs"
-            "*.nu"
-            "*.nix"
-          ];
-        };
-        # check only, nu has no stable formatter
-        nu-typecheck = {
-          command = "${nu-typecheck}";
-          includes = [ "*.nu" ];
-        };
-        # check only; scripts/check-doc-links is Python
-        shellcheck = {
-          command = "${pkgs.shellcheck}/bin/shellcheck";
-          includes = [
-            "*.sh"
-            "scripts/boot-test"
-            "scripts/docs"
-            "scripts/lint"
-            "scripts/make-keys"
-            "scripts/provision-esp"
-          ];
-        };
+      "formatter.nix" = {
+        command = "${rp.nixfmt-rs}/bin/nixfmt";
+        includes = [ "*.nix" ];
       };
-    };
-  };
+      "formatter.nix-statix" = {
+        command = "${statix-each}/bin/statix-each";
+        includes = [ "*.nix" ];
+      };
+      "formatter.nix-deadnix" = {
+        command = "${rp.deadnix}/bin/deadnix";
+        options = [
+          "--fail"
+          "--edit"
+        ];
+        includes = [ "*.nix" ];
+      };
+      "formatter.markdown" = {
+        command = "${pkgs.mdformat.withPlugins (p: [ p.mdformat-gfm ])}/bin/mdformat";
+        options = [ "--wrap=100" ];
+        includes = [ "*.md" ];
+      };
+      "formatter.toml" = {
+        command = "${rp.taplo}/bin/taplo";
+        options = [ "format" ];
+        includes = [ "*.toml" ];
+      };
+      # console/: the edition is the workspace's (console/Cargo.toml)
+      "formatter.rust" = {
+        command = "${rp.rust}/bin/rustfmt";
+        options = [
+          "--edition"
+          "2024"
+        ];
+        includes = [ "*.rs" ];
+      };
+      # check only: the rules in lints/ (rust, nu, nix)
+      "formatter.ast-grep" = {
+        command = "${ast-grep}/bin/golconda-ast-grep";
+        options = [
+          "scan"
+          "--report-style=short"
+        ];
+        includes = [
+          "*.rs"
+          "*.nu"
+          "*.nix"
+        ];
+      };
+      # check only, nu has no stable formatter
+      "formatter.nu-typecheck" = {
+        command = "${nu-typecheck}";
+        includes = [ "*.nu" ];
+      };
+      # check only; scripts/check-doc-links is Python
+      "formatter.shellcheck" = {
+        command = "${rp.shellcheck}/bin/shellcheck";
+        includes = [
+          "*.sh"
+          "scripts/boot-test"
+          "scripts/docs"
+          "scripts/lint"
+          "scripts/make-keys"
+          "scripts/provision-esp"
+        ];
+      };
+    }}
+    GOLCONDA_TOML_EOF
+  '';
+  treefmt = writeScript "treefmt" ''
+    exec ${rp.treefmt}/bin/treefmt --config-file ${treefmtConfig} "$@"
+  '';
 
   inherit (pkgs) mdbook;
 
@@ -168,9 +216,10 @@ in
     ast-grep
     ;
 
+  # nixpkgs' mkShell cannot take a content-addressed input on this daemon, so treefmt (ours now)
+  # is not in it: `nix fmt` runs the formatter output
   shell = pkgs.mkShellNoCC {
     packages = [
-      treefmt
       ast-grep
       mdbook
       mdbook-pele
@@ -178,7 +227,7 @@ in
       pkgs.npins
     ];
     shellHook = ''
-      echo "golconda dev shell: treefmt | golconda-ast-grep scan|test | iets lint: ./scripts/lint | docs: scripts/docs serve"
+      echo "golconda dev shell: nix fmt | golconda-ast-grep scan|test | iets lint: ./scripts/lint | docs: scripts/docs serve"
     '';
   };
 }

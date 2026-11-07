@@ -38,7 +38,7 @@ let
           };
         };
       }).modules.system
-        { }
+      { }
     ).packages;
 in
 [

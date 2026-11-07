@@ -157,7 +157,7 @@ in
         (f.modules {
           options."/pkgs".set = stubSet;
         }).modules.pkgs
-          { }
+        { }
       ) true
     )).success
   ))
