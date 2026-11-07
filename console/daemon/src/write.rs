@@ -21,9 +21,14 @@ use serde_json::{Value, json};
 use std::fs;
 use std::os;
 use std::path::{self, Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::mpsc::{self, RecvTimeoutError, Sender};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
+use std::time::Duration;
+
+/// How long a failed push of the audit repository waits before the next try.
+const AUDIT_RETRY: Duration = Duration::from_secs(30);
 
 /// What a daemon that writes has: the journal, the audit repository, its signing key.
 pub struct Writes {
@@ -41,6 +46,12 @@ pub struct Writes {
     pub audit_push: Option<String>,
     /// the audit repository has entries its remote lacks
     pub audit_unpushed: Arc<AtomicBool>,
+    /// how long the audit push waits before it tries again after a failure
+    pub audit_retry: Duration,
+    /// entries recorded since start, for the pusher to see that more came in
+    audit_entries: Arc<AtomicU64>,
+    /// wakes the thread that pushes the audit repository; started by the first entry
+    pusher: OnceLock<Sender<()>>,
     /// the daemon, as committer, and its SSH key
     pub committer: Person,
     pub signing_key: Option<PathBuf>,
@@ -82,6 +93,9 @@ impl Writes {
             index: Mutex::new(index),
             audit_push,
             audit_unpushed: Arc::default(),
+            audit_retry: AUDIT_RETRY,
+            audit_entries: Arc::default(),
+            pusher: OnceLock::new(),
             committer,
             signing_key,
             push,
@@ -104,34 +118,61 @@ impl Writes {
         if let Some(socket) = &self.journal_socket {
             send_journal(socket, e);
         }
-        if let Some(remote) = self.audit_push.clone() {
-            self.audit_unpushed.store(true, Ordering::SeqCst);
-            let dir = locked(&self.audit).dir.clone();
-            let committer = self.committer.clone();
-            let unpushed = self.audit_unpushed.clone();
+        if let Some(remote) = &self.audit_push {
             // the push may lag; the pages say so until one succeeds
-            thread::spawn(move || {
-                let git = Git {
-                    dir,
-                    committer,
-                    signing_key: None,
-                };
-                if git.push(&remote, "main").is_ok() {
-                    unpushed.store(false, Ordering::SeqCst);
-                }
-            });
+            self.audit_entries.fetch_add(1, Ordering::SeqCst);
+            self.audit_unpushed.store(true, Ordering::SeqCst);
+            let pusher = self.pusher.get_or_init(|| self.start_pusher(remote));
+            // it fails only if the pusher died, which a panic in `git.push` would do
+            if pusher.send(()).is_err() {
+                eprintln!("golcondad: the audit push thread has ended");
+            }
         }
         Ok(())
     }
 
-    /// Push the audit repository now; whether it worked.
-    pub fn push_audit(&self) -> bool {
-        let Some(remote) = &self.audit_push else {
-            return true;
+    /// The one thread that pushes the audit repository: it sleeps until an entry is
+    /// recorded, then pushes once for all entries recorded so far. A push that fails is tried
+    /// again after `audit_retry`, until it works. It ends, after a last push, when this
+    /// struct is dropped.
+    fn start_pusher(&self, remote: &str) -> Sender<()> {
+        let (send, wake) = mpsc::channel::<()>();
+        let git = Git {
+            dir: locked(&self.audit).dir.clone(),
+            committer: self.committer.clone(),
+            signing_key: None,
         };
-        let ok = locked(&self.audit).push(remote, "main").is_ok();
-        self.audit_unpushed.store(!ok, Ordering::SeqCst);
-        ok
+        let (remote, retry) = (remote.to_string(), self.audit_retry);
+        let (entries, unpushed) = (self.audit_entries.clone(), self.audit_unpushed.clone());
+        thread::spawn(move || {
+            let mut failing = false;
+            loop {
+                let woken = if failing {
+                    wake.recv_timeout(retry)
+                } else {
+                    wake.recv().map_err(|_| RecvTimeoutError::Disconnected)
+                };
+                let closed = woken == Err(RecvTimeoutError::Disconnected);
+                if closed && !failing {
+                    return;
+                }
+                // entries recorded while this push runs send again, and are pushed next
+                while wake.try_recv().is_ok() {}
+                let seen = entries.load(Ordering::SeqCst);
+                failing = git.push(&remote, "main").is_err();
+                if !failing {
+                    unpushed.store(false, Ordering::SeqCst);
+                    // an entry may have come in between the push and the store
+                    if entries.load(Ordering::SeqCst) != seen {
+                        unpushed.store(true, Ordering::SeqCst);
+                    }
+                }
+                if closed {
+                    return;
+                }
+            }
+        });
+        send
     }
 }
 

@@ -175,7 +175,10 @@ The remote is fetched every `--fetch-every` seconds too. Every action and every 
 a problem, a write by someone who may only read, or in a `--read-only` daemon: 403) is an audit
 entry, written before the answer; an entry that cannot be written refuses the action. Entries go to
 the systemd journal as well (`GOLCONDA_ACTION=`, `GOLCONDA_OPERATOR=`, …), and the audit log is
-pushed to `--audit-push` in the background.
+pushed to `--audit-push` in the background by one thread: it pushes once for all the entries
+recorded since its last push, and a push that fails is tried again every 30 seconds until it works,
+without waiting for the next entry. Every page says that the log has entries its remote lacks, from
+an entry until a push that holds it succeeds.
 
 In the browser the same works without a script. An operator gets a form in each option's detail: the
 control follows the option's type (two radio buttons, a select, a number field with the schema's
