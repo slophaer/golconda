@@ -175,6 +175,26 @@ must be signed by it, add exactly one entry and remove nothing.
 
 ## Releases
 
+```sh
+golconda release build -f server.toml --keys /srv/golconda-keys [--version auto] [--to DEST]
+```
+
+`build` refuses a working tree with uncommitted changes to tracked files (untracked files do not
+count). It picks the version: `auto` is today's date (UTC) and the revision after the newest of the
+document's `/system` version (the last one built here) and, with `--to`, the destination's; a
+version given must be newer than both. It writes that version into the document (comments and layout
+stay: it is the only change it makes), builds `lib.mkImage { config; keys; system; }`'s `disk` with
+`nix-build` in the Golconda checkout around the document, links the output at `--out-link` (default
+`result-release`), runs `check` on its `release/`, and commits the version line:
+`release: <id> <version>`, with the trailers that `publish` reads. That commit's tree is what was
+built. A failed build, check or commit puts the version line back. The key set goes to `mkImage` as
+a string, so its private keys stay out of the store (the daemon needs `extra-sandbox-paths` for it,
+docs/reference/release.md); `--copy-keys` copies it in whole, for a daemon with a chroot store,
+which sees no path outside it. The build goes through `nix-build`, not iets: the image's outputs are
+content-addressed, and iets 0.2 builds them but reports no output path. `nix-build` and git come
+from PATH, or `GOLCONDA_NIX_BUILD` and `GOLCONDA_GIT`; `nix-build` reaches the daemon `NIX_REMOTE`
+names. The user's git configuration (author, signing, hooks) applies.
+
 A build writes a release directory (`release/`): four files, the index `SHA256SUMS` and its
 signature `SHA256SUMS.gpg` ([Releases](../docs/design/releases.md)). Check one before serving it:
 
