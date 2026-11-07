@@ -78,3 +78,6 @@ details.doc{margin:-4px 0 10px}details.doc summary{cursor:pointer;color:var(--sk
 table.audit td{font-size:12.5px}table.audit small{color:var(--mute)}
 @media(max-width:900px){.filters{grid-template-columns:1fr}}
 .detail dd.chg{color:var(--amber)}
+form.inline{display:inline-block;margin:0 4px 4px 0}
+pre.log{font:12px/1.5 var(--mono);background:var(--paper);border:1px solid var(--line);border-radius:4px;padding:10px 12px;overflow-x:auto;white-space:pre-wrap}
+pre.log span.m{color:var(--mute)}

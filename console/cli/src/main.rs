@@ -77,6 +77,33 @@ enum Command {
     Login,
     /// Forget the tokens for the daemon --server names
     Logout,
+    /// The system's machines, as the daemon --server names reads them: version, slots, and a
+    /// newer version at the update source
+    Machines,
+    /// Jobs on the system's machines, through the daemon --server names
+    #[command(subcommand)]
+    Job(Jobs),
+}
+
+#[derive(Subcommand)]
+enum Jobs {
+    /// The newest jobs
+    List,
+    /// Start a job: update, reboot or rollback on MACHINE, or deploy (the whole system)
+    Start {
+        kind: String,
+        machine: Option<String>,
+        /// Follow its output until it ends; exit 1 when it fails
+        #[arg(long)]
+        wait: bool,
+    },
+    /// A job and its output
+    Show {
+        id: i64,
+        /// Follow its output until it ends
+        #[arg(long)]
+        follow: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -294,12 +321,14 @@ fn main() -> ExitCode {
                 format!("not signed in to {url}\n")
             }
         }),
-        (None, Command::Login | Command::Logout) => Cli::command()
-            .error(
-                clap::error::ErrorKind::MissingRequiredArgument,
-                "login and logout are for a daemon: give --server",
-            )
-            .exit(),
+        (None, Command::Login | Command::Logout | Command::Machines | Command::Job(_)) => {
+            Cli::command()
+                .error(
+                    clap::error::ErrorKind::MissingRequiredArgument,
+                    "login, logout, machines and job are for a daemon: give --server",
+                )
+                .exit()
+        }
         (Some(url), command) => remote::through(&url, &cli.name, command),
         (None, command) => run(command),
     };
@@ -407,6 +436,47 @@ fn list_releases(
     Ok(out)
 }
 
+/// `release build`: the version, the build, the check and the commit (core's release::build).
+fn build_release(
+    doc: &Doc,
+    keys: &Path,
+    version: &str,
+    to: Option<&str>,
+    copy_keys: bool,
+    out_link: PathBuf,
+    (git, gpgv, rclone): (&Program, &Program, &Program),
+) -> Result<String, Box<dyn error::Error>> {
+    let version = match version {
+        "auto" => None,
+        v => Some(v.parse()?),
+    };
+    let dest = to.map(|to| release::Destination { rclone, to });
+    let req = release::BuildRequest {
+        document: &doc.file,
+        system: &doc.system,
+        keys,
+        copy_keys,
+        version,
+        dest: dest.as_ref(),
+        out_link,
+        author: None,
+    };
+    let nix_build = Program::from_env("GOLCONDA_NIX_BUILD", "nix-build");
+    let tools = release::Tools {
+        nix_build: &nix_build,
+        git,
+        gpgv,
+    };
+    let b = release::build(&req, &tools)?;
+    Ok(format!(
+        "{} {} built: {}\nrelease commit {}\n",
+        b.record.id,
+        b.record.version,
+        b.release.dir.display(),
+        b.record.commit
+    ))
+}
+
 fn run_release(command: Releases) -> Result<String, Box<dyn error::Error>> {
     let gpgv = Program::from_env("GOLCONDA_GPGV", "gpgv");
     let git = Program::from_env("GOLCONDA_GIT", "git");
@@ -446,39 +516,15 @@ fn run_release(command: Releases) -> Result<String, Box<dyn error::Error>> {
             to,
             copy_keys,
             out_link,
-        } => {
-            let version = match version.as_str() {
-                "auto" => None,
-                v => Some(v.parse()?),
-            };
-            let dest = to.as_deref().map(|to| release::Destination {
-                rclone: &rclone,
-                to,
-            });
-            let req = release::BuildRequest {
-                document: &doc.file,
-                system: &doc.system,
-                keys: &keys,
-                copy_keys,
-                version,
-                dest: dest.as_ref(),
-                out_link,
-            };
-            let nix_build = Program::from_env("GOLCONDA_NIX_BUILD", "nix-build");
-            let tools = release::Tools {
-                nix_build: &nix_build,
-                git: &git,
-                gpgv: &gpgv,
-            };
-            let b = release::build(&req, &tools)?;
-            Ok(format!(
-                "{} {} built: {}\nrelease commit {}\n",
-                b.record.id,
-                b.record.version,
-                b.release.dir.display(),
-                b.record.commit
-            ))
-        }
+        } => build_release(
+            &doc,
+            &keys,
+            &version,
+            to.as_deref(),
+            copy_keys,
+            out_link,
+            (&git, &gpgv, &rclone),
+        ),
         Releases::List { image, to, repo } => {
             list_releases(&git, &rclone, image.as_deref(), to.as_deref(), &repo)
         }
@@ -525,7 +571,9 @@ fn run(command: Command) -> Result<String, Box<dyn error::Error>> {
         Command::Config(c) => c,
         Command::Vars(v) => return run_vars(v),
         Command::Release(r) => return run_release(r),
-        Command::Login | Command::Logout => unreachable!("main takes them"),
+        Command::Login | Command::Logout | Command::Machines | Command::Job(_) => {
+            unreachable!("main takes them")
+        }
         Command::Audit(Audit::Verify {
             repo,
             allowed_signers,
@@ -607,8 +655,10 @@ fn run(command: Command) -> Result<String, Box<dyn error::Error>> {
 
 /// The config commands through a golcondad (--server): its JSON routes.
 mod remote {
-    use super::{Command, Config, login, run};
+    use super::{Command, Config, Jobs, login, run};
     use serde_json::{Value, json};
+    use std::thread;
+    use std::time::Duration;
     use std::{error, result};
 
     type Result<T> = result::Result<T, Box<dyn error::Error>>;
@@ -623,11 +673,12 @@ mod remote {
 
     impl Daemon {
         fn call(&self, method: &str, path: &str, body: Option<Value>) -> Result<(u16, Value)> {
-            let url = format!(
-                "{}/systems/{}/{path}",
-                self.url.trim_end_matches('/'),
-                self.name
-            );
+            self.at(method, &format!("/systems/{}/{path}", self.name), body)
+        }
+
+        /// A route of the daemon's, from its root.
+        fn at(&self, method: &str, route: &str, body: Option<Value>) -> Result<(u16, Value)> {
+            let url = format!("{}{route}", self.url.trim_end_matches('/'));
             let auth = self
                 .bearer
                 .as_ref()
@@ -709,6 +760,126 @@ mod remote {
                 Err(p.join("\n").into())
             }
             s => Err(format!("{s}: {}", v["error"].as_str().unwrap_or("no answer")).into()),
+        }
+    }
+
+    /// One line per machine: what it runs, its slots, what its update source has.
+    fn machines(d: &Daemon) -> Result<String> {
+        let v = answer(d.call("GET", "machines", None)?)?;
+        let mut out = String::new();
+        for m in v["machines"].as_array().into_iter().flatten() {
+            let name = m["name"].as_str().unwrap_or("?");
+            if let Some(e) = m["error"].as_str() {
+                out += &format!("{name}  unreachable: {e}\n");
+                continue;
+            }
+            let st = &m["status"];
+            let slots: Vec<String> = st["entries"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|e| e["version"].is_string())
+                .map(|e| {
+                    let v = e["version"].as_str().unwrap_or("");
+                    let mut tags = Vec::new();
+                    if e["selected"] == true {
+                        tags.push("booted".to_string());
+                    }
+                    if e["default"] == true && e["selected"] != true {
+                        tags.push("next".into());
+                    }
+                    if let Some(t) = e["triesLeft"].as_i64() {
+                        tags.push(format!("{t} tries left"));
+                    }
+                    if tags.is_empty() {
+                        v.to_string()
+                    } else {
+                        format!("{v} ({})", tags.join(", "))
+                    }
+                })
+                .collect();
+            let source = match (st["available"].as_str(), st["checkError"].as_str()) {
+                (Some(a), _) => format!("{a} available"),
+                (None, Some(e)) => format!("could not check: {e}"),
+                _ => "nothing newer".into(),
+            };
+            out += &format!(
+                "{name}  {}  slots: {}  {source}\n",
+                st["version"].as_str().unwrap_or("?"),
+                slots.join(", ")
+            );
+        }
+        Ok(out)
+    }
+
+    fn job_line(j: &Value) -> String {
+        format!(
+            "{}  {}  {}  {}  {}  {}\n",
+            j["id"],
+            j["kind"].as_str().unwrap_or(""),
+            j["machine"].as_str().unwrap_or("all"),
+            j["by"]["name"].as_str().unwrap_or(""),
+            j["state"].as_str().unwrap_or(""),
+            j["summary"].as_str().unwrap_or("")
+        )
+    }
+
+    /// Prints a job's lines as they come until it ends; its final state.
+    fn follow(d: &Daemon, id: i64) -> Result<String> {
+        let mut after = 0;
+        loop {
+            let v = answer(d.at("GET", &format!("/jobs/{id}?after={after}"), None)?)?;
+            for l in v["lines"].as_array().into_iter().flatten() {
+                println!("{}", l["line"].as_str().unwrap_or(""));
+                after = l["n"].as_i64().unwrap_or(after);
+            }
+            match v["job"]["state"].as_str() {
+                Some("queued" | "running") => thread::sleep(Duration::from_secs(1)),
+                Some("ok") => return Ok(String::new()),
+                s => {
+                    return Err(format!("job {id} {}", s.unwrap_or("?")).into());
+                }
+            }
+        }
+    }
+
+    fn job(d: &Daemon, j: Jobs) -> Result<String> {
+        match j {
+            Jobs::List => {
+                let v = answer(d.at("GET", &format!("/jobs?system={}", d.name), None)?)?;
+                Ok(v.as_array().into_iter().flatten().map(job_line).collect())
+            }
+            Jobs::Start {
+                kind,
+                machine,
+                wait,
+            } => {
+                let v = answer(d.call(
+                    "POST",
+                    "jobs",
+                    Some(json!({ "kind": kind, "machine": machine })),
+                )?)?;
+                let id = v["job"].as_i64().ok_or("the daemon named no job")?;
+                if wait {
+                    eprintln!("job {id} queued");
+                    follow(d, id)
+                } else {
+                    Ok(format!("job {id} queued\n"))
+                }
+            }
+            Jobs::Show { id, follow: true } => follow(d, id),
+            Jobs::Show { id, follow: false } => {
+                let v = answer(d.at("GET", &format!("/jobs/{id}"), None)?)?;
+                let mut out = job_line(&v["job"]);
+                for l in v["lines"].as_array().into_iter().flatten() {
+                    out += &format!(
+                        "{}  {}\n",
+                        l["at"].as_str().unwrap_or(""),
+                        l["line"].as_str().unwrap_or("")
+                    );
+                }
+                Ok(out)
+            }
         }
     }
 
@@ -800,6 +971,8 @@ mod remote {
                     v["discarded"].as_array().map_or(0, Vec::len)
                 ))
             }
+            Command::Machines => machines(&d),
+            Command::Job(j) => job(&d, j),
             // everything else reads the file, daemon or not
             other => run(other),
         }

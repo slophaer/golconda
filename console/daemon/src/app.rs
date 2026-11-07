@@ -5,7 +5,7 @@
 
 use crate::auth::{self, Oidc, Refused};
 use crate::write::Outcome;
-use crate::{FONTS, locked, pages, write};
+use crate::{FONTS, jobs, locked, pages, write};
 use axum::Router;
 use axum::extract::{Extension, Path, Query, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
@@ -21,6 +21,7 @@ use std::collections::HashMap;
 use std::env::consts;
 use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
+use std::thread;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Level {
@@ -63,6 +64,8 @@ pub struct App {
     pub signin: Signin,
     /// the journal and the audit log; none: this daemon only reads (no --state)
     pub writes: Option<write::Writes>,
+    /// the jobs on machines; none without --state
+    pub jobs: Option<jobs::Runner>,
     /// the CSRF token of the development identity's forms (with OIDC, each session has one)
     pub csrf: String,
     /// the whole daemon is read-only (`--read-only`)
@@ -83,6 +86,7 @@ impl App {
             systems,
             signin,
             writes: None,
+            jobs: None,
             csrf: base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, b),
             read_only,
             iets: Iets::from_env(),
@@ -94,6 +98,13 @@ impl App {
     #[must_use]
     pub fn with_writes(mut self, writes: write::Writes) -> Self {
         self.writes = Some(writes);
+        self
+    }
+
+    /// This daemon runs jobs on machines.
+    #[must_use]
+    pub fn with_jobs(mut self, jobs: jobs::Runner) -> Self {
+        self.jobs = Some(jobs);
         self
     }
 
@@ -120,6 +131,10 @@ pub fn router_shared(app: Arc<App>) -> Router {
         .route("/systems/{name}/ops", post(write_op))
         .route("/systems/{name}/commit", post(write_commit))
         .route("/systems/{name}/discard", post(write_discard))
+        .route("/systems/{name}/machines", get(machines))
+        .route("/systems/{name}/jobs", post(start_job))
+        .route("/jobs", get(job_list))
+        .route("/jobs/{id}", get(job_page))
         .route("/auth/me", get(me))
         .route("/audit", get(audit_log))
         .layer(middleware::from_fn_with_state(app.clone(), signed_in));
@@ -858,4 +873,164 @@ async fn font(Path(file): Path<String>) -> Response {
             .into_response(),
         None => StatusCode::NOT_FOUND.into_response(),
     }
+}
+
+/// A system's machines, read over ssh at once (each a few varlink calls).
+async fn machines(
+    State(app): State<Shared>,
+    Extension(who): Extension<Identity>,
+    Extension(csrf): Extension<Csrf>,
+    Path(name): Path<String>,
+    h: HeaderMap,
+) -> Response {
+    let json = wants_json(&h);
+    let Some(doc) = app.document(&name).cloned() else {
+        return problem(json, StatusCode::NOT_FOUND, &format!("no system {name}"));
+    };
+    let (a, n) = (app.clone(), name.clone());
+    let read = tokio::task::spawn_blocking(move || -> Result<_, String> {
+        let fleet = jobs::fleet(&doc, &n)?;
+        let ssh = a.jobs.as_ref().map_or_else(
+            || golconda_core::vars::Program::from_env("GOLCONDA_SSH", "ssh"),
+            |r| r.config.ssh.clone(),
+        );
+        let views: Vec<pages::MachineView> = thread::scope(|s| {
+            let handles: Vec<_> = fleet
+                .machines
+                .values()
+                .map(|m| {
+                    let ssh = &ssh;
+                    s.spawn(move || pages::MachineView {
+                        machine: m.clone(),
+                        status: golconda_core::machine::Remote { ssh }
+                            .status(m)
+                            .map_err(|e| e.0),
+                    })
+                })
+                .collect();
+            handles.into_iter().filter_map(|h| h.join().ok()).collect()
+        });
+        let recent: Vec<golconda_core::jobs::Job> = a
+            .jobs
+            .as_ref()
+            .and_then(|r| locked(&r.store).list(Some(&n), 10).ok())
+            .unwrap_or_default();
+        let keys = a
+            .jobs
+            .as_ref()
+            .is_some_and(|r| r.config.release_keys.is_some());
+        Ok(pages::StatusView {
+            deploys: keys && fleet.updates.is_some() && !fleet.machines.is_empty(),
+            updates: fleet.updates,
+            machines: views,
+            recent,
+        })
+    })
+    .await
+    .expect("machine thread");
+    let view = match read {
+        Ok(x) => x,
+        Err(e) => return problem(json, StatusCode::INTERNAL_SERVER_ERROR, &e),
+    };
+    if json {
+        let ms: Vec<Value> = view
+            .machines
+            .iter()
+            .map(|v| match &v.status {
+                Ok(st) => serde_json::json!({ "name": v.machine.name, "ssh": v.machine.ssh, "status": st.to_json() }),
+                Err(e) => serde_json::json!({ "name": v.machine.name, "ssh": v.machine.ssh, "error": e }),
+            })
+            .collect();
+        return axum::Json(serde_json::json!({ "updates": view.updates, "machines": ms }))
+            .into_response();
+    }
+    let sys = match load(&app, &name, false).await {
+        Ok(s) => s,
+        Err(r) => return *r,
+    };
+    let may = app.jobs.is_some() && !app.read_only && who.level == Level::Operator;
+    let c = may.then_some(csrf.0.as_str());
+    pages::status(&app, &who, &name, &sys, &view, c).into_response()
+}
+
+/// Start a job: { kind, machine } as JSON or a form's fields. A form goes on to the job's page.
+async fn start_job(
+    State(app): State<Shared>,
+    Extension(who): Extension<Identity>,
+    Extension(csrf): Extension<Csrf>,
+    Path(name): Path<String>,
+    h: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    let (asked, form) = match write_body(&h, &body, &who, &csrf) {
+        Ok(x) => x,
+        Err(refused) => return refused,
+    };
+    let via = via(&h);
+    let shared = app.clone();
+    let done = tokio::task::spawn_blocking(move || {
+        let kind = asked["kind"].as_str().unwrap_or("");
+        jobs::submit(&shared, &who, via, &name, kind, asked["machine"].as_str())
+    })
+    .await
+    .expect("job thread");
+    match (form, done) {
+        (Some(_), Outcome::Done(started)) => {
+            Redirect::to(&format!("/jobs/{}", started["job"])).into_response()
+        }
+        (Some(_), Outcome::Denied(m)) => problem(false, StatusCode::FORBIDDEN, &m),
+        (Some(_), Outcome::Bad(m)) => problem(false, StatusCode::BAD_REQUEST, &m),
+        (_, other) => outcome(other),
+    }
+}
+
+async fn job_list(
+    State(app): State<Shared>,
+    Extension(who): Extension<Identity>,
+    Query(q): Query<HashMap<String, String>>,
+    h: HeaderMap,
+) -> Response {
+    let json = wants_json(&h);
+    let Some(r) = &app.jobs else {
+        return problem(json, StatusCode::NOT_FOUND, "this daemon runs no jobs");
+    };
+    let list = locked(&r.store)
+        .list(q.get("system").map(String::as_str), 100)
+        .unwrap_or_default();
+    if json {
+        let v: Vec<Value> = list.iter().map(golconda_core::jobs::Job::to_json).collect();
+        return axum::Json(Value::Array(v)).into_response();
+    }
+    pages::jobs(&app, &who, &list).into_response()
+}
+
+/// One job and its output; `?after=N` in JSON: only the lines after line N.
+async fn job_page(
+    State(app): State<Shared>,
+    Extension(who): Extension<Identity>,
+    Path(id): Path<i64>,
+    Query(q): Query<HashMap<String, String>>,
+    h: HeaderMap,
+) -> Response {
+    let json = wants_json(&h);
+    let Some(r) = &app.jobs else {
+        return problem(json, StatusCode::NOT_FOUND, "this daemon runs no jobs");
+    };
+    let after = q.get("after").and_then(|a| a.parse().ok()).unwrap_or(0);
+    let (job, lines) = {
+        let store = locked(&r.store);
+        match store.get(id) {
+            Ok(j) => (j, store.lines(id, after).unwrap_or_default()),
+            Err(e) => return problem(json, StatusCode::NOT_FOUND, &e.to_string()),
+        }
+    };
+    if json {
+        let ls: Vec<Value> = lines
+            .iter()
+            .map(|(n, at, l)| serde_json::json!({ "n": n, "at": at, "line": l }))
+            .collect();
+        return axum::Json(serde_json::json!({ "job": job.to_json(), "lines": ls }))
+            .into_response();
+    }
+    pages::job(&app, &who, &job, &lines).into_response()
 }

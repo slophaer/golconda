@@ -1,8 +1,11 @@
 //! `golcondad`: the console daemon.
 
 use clap::Parser;
+use golconda_core::machine::Patience;
+use golconda_core::vars::Program;
 use golcondad::app::{App, Identity, Level, Signin};
 use golcondad::auth::{Oidc, OidcConfig};
+use golcondad::jobs::{JobConfig, Runner};
 use std::fs;
 use std::net::SocketAddr;
 use std::path::{self, PathBuf};
@@ -74,6 +77,16 @@ pub struct Args {
     /// How often to fetch the systems' remote, in seconds, for changes made elsewhere
     #[arg(long, value_name = "SECONDS", default_value_t = 300)]
     fetch_every: u64,
+    /// The key set deploys sign releases with (scripts/make-keys); without it, no deploy
+    #[arg(long, value_name = "DIR", requires = "state")]
+    release_keys: Option<PathBuf>,
+    /// Copy the release key set into the store for the build: for a build daemon with a chroot
+    /// store, which sees no path outside it
+    #[arg(long, requires = "release_keys")]
+    release_copy_keys: bool,
+    /// How long a job waits for a machine to come back blessed after a reboot, in seconds
+    #[arg(long, value_name = "SECONDS", default_value_t = 900)]
+    confirm_timeout: u64,
 }
 
 fn system(v: &str) -> Result<(String, PathBuf), String> {
@@ -116,6 +129,9 @@ fn check(mut a: Args) -> Result<(Args, Mode), String> {
     let abs = |p: &PathBuf| path::absolute(p).map_err(|e| format!("{}: {e}", p.display()));
     if let Some(p) = &a.signing_key {
         a.signing_key = Some(abs(p)?);
+    }
+    if let Some(p) = &a.release_keys {
+        a.release_keys = Some(abs(p)?);
     }
     if let Some(p) = &a.state {
         a.state = Some(abs(p)?);
@@ -169,6 +185,42 @@ fn check(mut a: Args) -> Result<(Args, Mode), String> {
     Ok((a, Mode::Oidc(config)))
 }
 
+/// The programs jobs run (each from PATH or its GOLCONDA_ variable) and their settings.
+fn job_config(a: &Args) -> JobConfig {
+    let p = Program::from_env;
+    JobConfig {
+        ssh: p("GOLCONDA_SSH", "ssh"),
+        nix_build: p("GOLCONDA_NIX_BUILD", "nix-build"),
+        gpgv: p("GOLCONDA_GPGV", "gpgv"),
+        rclone: p("GOLCONDA_RCLONE", "rclone"),
+        release_keys: a.release_keys.clone(),
+        copy_keys: a.release_copy_keys,
+        patience: Patience {
+            every: time::Duration::from_secs(5),
+            until: time::Duration::from_secs(a.confirm_timeout),
+        },
+    }
+}
+
+/// Changes made elsewhere: fetched on a timer (and before every commit), when the checkouts
+/// have a remote.
+fn fetch_on_a_timer(app: &sync::Arc<App>, fetch_every: u64) {
+    if app.writes.as_ref().is_some_and(|w| w.push.is_some()) {
+        // changes made elsewhere: fetched on a timer and before every commit
+        let (a2, every) = (app.clone(), time::Duration::from_secs(fetch_every.max(10)));
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(every).await;
+                let a3 = a2.clone();
+                let _ = tokio::task::spawn_blocking(move || {
+                    golcondad::write::fetch_all(&a3, a3.writes.as_ref().expect("checked"));
+                })
+                .await;
+            }
+        });
+    }
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
     // clap answers --help and --version, and exits 2 on a usage error
@@ -214,6 +266,7 @@ async fn main() -> ExitCode {
             "IBM Plex"
         },
     );
+    let jobs = job_config(&a);
     let mut app = App::new(a.systems, signin, a.read_only);
     if let Some(state) = &a.state {
         let host = fs::read_to_string("/proc/sys/kernel/hostname")
@@ -235,25 +288,16 @@ async fn main() -> ExitCode {
                 return ExitCode::from(1);
             }
         }
+        match Runner::open(state, jobs) {
+            Ok(r) => app = app.with_jobs(r),
+            Err(e) => {
+                eprintln!("golcondad: --state: the job store: {e}");
+                return ExitCode::from(1);
+            }
+        }
     }
     let app = sync::Arc::new(app);
-    if app.writes.as_ref().is_some_and(|w| w.push.is_some()) {
-        // changes made elsewhere: fetched on a timer and before every commit
-        let (a2, every) = (
-            app.clone(),
-            time::Duration::from_secs(a.fetch_every.max(10)),
-        );
-        tokio::spawn(async move {
-            loop {
-                tokio::time::sleep(every).await;
-                let a3 = a2.clone();
-                let _ = tokio::task::spawn_blocking(move || {
-                    golcondad::write::fetch_all(&a3, a3.writes.as_ref().expect("checked"));
-                })
-                .await;
-            }
-        });
-    }
+    fetch_on_a_timer(&app, a.fetch_every);
     let app = golcondad::app::router_shared(app);
     let served = axum::serve(listener, app)
         .with_graceful_shutdown(async {

@@ -775,6 +775,8 @@ pub struct BuildRequest<'a> {
     pub dest: Option<&'a Destination<'a>>,
     /// where the build's output is linked (a GC root)
     pub out_link: PathBuf,
+    /// the release commit's author, `Name <id>`; None: git's configured one
+    pub author: Option<String>,
 }
 
 /// The programs a build runs. The build goes through nix-build, not iets: the image's
@@ -894,18 +896,11 @@ pub fn build(req: &BuildRequest<'_>, tools: &Tools<'_>) -> Result<Built> {
         |(release, record)| {
             let rel = document.strip_prefix(&repo).unwrap_or(&document);
             let msg = format!("release: {id} {version}\n\n{}", record.trailers());
-            git_out(
-                tools.git,
-                &repo,
-                &[
-                    "commit",
-                    "-q",
-                    "-m",
-                    &msg,
-                    "--",
-                    rel.to_str().unwrap_or_default(),
-                ],
-            )?;
+            let author = req.author.as_ref().map(|a| format!("--author={a}"));
+            let mut args = vec!["commit", "-q", "-m", &msg];
+            args.extend(author.as_deref());
+            args.extend(["--", rel.to_str().unwrap_or_default()]);
+            git_out(tools.git, &repo, &args)?;
             let commit = git_out(tools.git, &repo, &["rev-parse", "HEAD"])?;
             Ok(Built {
                 release,
@@ -1738,6 +1733,7 @@ mod tests {
                 version: version.map(v),
                 dest: dest.then_some(&d),
                 out_link: self.tmp.path().join("result"),
+                author: None,
             };
             let tools = Tools {
                 nix_build: iets,
@@ -1913,6 +1909,7 @@ mod tests {
             version: Some(v("20261106.1")),
             dest: None,
             out_link: s.tmp.path().join("result"),
+            author: Some("Alice <id-alice>".into()),
         };
         let tools = Tools {
             nix_build: &iets,
@@ -1925,5 +1922,8 @@ mod tests {
         assert_eq!(&args[4..6], &["--arg", "keys"]);
         assert!(!args.contains(&"--impure"));
         assert!(log.contains("builtins.path { path = keys;"), "{log}");
+        // the author given, the committer git's own
+        let who = sh(&s.repo, "git", &["log", "-1", "--format=%an <%ae>"]);
+        assert_eq!(who, "Alice <id-alice>");
     }
 }
