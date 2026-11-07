@@ -35,6 +35,9 @@
   # kconfig options the system requires (lib/system.nix: the built-in verity key for
   # /system.secureBoot = false); kbuild.nu fails if the policy fragment contradicts one
   kernelConfig ? { },
+  # files the kernel build copies into its tree before configure, by path relative to the tree
+  # (lib/system.nix: the verity certificate at the fixed path SYSTEM_TRUSTED_KEYS names)
+  kernelFiles ? { },
   downstream ? null,
   replaces ? [ ],
 }:
@@ -121,10 +124,11 @@ let
         checked (golcondaPackages // downstreamPackages);
     overrides = {
       # The system's required options and the policy fragment, read by packages/kernel/kbuild.nu.
-      # The package owns its base config and make flags; this replaces only these two fields.
+      # The package owns its base config and make flags; this replaces only these three fields.
       linux-kernel.env.merge = {
         GOLCONDA_KERNEL_EXTRA_CONFIG = builtins.toJSON kernelConfig;
         GOLCONDA_KERNEL_FRAGMENTS = builtins.toJSON [ kernelConfigFragment ];
+        GOLCONDA_KERNEL_FILES = builtins.toJSON kernelFiles;
       };
     };
     # Set-wide choices: one TLS stack, one of each (docs/design/principles.md).

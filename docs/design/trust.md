@@ -100,15 +100,29 @@ UKI's own signing certificate at build time and fails on a mismatch. On the mach
 
 **Without Secure Boot** (`/system.secureBoot = false`, for a host whose firmware has none, such as
 Hetzner Cloud): no firmware fills the platform keyring, so the kernel carries the certificate
-itself. `lib.mkImage` passes the `db` certificate of its keys to `mkSystem`, which builds the kernel
-with `CONFIG_SYSTEM_TRUSTED_KEYS` naming it; the kernel loads it into `.builtin_trusted_keys`, which
-the secondary keyring that dm-verity checks first includes. The kernel of the set changes, so `/usr`
-and the UKI carry the same one, and each key set builds its own kernel. What is lost is the check
-before the kernel: no firmware verifies the loader or the UKI, so whoever can write the ESP can boot
-a kernel that trusts another key. IPE and the `/usr` signature still hold against a changed `/usr`,
-and the vars still seal (to the host key alone, without a TPM). The bootstrap credentials on the ESP
-are accepted there because Secure Boot is off
+itself. `lib.mkImage` passes the `db` certificate of its keys to `mkSystem`. The kernel build copies
+it to a fixed path in the kernel tree, `certs/golconda-verity.pem`, and `CONFIG_SYSTEM_TRUSTED_KEYS`
+names that path (`packages/kernel/kbuild.nu`, `GOLCONDA_KERNEL_FILES`); the kernel loads it into
+`.builtin_trusted_keys`, which the secondary keyring that dm-verity checks first includes. The
+kernel of the set changes, so `/usr` and the UKI carry the same one, and each key set builds its own
+kernel. What is lost is the check before the kernel: no firmware verifies the loader or the UKI, so
+whoever can write the ESP can boot a kernel that trusts another key. IPE and the `/usr` signature
+still hold against a changed `/usr`, and the vars still seal (to the host key alone, without a TPM).
+The bootstrap credentials on the ESP are accepted there because Secure Boot is off
 ([Boot: Bootstrap credentials](boot.md#bootstrap-credentials)).
+
+The certificate is an input of the kernel derivation, but not of its config: every key set has the
+same config, so a new certificate compiles only the certificate object and the compressed kernel's
+wrapper again, relinks, and takes the rest from jig's compile cache. A store path in the config
+would change `include/generated/autoconf.h`, which every object includes. jig's cache does not see
+an `.incbin` input (clang's depfile leaves it out): without more, a second certificate got the first
+one's cached `certs/system_certificates.o`, and the kernel trusted the old key while its record
+named the new one. So the build puts the digest of the certificate file on that object's command
+line, and the digest of `vmlinux` on that of `arch/x86/boot/compressed/piggy.o`. A missing file
+fails the build (the copy, then make, which has no rule for it), and so does an empty one
+(`extract-cert` needs at least one certificate): the keyring is never silently empty. The kernel
+package installs the certificate as `lib/modules/<version>/trusted-keys.pem`, so `/usr` records
+which key its kernel trusts; the config names only the path.
 
 **Status.** Proven by boot with `--secure-boot`: the kernel loads the `db` certificate into the
 platform keyring, and with `/sys/kernel/security/ipe/success_audit` on, IPE logs
@@ -122,7 +136,10 @@ Without Secure Boot, proven by boot on OVMF with neither Secure Boot nor a TPM:
 `ipe.enforce=1`, and passes the update test (`--next`, over HTTP). On the same firmware the default
 image (`secureBoot = true`) stops at switch-root: IPE logs
 `ipe_op=EXECUTE … comm="systemd" … dev="dm-0" … rule="DEFAULT op=EXECUTE action=DENY"` for PID 1's
-re-exec from `/usr`.
+re-exec from `/usr`. A kernel that holds another certificate refuses the signature: the same image
+with the rotated throwaway certificate in its kernel (a manual run, not a `scripts/boot-test` mode)
+logs `Loaded X.509 cert 'Golconda smoke Secure Boot db rotated: …'`, then
+`verity: Root hash verification failed (-ENOKEY)`, and stops at switch-root with that IPE denial.
 
 ### 3. CA store
 

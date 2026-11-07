@@ -23,8 +23,9 @@ policy with keys you make, so a swapped kernel opens nothing.
 - **Deployment keys.** `scripts/make-keys` writes `secureboot/db.{key,crt}`, `pcr/pcr.{key,pub}` and
   the release key. The image chain needs no `PK` or `KEK`. The private keys never enter the image.
 - **Without Secure Boot.** With `/system.secureBoot = false`, the kernel carries the `db`
-  certificate itself (`CONFIG_SYSTEM_TRUSTED_KEYS`) and checks the `/usr` signature. Each key set
-  builds its own kernel. Vars seal to the host key alone, with no TPM.
+  certificate itself (`CONFIG_SYSTEM_TRUSTED_KEYS`, a fixed path the build fills) and checks the
+  `/usr` signature. Each key set builds its own kernel, with the same config, so with jig's compile
+  cache only two objects compile again. Vars seal to the host key alone, with no TPM.
 
 ## Using it
 
