@@ -99,13 +99,14 @@ let
   # type, a `use` that does not resolve. The include path is what the builds pass:
   # the image and /usr tree modules, repkgs' builder and its test library.
   # cell-path-types: `$rec.field` takes the field's declared type instead of `any`.
-  nu-typecheck = pkgs.writeShellScript "nu-typecheck" ''
+  # repkgs' nushell, the one its builders and ours run.
+  nu-typecheck = writeScript "nu-typecheck" ''
     status=0
     for f in "$@"; do
-      out=$(${pkgs.nushell}/bin/nu --no-config-file \
+      out=$(${rp.nushell}/bin/nu --no-config-file \
         --include-path "$PWD/lib/image:$PWD/lib/usr-tree:${sources.repkgs}/builder:${sources.repkgs}/tests/builder/lib" \
         "--experimental-options=[cell-path-types]" --ide-check 50 "$f" \
-        | ${pkgs.jq}/bin/jq -r 'select(.type == "diagnostic" and .severity == "Error") | "\(.span.start): \(.message)"')
+        | ${rp.jq}/bin/jq -r 'select(.type == "diagnostic" and .severity == "Error") | "\(.span.start): \(.message)"')
       if [ -n "$out" ]; then printf '%s:\n%s\n' "$f" "$out" >&2; status=1; fi
     done
     exit $status
@@ -170,7 +171,7 @@ let
       };
       # check only, nu has no stable formatter
       "formatter.nu-typecheck" = {
-        command = "${nu-typecheck}";
+        command = "${nu-typecheck}/bin/nu-typecheck";
         includes = [ "*.nu" ];
       };
       # check only; scripts/check-doc-links is Python
