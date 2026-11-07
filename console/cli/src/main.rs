@@ -2,6 +2,7 @@
 //! admin vars.
 
 use clap::{Args, CommandFactory, Parser, Subcommand};
+use golconda_core::advisories::{self, Advisories};
 use golconda_core::audit;
 use golconda_core::check;
 use golconda_core::diff::{Change, against_git, diff};
@@ -75,13 +76,7 @@ enum Command {
     Release(Releases),
     /// The image's packages, from its SBOM: version, origin, purl or cpe, and whether the image
     /// names it itself
-    Packages {
-        #[command(flatten)]
-        doc: Doc,
-        /// The CycloneDX document instead of the list
-        #[arg(long)]
-        sbom: bool,
-    },
+    Packages(PackageArgs),
     /// Sign in to the daemon --server names, through its OIDC provider's device flow: open the
     /// address it prints and confirm the code. The tokens stay in
     /// $XDG_STATE_HOME/golconda/tokens.json
@@ -326,6 +321,22 @@ enum Config {
 }
 
 #[derive(Args)]
+struct PackageArgs {
+    #[command(flatten)]
+    doc: Doc,
+    /// The CycloneDX document instead of the list
+    #[arg(long)]
+    sbom: bool,
+    /// Also ask OSV for each package's known vulnerabilities, and list the vulnerable ones
+    /// first. The answers are kept for six hours in $XDG_CACHE_HOME/golconda
+    #[arg(long, conflicts_with = "sbom")]
+    advisories: bool,
+    /// The OSV server to ask
+    #[arg(long, value_name = "URL", default_value = advisories::OSV_URL, requires = "advisories")]
+    osv_url: String,
+}
+
+#[derive(Args)]
 struct Doc {
     /// The system's document
     #[arg(short = 'f', long = "file", default_value = "server.toml")]
@@ -522,14 +533,23 @@ fn build_release(
     ))
 }
 
-/// The image's packages from its SBOM, or the CycloneDX document itself.
-fn run_packages(iets: &Iets, doc: &Doc, sbom: bool) -> Result<String, Box<dyn error::Error>> {
-    let p = packages::load(iets, &doc.file, &doc.system)?;
-    if sbom {
+/// The image's packages from its SBOM, or the CycloneDX document itself. With `osv`, the
+/// vulnerable ones first, each followed by its advisories.
+fn run_packages(iets: &Iets, args: &PackageArgs) -> Result<String, Box<dyn error::Error>> {
+    let p = packages::load(iets, &args.doc.file, &args.doc.system)?;
+    if args.sbom {
         return Ok(format!("{:#}\n", p.bom));
     }
+    let report = args.advisories.then(|| {
+        let cache = cache_dir().map(|d| d.join("advisories.json"));
+        Advisories::open(&args.osv_url, cache, advisories::LIFETIME).check(&p.list)
+    });
+    let order = match &report {
+        Some(r) => r.order(&p.list),
+        None => p.list.iter().collect(),
+    };
     let mut out = String::new();
-    for p in &p.list {
+    for p in order {
         let _ = writeln!(
             out,
             "{}  {}  {}{}",
@@ -538,8 +558,41 @@ fn run_packages(iets: &Iets, doc: &Doc, sbom: bool) -> Result<String, Box<dyn er
             p.origin.as_deref().unwrap_or("?"),
             if p.root { "  in the image" } else { "" }
         );
+        for a in report.iter().filter_map(|r| r.of(p)).flatten() {
+            let _ = writeln!(
+                out,
+                "    {}",
+                [Some(&a.id), a.severity.as_ref(), a.summary.as_ref()]
+                    .into_iter()
+                    .flatten()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>()
+                    .join("  ")
+            );
+        }
+    }
+    if let Some(r) = &report {
+        let when = r.checked_at.map(advisories::since);
+        let _ = match (&r.error, when) {
+            (Some(e), Some(t)) => writeln!(
+                out,
+                "vulnerabilities: could not check ({e}); answers from {t}"
+            ),
+            (Some(e), None) => writeln!(out, "vulnerabilities: could not check ({e})"),
+            (None, Some(t)) => writeln!(out, "vulnerabilities: checked {t}"),
+            (None, None) => writeln!(out, "vulnerabilities: nothing to ask about"),
+        };
     }
     Ok(out)
+}
+
+/// Where answers from the network are kept between runs.
+fn cache_dir() -> Option<PathBuf> {
+    env::var_os("XDG_CACHE_HOME")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
+        .map(|d| d.join("golconda"))
 }
 
 fn run_release(command: Releases) -> Result<String, Box<dyn error::Error>> {
@@ -634,7 +687,7 @@ fn run(command: Command) -> Result<String, Box<dyn error::Error>> {
         Command::Config(c) => c,
         Command::Vars(v) => return run_vars(v),
         Command::Release(r) => return run_release(r),
-        Command::Packages { doc, sbom } => return run_packages(&iets, &doc, sbom),
+        Command::Packages(args) => return run_packages(&iets, &args),
         Command::Login | Command::Logout | Command::Machines | Command::Job(_) | Command::Tui => {
             unreachable!("main takes them")
         }

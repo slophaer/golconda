@@ -269,8 +269,39 @@ and the console evaluates without building anything (0.3 s): the ones the image 
 then what they need, each with its version, its origin (`golconda`, `repkgs`, or the downstream
 repository that adds it), its purl and its cpe, and what a downstream replacement stands in for.
 `/systems/NAME/sbom.json` is the CycloneDX document; JSON lists the packages.
-`golconda packages -f server.toml` prints the same, `--sbom` the document. Advisories (OSV) and
-upstream updates (uptrack) are not shown yet.
+`golconda packages -f server.toml` prints the same, `--sbom` the document.
+
+### Known vulnerabilities (OSV)
+
+The page also shows the known vulnerabilities of each package, from [OSV](https://osv.dev). The
+daemon asks `POST /v1/querybatch` for the packages that have a purl (a purl without a version gets
+the package's version as `version`), then `GET /v1/vulns/ID` once for each id it finds, for its
+summary and severity. OSV indexes the ecosystems it knows (pypi, npm, cargo, Go, distributions, …):
+a purl of another type (`pkg:github`, `pkg:generic`, which most of the image has) answers "none
+known", and that means OSV has no records under that purl, not that the package is clean. A package
+without a purl is not asked about and shows a dash.
+
+The answers are kept, each with the time it was asked, for `--osv-every` seconds (six hours); with
+`--state DIR` in `DIR/advisories.json`, so a restart keeps them. A page view asks OSV only for what
+is missing or older, so a view within the lifetime makes no request at all. "checked 3 h ago" is the
+age of the oldest answer on the page. When OSV cannot be reached the page still comes, with "could
+not check" and the reason, and any older answer still shows; the daemon leaves OSV alone for five
+minutes after a failure instead of waiting for it on every view. `--osv-url URL` names another OSV
+server (a mirror, or a stub in tests); `--no-osv` never asks, and the page says "not checked".
+
+The vulnerable packages come first (then the ones the image names itself), and `?show=vulnerable`
+lists only them. JSON from the route is an object:
+`{ "packages": [...], "advisories": { "checkedAt": 1730000000, "error": null } }`, `advisories`
+being `null` when the daemon does not ask. Each package has `advisories`, a list of
+`{ id, summary, severity }`, `[]` for "none known", and `null` when it was not asked about. The
+severity is the word OSV's record carries (`database_specific.severity`, such as `HIGH`), which only
+some records have; the CVSS vector is not read.
+
+`golconda packages -f server.toml --advisories [--osv-url URL]` does the same from the command line:
+vulnerable packages first, each followed by its advisories, and a last line saying when OSV was
+asked or why it could not be. Its answers are kept in `$XDG_CACHE_HOME/golconda/advisories.json`
+(`~/.cache/golconda` without it) for the same six hours. The TUI's packages screen shows the ids
+after each package.
 
 ## Audit log
 

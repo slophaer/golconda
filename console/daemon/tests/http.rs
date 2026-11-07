@@ -262,7 +262,9 @@ async fn the_packages_page_lists_the_sbom() {
     let (status, _, body) = get(app(false), "/systems/server/packages", true).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     let list: serde_json::Value = serde_json::from_str(&body).unwrap();
-    let systemd = list
+    // this app asks no OSV, so nothing is known
+    assert_eq!(list["advisories"], serde_json::Value::Null);
+    let systemd = list["packages"]
         .as_array()
         .unwrap()
         .iter()

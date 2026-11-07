@@ -4,6 +4,7 @@
 use crate::app::{App, Identity, Level, Signin};
 use crate::locked;
 use axum::http::StatusCode;
+use golconda_core::advisories::{self, Report};
 use golconda_core::candidate::{Lock, Op};
 use golconda_core::diff::Change;
 use golconda_core::document::{option_name, toml_text};
@@ -868,18 +869,92 @@ pub fn job(
     layout(app, who, None, None, &format!("Job {}", j.id), &main)
 }
 
-/// The image's packages, from its SBOM: what the image takes itself first.
-pub fn packages(app: &App, who: &Identity, name: &str, sys: &System, list: &[Package]) -> Markup {
-    let roots = list.iter().filter(|p| p.root).count();
+/// What the Packages page shows: the packages in the order to show them, and what OSV said.
+pub struct PackagesView<'a> {
+    /// every package of the image, in the order to show (vulnerable first)
+    pub list: &'a [&'a Package],
+    /// none: this daemon does not ask OSV
+    pub report: Option<&'a Report>,
+    /// only the vulnerable ones
+    pub only_vulnerable: bool,
+}
+
+/// The line above the table: when OSV was asked, or why it was not.
+fn advisory_status(report: Option<&Report>, vulnerable: usize) -> Markup {
+    let Some(r) = report else {
+        return html! { p { "Vulnerabilities: not checked, this daemon does not ask OSV." } };
+    };
+    let since = r.checked_at.map(advisories::since);
+    html! {
+        p {
+            "Vulnerabilities (OSV): "
+            @match (&r.error, &since) {
+                (Some(e), Some(t)) => { span.pill.p-amber { "could not check" } " " (e) ", showing the answer from " (t) }
+                (Some(e), None) => { span.pill.p-amber { "could not check" } " " (e) }
+                (None, Some(t)) => { "checked " (t) ", " (vulnerable) " package(s) with known ones" }
+                (None, None) => { "nothing to ask about" }
+            }
+            @if r.checked_at.is_some() {
+                " · "
+                @if vulnerable > 0 { a href="?show=vulnerable" { "only the vulnerable" } " · " }
+                a href="?" { "all" }
+            }
+        }
+    }
+}
+
+fn advisory_cell(report: Option<&Report>, p: &Package) -> Markup {
+    let found = report.and_then(|r| r.of(p));
+    html! {
+        td {
+            @match found {
+                None => { span.m { "–" } }
+                Some([]) => { span.pill.p-green { "none known" } }
+                Some(list) => {
+                    @for a in list {
+                        div {
+                            a href={ "https://osv.dev/vulnerability/" (a.id) } { span.pill.p-red { (a.id) } }
+                            @if let Some(sev) = &a.severity { " " span.pill.p-amber { (sev) } }
+                            @if let Some(t) = &a.summary { br; small { (t) } }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The image's packages, from its SBOM: vulnerable ones first, then what the image takes itself.
+pub fn packages(
+    app: &App,
+    who: &Identity,
+    name: &str,
+    sys: &System,
+    view: &PackagesView,
+) -> Markup {
+    let all = view.list;
+    let roots = all.iter().filter(|p| p.root).count();
+    let vulnerable = all
+        .iter()
+        .filter(|p| view.report.is_some_and(|r| r.vulnerable(p)))
+        .count();
+    let shown = all
+        .iter()
+        .filter(|p| !view.only_vulnerable || view.report.is_some_and(|r| r.vulnerable(p)));
     let main = html! {
         h2 { "Packages" }
         p {
-            (list.len()) " components, " (roots) " of them named by the image itself, the rest what they need. "
+            (all.len()) " components, " (roots) " of them named by the image itself, the rest what they need. "
             a href={ "/systems/" (name) "/sbom.json" } { "The SBOM" } " (CycloneDX)."
         }
+        (advisory_status(view.report, vulnerable))
         table {
-            tr { th { "package" } th { "version" } th { "origin" } th { "identifier" } }
-            @for p in list.iter().filter(|p| p.root).chain(list.iter().filter(|p| !p.root)) {
+            tr {
+                th { "package" } th { "version" }
+                @if view.report.is_some() { th { "vulnerabilities" } }
+                th { "origin" } th { "identifier" }
+            }
+            @for p in shown {
                 tr {
                     td {
                         (p.name)
@@ -887,6 +962,7 @@ pub fn packages(app: &App, who: &Identity, name: &str, sys: &System, list: &[Pac
                         @if !p.replaces.is_empty() { br; small { "replaces " (p.replaces.join(", ")) } }
                     }
                     td.m { (p.version) }
+                    @if view.report.is_some() { (advisory_cell(view.report, p)) }
                     td { @if let Some(o) = &p.origin { span class=(if o == "golconda" || o == "repkgs" { "pill p-grey" } else { "pill p-amber" }) { (o) } } }
                     td.m {
                         @if let Some(u) = &p.purl { (u) }

@@ -283,6 +283,21 @@ fn config(f: &mut Frame, m: &Model, area: Rect) {
     );
 }
 
+/// The ids of a package's advisories, a space after them; nothing when there are none.
+fn vulnerabilities(advisories: &Value) -> String {
+    let ids: Vec<&str> = advisories
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|a| a["id"].as_str())
+        .collect();
+    if ids.is_empty() {
+        String::new()
+    } else {
+        format!("{} ", ids.join(" "))
+    }
+}
+
 fn packages(f: &mut Frame, m: &Model, area: Rect) {
     let items: Vec<ListItem> = m
         .packages
@@ -302,14 +317,18 @@ fn packages(f: &mut Frame, m: &Model, area: Rect) {
                     },
                     Style::default().fg(SKY),
                 ),
+                Span::styled(vulnerabilities(&p["advisories"]), Style::default().fg(RED)),
                 Span::raw(s(&p["purl"]).to_string()),
             ]))
         })
         .collect();
+    let note = (m.packages_error.as_ref()).map_or(String::new(), |e| {
+        format!(" · could not check vulnerabilities: {e}")
+    });
     let (list, mut st) = pick(
         items,
         m.package_at,
-        &format!("packages ({})", m.packages.len()),
+        &format!("packages ({}){note}", m.packages.len()),
         true,
     );
     f.render_stateful_widget(list, area, &mut st);

@@ -70,12 +70,14 @@ mod tests {
     use ratatui::backend::TestBackend;
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use serde_json::{Value, json};
-    use std::cell::RefCell;
+    use std::cell::{Cell, RefCell};
 
     /// A daemon in memory: what its routes answer, and the POSTs it got.
     struct Fake {
         posts: RefCell<Vec<(String, Value)>>,
         answer: RefCell<(u16, Value)>,
+        /// the daemon could not ask OSV
+        osv_down: Cell<bool>,
     }
 
     impl Fake {
@@ -83,6 +85,7 @@ mod tests {
             Fake {
                 posts: RefCell::default(),
                 answer: RefCell::new((200, json!({ "rev": 3, "job": 7, "commit": "abc" }))),
+                osv_down: Cell::new(false),
             }
         }
     }
@@ -106,9 +109,14 @@ mod tests {
                     { "module": "/services/sshd", "option": "port", "type": "integer", "value": 22, "explicit": true,
                       "default": 22, "description": "Listening port." }] }),
                 "/systems/server/config/system" => json!({ "options": [] }),
-                "/systems/server/packages" => {
-                    json!([{ "name": "systemd", "version": "262.1", "origin": "golconda", "root": true }])
-                }
+                "/systems/server/packages" => json!({
+                    "packages": [
+                        { "name": "openssl", "version": "3.0.1", "origin": "repkgs", "root": false,
+                          "advisories": [{ "id": "CVE-2022-0778", "severity": "HIGH" }] },
+                        { "name": "systemd", "version": "262.1", "origin": "golconda", "root": true,
+                          "advisories": [] }],
+                    "advisories": { "checkedAt": 1,
+                        "error": self.osv_down.get().then_some("connection refused") } }),
                 "/systems/server/changes" => json!({ "changes": [
                     { "module": "/services/sshd", "path": ["port"], "before": { "value": 22 }, "after": { "value": 2222 } }] }),
                 "/jobs?system=server" => {
@@ -299,5 +307,18 @@ mod tests {
         key(&mut m, &src, "3");
         let s = screen(&m);
         assert!(s.contains("systemd") && s.contains("in the image"), "{s}");
+        assert!(s.contains("CVE-2022-0778"), "{s}");
+        assert!(!s.contains("could not check"), "{s}");
+    }
+
+    #[test]
+    fn packages_say_when_osv_could_not_be_asked() {
+        let src = Fake::new();
+        src.osv_down.set(true);
+        let mut m = Model::new("server");
+        key(&mut m, &src, "3");
+        let s = screen(&m);
+        assert!(s.contains("could not check vulnerabilities"), "{s}");
+        assert!(s.contains("systemd"), "{s}");
     }
 }

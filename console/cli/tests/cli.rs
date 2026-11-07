@@ -1420,6 +1420,108 @@ fn packages_lists_the_sbom_with_what_the_image_names_itself() {
     assert_eq!(bom["bomFormat"], "CycloneDX");
 }
 
+/// A checkout with a made-up SBOM (a stand-in for iets) of three packages, one of them
+/// vulnerable at the OSV stub; `golconda packages` run in it with a cache of its own.
+struct Image {
+    tmp: TempDir,
+}
+
+impl Image {
+    fn new() -> Image {
+        let tmp = TempDir::new().unwrap();
+        let t = tmp.path();
+        fs::create_dir_all(t.join("lib")).unwrap();
+        fs::write(t.join("lib/system.nix"), "{ }").unwrap();
+        fs::write(t.join("server.toml"), "").unwrap();
+        let sbom = r#"{"roots":["systemd"],"bom":{"components":[
+            {"name":"acl","version":"2.4.0","purl":"pkg:generic/acl@2.4.0"},
+            {"name":"openssl","version":"3.0.1","purl":"pkg:generic/openssl@3.0.1"},
+            {"name":"systemd","version":"262.1"}]}}"#;
+        fs::write(t.join("sbom.json"), sbom).unwrap();
+        let iets = t.join("iets");
+        fs::write(&iets, "#!/bin/sh\ncat \"$(dirname \"$0\")/sbom.json\"\n").unwrap();
+        fs::set_permissions(&iets, fs::Permissions::from_mode(0o755)).unwrap();
+        Image { tmp }
+    }
+
+    fn packages(&self, args: &[&str]) -> Output {
+        let t = self.tmp.path();
+        Command::new(env!("CARGO_BIN_EXE_golconda"))
+            .args(["packages", "-f"])
+            .arg(t.join("server.toml"))
+            .args(args)
+            .env("GOLCONDA_IETS", t.join("iets"))
+            .env("XDG_CACHE_HOME", t.join("cache"))
+            .output()
+            .unwrap()
+    }
+}
+
+fn osv_with_one_vulnerability() -> (String, sync::Arc<sync::Mutex<Vec<Seen>>>) {
+    routes(Box::new(|_, req| {
+        if req.line.contains("/v1/querybatch") {
+            let q: serde_json::Value = serde_json::from_str(&req.body).unwrap();
+            let results: Vec<serde_json::Value> = q["queries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|q| {
+                    if q["package"]["purl"].as_str().unwrap().contains("openssl") {
+                        serde_json::json!({ "vulns": [{ "id": "CVE-2022-0778" }] })
+                    } else {
+                        serde_json::json!({})
+                    }
+                })
+                .collect();
+            (200, serde_json::json!({ "results": results }).to_string())
+        } else {
+            (
+                200,
+                r#"{"id":"CVE-2022-0778","summary":"Infinite loop in BN_mod_sqrt()","database_specific":{"severity":"HIGH"}}"#
+                    .into(),
+            )
+        }
+    }))
+}
+
+#[test]
+fn packages_with_advisories_lists_the_vulnerable_first_and_asks_once() {
+    let image = Image::new();
+    let (osv, seen) = osv_with_one_vulnerability();
+    let out = stdout(&image.packages(&["--advisories", "--osv-url", &osv]));
+    let lines: Vec<&str> = out.lines().collect();
+    assert!(lines[0].starts_with("openssl  3.0.1"), "{out}");
+    assert_eq!(
+        lines[1].trim(),
+        "CVE-2022-0778  HIGH  Infinite loop in BN_mod_sqrt()",
+        "{out}"
+    );
+    assert!(lines[2].starts_with("systemd  262.1"), "{out}");
+    assert!(lines[3].starts_with("acl  2.4.0"), "{out}");
+    assert!(out.contains("checked just now"), "{out}");
+    // the next run, a process later, reads the cache
+    let n = seen.lock().unwrap().len();
+    assert_eq!(n, 2);
+    let again = stdout(&image.packages(&["--advisories", "--osv-url", &osv]));
+    assert_eq!(seen.lock().unwrap().len(), n);
+    assert_eq!(again, out);
+    // without the flag nothing is asked and the list is as before
+    let plain = stdout(&image.packages(&[]));
+    assert!(plain.starts_with("acl  2.4.0"), "{plain}");
+    assert!(!plain.contains("CVE-"), "{plain}");
+    assert_eq!(seen.lock().unwrap().len(), n);
+}
+
+#[test]
+fn packages_with_advisories_still_lists_when_osv_cannot_be_reached() {
+    let image = Image::new();
+    let o = image.packages(&["--advisories", "--osv-url", "http://127.0.0.1:1"]);
+    let out = stdout(&o);
+    assert!(out.starts_with("systemd  262.1"), "{out}");
+    assert!(out.contains("could not check"), "{out}");
+    assert!(!String::from_utf8_lossy(&o.stderr).contains("panicked"));
+}
+
 #[test]
 fn lock_unlock_and_a_lock_that_refuses() {
     let (url, seen) = stub(vec![
