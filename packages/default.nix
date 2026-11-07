@@ -65,4 +65,5 @@
   statix = ./statix;
   deadnix = ./deadnix;
   taplo = ./taplo;
+  tree-sitter-nu = ./tree-sitter-nu;
 }
