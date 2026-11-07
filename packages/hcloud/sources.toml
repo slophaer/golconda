@@ -1,0 +1,14 @@
+[upstream]
+purl = "pkg:github/hetznercloud/cli"
+
+[[source]]
+key = "default"
+url = "https://github.com/hetznercloud/cli/archive/refs/tags/{tag}.tar.gz"
+hash = "sha256-kDWd47j+4wCCKvQvxejcpJ93L94KRr4/xRIRXsT63AY="
+
+[pin]
+version = "1.70.2"
+tag = "v1.70.2"
+
+[locks]
+go = "."
