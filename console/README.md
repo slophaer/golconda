@@ -188,6 +188,22 @@ first, filtered by operator, system, action and day; as JSON with `Accept: appli
 reads from an index (`STATE/audit-index.db`) that the daemon makes from the repository at every
 start and adds each entry to; the repository is the record, the index can be thrown away.
 
+## TUI
+
+```sh
+golconda --server https://console.example.com tui
+```
+
+The daemon's screens in a terminal (ratatui), a client of the same JSON routes as the CLI and with
+its login: `1` status (the machines; `u` update, `b` reboot, `R` roll back, `D` deploy, each after a
+`y`), `2` configuration (modules, options, detail; `e` edits the selected option in a line editor
+and saves it to the candidate, as TOML or, when it is not TOML, as a string; `D` resets it to its
+default), `3` packages, `4` changes (the candidate's operations and what they change; `c` commit
+with a message, `x` discard, `B` break someone's lock with a reason), `5` jobs (their output, read
+again every second while one runs). `l` takes or gives up the lock, `r` refreshes (and every ten
+seconds), `q` quits. The strip names the system, the image, the candidate's changes and the lock. A
+conflict, a refusal or a lock says so on the message line.
+
 ## Live updates
 
 Every page loads one optional script, `/assets/live.js` (under 10 KB, no framework, `defer`); the

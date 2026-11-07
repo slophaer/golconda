@@ -32,6 +32,9 @@ base64 = "0.22"
 rusqlite = { version = "0.41", features = ["bundled"] }
 serde_urlencoded = "0.7"
 futures-util = { version = "0.3", default-features = false }
+ratatui = { version = "0.30", default-features = false, features = [
+  "crossterm",
+] }
 tempfile = "3.27.0"
 pulldown-cmark = { version = "0.13", default-features = false, features = [
   "html",

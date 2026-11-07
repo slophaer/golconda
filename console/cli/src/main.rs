@@ -20,6 +20,7 @@ use std::path::{self, Path, PathBuf};
 use std::process::ExitCode;
 
 mod login;
+mod tui;
 
 /// Read, explain and change a Golconda system's configuration.
 ///
@@ -93,6 +94,8 @@ enum Command {
     /// Jobs on the system's machines, through the daemon --server names
     #[command(subcommand)]
     Job(Jobs),
+    /// The daemon's screens in this terminal: status, configuration, packages, changes, jobs
+    Tui,
 }
 
 #[derive(Subcommand)]
@@ -344,14 +347,16 @@ fn main() -> ExitCode {
                 format!("not signed in to {url}\n")
             }
         }),
-        (None, Command::Login | Command::Logout | Command::Machines | Command::Job(_)) => {
-            Cli::command()
-                .error(
-                    clap::error::ErrorKind::MissingRequiredArgument,
-                    "login, logout, machines and job are for a daemon: give --server",
-                )
-                .exit()
-        }
+        (Some(url), Command::Tui) => tui::run(&url, &cli.name).map_err(Into::into),
+        (
+            None,
+            Command::Login | Command::Logout | Command::Machines | Command::Job(_) | Command::Tui,
+        ) => Cli::command()
+            .error(
+                clap::error::ErrorKind::MissingRequiredArgument,
+                "login, logout, machines, job and tui are for a daemon: give --server",
+            )
+            .exit(),
         (Some(url), command) => remote::through(&url, &cli.name, command),
         (None, command) => run(command),
     };
@@ -630,7 +635,7 @@ fn run(command: Command) -> Result<String, Box<dyn error::Error>> {
         Command::Vars(v) => return run_vars(v),
         Command::Release(r) => return run_release(r),
         Command::Packages { doc, sbom } => return run_packages(&iets, &doc, sbom),
-        Command::Login | Command::Logout | Command::Machines | Command::Job(_) => {
+        Command::Login | Command::Logout | Command::Machines | Command::Job(_) | Command::Tui => {
             unreachable!("main takes them")
         }
         Command::Audit(Audit::Verify {
