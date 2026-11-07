@@ -1398,3 +1398,24 @@ fn a_failed_job_makes_wait_exit_1() {
     assert_eq!(o.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&o.stderr).contains("job 7 failed"));
 }
+
+#[test]
+#[ignore = "needs iets and the checkout"]
+fn packages_lists_the_sbom_with_what_the_image_names_itself() {
+    let out = stdout(&golconda(&["packages", "-f", "examples/server.toml"]));
+    let systemd = out
+        .lines()
+        .find(|l| l.starts_with("systemd  "))
+        .expect(&out);
+    assert!(systemd.ends_with("golconda  in the image"), "{systemd}");
+    let acl = out.lines().find(|l| l.starts_with("acl  ")).expect(&out);
+    assert!(acl.ends_with("repkgs"), "{acl}");
+    let bom: serde_json::Value = serde_json::from_str(&stdout(&golconda(&[
+        "packages",
+        "-f",
+        "examples/server.toml",
+        "--sbom",
+    ])))
+    .unwrap();
+    assert_eq!(bom["bomFormat"], "CycloneDX");
+}

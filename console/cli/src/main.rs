@@ -8,6 +8,7 @@ use golconda_core::diff::{Change, against_git, diff};
 use golconda_core::document::{self, parse_path, parse_value};
 use golconda_core::eval::Iets;
 use golconda_core::git::{Git, Person};
+use golconda_core::packages;
 use golconda_core::release;
 use golconda_core::system::System;
 use golconda_core::vars::{self, Program, Remote, Store};
@@ -71,6 +72,15 @@ enum Command {
     /// Releases: the directory a build writes, which machines install from
     #[command(subcommand)]
     Release(Releases),
+    /// The image's packages, from its SBOM: version, origin, purl or cpe, and whether the image
+    /// names it itself
+    Packages {
+        #[command(flatten)]
+        doc: Doc,
+        /// The CycloneDX document instead of the list
+        #[arg(long)]
+        sbom: bool,
+    },
     /// Sign in to the daemon --server names, through its OIDC provider's device flow: open the
     /// address it prints and confirm the code. The tokens stay in
     /// $XDG_STATE_HOME/golconda/tokens.json
@@ -477,6 +487,26 @@ fn build_release(
     ))
 }
 
+/// The image's packages from its SBOM, or the CycloneDX document itself.
+fn run_packages(iets: &Iets, doc: &Doc, sbom: bool) -> Result<String, Box<dyn error::Error>> {
+    let p = packages::load(iets, &doc.file, &doc.system)?;
+    if sbom {
+        return Ok(format!("{:#}\n", p.bom));
+    }
+    let mut out = String::new();
+    for p in &p.list {
+        let _ = writeln!(
+            out,
+            "{}  {}  {}{}",
+            p.name,
+            p.version,
+            p.origin.as_deref().unwrap_or("?"),
+            if p.root { "  in the image" } else { "" }
+        );
+    }
+    Ok(out)
+}
+
 fn run_release(command: Releases) -> Result<String, Box<dyn error::Error>> {
     let gpgv = Program::from_env("GOLCONDA_GPGV", "gpgv");
     let git = Program::from_env("GOLCONDA_GIT", "git");
@@ -571,6 +601,7 @@ fn run(command: Command) -> Result<String, Box<dyn error::Error>> {
         Command::Config(c) => c,
         Command::Vars(v) => return run_vars(v),
         Command::Release(r) => return run_release(r),
+        Command::Packages { doc, sbom } => return run_packages(&iets, &doc, sbom),
         Command::Login | Command::Logout | Command::Machines | Command::Job(_) => {
             unreachable!("main takes them")
         }

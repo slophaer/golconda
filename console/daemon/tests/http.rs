@@ -251,3 +251,31 @@ async fn only_a_loopback_host_is_served() {
         assert_eq!(status(ok).await, StatusCode::OK, "{ok}");
     }
 }
+
+#[tokio::test]
+#[ignore = "needs iets and the Golconda checkout"]
+async fn the_packages_page_lists_the_sbom() {
+    let (status, _, body) = get(app(false), "/systems/server/packages", true).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let list: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let systemd = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["name"] == "systemd")
+        .unwrap();
+    assert_eq!(
+        (systemd["root"].as_bool(), systemd["origin"].as_str()),
+        (Some(true), Some("golconda"))
+    );
+    let (_, _, page) = get(app(false), "/systems/server/packages", false).await;
+    assert!(
+        page.contains("systemd")
+            && page.contains("in the image")
+            && page.contains("/systems/server/sbom.json"),
+        "{page}"
+    );
+    let (status, _, bom) = get(app(false), "/systems/server/sbom.json", false).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(bom.contains("\"bomFormat\":\"CycloneDX\""), "{bom}");
+}
