@@ -182,6 +182,7 @@ let
           "scripts/docs"
           "scripts/lint"
           "scripts/make-keys"
+          "scripts/tool"
           "scripts/provision-esp"
         ];
       };
@@ -191,8 +192,6 @@ let
   treefmt = writeScript "treefmt" ''
     exec ${rp.treefmt}/bin/treefmt --config-file ${treefmtConfig} "$@"
   '';
-
-  inherit (pkgs) mdbook;
 
   # mermaid blocks become inline SVG at build time with Pele (pin `pele`)
   mdbook-pele = pkgs.writeShellScriptBin "mdbook-pele" ''
@@ -215,18 +214,17 @@ in
 {
   inherit
     treefmt
-    mdbook
     mdbook-pele
     iets
     ast-grep
     ;
 
-  # nixpkgs' mkShell cannot take a content-addressed input on this daemon, so treefmt and
-  # golconda-ast-grep (ours now) are not in it: `nix fmt` runs the formatter output, which runs the
-  # lint rules too, and checks.lint-rules tests them
+  # nixpkgs' mkShell cannot take a content-addressed input on this daemon, so treefmt,
+  # golconda-ast-grep and mdbook (ours now) are not in it: `nix fmt` runs the formatter output,
+  # which runs the lint rules too, checks.lint-rules tests them, and scripts/docs and scripts/tool
+  # find our packages through scripts/tools.sh
   shell = pkgs.mkShellNoCC {
     packages = [
-      mdbook
       mdbook-pele
       iets
       pkgs.npins
