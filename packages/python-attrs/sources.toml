@@ -1,0 +1,10 @@
+[upstream]
+purl = "pkg:pypi/attrs"
+
+[[source]]
+key = "default"
+url = "https://files.pythonhosted.org/packages/source/a/attrs/attrs-{version}.tar.gz"
+hash = "sha256-8j2KS5VNIbzSp6A02Ywyg22rM4rypuPLpexyrfXDbjA="
+
+[pin]
+version = "26.1.0"

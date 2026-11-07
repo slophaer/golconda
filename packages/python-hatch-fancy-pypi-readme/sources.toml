@@ -1,0 +1,10 @@
+[upstream]
+purl = "pkg:pypi/hatch-fancy-pypi-readme"
+
+[[source]]
+key = "default"
+url = "https://files.pythonhosted.org/packages/source/h/hatch-fancy-pypi-readme/hatch_fancy_pypi_readme-{version}.tar.gz"
+hash = "sha256-weRCusvbnk+1PUONG1+wCR5G8q7l2E1aEjtOmFkKHqA="
+
+[pin]
+version = "25.1.0"

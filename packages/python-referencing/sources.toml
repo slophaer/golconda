@@ -1,0 +1,10 @@
+[upstream]
+purl = "pkg:pypi/referencing"
+
+[[source]]
+key = "default"
+url = "https://files.pythonhosted.org/packages/source/r/referencing/referencing-{version}.tar.gz"
+hash = "sha256-ITIDeVkiJ1l071sHAcodK1cqxbJRiy77S+a9gDaCvNU="
+
+[pin]
+version = "0.37.0"
