@@ -1,0 +1,13 @@
+[upstream]
+purl = "pkg:github/tamasfe/taplo"
+
+[[source]]
+key = "default"
+url = "https://github.com/tamasfe/taplo/archive/refs/tags/{tag}.tar.gz"
+hash = "sha256-FW8OQ5TRUuQK8M2NDmp4c6p22jsHodxKqzOMrcdiqXU="
+
+[pin]
+version = "0.10.0"
+tag = "0.10.0"
+# the lock has openssl-sys (the native-tls feature); the build here compiles no TLS at all
+sys = ["openssl"]
