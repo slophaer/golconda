@@ -862,12 +862,15 @@ async fn candidate(State(app): State<Shared>, Path(name): Path<String>) -> Respo
         return axum::Json(serde_json::json!({ "revision": 0, "ops": [] })).into_response();
     };
     let j = locked(&w.journal);
-    match (j.revision(&name), j.open_ops(&name)) {
-        (Ok(rev), Ok(ops)) => axum::Json(serde_json::json!({
+    match (j.revision(&name), j.open_ops(&name), j.lock_of(&name)) {
+        (Ok(rev), Ok(ops), Ok(lock)) => axum::Json(serde_json::json!({
             "revision": rev, "ops": ops.iter().map(golconda_core::candidate::Op::to_json).collect::<Vec<_>>(),
+            "lock": lock.as_ref().map(golconda_core::candidate::Lock::to_json),
         }))
         .into_response(),
-        (Err(e), _) | (_, Err(e)) => problem(true, StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
+        (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => {
+            problem(true, StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())
+        }
     }
 }
 

@@ -902,4 +902,7 @@ async fn the_event_stream_carries_presence_and_the_lock() {
     post(&alice, "/systems/server/lock", json!({ "minutes": 5 })).await;
     let lock = until(&mut watch, "event: lock").await;
     assert!(lock.contains(r#""name":"Alice""#), "{lock}");
+    // the candidate says so too, for clients without the stream
+    let c = get(&alice, "/systems/server/candidate").await;
+    assert_eq!(c["lock"]["by"]["name"], "Alice");
 }
