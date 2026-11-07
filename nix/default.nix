@@ -135,6 +135,8 @@ in
       inherit (pkgs) age;
       # copies a release to its update source (golconda release publish), on PATH beside golconda
       inherit (pkgs) rclone;
+      # repkgs' update tool: the console's upstream check runs it
+      inherit (pkgs) uptrack;
       # an S3-compatible store for the release tool's tests
       inherit (pkgs) garage;
       # what scripts/provision-esp runs on the build host (scripts/tools.sh): our systemd-creds,
