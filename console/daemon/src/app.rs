@@ -125,6 +125,7 @@ pub fn router_shared(app: Arc<App>) -> Router {
         .layer(middleware::from_fn_with_state(app.clone(), signed_in));
     Router::new()
         .merge(pages)
+        .route("/auth/device", get(device))
         .route("/auth/login", get(login))
         .route("/auth/callback", get(callback))
         .route("/auth/logout", post(logout))
@@ -189,11 +190,54 @@ fn session_cookie(h: &HeaderMap) -> Option<&str> {
         .find_map(|c| c.trim().strip_prefix(auth::COOKIE)?.strip_prefix('='))
 }
 
+/// The token of `Authorization: Bearer`.
+fn bearer(h: &HeaderMap) -> Option<String> {
+    h.get(header::AUTHORIZATION)?
+        .to_str()
+        .ok()?
+        .strip_prefix("Bearer ")
+        .map(|t| t.trim().to_string())
+}
+
+/// Where the CLI signs in (the device flow): the issuer, the CLI's client and the scopes.
+async fn device(State(app): State<Shared>) -> Response {
+    match &app.signin {
+        Signin::Oidc(o) => match o.device_flow() {
+            Some(v) => axum::Json(v).into_response(),
+            None => problem(
+                true,
+                StatusCode::NOT_FOUND,
+                "this daemon has no CLI sign-in (--oidc-cli-client-id, and a provider with the device flow)",
+            ),
+        },
+        Signin::Dev(_) => problem(
+            true,
+            StatusCode::NOT_FOUND,
+            "a development daemon needs no sign-in",
+        ),
+    }
+}
+
 /// Who is signed in, for the pages (an `Identity` extension). Nobody: a browser goes to sign
-/// in and comes back, JSON gets 401.
+/// in and comes back, JSON gets 401. The CLI comes with a bearer token instead of a cookie;
+/// it carries no CSRF token, as it sends no form.
 async fn signed_in(State(app): State<Shared>, mut req: Request, next: Next) -> Response {
     let (who, csrf) = match &app.signin {
         Signin::Dev(who) => (Some(who.clone()), Some(app.csrf.clone())),
+        Signin::Oidc(_) if let Some(token) = bearer(req.headers()) => {
+            let a = app.clone();
+            let checked = tokio::task::spawn_blocking(move || match &a.signin {
+                Signin::Oidc(o) => o.bearer(&token),
+                Signin::Dev(_) => unreachable!("matched above"),
+            })
+            .await
+            .expect("token check thread");
+            match checked {
+                Ok(who) => (Some(who), None),
+                Err(Refused::Bad(m)) => return problem(true, StatusCode::UNAUTHORIZED, &m),
+                Err(Refused::NotAllowed(m)) => return problem(true, StatusCode::FORBIDDEN, &m),
+            }
+        }
         Signin::Oidc(o) => {
             let id = session_cookie(req.headers());
             (

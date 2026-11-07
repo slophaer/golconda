@@ -4,6 +4,8 @@
 //! which a package build does not have, so they are ignored there:
 //! `cargo test -- --include-ignored` runs them (console/README.md).
 
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use golconda_core::audit::{Audit, Entry};
 use golconda_core::candidate::Operator;
 use golconda_core::git::{Git, Person};
@@ -18,6 +20,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync;
 use std::thread;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tempfile::{Builder, TempDir};
 
 fn checkout() -> PathBuf {
@@ -1077,5 +1080,241 @@ fn release_publish_and_list_through_rclone() {
     assert_eq!(
         stdout(&golconda_in(&tmp, &gpgv, &publish)),
         "www serves server 20261105.1 already: nothing to upload\n"
+    );
+}
+
+/// One request a routing stub saw: the request line, the Authorization header, the body.
+#[derive(Clone, Debug)]
+struct Seen {
+    line: String,
+    auth: String,
+    body: String,
+}
+
+type Handler = dyn Fn(&str, &Seen) -> (u16, String) + Send + Sync;
+
+/// A stub HTTP server that answers each request with `handler(its own URL, the request)`,
+/// for as long as the test runs: daemon and provider in one.
+fn routes(handler: Box<Handler>) -> (String, sync::Arc<sync::Mutex<Vec<Seen>>>) {
+    let listener = net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let seen = sync::Arc::new(sync::Mutex::new(Vec::new()));
+    let (log, me) = (seen.clone(), url.clone());
+    thread::spawn(move || {
+        for s in listener.incoming() {
+            let mut s = s.unwrap();
+            let mut r = BufReader::new(s.try_clone().unwrap());
+            let mut line = String::new();
+            r.read_line(&mut line).unwrap();
+            let (mut len, mut auth) = (0, String::new());
+            loop {
+                let mut h = String::new();
+                r.read_line(&mut h).unwrap();
+                if h == "\r\n" || h.is_empty() {
+                    break;
+                }
+                let lower = h.to_lowercase();
+                if let Some(v) = lower.strip_prefix("content-length:") {
+                    len = v.trim().parse().unwrap();
+                }
+                if lower.starts_with("authorization:") {
+                    auth = h["authorization:".len()..].trim().to_string();
+                }
+            }
+            let mut b = vec![0; len];
+            r.read_exact(&mut b).unwrap();
+            let req = Seen {
+                line: line.trim().to_string(),
+                auth,
+                body: String::from_utf8_lossy(&b).into_owned(),
+            };
+            let (status, body) = handler(&me, &req);
+            log.lock().unwrap().push(req);
+            write!(s, "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+        }
+    });
+    (url, seen)
+}
+
+/// An ID token as the CLI sees it: unchecked, it only reads exp (the daemon checks it).
+fn jwt(name: &str, exp: i64) -> String {
+    let b = |v: serde_json::Value| URL_SAFE_NO_PAD.encode(v.to_string());
+    format!(
+        "{}.{}.sig",
+        b(serde_json::json!({ "alg": "ES256" })),
+        b(serde_json::json!({ "aud": "golconda-cli", "name": name, "exp": exp }))
+    )
+}
+
+fn unix_now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        .cast_signed()
+}
+
+/// A daemon with OIDC and its provider: the device flow gives `first` after one
+/// authorization_pending, a refresh with r1 gives `second`, and the daemon takes either.
+fn oidc_stub(first: String, second: String) -> (String, sync::Arc<sync::Mutex<Vec<Seen>>>) {
+    let polls = sync::Arc::new(sync::Mutex::new(0));
+    routes(Box::new(move |me, req| {
+        let path = req.line.split(' ').nth(1).unwrap_or("");
+        let ok = |v: serde_json::Value| (200, v.to_string());
+        match path {
+            "/auth/device" => ok(
+                serde_json::json!({ "issuer": me, "clientId": "golconda-cli", "scope": "openid groups offline_access" }),
+            ),
+            "/.well-known/openid-configuration" => ok(serde_json::json!({
+                "issuer": me, "device_authorization_endpoint": format!("{me}/device"),
+                "token_endpoint": format!("{me}/token"),
+            })),
+            "/device" if req.body.contains("client_id=golconda-cli") => ok(serde_json::json!({
+                "device_code": "dc1", "user_code": "WDJB-MJHT", "verification_uri": format!("{me}/verify"),
+                "verification_uri_complete": format!("{me}/verify?code=WDJB-MJHT"), "interval": 0, "expires_in": 60,
+            })),
+            "/token" if req.body.contains("device_code=dc1") => {
+                let mut n = polls.lock().unwrap();
+                *n += 1;
+                if *n == 1 {
+                    (400, r#"{"error":"authorization_pending"}"#.into())
+                } else {
+                    ok(
+                        serde_json::json!({ "id_token": first, "refresh_token": "r1", "token_type": "Bearer" }),
+                    )
+                }
+            }
+            "/token"
+                if req.body.contains("grant_type=refresh_token")
+                    && req.body.contains("refresh_token=r1") =>
+            {
+                ok(serde_json::json!({ "id_token": second, "refresh_token": "r2" }))
+            }
+            "/token" => (400, r#"{"error":"invalid_grant"}"#.into()),
+            "/auth/me" | "/systems/server/candidate"
+                if req.auth == format!("Bearer {first}")
+                    || req.auth == format!("Bearer {second}") =>
+            {
+                ok(
+                    serde_json::json!({ "name": "Alice", "level": "operator", "revision": 0, "ops": [] }),
+                )
+            }
+            _ => (401, r#"{"error":"sign in first"}"#.into()),
+        }
+    }))
+}
+
+fn golconda_state(state: &TempDir, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_golconda"))
+        .env("XDG_STATE_HOME", state.path())
+        .args(args)
+        .output()
+        .unwrap()
+}
+
+#[test]
+fn login_signs_in_through_the_device_flow_and_keeps_the_token_private() {
+    let state = TempDir::new().unwrap();
+    let token = jwt("Alice", unix_now() + 3600);
+    let (url, seen) = oidc_stub(token.clone(), jwt("Alice", unix_now() + 7200));
+    let o = golconda_state(&state, &["--server", &url, "login"]);
+    assert_eq!(
+        stdout(&o),
+        format!("signed in to {url} as Alice (operator)\n")
+    );
+    let told = String::from_utf8_lossy(&o.stderr);
+    assert!(
+        told.contains(&format!("Open {url}/verify?code=WDJB-MJHT")),
+        "{told}"
+    );
+    assert!(told.contains("enter WDJB-MJHT"), "{told}");
+    let file = state.path().join("golconda/tokens.json");
+    let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    assert_eq!((mode(&file), mode(file.parent().unwrap())), (0o600, 0o700));
+    // the daemon's calls carry it
+    let o = golconda_state(&state, &["--server", &url, "config", "candidate"]);
+    stdout(&o);
+    let last = seen.lock().unwrap().last().cloned().unwrap();
+    assert_eq!(last.line, "GET /systems/server/candidate HTTP/1.1");
+    assert_eq!(last.auth, format!("Bearer {token}"));
+    assert_eq!(
+        stdout(&golconda_state(&state, &["--server", &url, "logout"])),
+        format!("signed out of {url}\n")
+    );
+    assert_eq!(
+        stdout(&golconda_state(&state, &["--server", &url, "logout"])),
+        format!("not signed in to {url}\n")
+    );
+    let o = golconda_state(&state, &["--server", &url, "config", "candidate"]);
+    assert_eq!(o.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&o.stderr).contains("golconda login --server"));
+}
+
+#[test]
+fn an_expired_token_is_renewed_with_the_refresh_token() {
+    let state = TempDir::new().unwrap();
+    let (old, fresh) = (
+        jwt("Alice", unix_now() - 10),
+        jwt("Alice", unix_now() + 3600),
+    );
+    let (url, seen) = oidc_stub(old.clone(), fresh.clone());
+    stdout(&golconda_state(&state, &["--server", &url, "login"]));
+    stdout(&golconda_state(
+        &state,
+        &["--server", &url, "config", "candidate"],
+    ));
+    let seen = seen.lock().unwrap();
+    let refresh = seen
+        .iter()
+        .find(|s| s.body.contains("grant_type=refresh_token"))
+        .expect("a refresh");
+    assert!(refresh.body.contains("refresh_token=r1"), "{refresh:?}");
+    assert_eq!(seen.last().unwrap().auth, format!("Bearer {fresh}"));
+    let kept = fs::read_to_string(state.path().join("golconda/tokens.json")).unwrap();
+    assert!(kept.contains(&fresh) && kept.contains("\"r2\""), "{kept}");
+}
+
+#[test]
+fn a_refresh_the_provider_refuses_asks_for_login_again() {
+    let state = TempDir::new().unwrap();
+    let (url, _) = oidc_stub(jwt("Alice", unix_now() - 10), String::new());
+    stdout(&golconda_state(&state, &["--server", &url, "login"]));
+    // a refresh token the provider no longer takes
+    let file = state.path().join("golconda/tokens.json");
+    let text = fs::read_to_string(&file)
+        .unwrap()
+        .replace("\"r1\"", "\"revoked\"");
+    fs::write(&file, text).unwrap();
+    let o = golconda_state(&state, &["--server", &url, "config", "candidate"]);
+    assert_eq!(o.status.code(), Some(1));
+    let e = String::from_utf8_lossy(&o.stderr);
+    assert!(
+        e.contains("has expired: run golconda login --server"),
+        "{e}"
+    );
+}
+
+#[test]
+fn login_needs_a_server() {
+    let state = TempDir::new().unwrap();
+    assert_eq!(golconda_state(&state, &["login"]).status.code(), Some(2));
+}
+
+#[test]
+fn login_refuses_a_provider_without_https() {
+    let state = TempDir::new().unwrap();
+    let (url, seen) = routes(Box::new(|_, _| {
+        (
+            200,
+            r#"{"issuer":"http://idp.example.com","clientId":"golconda-cli"}"#.into(),
+        )
+    }));
+    let o = golconda_state(&state, &["--server", &url, "login"]);
+    assert_eq!(o.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&o.stderr).contains("must use https"));
+    assert_eq!(
+        seen.lock().unwrap().len(),
+        1,
+        "nothing asked of the provider"
     );
 }

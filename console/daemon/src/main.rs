@@ -41,6 +41,10 @@ pub struct Args {
     /// it, the public roots built in
     #[arg(long, value_name = "FILE")]
     oidc_ca_file: Option<PathBuf>,
+    /// The public client the CLI and TUI sign in with through the device flow; their ID tokens
+    /// must be meant for it. Without it, no bearer token is taken
+    #[arg(long, value_name = "ID", requires = "oidc_issuer")]
+    oidc_cli_client_id: Option<String>,
     /// Where browsers reach this daemon, such as https://console.example.com: the redirect
     /// address and the one host name it answers to
     #[arg(long, value_name = "URL")]
@@ -160,6 +164,7 @@ fn check(mut a: Args) -> Result<(Args, Mode), String> {
         operator_group: a.operator_group.clone(),
         read_only_group: a.read_only_group.clone(),
         ca_pem,
+        cli_client_id: a.oidc_cli_client_id.clone(),
     };
     Ok((a, Mode::Oidc(config)))
 }

@@ -108,10 +108,17 @@ issuer must use https, except on loopback. Its TLS certificate is checked agains
 built into the daemon, or, with `--oidc-ca-file`, against our own CA's certificates (step-ca)
 instead.
 
+The CLI and the TUI sign in through the device flow with a public client of their own,
+`--oidc-cli-client-id golconda-cli`. `/auth/device` tells them the issuer, that client and the
+scopes; they then send the ID token as `Authorization: Bearer`. The daemon checks it as it checks a
+browser's (signature, issuer, expiry, groups), but its audience must be the CLI client: a token
+issued to the web client is not taken. A request with a bearer token carries no CSRF token, as it
+comes from no form. Without `--oidc-cli-client-id` the daemon takes no bearer token.
+
 For development, `--dev-identity NAME:LEVEL` signs everyone in as NAME at LEVEL (`operator` or
 `read-only`), and the daemon then listens on a loopback address only and answers to loopback names.
-`--read-only` makes the whole daemon say it changes nothing (nothing writes yet in any case). Every
-page evaluates its system again (0.1 to 0.4 s; two evaluations for Changes).
+`--read-only` makes the whole daemon change nothing: every write answers 403. Every page evaluates
+its system again (0.1 to 0.4 s; two evaluations for Changes).
 
 The sign-in tests run a stub provider (daemon/tests/oidc.rs) with the test keys in
 daemon/tests/fixtures: it signs tokens and checks the PKCE verifier, and it issues tokens that must
@@ -140,8 +147,20 @@ golcondad --system server=checkout/server.toml --state /var/lib/golcondad \
 
 The CLI works through such a daemon with `--server URL --name NAME`: `config set` and
 `config delete` become operations on the revision it reads first (or `--base N`), and
-`config candidate`, `config commit -m TEXT` and `config discard` work on the candidate. It cannot
-sign in through OIDC yet (the device flow): today it reaches a daemon in development mode.
+`config candidate`, `config commit -m TEXT` and `config discard` work on the candidate.
+
+```sh
+golconda --server https://console.example.com login    # open the address it prints, confirm the code
+golconda --server https://console.example.com config candidate
+golconda --server https://console.example.com logout
+```
+
+`login` runs the device flow against the provider the daemon names and keeps the ID token and the
+refresh token per daemon in `$XDG_STATE_HOME/golconda/tokens.json` (`~/.local/state` without it; the
+file is 0600, its directory 0700). Each call sends the ID token; one that expires within a minute is
+renewed with the refresh token first, and when the provider refuses that, the CLI says to log in
+again. `GOLCONDA_CA_FILE` names PEM certificates (our own CA's) that the provider's and the daemon's
+TLS certificates must chain to. A daemon in development mode needs no login.
 
 The remote is fetched every `--fetch-every` seconds too. Every action and every refusal (a conflict,
 a problem, a write by someone who may only read, or in a `--read-only` daemon: 403) is an audit
