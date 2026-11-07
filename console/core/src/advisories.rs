@@ -17,8 +17,10 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tempfile::NamedTempFile;
 
 pub const OSV_URL: &str = "https://api.osv.dev";
-/// How long an answer is good.
-pub const LIFETIME: Duration = Duration::from_hours(6);
+/// How long an answer is good: a day. A refresh costs one batch query per 1000 packages and one
+/// read per vulnerability not seen before, so the time is about freshness, not load; advisories
+/// and upstream releases are acted on daily, and uptrack's datasources are polled no more often.
+pub const LIFETIME: Duration = Duration::from_hours(24);
 /// After a failure OSV is left alone this long, so a page view does not wait for it again.
 const RETRY: Duration = Duration::from_secs(300);
 /// Queries in one batch request: OSV's limit. A longer list is sent in several.

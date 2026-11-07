@@ -287,7 +287,7 @@ about and shows a grey "not covered by OSV", never a green "none known"; the JSO
 by OSV" to its line, and the TUI shows "not in OSV". A package without a purl is not asked about and
 shows a dash.
 
-The answers are kept, each with the time it was asked, for `--osv-every` seconds (six hours); with
+The answers are kept, each with the time it was asked, for `--osv-every` seconds (a day); with
 `--state DIR` in `DIR/advisories.json`, so a restart keeps them. A page view asks OSV only for what
 is missing or older, so a view within the lifetime makes no request at all. "checked 3 h ago" is the
 age of the oldest answer on the page. When OSV cannot be reached the page still comes, with "could
@@ -306,8 +306,8 @@ some records have; the CVSS vector is not read.
 `golconda packages -f server.toml --advisories [--osv-url URL]` does the same from the command line:
 vulnerable packages first, each followed by its advisories, and a last line saying when OSV was
 asked or why it could not be. Its answers are kept in `$XDG_CACHE_HOME/golconda/advisories.json`
-(`~/.cache/golconda` without it) for the same six hours. The TUI's packages screen shows the ids
-after each package.
+(`~/.cache/golconda` without it) for the same day. The TUI's packages screen shows the ids after
+each package.
 
 ### Age and newer upstream versions
 
@@ -335,13 +335,13 @@ vulnerable ones, and has `?show=outdated`.
 
 uptrack takes seconds to minutes, so a page view never waits for it. The first view starts one run
 in the background and says "checking now"; the answers appear on a later view. They are kept for
-`--uptrack-every` seconds (six hours; `DIR/upstream.json` with `--state`), and a view asks nothing
-while they are good. A run is stopped after 30 minutes; a failed one is not repeated for five
-minutes, and the older answers stay on the page with "could not check" and uptrack's message. JSON:
-each package has `upstream` (`{ newest, outdated, released, error }`, `null` when no tree tracks it)
-and the route has a top-level `upstream` (`{ checkedAt, error, running }`, `null` when uptrack is
-not set up). uptrack keeps its own cache of what it fetched under `$XDG_CACHE_HOME/uptrack`, and
-uses `GITHUB_TOKEN` or `gh`'s login against GitHub's rate limit.
+`--uptrack-every` seconds (a day; `DIR/upstream.json` with `--state`), and a view asks nothing while
+they are good. A run is stopped after 30 minutes; a failed one is not repeated for five minutes, and
+the older answers stay on the page with "could not check" and uptrack's message. JSON: each package
+has `upstream` (`{ newest, outdated, released, error }`, `null` when no tree tracks it) and the
+route has a top-level `upstream` (`{ checkedAt, error, running }`, `null` when uptrack is not set
+up). uptrack keeps its own cache of what it fetched under `$XDG_CACHE_HOME/uptrack`, and uses
+`GITHUB_TOKEN` or `gh`'s login against GitHub's rate limit.
 
 `golconda packages -f server.toml --upstream --uptrack-tree DIR` does the same and waits for
 uptrack, with its answers kept in `$XDG_CACHE_HOME/golconda/upstream.json`; the TUI shows "->
