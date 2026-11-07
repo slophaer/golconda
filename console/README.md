@@ -274,12 +274,17 @@ repository that adds it), its purl and its cpe, and what a downstream replacemen
 ### Known vulnerabilities (OSV)
 
 The page also shows the known vulnerabilities of each package, from [OSV](https://osv.dev). The
-daemon asks `POST /v1/querybatch` for the packages that have a purl (a purl without a version gets
-the package's version as `version`), then `GET /v1/vulns/ID` once for each id it finds, for its
-summary and severity. OSV indexes the ecosystems it knows (pypi, npm, cargo, Go, distributions, …):
-a purl of another type (`pkg:github`, `pkg:generic`, which most of the image has) answers "none
-known", and that means OSV has no records under that purl, not that the package is clean. A package
-without a purl is not asked about and shows a dash.
+daemon asks `POST /v1/querybatch` for the packages whose purl is of a type it indexes (below; a purl
+without a version gets the package's version as `version`), then `GET /v1/vulns/ID` once for each id
+it finds, for its summary and severity. OSV has records for some purl types only (`pypi`, `npm`,
+`cargo`, `golang`, `maven`, `nuget`, `gem`, `hex`, `composer`, `pub`, `hackage`, `cran`, `swift`,
+`deb`, `rpm`, `bitnami`; the list is `COVERED_TYPES` in `core/src/advisories.rs`). For any other
+type, such as `pkg:github` or `pkg:generic`, which most of the image has, it answers with no
+vulnerabilities, which looks the same as a package that has none. So such a package is not asked
+about and shows a grey "not covered by OSV", never a green "none known"; the JSON says
+`"osvCovered": false` and `advisories: null`, `golconda packages --advisories` appends "not covered
+by OSV" to its line, and the TUI shows "not in OSV". A package without a purl is not asked about and
+shows a dash.
 
 The answers are kept, each with the time it was asked, for `--osv-every` seconds (six hours); with
 `--state DIR` in `DIR/advisories.json`, so a restart keeps them. A page view asks OSV only for what

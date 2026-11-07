@@ -88,6 +88,34 @@ fn now() -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
+/// The purl types OSV has records for. OSV answers a query for any other type (`github`,
+/// `generic`, `gnu`, `gitlab`, `sourceforge`, …) with no vulnerabilities at all, which looks
+/// the same as a package that has none; so those are never asked about, and shown as not
+/// covered. Each type here was checked against api.osv.dev with a version known to be
+/// vulnerable. `apk` is left out: it answered nothing for the Alpine release tried.
+const COVERED_TYPES: [&str; 16] = [
+    "bitnami", "cargo", "composer", "cran", "deb", "gem", "golang", "hackage", "hex", "maven",
+    "npm", "nuget", "pub", "pypi", "rpm", "swift",
+];
+
+/// OSV has records for the type of `purl`.
+pub fn covers(purl: &str) -> bool {
+    let Some(rest) = purl
+        .get(..4)
+        .filter(|scheme| scheme.eq_ignore_ascii_case("pkg:"))
+        .map(|_| &purl[4..])
+    else {
+        return false;
+    };
+    let kind = rest.split('/').next().unwrap_or_default();
+    rest.contains('/') && COVERED_TYPES.iter().any(|t| kind.eq_ignore_ascii_case(t))
+}
+
+/// The package has a purl of a type OSV has records for.
+pub fn covered(p: &Package) -> bool {
+    p.purl.as_deref().is_some_and(covers)
+}
+
 /// "just now", "5 min ago", "3 h ago", "2 days ago" for a time `secs` back.
 pub fn ago(secs: u64) -> String {
     match secs {
@@ -107,7 +135,7 @@ impl Query {
     /// The query for `p`, if OSV can be asked: it needs a purl, and a version from the purl or
     /// the package (a query without one lists every vulnerability the package ever had).
     fn of(p: &Package) -> Option<Query> {
-        let purl = p.purl.as_deref()?;
+        let purl = p.purl.as_deref().filter(|purl| covers(purl))?;
         let name = purl.split(['?', '#']).next().unwrap_or(purl);
         let (kind, path) = name.strip_prefix("pkg:")?.split_once('/')?;
         if kind.is_empty() || path.is_empty() {
@@ -491,7 +519,7 @@ mod tests {
 
     fn image() -> Vec<Package> {
         vec![
-            pkg("acl", "2.4.0", Some("pkg:generic/acl@2.4.0"), false),
+            pkg("acl", "2.4.0", Some("pkg:gem/acl@2.4.0"), false),
             pkg("time", "0.1.40", Some("pkg:cargo/time@0.1.40"), false),
             pkg("django", "3.0", Some("pkg:pypi/django"), true),
             pkg("musl", "1.2", None, false),
@@ -552,7 +580,7 @@ mod tests {
             batch[0],
             json!({ "queries": [
                 { "package": { "purl": "pkg:cargo/time@0.1.40" } },
-                { "package": { "purl": "pkg:generic/acl@2.4.0" } },
+                { "package": { "purl": "pkg:gem/acl@2.4.0" } },
                 { "package": { "purl": "pkg:pypi/django" }, "version": "3.0" },
             ] })
         );
@@ -570,6 +598,73 @@ mod tests {
         assert!(r.of(&list[3]).is_none());
         assert!(r.checked_at.is_some());
         assert_eq!(time[0].to_json()["severity"], "MODERATE");
+    }
+
+    #[test]
+    fn only_the_purl_types_osv_indexes_are_covered() {
+        for covered in [
+            "pkg:pypi/django@3.0",
+            "pkg:cargo/time",
+            "pkg:npm/%40scope/name@1",
+            "pkg:golang/github.com/x/y@1",
+            "pkg:deb/debian/openssl@1.0.1",
+            "PKG:PyPI/django",
+        ] {
+            assert!(covers(covered), "{covered}");
+        }
+        for not in [
+            "pkg:github/systemd/systemd@v262.1",
+            "pkg:generic/openssl@3.0.1",
+            "pkg:gnu/bash",
+            "pkg:gitlab/a/b",
+            "pkg:sourceforge/e2fsprogs",
+            "pkg:luarocks/lpeg",
+            "bogus",
+            "pkg:",
+        ] {
+            assert!(!covers(not), "{not}");
+        }
+        let with = |purl: &str| pkg("p", "1", Some(purl), false);
+        assert!(covered(&with("pkg:pypi/p")));
+        assert!(!covered(&with("pkg:github/p/p")));
+        assert!(!covered(&pkg("p", "1", None, false)));
+    }
+
+    #[test]
+    fn a_purl_type_osv_does_not_index_is_not_asked_about() {
+        let o = osv();
+        let list = [
+            pkg(
+                "systemd",
+                "262.1",
+                Some("pkg:github/systemd/systemd@v262.1"),
+                true,
+            ),
+            pkg("zlib", "1.3", Some("pkg:generic/zlib@1.3"), false),
+            pkg("bash", "5", Some("pkg:gnu/bash"), false),
+            pkg("time", "0.1.40", Some("pkg:cargo/time@0.1.40"), false),
+        ];
+        let r = open(&o, None, LIFETIME).check(&list);
+        assert_eq!(r.error, None);
+        let batch = o.batches.lock().unwrap();
+        let asked: Vec<&str> = batch[0]["queries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|q| q["package"]["purl"].as_str().unwrap())
+            .collect();
+        assert_eq!(asked, ["pkg:cargo/time@0.1.40"]);
+        assert!(
+            list[..3]
+                .iter()
+                .all(|p| r.of(p).is_none() && !r.vulnerable(p))
+        );
+        assert!(r.vulnerable(&list[3]));
+        // nothing but uncovered packages: OSV is not called at all
+        let before = o.requests.load(Ordering::SeqCst);
+        let r = open(&o, None, LIFETIME).check(&list[..3]);
+        assert_eq!(o.requests.load(Ordering::SeqCst), before);
+        assert_eq!(r.error, None);
     }
 
     #[test]

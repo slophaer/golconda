@@ -902,7 +902,7 @@ impl PackagesView<'_> {
 }
 
 /// The line about OSV above the table: when it was asked, or why it was not.
-fn advisory_status(report: Option<&Report>, vulnerable: usize) -> Markup {
+fn advisory_status(report: Option<&Report>, vulnerable: usize, uncovered: usize) -> Markup {
     let Some(r) = report else {
         return html! { p { "Vulnerabilities: not checked, this daemon does not ask OSV." } };
     };
@@ -913,7 +913,7 @@ fn advisory_status(report: Option<&Report>, vulnerable: usize) -> Markup {
             @match (&r.error, &since) {
                 (Some(e), Some(t)) => { span.pill.p-amber { "could not check" } " " (e) ", showing the answer from " (t) }
                 (Some(e), None) => { span.pill.p-amber { "could not check" } " " (e) }
-                (None, Some(t)) => { "checked " (t) ", " (vulnerable) " package(s) with known ones" }
+                (None, Some(t)) => { "checked " (t) ", " (vulnerable) " package(s) with known ones, " (uncovered) " not covered by OSV (its purl is of a type OSV has no records for)" }
                 (None, None) => { "nothing to ask about" }
             }
             @if r.checked_at.is_some() {
@@ -951,6 +951,8 @@ fn advisory_cell(report: Option<&Report>, p: &Package) -> Markup {
     html! {
         td {
             @match found {
+                None if advisories::covered(p) => { span.m { "–" } }
+                None if p.purl.is_some() => { span.pill.p-grey title="OSV has no records for this kind of purl, so it cannot say" { "not covered by OSV" } }
                 None => { span.m { "–" } }
                 Some([]) => { span.pill.p-green { "none known" } }
                 Some(list) => {
@@ -997,6 +999,10 @@ pub fn packages(
     let roots = all.iter().filter(|p| p.root).count();
     let vulnerable = all.iter().filter(|p| view.vulnerable(p)).count();
     let outdated = all.iter().filter(|p| view.outdated(p)).count();
+    let uncovered = all
+        .iter()
+        .filter(|p| p.purl.is_some() && !advisories::covered(p))
+        .count();
     let today = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
@@ -1011,7 +1017,7 @@ pub fn packages(
             (all.len()) " components, " (roots) " of them named by the image itself, the rest what they need. "
             a href={ "/systems/" (name) "/sbom.json" } { "The SBOM" } " (CycloneDX)."
         }
-        (advisory_status(view.report, vulnerable))
+        (advisory_status(view.report, vulnerable, uncovered))
         (upstream_status(view.upstream, outdated))
         table {
             tr {

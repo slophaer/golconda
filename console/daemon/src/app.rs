@@ -14,7 +14,7 @@ use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use futures_util::stream;
-use golconda_core::advisories::{Advisories, Advisory, Report};
+use golconda_core::advisories::{self, Advisories, Advisory, Report};
 use golconda_core::diff::{Change, against_git};
 use golconda_core::document::parse_path;
 use golconda_core::eval::Iets;
@@ -1162,6 +1162,7 @@ fn packages_json(order: &[&Package], report: Option<&Report>, upstream: Option<&
         .map(|pkg| {
             let mut json = pkg.to_json();
             json["ageDays"] = pkg.age_days(now).map_or(Value::Null, Value::from);
+            json["osvCovered"] = advisories::covered(pkg).into();
             json["advisories"] = report.and_then(|r| r.of(pkg)).map_or(Value::Null, |found| {
                 Value::Array(found.iter().map(Advisory::to_json).collect())
             });

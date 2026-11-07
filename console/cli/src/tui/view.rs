@@ -327,6 +327,14 @@ fn packages(f: &mut Frame, m: &Model, area: Rect) {
                 ),
                 Span::styled(newer(&p["upstream"]), Style::default().fg(AMBER)),
                 Span::styled(vulnerabilities(&p["advisories"]), Style::default().fg(RED)),
+                Span::styled(
+                    if p["osvCovered"] == false && p["purl"].is_string() {
+                        "not in OSV "
+                    } else {
+                        ""
+                    },
+                    Style::default().fg(GREY),
+                ),
                 Span::raw(s(&p["purl"]).to_string()),
             ]))
         })
