@@ -1,8 +1,10 @@
 //! JSON Schema validation, for the keywords Golconda's schema uses (lib/schema.nix): `$ref`,
 //! `type`, `const`, `enum`, `minimum`, `maximum`, `minLength`, `pattern`, `not`, `anyOf`, `oneOf`, `properties`,
 //! `additionalProperties`, `required`, `propertyNames`, `items`, `prefixItems`, `minItems`,
-//! `maxItems`. Others are ignored. Each violation has the path of the value it is about, so
-//! the caller can find it in the document.
+//! `maxItems`. A schema with any other keyword, or a pattern the regex engine cannot read, would
+//! be checked only in part: [`unsupported`] lists them, and a system with such a schema does not
+//! load. Each violation has the path of the value it is about, so the caller can find it in the
+//! document.
 
 use crate::schema::{resolve, type_name};
 use regex::Regex;
@@ -42,7 +44,7 @@ impl<'a> Validator<'a> {
         let re = cache
             .entry(pattern.to_string())
             .or_insert_with(|| Regex::new(pattern).ok());
-        // a pattern this engine cannot read checks nothing
+        // a pattern this engine cannot read checks nothing: `unsupported` refuses such a schema
         re.as_ref().is_none_or(|re| re.is_match(s))
     }
 
@@ -213,6 +215,87 @@ impl<'a> Validator<'a> {
             }
         }
     }
+}
+
+/// The keywords `Validator` checks, and those whose value is a schema or a list or map of them.
+const CHECKED: &[&str] = &[
+    "$ref",
+    "type",
+    "const",
+    "enum",
+    "minimum",
+    "maximum",
+    "minLength",
+    "pattern",
+    "not",
+    "anyOf",
+    "oneOf",
+    "properties",
+    "additionalProperties",
+    "required",
+    "propertyNames",
+    "items",
+    "prefixItems",
+    "minItems",
+    "maxItems",
+];
+/// Keywords that check nothing (annotations, the schema's identity, `$defs` reached by `$ref`);
+/// `x-` keywords are Golconda's own annotations.
+const ANNOTATIONS: &[&str] = &[
+    "$schema",
+    "$id",
+    "$defs",
+    "$comment",
+    "title",
+    "description",
+    "default",
+    "examples",
+];
+
+/// What in `schema` the validator would not check, as "JSON pointer: why", sorted: a keyword it
+/// does not know, or a pattern its regex engine cannot read. Empty for a schema it checks fully.
+pub fn unsupported(schema: &Value) -> Vec<String> {
+    // a JSON pointer's segment escapes ~ and /
+    fn seg(k: &str) -> String {
+        k.replace('~', "~0").replace('/', "~1")
+    }
+    fn walk(node: &Value, at: &str, out: &mut Vec<String>) {
+        let Some(m) = node.as_object() else {
+            return; // `true`, `false`: nothing to check
+        };
+        for (k, v) in m {
+            let here = format!("{at}/{}", seg(k));
+            match k.as_str() {
+                "properties" | "$defs" => {
+                    for (name, sub) in v.as_object().into_iter().flatten() {
+                        walk(sub, &format!("{here}/{}", seg(name)), out);
+                    }
+                }
+                "anyOf" | "oneOf" | "prefixItems" => {
+                    for (i, sub) in v.as_array().into_iter().flatten().enumerate() {
+                        walk(sub, &format!("{here}/{i}"), out);
+                    }
+                }
+                "not" | "items" | "additionalProperties" | "propertyNames" => walk(v, &here, out),
+                "pattern" => {
+                    let p = v.as_str().unwrap_or_default();
+                    if let Err(e) = Regex::new(p) {
+                        // the engine's message ends with a line `error: why`
+                        let why = e.to_string();
+                        let why = why.lines().last().unwrap_or_default();
+                        let why = why.strip_prefix("error: ").unwrap_or(why);
+                        out.push(format!("{at}: pattern {p} cannot be read: {why}"));
+                    }
+                }
+                k if CHECKED.contains(&k) || ANNOTATIONS.contains(&k) || k.starts_with("x-") => {}
+                k => out.push(format!("{at}: {k} is not a keyword this validator checks")),
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(schema, "", &mut out);
+    out.sort();
+    out
 }
 
 fn has_type(t: &Value, v: &Value) -> bool {
@@ -413,5 +496,33 @@ mod tests {
         v.check(either, &json!(1), &mut Vec::new(), &mut out);
         assert_eq!(out[0].message, "1 matches more than one of oneOf");
         assert!(v.valid(either, &json!(1.5)));
+    }
+
+    #[test]
+    fn the_test_schema_is_supported() {
+        assert_eq!(unsupported(&schema()), Vec::<String>::new());
+    }
+
+    #[test]
+    fn unknown_keywords_and_unreadable_patterns_are_unsupported() {
+        let s = json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "t",
+            "x-golconda": { "anything": 1 },
+            "properties": {
+                "a": { "type": "string", "format": "email", "description": "d", "default": { "maxLength": 1 } },
+                "b": { "type": "array", "items": { "uniqueItems": true } },
+                "c": { "type": "string", "pattern": "(?=x)" }
+            },
+            "$defs": { "d": { "anyOf": [{ "type": "string" }, { "dependentRequired": {} }] } }
+        });
+        assert_eq!(
+            unsupported(&s),
+            vec![
+                "/$defs/d/anyOf/1: dependentRequired is not a keyword this validator checks",
+                "/properties/a: format is not a keyword this validator checks",
+                "/properties/b/items: uniqueItems is not a keyword this validator checks",
+                "/properties/c: pattern (?=x) cannot be read: look-around, including look-ahead and look-behind, is not supported",
+            ]
+        );
     }
 }
