@@ -40,15 +40,18 @@ case $dir in
     ;;
 esac
 
-command -v openssl >/dev/null 2>&1 || {
-  echo "make-keys: openssl is not on PATH" >&2
+# Golconda's own openssl and gpg (scripts/tools.sh), not the caller's: the gpg is the one systemd-pull
+# uses on the image, so the release key is made and checked by the same GnuPG
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+. "$SCRIPT_DIR/tools.sh"
+TOOLS=$(tools_path "$(dirname "$SCRIPT_DIR")" openssl gnupg) || {
+  echo "make-keys: cannot build the tools (packages: openssl gnupg)" >&2
   exit 1
 }
-# systemd-pull checks the release index with gpg only (image/sysupdate.nix)
-command -v gpg >/dev/null 2>&1 || {
-  echo "make-keys: gpg is not on PATH" >&2
-  exit 1
-}
+PATH="$TOOLS:$PATH"
+# repkgs' openssl reads /etc/ssl/openssl.cnf (its OPENSSLDIR), which a host may not have
+# (lib/image/keys.nu does the same)
+export OPENSSL_CONF=/dev/null
 
 if [ -L "$dir" ]; then
   echo "make-keys: $dir is a symlink; give the key set a directory of its own" >&2

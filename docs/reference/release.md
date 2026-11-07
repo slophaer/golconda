@@ -7,7 +7,7 @@ certificate in the firmware. The key layout and the reason for each key are in
 
 | step                        | needs                                                                                  |
 | --------------------------- | -------------------------------------------------------------------------------------- |
-| 1. make the key set         | `openssl` with `-addext` (OpenSSL 1.1.1 or later), and `gpg` (GnuPG 2.2 or later)      |
+| 1. make the key set         | a build daemon: the script builds its own `openssl` and `gnupg` (`scripts/tools.sh`)   |
 | 2. keep it out of the store | `extra-sandbox-paths` on the build daemon, and build users that can read the directory |
 | 3. build                    | a build host with the daemon of [Build host](build-host.md), `golconda`, git           |
 | 4. publish `release/`       | an update source rclone reaches, and `/system.updateSource` on the machine             |
@@ -40,8 +40,9 @@ certificate (systemd 262, `systemd-sbsign(1)`), and `lib/image/uki.nu` checks ea
 signature against the certificate alone, so a key and certificate that do not match fail the build
 and not the boot. Keep the set: a rotation uses the old `pcr/` key and the old certificate (step 6).
 
-**Unverified:** no check in this repository runs this script. A check that runs it into a temporary
-directory, inspects the modes and the certificate, and signs with the `db` key would test it.
+`tests/make-keys/run.sh` (run by `scripts/lint`) runs the script into a temporary directory and
+checks the layout, the modes, the certificate's extensions and that each key matches its public
+half. It does not sign an image with the set.
 
 ## 2. Keep the private keys out of the store
 
