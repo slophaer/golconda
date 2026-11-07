@@ -1,0 +1,148 @@
+#!/bin/sh
+# scripts/verify: is this commit good? Lint (scripts/lint in the dev shell: iets, the checks, the
+# treefmt check among them), build an image, boot it with scripts/boot-test; stop at the first
+# failure. Run it through the build queue on a shared host (qbuild -g vm verify --
+# scripts/verify); a step's output goes to stdout.
+#
+#   scripts/verify [-C DIR] [--image ATTR] [--boot-args ARGS] [--no-boot] [--lint-only]
+#                  [--each-commit BASE]
+#
+#   -C DIR              verify the tree in DIR (default: this repository)
+#   --image ATTR        the image under packages.<system> (default image-smoke-test); the out-link
+#                       is result-verify
+#   --boot-args ARGS    scripts/boot-test's flags after the disk and --keys (default
+#                       "--secure-boot --ssh-test --tpm --timeout 300": a reboot on a loaded
+#                       host can outlast boot-test's own default)
+#   --no-boot           build the image, do not boot it
+#   --lint-only         lint only
+#   --each-commit BASE  every commit in BASE..HEAD, in a scratch worktree: lint each, and build and
+#                       boot the last; one PASS or FAIL line per commit
+#
+# The tree must be clean: the result belongs to one commit and one repkgs pin, named on the first
+# line. With BOOT_TEST_STORE_ROOT set (a chroot store, as on the spike daemon), the dev shell is
+# realised in the host store first (nix-shell runs it from /nix/store, the daemon builds it under
+# its root), and the image's links into /nix/store are followed under that root.
+set -u
+self=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)/$(basename "$0")
+dir=$(dirname "$self")/..
+image="image-smoke-test"
+boot=1
+boot_args="--secure-boot --ssh-test --tpm --timeout 300"
+lint_only=0
+each=
+usage() {
+  sed -n '2,26s/^# \{0,1\}//p' "$self" >&2
+  exit 2
+}
+while [ $# -gt 0 ]; do
+  case "$1" in
+  -C) dir=${2:?}; shift 2 ;;
+  --image) image=${2:?}; shift 2 ;;
+  --boot-args) boot_args=${2?}; shift 2 ;;
+  --no-boot) boot=0; shift ;;
+  --lint-only) lint_only=1; shift ;;
+  --each-commit) each=${2:?}; shift 2 ;;
+  *) usage ;;
+  esac
+done
+cd "$dir" || exit 2
+system=${GOLCONDA_SYSTEM:-$(uname -m)-linux}
+
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  echo "verify: $(pwd) has uncommitted changes; commit or stash them first" >&2
+  exit 1
+fi
+
+if [ -n "$each" ]; then
+  wt=$(mktemp -d)/verify-each
+  git worktree add -q --detach "$wt" HEAD || exit 1
+  trap 'git worktree remove --force "$wt" >/dev/null 2>&1' EXIT
+  last=$(git rev-parse HEAD)
+  results=
+  rc=0
+  for c in $(git rev-list --reverse "$each..HEAD"); do
+    git -C "$wt" checkout -q --detach "$c"
+    line="$(git log -1 --format='%h %s' "$c")"
+    echo "== commit $line"
+    if [ "$c" = "$last" ]; then
+      set -- -C "$wt" --image "$image" --boot-args "$boot_args"
+      [ $boot = 1 ] || set -- "$@" --no-boot
+      [ $lint_only = 1 ] && set -- "$@" --lint-only
+    else
+      set -- -C "$wt" --lint-only
+    fi
+    if "$self" "$@"; then r=PASS; else r=FAIL; rc=1; fi
+    results="$results$r $line
+"
+  done
+  printf '== summary\n%s' "$results"
+  exit $rc
+fi
+
+pin=$(nix-instantiate --eval --strict -E \
+  '(builtins.fromJSON (builtins.readFile ./npins/sources.json)).pins.repkgs.revision' 2>/dev/null |
+  tr -d '"' | cut -c1-7)
+echo "verify $(git rev-parse --short HEAD), repkgs ${pin:-unknown}"
+
+summary=
+# step NAME COMMAND...: run, time, and record PASS or FAIL(code); false on failure
+step() {
+  name=$1
+  shift
+  echo "== $name: $*"
+  start=$(date +%s)
+  "$@"
+  code=$?
+  if [ $code = 0 ]; then r=PASS; else r="FAIL($code)"; fi
+  line="$r $name $(($(date +%s) - start))s"
+  echo "$line"
+  summary="$summary$line
+"
+  [ $code = 0 ]
+}
+finish() {
+  printf '== summary\n%s' "$summary"
+  exit "$1"
+}
+
+shell=devShells.$system.default
+if [ -n "${BOOT_TEST_STORE_ROOT:-}" ]; then
+  (unset NIX_REMOTE; nix-shell -A "$shell" --run true) >/dev/null ||
+    { echo "verify: the dev shell does not build in the host store" >&2; exit 1; }
+fi
+step lint nix-shell -A "$shell" --run ./scripts/lint || finish 1
+if ! git diff --quiet; then
+  echo "verify: the lint step changed files; commit them or find out why:"
+  git diff --stat
+  finish 1
+fi
+[ $lint_only = 1 ] && finish 0
+step image nix-build -A "packages.$system.$image" -o result-verify || finish 1
+[ $boot = 1 ] || finish 0
+# resolve PATH: PATH with every symlink on the way followed, a target in /nix/store looked up
+# under $BOOT_TEST_STORE_ROOT (boot-test itself follows only a final link)
+resolve() {
+  python3 - "${BOOT_TEST_STORE_ROOT:-}" "$1" <<'PY'
+import os, sys
+root, path = sys.argv[1], os.path.abspath(sys.argv[2])
+parts, cur, hops = path.strip("/").split("/"), "/", 0
+while parts:
+    nxt = os.path.join(cur, parts.pop(0))
+    if os.path.islink(nxt):
+        hops += 1
+        if hops > 64:
+            sys.exit("verify: symlink loop at " + nxt)
+        t = os.readlink(nxt)
+        if t.startswith("/nix/store/") and root:
+            t = root + t
+        parts = os.path.normpath(os.path.join(cur, t)).strip("/").split("/") + parts
+        cur = "/"
+    else:
+        cur = nxt
+print(cur)
+PY
+}
+img=$(resolve result-verify) || finish 1
+# shellcheck disable=SC2086 # boot_args is a list of flags
+step boot ./scripts/boot-test "$(resolve "$img/disk/disk.raw")" --keys "$(resolve "$img/keys")" $boot_args || finish 1
+finish 0

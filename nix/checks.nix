@@ -137,6 +137,13 @@ in
     touch $out
   '';
 
+  # scripts/verify's steps on a scratch repository with fake nix-shell, nix-build, boot-test
+  verify-script = run "verify-script" [ rp.coreutils rp.git rp.cpython ] ''
+    export HOME=$TMPDIR
+    sh ${src}/tests/verify/test.sh
+    touch $out
+  '';
+
   # the var runner's two modes on a scratch tree, with a stub systemd-creds (tests/vars)
   vars-runner = run "vars-runner" [ rp.coreutils ] ''
     sh ${src}/tests/vars/runner.sh
