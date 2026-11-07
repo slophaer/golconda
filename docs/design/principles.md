@@ -75,7 +75,9 @@ needs them is not packaged.
 ## Nothing from nixpkgs
 
 Packages come from repkgs and `packages/`, and so do the tools the scripts run on the build host
-(`scripts/tools.sh`). The only nixpkgs reference is the `nixpkgs-dev-only` pin behind the formatter,
-the docs build, the dev shell, the sandboxed checks' builders, and the boot test's virtual machine
-(QEMU, OVMF, swtpm, virt-firmware), which repkgs does not build yet. `checks.boundary` fails when a
-Nix file outside `nix/dev` and `nix/checks.nix` names it.
+(`scripts/tools.sh`) and the sandboxed checks' builders (the repkgs seed's shell, `nix/checks.nix`).
+The only nixpkgs reference is the `nixpkgs-dev-only` pin, for tools repkgs does not build yet: the
+formatter and its linters, the docs build, ast-grep, clippy's Rust build, python's jsonschema, the
+dev shell, and the boot test's virtual machine (QEMU, OVMF, swtpm, virt-firmware). `checks.boundary`
+fails when a Nix file outside `nix/dev` and `nix/checks.nix`, or a script other than
+`scripts/boot-test`, names it.

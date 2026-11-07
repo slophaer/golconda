@@ -255,7 +255,7 @@ in
   checks =
     { platform, set }:
     (import ./checks.nix {
-      inherit sources self;
+      inherit sources self set;
       double = platform.name;
     })
     // import ../tests/packages { inherit sources set; };
