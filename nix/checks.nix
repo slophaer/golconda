@@ -3,8 +3,8 @@
 #
 # Each check is `run`: a content-addressed derivation whose builder is the repkgs seed's shell, as
 # repkgs' own tests are, with tools from repkgs where it has them (python3, gnumake, coreutils) and
-# the seed's nu, which Golconda's builders run. The dev pin (nixpkgs) is left for the tools repkgs
-# does not package yet: python's jsonschema for the metaschema check (the dev-tools inventory in the knowledge base).
+# the seed's nu, which Golconda's builders run. None uses the dev pin (nixpkgs); checks.boundary keeps
+# it in nix/dev.
 {
   sources,
   self,
@@ -20,7 +20,6 @@ let
     toFile
     ;
   dev = import ./dev { inherit sources; } double set;
-  nixpkgs = import sources.nixpkgs-dev-only { system = double; };
   rp = set.pkgs;
 
   # run NAME TOOLS SCRIPT: a check, built on the seed's shell (nix/run.nix)
@@ -160,14 +159,16 @@ in
   # clippy over the console, tests and examples included, as a repkgs cargo build (console/checks)
   console-clippy = rp.golconda-console-clippy;
 
-  # nixpkgs is dev tooling only: the dev pin is named nowhere but nix/dev and nix/checks.nix in
-  # Nix files, and in scripts only by scripts/boot-test, for the virtual machine repkgs does not
-  # build yet (QEMU's system emulator, OVMF, swtpm, virt-firmware)
+  # nixpkgs is dev tooling only: the dev pin is named nowhere but nix/dev in Nix files, and in
+  # scripts only by scripts/boot-test, for the virtual machine repkgs does not build yet (QEMU's
+  # system emulator, OVMF, swtpm, virt-firmware)
   boundary = run "boundary" [ ] ''
     cd ${src}
-    pattern='nixpkgs-dev-only\|<nixpkgs>'
-    if grep -rn --include='*.nix' "$pattern" . | grep -v '^./nix/dev/' | grep -v '^./nix/checks.nix' | grep -v '^./npins/'; then
-      echo "nixpkgs referenced in Nix outside nix/dev and nix/checks.nix (docs/design/principles.md)" >&2
+    # in pieces, so that this file does not name the pin
+    n=nixpkgs
+    pattern="$n-dev-only\|<$n>"
+    if grep -rn --include='*.nix' "$pattern" . | grep -v '^./nix/dev/' | grep -v '^./npins/'; then
+      echo "nixpkgs referenced in Nix outside nix/dev (docs/design/principles.md)" >&2
       exit 1
     fi
     if grep -rn "$pattern" scripts | grep -v '^scripts/boot-test:'; then
@@ -204,12 +205,23 @@ in
       touch $out
     '';
 
-  # the schema is valid JSON Schema 2020-12, by python's jsonschema: a whole implementation of the
-  # draft, from the dev pin (repkgs does not package it: rpds-py, a Rust extension, among its needs)
+  # the schema is valid JSON Schema 2020-12, by python's jsonschema (packages/python-jsonschema): a
+  # whole implementation of the draft. repkgs has no python environment: PYTHONPATH holds the
+  # site-packages of jsonschema and of each library it imports, for repkgs' cpython
   schema-metaschema =
-    run "schema-metaschema" [ (nixpkgs.python3.withPackages (p: [ p.jsonschema ])) ]
-      ''
-        python3 ${src}/tests/schema/metaschema.py ${schemaFile}
-        touch $out
-      '';
+    let
+      libs = [
+        rp.python-jsonschema
+        rp.python-jsonschema-specifications
+        rp.python-referencing
+        rp.python-attrs
+        rp.rpds-py
+      ];
+    in
+    run "schema-metaschema" [ rp.cpython ] ''
+      PYTHONPATH=$(printf '%s:' ${concatStringsSep " " (map (l: "${l}/lib/python3*/site-packages") libs)})
+      export PYTHONPATH
+      python3 ${src}/tests/schema/metaschema.py ${schemaFile}
+      touch $out
+    '';
 }

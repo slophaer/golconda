@@ -33,8 +33,8 @@ directories to a booted machine.
 - **One of each.** No second implementation of anything the image already has (see
   [design/principles](docs/design/principles.md)). A new package or option that duplicates an
   existing one needs a reason in the commit body.
-- **No nixpkgs** outside `nix/dev/` (developer tooling) and `nix/checks.nix`; `checks.boundary`
-  fails otherwise. Packages come from the repkgs fork; Golconda-specific ones live in `packages/`.
+- **No nixpkgs** outside `nix/dev/` (developer tooling); `checks.boundary` fails otherwise. Packages
+  come from the repkgs fork; Golconda-specific ones live in `packages/`.
 - **Typed, explicit modules.** A module returns a fragment; shared types live in `modules/lib/`.
   Duplicates are errors, never overrides. Credentials are references, never file contents.
 - **Module doc comments.** Every module's Nix file starts with `#! ` lines (hash-bang-space) that
