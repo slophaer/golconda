@@ -67,4 +67,5 @@
   taplo = ./taplo;
   ast-grep = ./ast-grep;
   tree-sitter-nu = ./tree-sitter-nu;
+  mdbook = ./mdbook;
 }
