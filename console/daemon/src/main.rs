@@ -448,10 +448,10 @@ mod tests {
     }
 
     #[test]
-    fn osv_is_asked_every_six_hours_unless_told_not_to() {
+    fn osv_is_asked_once_a_day_unless_told_not_to() {
         let (a, _) = args("--system s=x --dev-identity a:operator").unwrap();
         assert_eq!(a.osv_url, "https://api.osv.dev");
-        assert_eq!(a.osv_every, 21600);
+        assert_eq!((a.osv_every, a.uptrack_every), (86400, 86400));
         assert!(!a.no_osv);
         let (a, _) = args(
             "--system s=x --dev-identity a:operator --osv-url http://127.0.0.1:9 --osv-every 60",
@@ -475,7 +475,7 @@ mod tests {
         let plain = |s: &str| args(s).unwrap().0;
         let program = || Some(Program::new(vec!["uptrack".into()]));
         let none = plain("--system s=x --dev-identity a:operator");
-        assert_eq!(none.uptrack_every, 21600);
+        assert_eq!(none.uptrack_every, 86400);
         assert!(upstream(&none, None).unwrap().is_none());
         let e = upstream(&none, program()).err().unwrap();
         assert!(e.contains("--uptrack-tree"), "{e}");
