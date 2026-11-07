@@ -68,4 +68,6 @@
   ast-grep = ./ast-grep;
   tree-sitter-nu = ./tree-sitter-nu;
   mdbook = ./mdbook;
+  # Hetzner Cloud's command line, for the Hetzner run (docs/reference/hetzner-cloud.md)
+  hcloud = ./hcloud;
 }

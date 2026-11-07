@@ -146,7 +146,7 @@ in
         cpython
         ;
       # what scripts/docs and scripts/tool run (scripts/tools.sh)
-      inherit (pkgs) mdbook;
+      inherit (pkgs) mdbook hcloud;
     }
     # tests-<name>: a package's own test from tests/packages/ (they moved with the packages)
     // import ../tests/packages { inherit sources set; }
