@@ -22,6 +22,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::env::consts;
+use std::fmt;
 use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
 use std::thread;
@@ -828,13 +829,13 @@ async fn audit_log(
     h: HeaderMap,
 ) -> Response {
     let json = wants_json(&h);
-    let Some(w) = &app.writes else {
+    if app.writes.is_none() {
         return problem(
             json,
             StatusCode::NOT_FOUND,
             "this daemon keeps no audit log: it has no --state",
         );
-    };
+    }
     let f = |k: &str| {
         q.get(k)
             .map(|v| v.trim().to_string())
@@ -846,7 +847,15 @@ async fn audit_log(
         action: f("action"),
         day: f("day"),
     };
-    let entries = w.entries(&filter, 500);
+    let a = app.clone();
+    let entries = tokio::task::spawn_blocking(move || {
+        a.writes
+            .as_ref()
+            .map(|w| w.entries(&filter, 500))
+            .unwrap_or_default()
+    })
+    .await
+    .expect("audit thread");
     if json {
         return axum::Json(Value::Array(entries)).into_response();
     }
@@ -858,19 +867,24 @@ async fn candidate(State(app): State<Shared>, Path(name): Path<String>) -> Respo
     if app.document(&name).is_none() {
         return problem(true, StatusCode::NOT_FOUND, &format!("no system {name}"));
     }
-    let Some(w) = &app.writes else {
+    if app.writes.is_none() {
         return axum::Json(serde_json::json!({ "revision": 0, "ops": [] })).into_response();
-    };
-    let j = locked(&w.journal);
-    match (j.revision(&name), j.open_ops(&name), j.lock_of(&name)) {
-        (Ok(rev), Ok(ops), Ok(lock)) => axum::Json(serde_json::json!({
-            "revision": rev, "ops": ops.iter().map(golconda_core::candidate::Op::to_json).collect::<Vec<_>>(),
-            "lock": lock.as_ref().map(golconda_core::candidate::Lock::to_json),
+    }
+    let a = app.clone();
+    let read = tokio::task::spawn_blocking(move || {
+        let j = locked(&a.writes.as_ref().expect("checked").journal);
+        let text = |e: &dyn fmt::Display| e.to_string();
+        Ok::<_, String>(serde_json::json!({
+            "revision": j.revision(&name).map_err(|e| text(&e))?,
+            "ops": j.open_ops(&name).map_err(|e| text(&e))?.iter().map(golconda_core::candidate::Op::to_json).collect::<Vec<_>>(),
+            "lock": j.lock_of(&name).map_err(|e| text(&e))?.as_ref().map(golconda_core::candidate::Lock::to_json),
         }))
-        .into_response(),
-        (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => {
-            problem(true, StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())
-        }
+    })
+    .await
+    .expect("journal thread");
+    match read {
+        Ok(v) => axum::Json(v).into_response(),
+        Err(e) => problem(true, StatusCode::INTERNAL_SERVER_ERROR, &e),
     }
 }
 
@@ -1029,12 +1043,18 @@ async fn job_list(
     h: HeaderMap,
 ) -> Response {
     let json = wants_json(&h);
-    let Some(r) = &app.jobs else {
+    if app.jobs.is_none() {
         return problem(json, StatusCode::NOT_FOUND, "this daemon runs no jobs");
-    };
-    let list = locked(&r.store)
-        .list(q.get("system").map(String::as_str), 100)
-        .unwrap_or_default();
+    }
+    let (a, system) = (app.clone(), q.get("system").cloned());
+    let list = tokio::task::spawn_blocking(move || {
+        a.jobs
+            .as_ref()
+            .and_then(|r| locked(&r.store).list(system.as_deref(), 100).ok())
+            .unwrap_or_default()
+    })
+    .await
+    .expect("job thread");
     if json {
         let v: Vec<Value> = list.iter().map(golconda_core::jobs::Job::to_json).collect();
         return axum::Json(Value::Array(v)).into_response();
@@ -1051,16 +1071,23 @@ async fn job_page(
     h: HeaderMap,
 ) -> Response {
     let json = wants_json(&h);
-    let Some(r) = &app.jobs else {
+    if app.jobs.is_none() {
         return problem(json, StatusCode::NOT_FOUND, "this daemon runs no jobs");
-    };
+    }
     let after = q.get("after").and_then(|a| a.parse().ok()).unwrap_or(0);
-    let (job, lines) = {
-        let store = locked(&r.store);
-        match store.get(id) {
-            Ok(j) => (j, store.lines(id, after).unwrap_or_default()),
-            Err(e) => return problem(json, StatusCode::NOT_FOUND, &e.to_string()),
-        }
+    let a = app.clone();
+    let found = tokio::task::spawn_blocking(move || {
+        let store = locked(&a.jobs.as_ref().expect("checked").store);
+        store
+            .get(id)
+            .map(|j| (j, store.lines(id, after).unwrap_or_default()))
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .expect("job thread");
+    let (job, lines) = match found {
+        Ok(x) => x,
+        Err(e) => return problem(json, StatusCode::NOT_FOUND, &e),
     };
     if json {
         let ls: Vec<Value> = lines
