@@ -60,6 +60,8 @@
   age = ./age;
   # copies a release to its update source for golconda release publish (local, S3, SFTP)
   rclone = ./rclone;
+  # repkgs' update tool: the console checks the packages' upstreams with it
+  uptrack = ./uptrack;
   # an S3-compatible store: the release tool's tests publish to it through rclone
   garage = ./garage;
   # development tools (nix/dev, nix/checks.nix), in place of the dev-only nixpkgs pin
