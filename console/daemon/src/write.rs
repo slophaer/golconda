@@ -9,7 +9,7 @@
 
 use crate::app::{App, Identity, Level};
 use crate::locked;
-use golconda_core::audit::{Audit, Entry};
+use golconda_core::audit::{Audit, Entry, Filter, Index};
 use golconda_core::candidate::{Edit, Journal, Op, Operator, Refused, Request};
 use golconda_core::check::Problem;
 use golconda_core::commit::{self, Repo};
@@ -35,6 +35,8 @@ pub struct Writes {
     pub checkout: Mutex<()>,
     /// the audit repository; its lock also orders the entries
     pub audit: Mutex<Git>,
+    /// the audit page's index of it (`audit-index.db`), rebuilt at start
+    pub index: Mutex<Index>,
     /// the remote the audit repository is pushed to
     pub audit_push: Option<String>,
     /// the audit repository has entries its remote lacks
@@ -69,12 +71,15 @@ impl Writes {
             signing_key: signing_key.clone(),
         };
         Audit::open(&git).map_err(|e| e.to_string())?;
+        let index =
+            Index::rebuild(&state.join("audit-index.db"), &git.dir).map_err(|e| e.to_string())?;
         let socket = PathBuf::from("/run/systemd/journal/socket");
         Ok(Writes {
             state: state.to_path_buf(),
             journal: Mutex::new(journal),
             checkout: Mutex::new(()),
             audit: Mutex::new(git),
+            index: Mutex::new(index),
             audit_push,
             audit_unpushed: Arc::default(),
             committer,
@@ -90,6 +95,11 @@ impl Writes {
         {
             let git = locked(&self.audit);
             Audit { git: &git }.record(e).map_err(|e| e.to_string())?;
+            // under the same lock, so the index keeps the repository's order; the index can be
+            // made again from the repository, so a failure here refuses nothing
+            if let Err(err) = locked(&self.index).add(&e.to_json()) {
+                eprintln!("golcondad: the audit index: {err}");
+            }
         }
         if let Some(socket) = &self.journal_socket {
             send_journal(socket, e);
@@ -129,45 +139,9 @@ impl Writes {
     /// The audit log's entries, newest first, those that `keep` keeps, at most `limit`.
     /// shortcut: it reads the day files, newest first, instead of an index (SQLite, rebuilt from
     /// the repository); that is quick for months of entries, not for years.
-    pub fn entries(&self, limit: usize, keep: impl Fn(&Value) -> bool) -> Vec<Value> {
-        let dir = locked(&self.audit).dir.clone();
-        let mut days: Vec<PathBuf> = Vec::new();
-        let sub = |d: &Path| -> Vec<PathBuf> {
-            let mut v: Vec<PathBuf> = fs::read_dir(d)
-                .into_iter()
-                .flatten()
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| !p.ends_with(".git"))
-                .collect();
-            v.sort();
-            v.reverse();
-            v
-        };
-        for year in sub(&dir) {
-            for month in sub(&year) {
-                days.extend(
-                    sub(&month)
-                        .into_iter()
-                        .filter(|p| p.extension().is_some_and(|e| e == "jsonl")),
-                );
-            }
-        }
-        let mut out = Vec::new();
-        for day in days {
-            let text = fs::read_to_string(&day).unwrap_or_default();
-            for line in text.lines().rev() {
-                if let Ok(v) = serde_json::from_str::<Value>(line)
-                    && keep(&v)
-                {
-                    out.push(v);
-                    if out.len() == limit {
-                        return out;
-                    }
-                }
-            }
-        }
-        out
+    /// The audit entries `filter` keeps, newest first, from the index.
+    pub fn entries(&self, filter: &Filter, limit: usize) -> Vec<Value> {
+        locked(&self.index).query(filter, limit).unwrap_or_default()
     }
 }
 

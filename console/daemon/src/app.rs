@@ -831,19 +831,13 @@ async fn audit_log(
             .map(|v| v.trim().to_string())
             .filter(|v| !v.is_empty())
     };
-    let (operator, system, action, day) = (f("operator"), f("system"), f("action"), f("day"));
-    // each filter given must be part of its field (the operator's id or name)
-    let has = |field: &Value, want: &Option<String>| {
-        want.as_ref()
-            .is_none_or(|w| field.as_str().is_some_and(|v| v.contains(w.as_str())))
+    let filter = golconda_core::audit::Filter {
+        operator: f("operator"),
+        system: f("system"),
+        action: f("action"),
+        day: f("day"),
     };
-    let keep = |e: &Value| {
-        (has(&e["operator"]["id"], &operator) || has(&e["operator"]["name"], &operator))
-            && has(&e["system"], &system)
-            && has(&e["action"], &action)
-            && has(&e["time"], &day)
-    };
-    let entries = w.entries(500, keep);
+    let entries = w.entries(&filter, 500);
     if json {
         return axum::Json(Value::Array(entries)).into_response();
     }
