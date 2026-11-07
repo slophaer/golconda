@@ -5,23 +5,27 @@
 
 use crate::auth::{self, Oidc, Refused};
 use crate::write::Outcome;
-use crate::{FONTS, jobs, locked, pages, write};
+use crate::{FONTS, events, jobs, locked, pages, write};
 use axum::Router;
 use axum::extract::{Extension, Path, Query, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
+use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
+use futures_util::stream;
 use golconda_core::diff::{Change, against_git};
 use golconda_core::document::parse_path;
 use golconda_core::eval::Iets;
 use golconda_core::system::{Explanation, System};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::convert::Infallible;
 use std::env::consts;
 use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
 use std::thread;
+use tokio::sync::broadcast;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Level {
@@ -66,6 +70,8 @@ pub struct App {
     pub writes: Option<write::Writes>,
     /// the jobs on machines; none without --state
     pub jobs: Option<jobs::Runner>,
+    /// the live updates of each system (the optional script's stream)
+    pub events: events::Hub,
     /// the CSRF token of the development identity's forms (with OIDC, each session has one)
     pub csrf: String,
     /// the whole daemon is read-only (`--read-only`)
@@ -87,6 +93,7 @@ impl App {
             signin,
             writes: None,
             jobs: None,
+            events: events::Hub::default(),
             csrf: base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, b),
             read_only,
             iets: Iets::from_env(),
@@ -135,6 +142,7 @@ pub fn router_shared(app: Arc<App>) -> Router {
         .route("/systems/{name}/unlock", post(write_unlock))
         .route("/systems/{name}/lock/break", post(write_break_lock))
         .route("/systems/{name}/machines", get(machines))
+        .route("/systems/{name}/events", get(live))
         .route("/systems/{name}/packages", get(packages))
         .route("/systems/{name}/sbom.json", get(sbom))
         .route("/systems/{name}/jobs", post(start_job))
@@ -150,6 +158,7 @@ pub fn router_shared(app: Arc<App>) -> Router {
         .route("/auth/callback", get(callback))
         .route("/auth/logout", post(logout))
         .route("/assets/style.css", get(style))
+        .route("/assets/live.js", get(script))
         .route("/assets/fonts/{file}", get(font))
         .layer(middleware::from_fn_with_state(app.clone(), headers))
         .with_state(app)
@@ -873,6 +882,20 @@ async fn style() -> Response {
         .into_response()
 }
 
+async fn script() -> Response {
+    (
+        [
+            (
+                header::CONTENT_TYPE,
+                "application/javascript; charset=utf-8",
+            ),
+            (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+        ],
+        include_str!("live.js"),
+    )
+        .into_response()
+}
+
 async fn font(Path(file): Path<String>) -> Response {
     match FONTS.iter().find(|(n, _)| *n == file) {
         Some((_, bytes)) => (
@@ -1175,4 +1198,49 @@ async fn write_break_lock(
         write::break_lock(app, w, &who, via, &system, &reason)
     })
     .await
+}
+
+/// Leaves the presence when the stream ends, however it ends.
+struct Watching {
+    app: Shared,
+    id: u64,
+}
+
+impl Drop for Watching {
+    fn drop(&mut self) {
+        self.app.events.leave(self.id);
+    }
+}
+
+/// The system's live updates as Server-Sent Events; `?page=` names the page that listens.
+async fn live(
+    State(app): State<Shared>,
+    Extension(who): Extension<Identity>,
+    Path(name): Path<String>,
+    Query(q): Query<HashMap<String, String>>,
+) -> Response {
+    if app.document(&name).is_none() {
+        return problem(true, StatusCode::NOT_FOUND, &format!("no system {name}"));
+    }
+    let page = auth::safe_next(q.get("page").map_or("/", String::as_str));
+    let (id, rx) = app.events.join(&name, &who, &page);
+    let watching = Watching {
+        app: app.clone(),
+        id,
+    };
+    let stream = stream::unfold((rx, watching, name), |(mut rx, w, name)| async move {
+        loop {
+            match rx.recv().await {
+                Ok(e) if e.system == name => {
+                    let sse = SseEvent::default().event(e.kind).data(e.data.to_string());
+                    return Some((Ok::<_, Infallible>(sse), (rx, w, name)));
+                }
+                Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {}
+                Err(broadcast::error::RecvError::Closed) => return None,
+            }
+        }
+    });
+    Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response()
 }

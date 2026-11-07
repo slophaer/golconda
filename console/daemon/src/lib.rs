@@ -3,6 +3,7 @@
 
 pub mod app;
 pub mod auth;
+pub mod events;
 pub mod jobs;
 pub mod pages;
 pub mod write;

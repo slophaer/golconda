@@ -43,8 +43,9 @@ fn layout(
                 meta name="viewport" content="width=device-width, initial-scale=1";
                 title { (title) " · golconda" }
                 link rel="stylesheet" href=(stylesheet());
+                script src=(script()) defer {}
             }
-            body {
+            body data-system=[system.map(|(n, _)| n)] {
                 div.app {
                     div.strip {
                         span.host { (system.map_or("golconda", |(n, _)| n)) }
@@ -52,6 +53,7 @@ fn layout(
                         @if let Some(l) = system.and_then(|(n, _)| lock_of(app, n)) {
                             span.pill.p-amber { "locked by " (l.by.name) " until " (l.until_text()) }
                         }
+                        @if system.is_some() { span #presence data-me=(who.name) {} }
                         span.cr {
                             @if app.read_only || who.level == Level::ReadOnly {
                                 span.pill.p-amber { "read-only" }
@@ -272,6 +274,16 @@ fn count(n: usize, what: &str) -> String {
 
 /// The stylesheet's address, with a hash of its content: it is cached for a year, and a new
 /// stylesheet is a new address.
+/// The optional script's address, with its digest so a new one is fetched.
+pub fn script() -> String {
+    let hash = include_str!("live.js")
+        .bytes()
+        .fold(0xcbf2_9ce4_8422_2325_u64, |h, b| {
+            (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
+        });
+    format!("/assets/live.js?v={hash:016x}")
+}
+
 pub fn stylesheet() -> String {
     let hash = include_str!("style.css")
         .bytes()
@@ -839,7 +851,8 @@ pub fn job(
     lines: &[(i64, String, String)],
 ) -> Markup {
     let main = html! {
-        @if !j.state.ended() { meta http-equiv="refresh" content="3"; }
+        // without the script the page reloads itself; the script streams the lines instead
+        @if !j.state.ended() { noscript { meta http-equiv="refresh" content="3"; } }
         h2 { "Job " (j.id) ": " (j.kind) " " (j.machine.as_deref().unwrap_or(&j.system)) }
         p {
             span class=(state_class(j.state)) { (j.state.name()) }
@@ -848,7 +861,7 @@ pub fn job(
             @if let Some(e) = &j.ended { " · ended " (e) }
         }
         @if let Some(s) = &j.summary { p { (s) } }
-        pre.log {
+        pre.log data-job=(j.id) data-system=(j.system) {
             @for (_, at, line) in lines { span.m { (at) } "  " (line) "\n" }
         }
     };
@@ -1019,6 +1032,12 @@ mod tests {
     }
 
     #[test]
+    fn the_script_stays_small() {
+        // the design's budget: one script, under 10 KB, no framework
+        assert!(include_str!("live.js").len() < 10 * 1024);
+    }
+
+    #[test]
     fn no_inline_style_or_script() {
         // the content security policy allows the stylesheet and nothing inline
         let a = app(false, Level::Operator);
@@ -1040,10 +1059,16 @@ mod tests {
             index(&a, &who(Level::Operator), &[("s".into(), "x".into())]).into_string(),
             problem(StatusCode::NOT_FOUND, "x").into_string(),
         ] {
-            assert!(
-                !page.contains("style=") && !page.contains("<script"),
-                "{page}"
-            );
+            assert!(!page.contains("style="), "{page}");
+            // the one script is the external one, with nothing inside the element
+            for (i, _) in page.match_indices("<script") {
+                let element = &page[i..i + page[i..].find("</script>").expect("closed") + 9];
+                assert!(
+                    element.starts_with(r#"<script src="/assets/live.js?v="#)
+                        && element.ends_with(" defer></script>"),
+                    "{element}"
+                );
+            }
         }
     }
 

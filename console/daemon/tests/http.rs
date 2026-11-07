@@ -83,8 +83,12 @@ async fn a_module_page_shows_its_options_and_the_selected_one() {
         )),
         "{body}"
     );
-    // no script, no request elsewhere
-    assert!(!body.contains("<script"), "{body}");
+    // one script, the optional one from this daemon, nothing inline, no request elsewhere
+    assert_eq!(body.matches("<script").count(), 1, "{body}");
+    assert!(
+        body.contains(r#"<script src="/assets/live.js?v="#),
+        "{body}"
+    );
     assert!(
         !body.contains("http://") && !body.contains("https://"),
         "{body}"

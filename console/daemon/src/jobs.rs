@@ -22,7 +22,6 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
-use tokio::sync::broadcast;
 
 /// What a job can be. `deploy` is the system's; the others take a machine.
 pub const KINDS: [&str; 4] = ["update", "reboot", "rollback", "deploy"];
@@ -43,8 +42,6 @@ pub struct Runner {
     pub store: Mutex<Jobs>,
     queues: Mutex<HashMap<String, mpsc::Sender<i64>>>,
     pub config: JobConfig,
-    /// each output line as it comes, with its job: the live view
-    pub events: broadcast::Sender<(i64, String)>,
 }
 
 impl Runner {
@@ -55,7 +52,6 @@ impl Runner {
             store: Mutex::new(store),
             queues: Mutex::default(),
             config,
-            events: broadcast::channel(1024).0,
         })
     }
 }
@@ -165,7 +161,8 @@ fn run(app: &App, id: i64) {
     let _ = locked(&r.store).start(id);
     let mut log = |line: &str| {
         let _ = locked(&r.store).log(id, line);
-        let _ = r.events.send((id, line.to_string()));
+        app.events
+            .send(&job.system, "job", json!({ "id": id, "line": line }));
     };
     let done = perform(app, w, r, &job, &mut log);
     let (ok, summary) = match &done {
@@ -188,7 +185,11 @@ fn run(app: &App, id: i64) {
         eprintln!("golcondad: the audit entry of job {id}: {err}");
     }
     let _ = locked(&r.store).end(id, ok, &summary);
-    let _ = r.events.send((id, String::new()));
+    app.events.send(
+        &job.system,
+        "job",
+        json!({ "id": id, "state": if ok { "ok" } else { "failed" }, "summary": summary }),
+    );
 }
 
 fn perform(
