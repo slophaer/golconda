@@ -283,6 +283,14 @@ fn config(f: &mut Frame, m: &Model, area: Rect) {
     );
 }
 
+/// "-> 3.0.2 " for a package with a newer upstream version; nothing otherwise.
+fn newer(upstream: &Value) -> String {
+    match (upstream["outdated"].as_bool(), upstream["newest"].as_str()) {
+        (Some(true), Some(v)) => format!("-> {v} "),
+        _ => String::new(),
+    }
+}
+
 /// The ids of a package's advisories, a space after them; nothing when there are none.
 fn vulnerabilities(advisories: &Value) -> String {
     let ids: Vec<&str> = advisories
@@ -317,14 +325,19 @@ fn packages(f: &mut Frame, m: &Model, area: Rect) {
                     },
                     Style::default().fg(SKY),
                 ),
+                Span::styled(newer(&p["upstream"]), Style::default().fg(AMBER)),
                 Span::styled(vulnerabilities(&p["advisories"]), Style::default().fg(RED)),
                 Span::raw(s(&p["purl"]).to_string()),
             ]))
         })
         .collect();
-    let note = (m.packages_error.as_ref()).map_or(String::new(), |e| {
-        format!(" · could not check vulnerabilities: {e}")
-    });
+    let note = [
+        (m.packages_error.as_ref(), "vulnerabilities"),
+        (m.upstream_error.as_ref(), "upstream versions"),
+    ]
+    .iter()
+    .filter_map(|(e, what)| e.map(|e| format!(" · could not check {what}: {e}")))
+    .collect::<String>();
     let (list, mut st) = pick(
         items,
         m.package_at,

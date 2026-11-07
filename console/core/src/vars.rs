@@ -138,6 +138,7 @@ fn var_file(var: &str, file: &str) -> String {
 pub struct Program {
     argv: Vec<OsString>,
     dir: Option<PathBuf>,
+    env: Vec<(OsString, OsString)>,
 }
 
 impl Program {
@@ -152,12 +153,17 @@ impl Program {
         Program {
             argv: text.split_whitespace().map(OsString::from).collect(),
             dir: None,
+            env: Vec::new(),
         }
     }
 
     /// A program and its leading arguments, as given.
     pub fn new(argv: Vec<OsString>) -> Program {
-        Program { argv, dir: None }
+        Program {
+            argv,
+            dir: None,
+            env: Vec::new(),
+        }
     }
 
     /// The same program, run in `dir`.
@@ -167,6 +173,14 @@ impl Program {
             dir: Some(dir.to_path_buf()),
             ..self.clone()
         }
+    }
+
+    /// The same program, run with the variable `name` set to `value`.
+    #[must_use]
+    pub fn with_env(&self, name: impl Into<OsString>, value: impl Into<OsString>) -> Program {
+        let mut p = self.clone();
+        p.env.push((name.into(), value.into()));
+        p
     }
 
     /// Runs the program with `args`, `stdin` on its standard input; its standard output.
@@ -211,6 +225,7 @@ impl Program {
             if let Some(d) = &self.dir {
                 c.current_dir(d);
             }
+            c.envs(self.env.iter().map(|(k, v)| (k, v)));
             c.args(lead)
                 .args(args)
                 .stdin(if stdin { Stdio::piped() } else { Stdio::null() })
@@ -229,6 +244,63 @@ impl Program {
                     return other.map_err(|e| Error(format!("cannot run {}: {e}", self.name())));
                 }
             }
+        }
+    }
+
+    /// Like [`Program::run`], but a program still running after `limit` is killed.
+    ///
+    /// # Errors
+    ///
+    /// When it cannot start, runs past `limit`, or exits with a failure.
+    pub fn run_within<S: AsRef<OsStr>>(
+        &self,
+        args: &[S],
+        limit: time::Duration,
+    ) -> Result<Vec<u8>> {
+        let mut child = self.spawn(args, false)?;
+        let (mut out_pipe, mut err_pipe) = (child.stdout.take(), child.stderr.take());
+        // both pipes are read in threads: a program that fills one must not wait for us
+        let out = thread::spawn(move || {
+            let mut bytes = Vec::new();
+            if let Some(p) = out_pipe.as_mut() {
+                let _ = p.read_to_end(&mut bytes);
+            }
+            bytes
+        });
+        let errors = thread::spawn(move || {
+            let mut text = String::new();
+            if let Some(p) = err_pipe.as_mut() {
+                let _ = p.read_to_string(&mut text);
+            }
+            text
+        });
+        let started = time::Instant::now();
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break status,
+                Ok(None) if started.elapsed() < limit => {
+                    thread::sleep(time::Duration::from_millis(20));
+                }
+                Ok(None) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return err(format!(
+                        "{} did not finish within {} s",
+                        self.name(),
+                        limit.as_secs().max(1)
+                    ));
+                }
+                Err(e) => return err(format!("{}: {e}", self.name())),
+            }
+        };
+        let (out, stderr) = (
+            out.join().unwrap_or_default(),
+            errors.join().unwrap_or_default(),
+        );
+        if status.success() {
+            Ok(out)
+        } else {
+            err(format!("{}: {status}: {}", self.name(), stderr.trim()))
         }
     }
 
@@ -509,10 +581,7 @@ mod tests {
         let p = dir.join(name);
         fs::write(&p, format!("#!/bin/sh\n{body}")).unwrap();
         fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
-        Program {
-            argv: vec![p.into_os_string()],
-            dir: None,
-        }
+        Program::new(vec![p.into_os_string()])
     }
 
     /// A stand-in for age: `-e -R FILE -o OUT` writes "AGE(" + recipients + ")" + stdin to
@@ -664,12 +733,40 @@ esac
             thread::sleep(time::Duration::from_millis(50));
             drop(f);
         });
-        let prog = Program {
-            argv: vec![p.clone().into_os_string()],
-            dir: None,
-        };
+        let prog = Program::new(vec![p.clone().into_os_string()]);
         assert_eq!(prog.run::<&str>(&[], None).unwrap(), b"ran\n");
         closer.join().unwrap();
+    }
+
+    #[test]
+    fn a_program_gets_the_variables_it_is_given() {
+        let tmp = TempDir::new().unwrap();
+        let p = script(tmp.path(), "show", "printf '%s' \"$GOLCONDA_TEST_SHOWN\"\n");
+        let shown = p.with_env("GOLCONDA_TEST_SHOWN", "here");
+        assert_eq!(shown.run::<&str>(&[], None).unwrap(), b"here");
+        assert_eq!(
+            p.run::<&str>(&[], None).unwrap(),
+            b"",
+            "the original has none"
+        );
+    }
+
+    #[test]
+    fn a_program_that_takes_too_long_is_stopped() {
+        let tmp = TempDir::new().unwrap();
+        let slow = script(tmp.path(), "slow", "sleep 20\n");
+        let started = time::Instant::now();
+        let e = slow
+            .run_within::<&str>(&[], time::Duration::from_millis(300))
+            .unwrap_err();
+        assert!(e.to_string().contains("did not finish within"), "{e}");
+        assert!(started.elapsed() < time::Duration::from_secs(10));
+        let quick = script(tmp.path(), "quick", "echo done\n");
+        let out = quick.run_within::<&str>(&[], time::Duration::from_secs(30));
+        assert_eq!(out.unwrap(), b"done\n");
+        let fails = script(tmp.path(), "fails", "echo why >&2; exit 3\n");
+        let e = fails.run_within::<&str>(&[], time::Duration::from_secs(30));
+        assert!(e.unwrap_err().to_string().contains("why"));
     }
 
     #[test]

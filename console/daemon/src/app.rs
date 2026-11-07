@@ -18,8 +18,9 @@ use golconda_core::advisories::{Advisories, Advisory, Report};
 use golconda_core::diff::{Change, against_git};
 use golconda_core::document::parse_path;
 use golconda_core::eval::Iets;
-use golconda_core::packages::Package;
+use golconda_core::packages::{self, Package};
 use golconda_core::system::{Explanation, System};
+use golconda_core::upstream::{Found, Status, Upstream};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -28,6 +29,7 @@ use std::fmt;
 use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
 use std::thread;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::broadcast;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,6 +86,8 @@ pub struct App {
     pub platform: String,
     /// the vulnerabilities OSV knows of the packages; none: the daemon does not ask
     pub advisories: Option<Advisories>,
+    /// the newest upstream versions, from uptrack; none: the daemon does not ask
+    pub upstream: Option<Arc<Upstream>>,
 }
 
 impl App {
@@ -104,7 +108,15 @@ impl App {
             iets: Iets::from_env(),
             platform: format!("{}-linux", consts::ARCH),
             advisories: None,
+            upstream: None,
         }
+    }
+
+    /// This daemon asks uptrack (in the background) for the packages' newest upstream versions.
+    #[must_use]
+    pub fn with_upstream(mut self, upstream: Arc<Upstream>) -> Self {
+        self.upstream = Some(upstream);
+        self
     }
 
     /// This daemon asks OSV for the packages' vulnerabilities.
@@ -1138,21 +1150,32 @@ async fn bom_of(
         })
 }
 
-/// The Packages route's JSON: the packages in the order shown, each with its advisories
-/// (`null`: not asked about), and what the check as a whole came to (`null`: no check).
-fn packages_json(order: &[&Package], report: Option<&Report>) -> Value {
+/// The Packages route's JSON: the packages in the order shown, each with its advisories and
+/// upstream version (`null`: not asked about), and what each check as a whole came to (`null`:
+/// no check).
+fn packages_json(order: &[&Package], report: Option<&Report>, upstream: Option<&Status>) -> Value {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
     let shown: Vec<Value> = order
         .iter()
         .map(|pkg| {
             let mut json = pkg.to_json();
+            json["ageDays"] = pkg.age_days(now).map_or(Value::Null, Value::from);
             json["advisories"] = report.and_then(|r| r.of(pkg)).map_or(Value::Null, |found| {
                 Value::Array(found.iter().map(Advisory::to_json).collect())
             });
+            json["upstream"] = upstream
+                .and_then(|u| u.of(pkg))
+                .map_or(Value::Null, Found::to_json);
             json
         })
         .collect();
-    let status = report.map(|r| serde_json::json!({ "checkedAt": r.checked_at, "error": r.error }));
-    serde_json::json!({ "packages": shown, "advisories": status })
+    let osv = report.map(|r| serde_json::json!({ "checkedAt": r.checked_at, "error": r.error }));
+    let uptrack = upstream.map(|u| {
+        serde_json::json!({ "checkedAt": u.checked_at, "error": u.error, "running": u.running })
+    });
+    serde_json::json!({ "packages": shown, "advisories": osv, "upstream": uptrack })
 }
 
 async fn packages(
@@ -1173,10 +1196,21 @@ async fn packages(
         tokio::task::spawn_blocking(move || asker.advisories.as_ref().map(|osv| osv.check(&list)))
             .await
             .expect("advisories thread");
-    let unchecked = Report::default();
-    let order = report.as_ref().unwrap_or(&unchecked).order(&bom.list);
+    // uptrack is never waited for: this starts a run when one is due, and answers at once
+    let upstream = app.upstream.as_ref().map(|u| u.status(&bom.list));
+    let (unchecked, unknown) = (Report::default(), Status::default());
+    let (vulnerable, outdated) = (
+        report.as_ref().unwrap_or(&unchecked),
+        upstream.as_ref().unwrap_or(&unknown),
+    );
+    let order = packages::order(
+        &bom.list,
+        |p| vulnerable.vulnerable(p),
+        |p| outdated.outdated(p),
+    );
     if json {
-        return axum::Json(packages_json(&order, report.as_ref())).into_response();
+        return axum::Json(packages_json(&order, report.as_ref(), upstream.as_ref()))
+            .into_response();
     }
     let sys = match load(&app, &name, false).await {
         Ok(sys) => sys,
@@ -1185,7 +1219,12 @@ async fn packages(
     let view = pages::PackagesView {
         list: &order,
         report: report.as_ref(),
-        only_vulnerable: params.get("show").is_some_and(|s| s == "vulnerable"),
+        upstream: upstream.as_ref(),
+        show: match params.get("show").map(String::as_str) {
+            Some("vulnerable") => pages::Show::Vulnerable,
+            Some("outdated") => pages::Show::Outdated,
+            _ => pages::Show::All,
+        },
     };
     pages::packages(&app, &who, &name, &sys, &view).into_response()
 }

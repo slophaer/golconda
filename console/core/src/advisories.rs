@@ -158,14 +158,6 @@ impl Report {
     pub fn vulnerable(&self, p: &Package) -> bool {
         self.of(p).is_some_and(|a| !a.is_empty())
     }
-
-    /// The packages with vulnerabilities first, then the ones the image names itself, then the
-    /// rest; each group in the order of `list`.
-    pub fn order<'a>(&self, list: &'a [Package]) -> Vec<&'a Package> {
-        let mut v: Vec<&Package> = list.iter().collect();
-        v.sort_by_key(|p| (!self.vulnerable(p), !p.root));
-        v
-    }
 }
 
 impl Advisories {
@@ -417,6 +409,7 @@ mod tests {
             cpe: None,
             root,
             replaces: vec![],
+            pinned: None,
         }
     }
 
@@ -710,24 +703,5 @@ mod tests {
         assert!(r.vulnerable(&list[1]));
         let again: Value = serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
         assert!(again.is_object());
-    }
-
-    #[test]
-    fn vulnerable_packages_come_first_then_the_image_s_own() {
-        let o = osv();
-        let list = [
-            pkg("acl", "2.4.0", Some("pkg:generic/acl@2.4.0"), false),
-            pkg("bash", "5", None, true),
-            pkg("time", "0.1.40", Some("pkg:cargo/time@0.1.40"), false),
-            pkg("zlib", "1", None, false),
-            pkg("django", "3.0", Some("pkg:pypi/django"), true),
-        ];
-        let r = open(&o, None, LIFETIME).check(&list);
-        let names: Vec<&str> = r.order(&list).iter().map(|p| p.name.as_str()).collect();
-        assert_eq!(names, ["django", "time", "bash", "acl", "zlib"]);
-        // without a report the image's own come first, as before
-        let none = Report::default();
-        let names: Vec<&str> = none.order(&list).iter().map(|p| p.name.as_str()).collect();
-        assert_eq!(names, ["bash", "django", "acl", "time", "zlib"]);
     }
 }

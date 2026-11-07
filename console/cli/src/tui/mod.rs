@@ -78,6 +78,8 @@ mod tests {
         answer: RefCell<(u16, Value)>,
         /// the daemon could not ask OSV
         osv_down: Cell<bool>,
+        /// uptrack failed
+        uptrack_down: Cell<bool>,
     }
 
     impl Fake {
@@ -86,6 +88,7 @@ mod tests {
                 posts: RefCell::default(),
                 answer: RefCell::new((200, json!({ "rev": 3, "job": 7, "commit": "abc" }))),
                 osv_down: Cell::new(false),
+                uptrack_down: Cell::new(false),
             }
         }
     }
@@ -112,11 +115,14 @@ mod tests {
                 "/systems/server/packages" => json!({
                     "packages": [
                         { "name": "openssl", "version": "3.0.1", "origin": "repkgs", "root": false,
-                          "advisories": [{ "id": "CVE-2022-0778", "severity": "HIGH" }] },
+                          "advisories": [{ "id": "CVE-2022-0778", "severity": "HIGH" }],
+                          "upstream": { "newest": "3.0.2", "outdated": true } },
                         { "name": "systemd", "version": "262.1", "origin": "golconda", "root": true,
                           "advisories": [] }],
                     "advisories": { "checkedAt": 1,
-                        "error": self.osv_down.get().then_some("connection refused") } }),
+                        "error": self.osv_down.get().then_some("connection refused") },
+                    "upstream": { "checkedAt": 1, "running": false,
+                        "error": self.uptrack_down.get().then_some("no network") } }),
                 "/systems/server/changes" => json!({ "changes": [
                     { "module": "/services/sshd", "path": ["port"], "before": { "value": 22 }, "after": { "value": 2222 } }] }),
                 "/jobs?system=server" => {
@@ -308,6 +314,7 @@ mod tests {
         let s = screen(&m);
         assert!(s.contains("systemd") && s.contains("in the image"), "{s}");
         assert!(s.contains("CVE-2022-0778"), "{s}");
+        assert!(s.contains("3.0.2"), "{s}");
         assert!(!s.contains("could not check"), "{s}");
     }
 
@@ -320,5 +327,16 @@ mod tests {
         let s = screen(&m);
         assert!(s.contains("could not check vulnerabilities"), "{s}");
         assert!(s.contains("systemd"), "{s}");
+    }
+
+    #[test]
+    fn packages_say_when_uptrack_failed() {
+        let src = Fake::new();
+        src.uptrack_down.set(true);
+        let mut m = Model::new("server");
+        key(&mut m, &src, "3");
+        let s = screen(&m);
+        assert!(s.contains("could not check upstream versions"), "{s}");
+        assert!(!s.contains("could not check vulnerabilities"), "{s}");
     }
 }

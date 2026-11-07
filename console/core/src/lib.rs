@@ -19,5 +19,6 @@ pub mod packages;
 pub mod release;
 pub mod schema;
 pub mod system;
+pub mod upstream;
 pub mod validate;
 pub mod vars;

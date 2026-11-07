@@ -3,10 +3,12 @@
 use clap::Parser;
 use golconda_core::advisories::{self, Advisories};
 use golconda_core::machine::Patience;
+use golconda_core::upstream::Upstream;
 use golconda_core::vars::Program;
 use golcondad::app::{App, Identity, Level, Signin};
 use golcondad::auth::{Oidc, OidcConfig};
 use golcondad::jobs::{JobConfig, Runner};
+use std::env;
 use std::fs;
 use std::net::SocketAddr;
 use std::path::{self, PathBuf};
@@ -94,6 +96,14 @@ pub struct Args {
     /// Never ask OSV (the Packages page then shows no vulnerabilities)
     #[arg(long, conflicts_with = "osv_url")]
     no_osv: bool,
+    /// A tree of `sources.toml` files uptrack is run on for the packages' newest upstream
+    /// versions (a repkgs checkout; Golconda's `packages/`); repeat for more. Needs
+    /// GOLCONDA_UPTRACK, uptrack and its leading arguments
+    #[arg(long = "uptrack-tree", value_name = "DIR")]
+    uptrack_trees: Vec<PathBuf>,
+    /// How long an uptrack answer is kept before it is asked for again, in seconds
+    #[arg(long, value_name = "SECONDS", default_value_t = advisories::LIFETIME.as_secs())]
+    uptrack_every: u64,
     /// How long a job waits for a machine to come back blessed after a reboot, in seconds
     #[arg(long, value_name = "SECONDS", default_value_t = 900)]
     confirm_timeout: u64,
@@ -223,6 +233,39 @@ fn advisories(a: &Args) -> Option<Advisories> {
     })
 }
 
+/// uptrack, when it is set up: the program from `GOLCONDA_UPTRACK` and at least one tree.
+fn upstream(a: &Args, program: Option<Program>) -> Result<Option<sync::Arc<Upstream>>, String> {
+    match (program, a.uptrack_trees.is_empty()) {
+        (None, true) => Ok(None),
+        (None, false) => {
+            Err("--uptrack-tree needs GOLCONDA_UPTRACK: uptrack, and its leading arguments".into())
+        }
+        (Some(_), true) => {
+            Err("GOLCONDA_UPTRACK is set, but there is no --uptrack-tree to run it on".into())
+        }
+        (Some(program), false) => Ok(Some(Upstream::open(
+            program,
+            a.uptrack_trees.clone(),
+            a.state.as_ref().map(|s| s.join("upstream.json")),
+            time::Duration::from_secs(a.uptrack_every),
+        ))),
+    }
+}
+
+/// The app with what it looks up on the network: OSV, and uptrack when it is set up.
+fn with_lookups(mut app: App, a: &Args) -> Result<App, String> {
+    let program = env::var_os("GOLCONDA_UPTRACK")
+        .filter(|v| !v.is_empty())
+        .map(|_| Program::from_env("GOLCONDA_UPTRACK", "uptrack"));
+    if let Some(osv) = advisories(a) {
+        app = app.with_advisories(osv);
+    }
+    if let Some(uptrack) = upstream(a, program)? {
+        app = app.with_upstream(uptrack);
+    }
+    Ok(app)
+}
+
 /// Changes made elsewhere: fetched on a timer (and before every commit), when the checkouts
 /// have a remote.
 fn fetch_on_a_timer(app: &sync::Arc<App>, fetch_every: u64) {
@@ -288,11 +331,14 @@ async fn main() -> ExitCode {
         },
     );
     let jobs = job_config(&a);
-    let osv = advisories(&a);
-    let mut app = App::new(a.systems, signin, a.read_only);
-    if let Some(osv) = osv {
-        app = app.with_advisories(osv);
-    }
+    let mut app = App::new(a.systems.clone(), signin, a.read_only);
+    app = match with_lookups(app, &a) {
+        Ok(app) => app,
+        Err(e) => {
+            eprintln!("golcondad: {e}");
+            return ExitCode::from(2);
+        }
+    };
     if let Some(state) = &a.state {
         let host = fs::read_to_string("/proc/sys/kernel/hostname")
             .map_or_else(|_| "localhost".into(), |h| h.trim().to_string());
@@ -414,6 +460,26 @@ mod tests {
                 .unwrap_err()
                 .contains("cannot be used with")
         );
+    }
+
+    #[test]
+    fn uptrack_needs_its_program_and_a_tree() {
+        let plain = |s: &str| args(s).unwrap().0;
+        let program = || Some(Program::new(vec!["uptrack".into()]));
+        let none = plain("--system s=x --dev-identity a:operator");
+        assert_eq!(none.uptrack_every, 21600);
+        assert!(upstream(&none, None).unwrap().is_none());
+        let e = upstream(&none, program()).err().unwrap();
+        assert!(e.contains("--uptrack-tree"), "{e}");
+        let trees =
+            plain("--system s=x --dev-identity a:operator --uptrack-tree /a --uptrack-tree /b");
+        assert_eq!(
+            trees.uptrack_trees,
+            [PathBuf::from("/a"), PathBuf::from("/b")]
+        );
+        let e = upstream(&trees, None).err().unwrap();
+        assert!(e.contains("GOLCONDA_UPTRACK"), "{e}");
+        assert!(upstream(&trees, program()).unwrap().is_some());
     }
 
     #[test]
