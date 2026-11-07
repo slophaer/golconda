@@ -67,6 +67,9 @@ pub struct Oidc {
     keys: RwLock<Vec<Value>>,
     pending: Mutex<HashMap<String, Pending>>,
     sessions: Mutex<HashMap<String, Session>>,
+    /// how long a session and a pending sign-in last: `SESSION` and `PENDING`, shorter in tests
+    session_life: Duration,
+    pending_life: Duration,
     agent: ureq::Agent,
     rng: SystemRandom,
 }
@@ -166,6 +169,8 @@ impl Oidc {
             keys: RwLock::default(),
             pending: Mutex::default(),
             sessions: Mutex::default(),
+            session_life: SESSION,
+            pending_life: PENDING,
             agent,
             rng: SystemRandom::new(),
         };
@@ -210,9 +215,8 @@ impl Oidc {
             &ring::digest::SHA256,
             verifier.as_bytes(),
         ));
-        let mut pending = locked(&self.pending);
-        pending.retain(|_, p| p.since.elapsed() < PENDING);
-        pending.insert(
+        self.prune();
+        locked(&self.pending).insert(
             state.clone(),
             Pending {
                 verifier,
@@ -242,9 +246,7 @@ impl Oidc {
         // a state is good once, and only for a while
         let p = locked(&self.pending)
             .remove(state)
-            // shortcut: untested, it needs a clock the tests can move; a state is 32 random
-            // bytes and good once, so an old one is no easier to use than a guessed one
-            .filter(|p| p.since.elapsed() < PENDING)
+            .filter(|p| p.since.elapsed() < self.pending_life)
             .ok_or_else(|| bad("sign-in expired or unknown: sign in again"))?;
         let mut form = vec![
             ("grant_type", "authorization_code".to_string()),
@@ -293,9 +295,8 @@ impl Oidc {
         }
         let who = self.identity(&claims)?;
         let (id, csrf) = (self.random(), self.random());
-        let mut sessions = locked(&self.sessions);
-        sessions.retain(|_, s| s.since.elapsed() < SESSION);
-        sessions.insert(
+        self.prune();
+        locked(&self.sessions).insert(
             id.clone(),
             Session {
                 who,
@@ -489,14 +490,22 @@ impl Oidc {
         })
     }
 
+    /// Drop the sessions past their 12 hours and the sign-ins their browsers never came back
+    /// from. Every lookup does it, so the two tables hold only what is alive, however seldom
+    /// anyone signs in.
+    fn prune(&self) {
+        locked(&self.sessions).retain(|_, s| s.since.elapsed() < self.session_life);
+        locked(&self.pending).retain(|_, p| p.since.elapsed() < self.pending_life);
+    }
+
     pub fn session(&self, id: &str) -> Option<Identity> {
-        let sessions = locked(&self.sessions);
-        let s = sessions.get(id)?;
-        (s.since.elapsed() < SESSION).then(|| s.who.clone())
+        self.prune();
+        locked(&self.sessions).get(id).map(|s| s.who.clone())
     }
 
     /// The CSRF token of a session.
     pub fn csrf(&self, id: &str) -> Option<String> {
+        self.prune();
         locked(&self.sessions).get(id).map(|s| s.csrf.clone())
     }
 
@@ -529,6 +538,110 @@ pub fn safe_next(next: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A one-second life, and a moment two seconds ago: past it, with no waiting.
+    const LIFE: Duration = Duration::from_secs(1);
+
+    fn ago() -> Instant {
+        Instant::now()
+            .checked_sub(Duration::from_secs(2))
+            .expect("the host has been up for two seconds")
+    }
+
+    /// An `Oidc` that never met a provider, with `LIFE` for sessions and sign-ins.
+    fn offline() -> Oidc {
+        Oidc {
+            config: OidcConfig {
+                issuer: "http://127.0.0.1".into(),
+                client_id: "console".into(),
+                client_secret: None,
+                public_url: "http://127.0.0.1".into(),
+                operator_group: "ops".into(),
+                read_only_group: "readers".into(),
+                ca_pem: None,
+                cli_client_id: None,
+            },
+            authorize: "http://127.0.0.1/authorize".into(),
+            token: "http://127.0.0.1/token".into(),
+            jwks_uri: "http://127.0.0.1/jwks".into(),
+            device: None,
+            keys: RwLock::default(),
+            pending: Mutex::default(),
+            sessions: Mutex::default(),
+            session_life: LIFE,
+            pending_life: LIFE,
+            agent: ureq::Agent::new_with_defaults(),
+            rng: SystemRandom::new(),
+        }
+    }
+
+    fn session_at(since: Instant) -> Session {
+        Session {
+            who: Identity {
+                id: "u".into(),
+                name: "alice".into(),
+                level: Level::Operator,
+            },
+            csrf: "c".into(),
+            since,
+        }
+    }
+
+    fn pending_at(since: Instant) -> Pending {
+        Pending {
+            verifier: "v".into(),
+            nonce: "n".into(),
+            next: "/".into(),
+            since,
+        }
+    }
+
+    fn held(oidc: &Oidc) -> (usize, usize) {
+        (locked(&oidc.sessions).len(), locked(&oidc.pending).len())
+    }
+
+    #[test]
+    fn a_session_lookup_drops_the_expired_sessions() {
+        let oidc = offline();
+        let mut sessions = locked(&oidc.sessions);
+        sessions.insert("old".into(), session_at(ago()));
+        sessions.insert("older".into(), session_at(ago()));
+        sessions.insert("live".into(), session_at(Instant::now()));
+        drop(sessions);
+        assert!(oidc.session("old").is_none());
+        assert_eq!(held(&oidc).0, 1, "only the live session stays");
+        assert!(oidc.session("live").is_some());
+        assert!(oidc.csrf("live").is_some());
+    }
+
+    #[test]
+    fn a_csrf_lookup_drops_the_expired_sessions_and_gives_none_for_one() {
+        let oidc = offline();
+        locked(&oidc.sessions).insert("old".into(), session_at(ago()));
+        assert!(oidc.csrf("old").is_none());
+        assert_eq!(held(&oidc).0, 0);
+    }
+
+    #[test]
+    fn abandoned_sign_ins_are_dropped_by_a_lookup_and_by_a_new_sign_in() {
+        let oidc = offline();
+        locked(&oidc.pending).insert("a".into(), pending_at(ago()));
+        locked(&oidc.pending).insert("b".into(), pending_at(Instant::now()));
+        assert!(oidc.session("nobody").is_none());
+        assert_eq!(held(&oidc).1, 1, "a lookup drops the old one only");
+        locked(&oidc.pending).insert("c".into(), pending_at(ago()));
+        oidc.begin("/");
+        assert_eq!(held(&oidc).1, 2, "begin drops the old one, adds its own");
+    }
+
+    #[test]
+    fn a_sign_in_past_its_time_is_refused() {
+        let oidc = offline();
+        locked(&oidc.pending).insert("s".into(), pending_at(ago()));
+        let e = oidc.finish("code", "s").unwrap_err();
+        assert!(e.to_string().contains("expired or unknown"), "{e}");
+        assert_eq!(held(&oidc).1, 0);
+    }
 
     #[test]
     fn hosts_and_encoding() {
