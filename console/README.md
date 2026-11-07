@@ -101,7 +101,8 @@ golcondad --listen 0.0.0.0:8796 --system server=server.toml \
 
 The provider must know `<public-url>/auth/callback` as a redirect URI. The daemon checks the ID
 token itself (RS256 or ES256, the issuer, the audience, the expiry, the nonce), keeps sessions in
-memory (a restart signs everyone out) in an `HttpOnly`, `SameSite=Lax` cookie, `Secure` when the
+memory (a restart signs everyone out; a session lasts 12 hours, and every lookup drops the expired
+sessions and the sign-ins never finished) in an `HttpOnly`, `SameSite=Lax` cookie, `Secure` when the
 public URL is https, and answers only to the public URL's host name. `/auth/me` says who is signed
 in, as JSON. A provider that wants a client secret gets it from `--oidc-client-secret-file`. The
 issuer must use https, except on loopback. Its TLS certificate is checked against the public roots
