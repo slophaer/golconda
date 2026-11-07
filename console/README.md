@@ -303,6 +303,59 @@ asked or why it could not be. Its answers are kept in `$XDG_CACHE_HOME/golconda/
 (`~/.cache/golconda` without it) for the same six hours. The TUI's packages screen shows the ids
 after each package.
 
+### Age and newer upstream versions
+
+A package whose `sources.toml` has a `[pin] date` shows "from 2025-05-18, 538 days old" under its
+version, on the page (`pinned`, `ageDays` in the JSON) and in `golconda packages`. The console reads
+the date itself, in the evaluation that gives it the SBOM: `[pin] date` of the `sources.toml` beside
+each package. The SBOM stays as repkgs' generator writes it; about half of the pins have a date.
+
+The newest upstream version comes from uptrack (repkgs' tool, `pkgs/up/uptrack`), which learns it
+only by asking the network. It is not a package of repkgs or of Golconda (repkgs' `shell.nix` has
+nushell for it), so the console runs it as a program:
+
+```sh
+GOLCONDA_UPTRACK="nu /path/to/repkgs/pkgs/up/uptrack/src/uptrack" golcondad \
+  --system server=server.toml --uptrack-tree /path/to/repkgs
+```
+
+For every `--uptrack-tree` the daemon finds the packages of the image that the tree tracks (a
+directory of that name with a `sources.toml` that has `[upstream] purl`) and runs
+`UPTRACK_ROOT=TREE uptrack check NAME… --json`. From each plan entry it takes `to` (the newer
+version, `outdated`), `pin.date` (its release date), and `error` or `note` (why uptrack cannot say).
+The page marks the package "outdated" with the newer version, lists the outdated ones after the
+vulnerable ones, and has `?show=outdated`.
+
+uptrack takes seconds to minutes, so a page view never waits for it. The first view starts one run
+in the background and says "checking now"; the answers appear on a later view. They are kept for
+`--uptrack-every` seconds (six hours; `DIR/upstream.json` with `--state`), and a view asks nothing
+while they are good. A run is stopped after 30 minutes; a failed one is not repeated for five
+minutes, and the older answers stay on the page with "could not check" and uptrack's message. JSON:
+each package has `upstream` (`{ newest, outdated, released, error }`, `null` when no tree tracks it)
+and the route has a top-level `upstream` (`{ checkedAt, error, running }`, `null` when uptrack is
+not set up). uptrack keeps its own cache of what it fetched under `$XDG_CACHE_HOME/uptrack`, and
+uses `GITHUB_TOKEN` or `gh`'s login against GitHub's rate limit.
+
+`golconda packages -f server.toml --upstream --uptrack-tree DIR` does the same and waits for
+uptrack, with its answers kept in `$XDG_CACHE_HOME/golconda/upstream.json`; the TUI shows "->
+VERSION" after a package that has a newer one.
+
+What uptrack needs, and where that stops this:
+
+- uptrack is a nushell script that loads its modules by paths relative to itself (it reaches
+  `builder/sys-libs.nu`), so it runs from a repkgs checkout, and `nu` must be on the daemon's PATH.
+  The tree it works on can be elsewhere (`UPTRACK_ROOT`).
+- It reads every `sources.toml` of the tree and refuses the whole run if one has a key it does not
+  know. The repkgs tree passes. Golconda's own `packages/` does not: `dbus-broker`, `mtools`,
+  `systemd` and `ukify` have `url` under `[upstream]`, which the pinned uptrack rejects, so
+  `--uptrack-tree packages` ends in "could not check" until those files or uptrack change. The
+  packages of the image that come from Golconda therefore show no upstream version today.
+- Its names are directory names, and its datasources are the purl types it knows (`github`,
+  `gitlab`, `pypi`, `cargo`, `npm`, `hackage`, `gnu`, `generic`, …). A package it cannot resolve
+  (`pkg:deb`, `pkg:sourceforge`) shows uptrack's message.
+- It compares with the tree's pin, not with the version in the image: they are the same when the
+  tree is the one the image was built from.
+
 ## Audit log
 
 The daemon keeps an audit log in a git repository of its own: one entry per commit, one JSON line

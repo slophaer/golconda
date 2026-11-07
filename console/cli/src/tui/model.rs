@@ -91,6 +91,8 @@ pub struct Model {
     pub packages: Vec<Value>,
     /// why OSV could not be asked about the packages, if so
     pub packages_error: Option<String>,
+    /// why uptrack could not be asked, if so
+    pub upstream_error: Option<String>,
     pub package_at: usize,
     pub changes: Vec<Value>,
     pub jobs: Vec<Value>,
@@ -134,6 +136,7 @@ impl Model {
             machine_at: 0,
             packages: Vec::new(),
             packages_error: None,
+            upstream_error: None,
             package_at: 0,
             changes: Vec::new(),
             jobs: Vec::new(),
@@ -178,6 +181,7 @@ impl Model {
             Screen::Packages => src.get(&self.path("packages")).map(|v| {
                 self.packages = list(&v["packages"]);
                 self.packages_error = v["advisories"]["error"].as_str().map(str::to_string);
+                self.upstream_error = v["upstream"]["error"].as_str().map(str::to_string);
             }),
             Screen::Changes => src
                 .get(&self.path("changes"))

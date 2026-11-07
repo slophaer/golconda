@@ -9,9 +9,10 @@ use golconda_core::diff::{Change, against_git, diff};
 use golconda_core::document::{self, parse_path, parse_value};
 use golconda_core::eval::Iets;
 use golconda_core::git::{Git, Person};
-use golconda_core::packages;
+use golconda_core::packages::{self, Package};
 use golconda_core::release;
 use golconda_core::system::System;
+use golconda_core::upstream::{Status, Upstream};
 use golconda_core::vars::{self, Program, Remote, Store};
 use std::env::{self, consts};
 use std::error;
@@ -19,6 +20,7 @@ use std::fmt::Write as _;
 use std::io::{self, Read};
 use std::path::{self, Path, PathBuf};
 use std::process::ExitCode;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 mod login;
 mod tui;
@@ -334,6 +336,14 @@ struct PackageArgs {
     /// The OSV server to ask
     #[arg(long, value_name = "URL", default_value = advisories::OSV_URL, requires = "advisories")]
     osv_url: String,
+    /// Also ask uptrack for each package's newest upstream version, and list the outdated ones
+    /// first. This takes a while; the answers are kept for six hours. Needs GOLCONDA_UPTRACK
+    /// (uptrack and its leading arguments) and --uptrack-tree
+    #[arg(long, conflicts_with = "sbom", requires = "uptrack_trees")]
+    upstream: bool,
+    /// A tree of `sources.toml` files uptrack is run on (a repkgs checkout); repeat for more
+    #[arg(long = "uptrack-tree", value_name = "DIR", requires = "upstream")]
+    uptrack_trees: Vec<PathBuf>,
 }
 
 #[derive(Args)]
@@ -533,8 +543,23 @@ fn build_release(
     ))
 }
 
-/// The image's packages from its SBOM, or the CycloneDX document itself. With `osv`, the
-/// vulnerable ones first, each followed by its advisories.
+/// uptrack for the `--upstream` flag, asked to the end: it runs once and has nothing else to do.
+fn upstream_of(args: &PackageArgs, list: &[Package]) -> Result<Status, Box<dyn error::Error>> {
+    let program = (env::var_os("GOLCONDA_UPTRACK").filter(|v| !v.is_empty()))
+        .map(|_| Program::from_env("GOLCONDA_UPTRACK", "uptrack"))
+        .ok_or("--upstream needs GOLCONDA_UPTRACK: uptrack, and its leading arguments")?;
+    let cache = cache_dir().map(|d| d.join("upstream.json"));
+    let up = Upstream::open(
+        program,
+        args.uptrack_trees.clone(),
+        cache,
+        advisories::LIFETIME,
+    );
+    Ok(up.ask(list))
+}
+
+/// The image's packages from its SBOM, or the CycloneDX document itself. With `--advisories`
+/// and `--upstream`, the vulnerable and the outdated ones first, each followed by what was found.
 fn run_packages(iets: &Iets, args: &PackageArgs) -> Result<String, Box<dyn error::Error>> {
     let p = packages::load(iets, &args.doc.file, &args.doc.system)?;
     if args.sbom {
@@ -544,13 +569,26 @@ fn run_packages(iets: &Iets, args: &PackageArgs) -> Result<String, Box<dyn error
         let cache = cache_dir().map(|d| d.join("advisories.json"));
         Advisories::open(&args.osv_url, cache, advisories::LIFETIME).check(&p.list)
     });
-    let order = match &report {
-        Some(r) => r.order(&p.list),
-        None => p.list.iter().collect(),
+    let status = if args.upstream {
+        Some(upstream_of(args, &p.list)?)
+    } else {
+        None
     };
+    let order = if report.is_some() || status.is_some() {
+        packages::order(
+            &p.list,
+            |p| report.as_ref().is_some_and(|r| r.vulnerable(p)),
+            |p| status.as_ref().is_some_and(|s| s.outdated(p)),
+        )
+    } else {
+        p.list.iter().collect()
+    };
+    let today = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
     let mut out = String::new();
     for p in order {
-        let _ = writeln!(
+        let _ = write!(
             out,
             "{}  {}  {}{}",
             p.name,
@@ -558,6 +596,19 @@ fn run_packages(iets: &Iets, args: &PackageArgs) -> Result<String, Box<dyn error
             p.origin.as_deref().unwrap_or("?"),
             if p.root { "  in the image" } else { "" }
         );
+        if let (Some(date), Some(days)) = (&p.pinned, p.age_days(today)) {
+            let _ = write!(out, "  from {date}, {days} days old");
+        }
+        out.push('\n');
+        if let Some(f) = status.as_ref().and_then(|s| s.of(p)) {
+            if let Some(e) = &f.error {
+                let _ = writeln!(out, "    upstream: {e}");
+            } else if let (true, Some(newest)) = (f.outdated, &f.newest) {
+                let released =
+                    (f.released.as_ref()).map_or(String::new(), |d| format!(" (released {d})"));
+                let _ = writeln!(out, "    newer: {newest}{released}");
+            }
+        }
         for a in report.iter().filter_map(|r| r.of(p)).flatten() {
             let _ = writeln!(
                 out,
@@ -581,6 +632,18 @@ fn run_packages(iets: &Iets, args: &PackageArgs) -> Result<String, Box<dyn error
             (Some(e), None) => writeln!(out, "vulnerabilities: could not check ({e})"),
             (None, Some(t)) => writeln!(out, "vulnerabilities: checked {t}"),
             (None, None) => writeln!(out, "vulnerabilities: nothing to ask about"),
+        };
+    }
+    if let Some(s) = &status {
+        let when = s.checked_at.map(advisories::since);
+        let _ = match (&s.error, when) {
+            (Some(e), Some(t)) => writeln!(
+                out,
+                "upstream versions: could not check ({e}); answers from {t}"
+            ),
+            (Some(e), None) => writeln!(out, "upstream versions: could not check ({e})"),
+            (None, Some(t)) => writeln!(out, "upstream versions: checked {t}"),
+            (None, None) => writeln!(out, "upstream versions: nothing to ask about"),
         };
     }
     Ok(out)

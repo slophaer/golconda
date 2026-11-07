@@ -1407,7 +1407,15 @@ fn packages_lists_the_sbom_with_what_the_image_names_itself() {
         .lines()
         .find(|l| l.starts_with("systemd  "))
         .expect(&out);
-    assert!(systemd.ends_with("golconda  in the image"), "{systemd}");
+    assert!(systemd.contains("golconda  in the image"), "{systemd}");
+    // the pin's release date, from packages/systemd/sources.toml through the evaluation
+    let sources = fs::read_to_string(checkout().join("packages/systemd/sources.toml")).unwrap();
+    let date = sources
+        .lines()
+        .find_map(|l| l.strip_prefix("date = \""))
+        .and_then(|d| d.strip_suffix('"'))
+        .expect("systemd's pin has a date");
+    assert!(systemd.contains(&format!("from {date}, ")), "{systemd}");
     let acl = out.lines().find(|l| l.starts_with("acl  ")).expect(&out);
     assert!(acl.ends_with("repkgs"), "{acl}");
     let bom: serde_json::Value = serde_json::from_str(&stdout(&golconda(&[
@@ -1433,15 +1441,55 @@ impl Image {
         fs::create_dir_all(t.join("lib")).unwrap();
         fs::write(t.join("lib/system.nix"), "{ }").unwrap();
         fs::write(t.join("server.toml"), "").unwrap();
-        let sbom = r#"{"roots":["systemd"],"bom":{"components":[
+        let sbom = r#"{"roots":["systemd"],"dates":{"systemd":"2020-01-01"},"bom":{"components":[
             {"name":"acl","version":"2.4.0","purl":"pkg:generic/acl@2.4.0"},
             {"name":"openssl","version":"3.0.1","purl":"pkg:generic/openssl@3.0.1"},
-            {"name":"systemd","version":"262.1"}]}}"#;
+            {"name":"systemd","version":"262.1"},
+            {"name":"zlib","version":"1.3"}]}}"#;
         fs::write(t.join("sbom.json"), sbom).unwrap();
         let iets = t.join("iets");
         fs::write(&iets, "#!/bin/sh\ncat \"$(dirname \"$0\")/sbom.json\"\n").unwrap();
         fs::set_permissions(&iets, fs::Permissions::from_mode(0o755)).unwrap();
+        // uptrack's stand-in, and a tree it tracks zlib in: it says zlib has 1.4
+        let uptrack = t.join("uptrack");
+        fs::write(
+            &uptrack,
+            format!(
+                "#!/bin/sh\necho \"$UPTRACK_ROOT $*\" >> {log}\n\
+                 [ -f {fail} ] && {{ echo 'no network' >&2; exit 1; }}\n\
+                 echo '[{{\"name\":\"zlib\",\"from\":\"1.3\",\"to\":\"1.4\",\"pin\":{{\"date\":\"2026-09-01\"}}}}]'\n",
+                log = t.join("uptrack.log").display(),
+                fail = t.join("uptrack-fails").display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&uptrack, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::create_dir_all(t.join("tree/zlib")).unwrap();
+        fs::write(
+            t.join("tree/zlib/sources.toml"),
+            "[upstream]\npurl = \"pkg:generic/zlib\"\n",
+        )
+        .unwrap();
         Image { tmp }
+    }
+
+    /// `golconda packages --upstream` with the stand-in as uptrack.
+    fn upstream(&self) -> Output {
+        let t = self.tmp.path();
+        Command::new(env!("CARGO_BIN_EXE_golconda"))
+            .args(["packages", "-f"])
+            .arg(t.join("server.toml"))
+            .args(["--upstream", "--uptrack-tree"])
+            .arg(t.join("tree"))
+            .env("GOLCONDA_IETS", t.join("iets"))
+            .env("GOLCONDA_UPTRACK", t.join("uptrack"))
+            .env("XDG_CACHE_HOME", t.join("cache"))
+            .output()
+            .unwrap()
+    }
+
+    fn uptrack_runs(&self) -> usize {
+        fs::read_to_string(self.tmp.path().join("uptrack.log")).map_or(0, |l| l.lines().count())
     }
 
     fn packages(&self, args: &[&str]) -> Output {
@@ -1520,6 +1568,68 @@ fn packages_with_advisories_still_lists_when_osv_cannot_be_reached() {
     assert!(out.starts_with("systemd  262.1"), "{out}");
     assert!(out.contains("could not check"), "{out}");
     assert!(!String::from_utf8_lossy(&o.stderr).contains("panicked"));
+}
+
+#[test]
+fn packages_say_how_old_the_pinned_version_is() {
+    let image = Image::new();
+    let out = stdout(&image.packages(&[]));
+    let systemd = out
+        .lines()
+        .find(|l| l.starts_with("systemd  "))
+        .expect(&out);
+    assert!(systemd.contains("from 2020-01-01, "), "{systemd}");
+    assert!(systemd.ends_with(" days old"), "{systemd}");
+    let acl = out.lines().find(|l| l.starts_with("acl  ")).expect(&out);
+    assert!(!acl.contains("days old"), "{acl}");
+}
+
+#[test]
+fn packages_with_upstream_waits_for_uptrack_and_lists_the_outdated_first() {
+    let image = Image::new();
+    let out = stdout(&image.upstream());
+    let lines: Vec<&str> = out.lines().collect();
+    assert!(lines[0].starts_with("zlib  1.3"), "{out}");
+    assert_eq!(lines[1].trim(), "newer: 1.4 (released 2026-09-01)", "{out}");
+    assert!(lines[2].starts_with("systemd  262.1"), "{out}");
+    assert!(out.contains("upstream versions: checked just now"), "{out}");
+    // the next run reads the cache
+    assert_eq!(stdout(&image.upstream()), out);
+    assert_eq!(image.uptrack_runs(), 1);
+}
+
+#[test]
+fn packages_with_upstream_says_when_uptrack_fails_and_still_lists() {
+    let image = Image::new();
+    fs::write(image.tmp.path().join("uptrack-fails"), "").unwrap();
+    let out = stdout(&image.upstream());
+    assert!(out.starts_with("systemd  262.1"), "{out}");
+    assert!(out.contains("upstream versions: could not check"), "{out}");
+    assert!(out.contains("no network"), "{out}");
+}
+
+#[test]
+fn packages_with_upstream_needs_uptrack_and_a_tree() {
+    let image = Image::new();
+    let run = |args: &[&str], uptrack: bool| {
+        let t = image.tmp.path();
+        let mut c = Command::new(env!("CARGO_BIN_EXE_golconda"));
+        c.args(["packages", "-f"])
+            .arg(t.join("server.toml"))
+            .args(args);
+        c.env("GOLCONDA_IETS", t.join("iets"))
+            .env_remove("GOLCONDA_UPTRACK");
+        if uptrack {
+            c.env("GOLCONDA_UPTRACK", t.join("uptrack"));
+        }
+        c.output().unwrap()
+    };
+    let o = run(&["--upstream", "--uptrack-tree", "/x"], false);
+    assert!(!o.status.success());
+    assert!(String::from_utf8_lossy(&o.stderr).contains("GOLCONDA_UPTRACK"));
+    let o = run(&["--upstream"], true);
+    assert!(!o.status.success());
+    assert!(String::from_utf8_lossy(&o.stderr).contains("--uptrack-tree"));
 }
 
 #[test]

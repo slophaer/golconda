@@ -11,12 +11,14 @@ use golconda_core::document::{option_name, toml_text};
 use golconda_core::jobs::State;
 use golconda_core::packages::Package;
 use golconda_core::system::{Explanation, System};
+use golconda_core::upstream::Status;
 use maud::{DOCTYPE, Markup, PreEscaped, html};
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 use serde_json::Value;
 use std::collections;
 use std::hash::BuildHasher;
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(PartialEq, Clone, Copy)]
 enum Tab {
@@ -869,17 +871,37 @@ pub fn job(
     layout(app, who, None, None, &format!("Job {}", j.id), &main)
 }
 
-/// What the Packages page shows: the packages in the order to show them, and what OSV said.
+/// Which packages the Packages page lists.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Show {
+    All,
+    Vulnerable,
+    Outdated,
+}
+
+/// What the Packages page shows: the packages in the order to show them, and what OSV and
+/// uptrack said.
 pub struct PackagesView<'a> {
-    /// every package of the image, in the order to show (vulnerable first)
+    /// every package of the image, in the order to show
     pub list: &'a [&'a Package],
     /// none: this daemon does not ask OSV
     pub report: Option<&'a Report>,
-    /// only the vulnerable ones
-    pub only_vulnerable: bool,
+    /// none: this daemon does not ask uptrack
+    pub upstream: Option<&'a Status>,
+    pub show: Show,
 }
 
-/// The line above the table: when OSV was asked, or why it was not.
+impl PackagesView<'_> {
+    fn vulnerable(&self, p: &Package) -> bool {
+        self.report.is_some_and(|r| r.vulnerable(p))
+    }
+
+    fn outdated(&self, p: &Package) -> bool {
+        self.upstream.is_some_and(|u| u.outdated(p))
+    }
+}
+
+/// The line about OSV above the table: when it was asked, or why it was not.
 fn advisory_status(report: Option<&Report>, vulnerable: usize) -> Markup {
     let Some(r) = report else {
         return html! { p { "Vulnerabilities: not checked, this daemon does not ask OSV." } };
@@ -899,6 +921,27 @@ fn advisory_status(report: Option<&Report>, vulnerable: usize) -> Markup {
                 @if vulnerable > 0 { a href="?show=vulnerable" { "only the vulnerable" } " · " }
                 a href="?" { "all" }
             }
+        }
+    }
+}
+
+/// The line about uptrack: it runs in the background, so "checking" is a state.
+fn upstream_status(status: Option<&Status>, outdated: usize) -> Markup {
+    let Some(u) = status else {
+        return html! { p { "Upstream versions: not checked, uptrack is not set up (GOLCONDA_UPTRACK)." } };
+    };
+    let since = u.checked_at.map(advisories::since);
+    html! {
+        p {
+            "Upstream versions (uptrack): "
+            @match (&u.error, &since) {
+                (Some(e), Some(t)) => { span.pill.p-amber { "could not check" } " " (e) ", showing the answer from " (t) }
+                (Some(e), None) => { span.pill.p-amber { "could not check" } " " (e) }
+                (None, Some(t)) => { "checked " (t) ", " (outdated) " package(s) with a newer version" }
+                (None, None) => { "nothing yet" }
+            }
+            @if u.running { " · checking now, reload in a minute" }
+            @if outdated > 0 { " · " a href="?show=outdated" { "only the outdated" } " · " a href="?" { "all" } }
         }
     }
 }
@@ -924,7 +967,25 @@ fn advisory_cell(report: Option<&Report>, p: &Package) -> Markup {
     }
 }
 
-/// The image's packages, from its SBOM: vulnerable ones first, then what the image takes itself.
+fn upstream_cell(status: Option<&Status>, p: &Package) -> Markup {
+    let found = status.and_then(|u| u.of(p));
+    html! {
+        td {
+            @match found {
+                None => { span.m { "–" } }
+                Some(f) if f.error.is_some() => { small { "could not tell: " (f.error.as_deref().unwrap_or_default()) } }
+                Some(f) if f.outdated => {
+                    span.pill.p-amber { "outdated" } " " span.m { (f.newest.as_deref().unwrap_or_default()) }
+                    @if let Some(d) = &f.released { br; small { "released " (d) } }
+                }
+                Some(_) => { span.pill.p-green { "current" } }
+            }
+        }
+    }
+}
+
+/// The image's packages, from its SBOM: vulnerable ones first, then the outdated ones, then
+/// what the image takes itself.
 pub fn packages(
     app: &App,
     who: &Identity,
@@ -934,13 +995,16 @@ pub fn packages(
 ) -> Markup {
     let all = view.list;
     let roots = all.iter().filter(|p| p.root).count();
-    let vulnerable = all
-        .iter()
-        .filter(|p| view.report.is_some_and(|r| r.vulnerable(p)))
-        .count();
-    let shown = all
-        .iter()
-        .filter(|p| !view.only_vulnerable || view.report.is_some_and(|r| r.vulnerable(p)));
+    let vulnerable = all.iter().filter(|p| view.vulnerable(p)).count();
+    let outdated = all.iter().filter(|p| view.outdated(p)).count();
+    let today = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let shown = all.iter().filter(|p| match view.show {
+        Show::All => true,
+        Show::Vulnerable => view.vulnerable(p),
+        Show::Outdated => view.outdated(p),
+    });
     let main = html! {
         h2 { "Packages" }
         p {
@@ -948,9 +1012,11 @@ pub fn packages(
             a href={ "/systems/" (name) "/sbom.json" } { "The SBOM" } " (CycloneDX)."
         }
         (advisory_status(view.report, vulnerable))
+        (upstream_status(view.upstream, outdated))
         table {
             tr {
                 th { "package" } th { "version" }
+                @if view.upstream.is_some() { th { "upstream" } }
                 @if view.report.is_some() { th { "vulnerabilities" } }
                 th { "origin" } th { "identifier" }
             }
@@ -961,7 +1027,13 @@ pub fn packages(
                         @if p.root { " " span.pill.p-sky { "in the image" } }
                         @if !p.replaces.is_empty() { br; small { "replaces " (p.replaces.join(", ")) } }
                     }
-                    td.m { (p.version) }
+                    td.m {
+                        (p.version)
+                        @if let (Some(date), Some(days)) = (&p.pinned, p.age_days(today)) {
+                            br; small { "from " (date) ", " (days) " days old" }
+                        }
+                    }
+                    @if view.upstream.is_some() { (upstream_cell(view.upstream, p)) }
                     @if view.report.is_some() { (advisory_cell(view.report, p)) }
                     td { @if let Some(o) = &p.origin { span class=(if o == "golconda" || o == "repkgs" { "pill p-grey" } else { "pill p-amber" }) { (o) } } }
                     td.m {
