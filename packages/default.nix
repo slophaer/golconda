@@ -63,4 +63,5 @@
   nixfmt-rs = ./nixfmt-rs;
   treefmt = ./treefmt;
   statix = ./statix;
+  deadnix = ./deadnix;
 }
