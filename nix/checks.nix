@@ -4,8 +4,7 @@
 # Each check is `run`: a content-addressed derivation whose builder is the repkgs seed's shell, as
 # repkgs' own tests are, with tools from repkgs where it has them (python3, gnumake, coreutils) and
 # the seed's nu, which Golconda's builders run. The dev pin (nixpkgs) is left for the tools repkgs
-# does not package yet: the Rust build
-# behind clippy, and python's jsonschema (the dev-tools inventory in the knowledge base).
+# does not package yet: python's jsonschema (the dev-tools inventory in the knowledge base).
 {
   sources,
   self,
@@ -158,23 +157,8 @@ in
     touch $out
   '';
 
-  # clippy over the console, tests included; the levels are console/Cargo.toml's
-  # [workspace.lints] (pedantic). The crates come from Cargo.lock, as in the build. nixpkgs' Rust
-  # build until the check is a repkgs cargo build.
-  console-clippy = nixpkgs.rustPlatform.buildRustPackage {
-    pname = "check-console-clippy";
-    version = "0";
-    src = "${src}/console";
-    cargoLock.lockFile = ../console/Cargo.lock;
-    nativeBuildInputs = [ nixpkgs.clippy ];
-    buildPhase = ''
-      runHook preBuild
-      cargo clippy --offline --all-targets -- -D warnings
-      runHook postBuild
-    '';
-    doCheck = false;
-    installPhase = "touch $out";
-  };
+  # clippy over the console, tests included, as a repkgs cargo build (console/clippy)
+  console-clippy = rp.golconda-console-clippy;
 
   # nixpkgs is dev tooling only: the dev pin is named nowhere but nix/dev and nix/checks.nix in
   # Nix files, and in scripts only by scripts/boot-test, for the virtual machine repkgs does not
