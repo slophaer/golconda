@@ -1,0 +1,10 @@
+[upstream]
+purl = "pkg:pypi/markdown-it-py"
+
+[[source]]
+key = "default"
+url = "https://files.pythonhosted.org/packages/source/m/markdown-it-py/markdown_it_py-{version}.tar.gz"
+hash = "sha256-KE509PKmJshrmTCVUQieg88hGvCzTa0DSl1TPCxFM/Y="
+
+[pin]
+version = "4.2.0"

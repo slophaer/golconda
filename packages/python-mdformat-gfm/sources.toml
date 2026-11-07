@@ -1,0 +1,10 @@
+[upstream]
+purl = "pkg:pypi/mdformat-gfm"
+
+[[source]]
+key = "default"
+url = "https://files.pythonhosted.org/packages/source/m/mdformat-gfm/mdformat_gfm-{version}.tar.gz"
+hash = "sha256-HEBoF9qklMDnAKAODJjnObe1TbYd2xgd52R6nMEXZto="
+
+[pin]
+version = "1.0.0"

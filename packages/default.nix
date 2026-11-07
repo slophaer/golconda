@@ -70,4 +70,10 @@
   mdbook = ./mdbook;
   # Hetzner Cloud's command line, for the Hetzner run (docs/reference/hetzner-cloud.md)
   hcloud = ./hcloud;
+  # the Markdown formatter and the Python libraries it needs
+  python-mdformat-gfm = ./python-mdformat-gfm;
+  python-markdown-it-py = ./python-markdown-it-py;
+  python-mdit-py-plugins = ./python-mdit-py-plugins;
+  python-mdurl = ./python-mdurl;
+  python-wcwidth = ./python-wcwidth;
 }
