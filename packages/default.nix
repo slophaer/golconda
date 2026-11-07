@@ -71,6 +71,7 @@
   # Hetzner Cloud's command line, for the Hetzner run (docs/reference/hetzner-cloud.md)
   hcloud = ./hcloud;
   # the Markdown formatter and the Python libraries it needs
+  mdformat = ./mdformat;
   python-mdformat-gfm = ./python-mdformat-gfm;
   python-markdown-it-py = ./python-markdown-it-py;
   python-mdit-py-plugins = ./python-mdit-py-plugins;

@@ -1,0 +1,10 @@
+[upstream]
+purl = "pkg:pypi/mdformat"
+
+[[source]]
+key = "default"
+url = "https://files.pythonhosted.org/packages/source/m/mdformat/mdformat-{version}.tar.gz"
+hash = "sha256-CfjhNLVpXgDFrxwcVpF131pbVM5YHv9GCIpqSFds+pI="
+
+[pin]
+version = "1.0.0"
