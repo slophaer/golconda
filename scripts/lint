@@ -25,8 +25,15 @@ if hits=$(git ls-files -z | xargs -0 grep -nE \
   echo "$hits" >&2
   exit 1
 fi
-iets eval-jobs --force-recurse --no-instantiate \
-  --expr 'let f = import ./default.nix; in { inherit (f) packages checks devShells formatter; }' > /dev/null
+# eval-jobs prints one JSON line per job and exits 0 even when jobs failed (a lint finding is
+# an error): fail on any job that carries one
+jobs=$(iets eval-jobs --force-recurse --no-instantiate \
+  --expr 'let f = import ./default.nix; in { inherit (f) packages checks devShells formatter; }')
+if failed=$(printf '%s\n' "$jobs" | grep '"error":'); then
+  echo "lint: eval-jobs reported errors:" >&2
+  printf '%s\n' "$failed" | head -20 >&2
+  exit 1
+fi
 iets eval --expr 'import ./nix/tests.nix { }' > /dev/null
 # configuration errors must carry their message (tests/errors/run.sh)
 tests/errors/run.sh
