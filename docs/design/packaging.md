@@ -20,7 +20,7 @@ The fork's branch is meant to hold only what upstream should take. A package goe
 
 ## Why repkgs
 
-Golconda pins a fork of repkgs (branch `upstream-prep`; see
+Golconda pins a fork of repkgs (branch `golconda`; see
 [patches/repkgs](../../patches/repkgs/README.md) for its commits and their issue drafts) with
 relocation fixes: PT_INTERP via libc with relative sysroot links, and glibc `$ORIGIN` expansion from
 `AT_EXECFN` instead of `/proc`.

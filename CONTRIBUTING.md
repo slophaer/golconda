@@ -53,11 +53,12 @@ directories to a booted machine.
 - **Docs split.** `docs/design/` says why, `docs/reference/` says what exists in code today. Mark
   what is designed and not started as *(planned)*, and what is deferred past v1 as *(after v1)*. No
   planning or history pages.
-- **Pins.** `npins/sources.json` is the lock; `nix/sources.nix` reads it. The forge needs a sign-in,
-  so update the repkgs pin by hand (see [patches/repkgs](patches/repkgs/README.md)).
+- **Pins.** `npins/sources.json` is the lock (npins format 8); `nix/sources.nix` reads it. Update
+  the repkgs pin with `npins update repkgs` in the dev shell; the forge needs a sign-in, and iets
+  needs the new archive in the store once (see [patches/repkgs](patches/repkgs/README.md)).
 - **Fork patches.** A change to repkgs' build system goes to the fork branch the pin follows
-  (`branch` in `npins/sources.json`, today `upstream-prep`), in the series it belongs to. A new
-  package goes to `packages/` instead.
+  (`branch` in `npins/sources.json`, today `golconda`), in the series it belongs to. A new package
+  goes to `packages/` instead.
 
 ## Getting started
 

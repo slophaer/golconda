@@ -54,7 +54,7 @@
   public half is the image's keyring for `Verify=yes`
   ([Releases: The signed index](../design/releases.md#the-signed-index)).
 - **relocatable**: an output that refers to other store paths only relative to itself.
-- **repkgs**: the package set and build system Golconda pins (a fork, branch `upstream-prep`). Every
+- **repkgs**: the package set and build system Golconda pins (a fork, branch `golconda`). Every
   output is relocatable; builders are nushell; packages declare `bin` and `features`.
 - **SBOM**: Software Bill of Materials, `/usr/lib/golconda/sbom.json` in CycloneDX, with a purl and
   a cpe per component ([Image artifacts](image.md#software-bill-of-materials)).
