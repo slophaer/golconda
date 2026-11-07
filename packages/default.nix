@@ -81,4 +81,10 @@
   python-mdit-py-plugins = ./python-mdit-py-plugins;
   python-mdurl = ./python-mdurl;
   python-wcwidth = ./python-wcwidth;
+  # python's jsonschema, for checks.schema-metaschema, and the Python libraries it needs
+  python-jsonschema = ./python-jsonschema;
+  python-jsonschema-specifications = ./python-jsonschema-specifications;
+  python-referencing = ./python-referencing;
+  python-attrs = ./python-attrs;
+  python-hatch-fancy-pypi-readme = ./python-hatch-fancy-pypi-readme;
 }

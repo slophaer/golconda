@@ -1,0 +1,10 @@
+[upstream]
+purl = "pkg:pypi/jsonschema-specifications"
+
+[[source]]
+key = "default"
+url = "https://files.pythonhosted.org/packages/source/j/jsonschema-specifications/jsonschema_specifications-{version}.tar.gz"
+hash = "sha256-8FpA7OWdTkzgAf16OvRniWdXho34p0iXM67TYZ3irzU="
+
+[pin]
+version = "2025.9.1"
