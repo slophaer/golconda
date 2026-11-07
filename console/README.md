@@ -189,6 +189,26 @@ root hash the verity signature names, and a signature that `gpgv` does not accep
 `release/index.pgp`, the key the machines carry. `--json` prints the id, version, root hash and
 files.
 
+```sh
+golconda release publish result/release --to hetzner:updates/web --keys /srv/golconda-keys
+golconda release list --to hetzner:updates/web
+```
+
+`publish` checks the directory, then puts it where machines fetch from: anything rclone reaches, a
+local directory (an HTTP server's root) or `remote:path` (S3 and S3-compatible stores, SFTP, …) of
+the operator's `rclone.conf` or `RCLONE_CONFIG_*`. It refuses a version that is not newer than the
+one the destination serves, and the same version with other files: machines that have a version
+never fetch it again. It looks up the release commit (`release: <id> <version>`, with the trailers
+`Release-Image`, `Release-Version`, `Config`, `Usr`, `Verity`, `Signature`, `Uki`, `Store-Path`) in
+the repository (`--repo`, default `.`, any ref) and refuses a release whose commit records other
+digests, or that has none unless `--unrecorded`. The four files go up first, then the signature,
+then the index, each to a temporary name and renamed where the backend has renames; then it reads
+the index back. It deletes nothing (an older release's files stay) and commits nothing, so it needs
+no clean tree. Publishing the release a destination already serves is no error.
+
+`list` prints the release commits, newest first, and with `--to` marks the one the destination
+serves and those it still holds; the destination is the record of what was published.
+
 ## Develop
 
 cargo, rustc and the C linker come from repkgs (`pkgs.rust` and the set's `toolchain`), so they need

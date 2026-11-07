@@ -8,12 +8,13 @@ use golconda_core::audit::{Audit, Entry};
 use golconda_core::candidate::Operator;
 use golconda_core::git::{Git, Person};
 use golconda_core::release;
+use golconda_core::vars::Program;
 use std::env;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net;
 use std::os::unix::fs::{PermissionsExt, symlink};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync;
 use std::thread;
@@ -991,5 +992,90 @@ fn release_check_refuses_a_signature_the_release_key_did_not_make() {
     assert!(
         e.contains("not a signature by the release key") && e.contains("BAD signature"),
         "{e}"
+    );
+}
+
+fn golconda_in(tmp: &TempDir, gpgv: &PathBuf, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_golconda"))
+        .env("GOLCONDA_GPGV", gpgv)
+        .current_dir(tmp.path())
+        .args(args)
+        .output()
+        .unwrap()
+}
+
+fn git_in(dir: &Path, args: &[&str]) {
+    let ok = Command::new("git")
+        .current_dir(dir)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+        .args(args)
+        .status()
+        .unwrap()
+        .success();
+    assert!(ok, "git {args:?}");
+}
+
+#[test]
+fn release_publish_and_list_through_rclone() {
+    let (tmp, gpgv) = release_fixture(true);
+    let repo = tmp.path().join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    git_in(&repo, &["init", "-q", "-b", "main"]);
+    git_in(&repo, &["commit", "-q", "--allow-empty", "-m", "start"]);
+    let publish = [
+        "release", "publish", "release", "--to", "www", "--keys", "keys", "--repo", "repo",
+    ];
+    let o = golconda_in(&tmp, &gpgv, &publish);
+    assert_eq!(o.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&o.stderr).contains("no release commit for server 20261105.1"));
+    let mut unrecorded = publish.to_vec();
+    unrecorded.push("--unrecorded");
+    assert_eq!(
+        stdout(&golconda_in(&tmp, &gpgv, &unrecorded)),
+        "server 20261105.1 published to www, unrecorded\n"
+    );
+    let list = ["release", "list", "--to", "www", "--repo", "repo"];
+    assert_eq!(
+        stdout(&golconda_in(&tmp, &gpgv, &list)),
+        "www serves server 20261105.1: no release commit here\n"
+    );
+    // the release commit build makes, from the directory's own index
+    let r = release::check(
+        &tmp.path().join("release"),
+        &release::keyring(&tmp.path().join("keys")),
+        &Program::from_env("GOLCONDA_TEST_UNSET", gpgv.to_str().unwrap()),
+    )
+    .unwrap();
+    let rec = release::Record {
+        commit: String::new(),
+        id: "server".into(),
+        version: r.index.version,
+        config: format!("sha256:{}", "c".repeat(64)),
+        digests: r
+            .index
+            .files
+            .clone()
+            .map(|f| format!("sha256:{}", f.digest)),
+        store_path: "/nix/store/x".into(),
+    };
+    git_in(
+        &repo,
+        &[
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            &format!("release: server 20261105.1\n\n{}", rec.trailers()),
+        ],
+    );
+    let listed = stdout(&golconda_in(&tmp, &gpgv, &list));
+    assert!(
+        listed.starts_with("server 20261105.1  ") && listed.ends_with("  served\n"),
+        "{listed}"
+    );
+    assert_eq!(
+        stdout(&golconda_in(&tmp, &gpgv, &publish)),
+        "www serves server 20261105.1 already: nothing to upload\n"
     );
 }

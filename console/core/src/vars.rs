@@ -16,7 +16,7 @@ use std::collections::BTreeSet;
 use std::ffi::{OsStr, OsString};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, Output, Stdio};
 use std::thread;
 use std::time;
 use std::{env, fs, result};
@@ -160,6 +160,35 @@ impl Program {
     /// When it cannot start or exits with a failure: the message names it, its arguments and
     /// what it wrote to standard error.
     pub fn run<S: AsRef<OsStr>>(&self, args: &[S], stdin: Option<&[u8]>) -> Result<Vec<u8>> {
+        let out = self.output(args, stdin)?;
+        if !out.status.success() {
+            return err(format!(
+                "{} {}: {}: {}",
+                self.name(),
+                args.iter()
+                    .map(|a| a.as_ref().to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                out.status,
+                String::from_utf8_lossy(&out.stderr).trim()
+            ));
+        }
+        Ok(out.stdout)
+    }
+
+    fn name(&self) -> String {
+        self.argv
+            .first()
+            .map_or_else(String::new, |p| p.to_string_lossy().into_owned())
+    }
+
+    /// Runs the program and returns how it ended, whatever its status: for a caller that
+    /// tells one failure (a file that is not there) from the others.
+    ///
+    /// # Errors
+    ///
+    /// When it cannot start.
+    pub fn output<S: AsRef<OsStr>>(&self, args: &[S], stdin: Option<&[u8]>) -> Result<Output> {
         let (program, lead) = self
             .argv
             .split_first()
@@ -191,27 +220,15 @@ impl Program {
                 other => break other.map_err(|e| Error(format!("cannot run {name}: {e}")))?,
             }
         };
-        if let Some(input) = stdin {
+        if let Some(input) = stdin
+            && let Some(mut pipe) = child.stdin.take()
+        {
             // a child that exits early closes the pipe; its status says why
-            if let Some(mut pipe) = child.stdin.take() {
-                let _ = pipe.write_all(input);
-            }
+            let _ = pipe.write_all(input);
         }
-        let out = child
+        child
             .wait_with_output()
-            .map_err(|e| Error(format!("{name}: {e}")))?;
-        if !out.status.success() {
-            return err(format!(
-                "{name} {}: {}: {}",
-                args.iter()
-                    .map(|a| a.as_ref().to_string_lossy())
-                    .collect::<Vec<_>>()
-                    .join(" "),
-                out.status,
-                String::from_utf8_lossy(&out.stderr).trim()
-            ));
-        }
-        Ok(out.stdout)
+            .map_err(|e| Error(format!("{name}: {e}")))
     }
 }
 
