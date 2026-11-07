@@ -62,4 +62,5 @@
   # development tools (nix/dev, nix/checks.nix), in place of the dev-only nixpkgs pin
   nixfmt-rs = ./nixfmt-rs;
   treefmt = ./treefmt;
+  statix = ./statix;
 }
