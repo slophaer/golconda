@@ -1,5 +1,5 @@
 [upstream]
-url = "https://github.com/bus1/dbus-broker"
+# the project: https://github.com/bus1/dbus-broker
 purl = "pkg:github/bus1/dbus-broker"
 
 # Main source: dbus-broker main branch at pinned commit (unreleased v38 with Rust parts)
