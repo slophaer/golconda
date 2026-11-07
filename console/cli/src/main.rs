@@ -105,6 +105,30 @@ enum Releases {
         #[arg(long)]
         unrecorded: bool,
     },
+    /// Build a release from a clean tree: the version (auto: today's date, after the document's
+    /// version and DEST's) goes into the document, mkImage builds it, check checks it, and one
+    /// commit holds the version line with the release trailers. A failure puts the line back
+    Build {
+        /// The system's document, inside a Golconda checkout
+        #[command(flatten)]
+        doc: Doc,
+        /// The key set (scripts/make-keys)
+        #[arg(long, value_name = "DIR")]
+        keys: PathBuf,
+        /// YYYYMMDD.N, or auto
+        #[arg(long, value_name = "VERSION", default_value = "auto")]
+        version: String,
+        /// A destination whose versions count too
+        #[arg(long, value_name = "DEST")]
+        to: Option<String>,
+        /// Pass the key set as a path, copied into the store: for a build daemon with a chroot
+        /// store, which sees no path outside it
+        #[arg(long)]
+        copy_keys: bool,
+        /// Where to link the build's output
+        #[arg(long, value_name = "PATH", default_value = "result-release")]
+        out_link: PathBuf,
+    },
     /// The release commits, newest first; with --to also what DEST holds and serves
     List {
         /// Only this image
@@ -392,6 +416,46 @@ fn run_release(command: Releases) -> Result<String, Box<dyn error::Error>> {
                     }
                 },
             )
+        }
+        Releases::Build {
+            doc,
+            keys,
+            version,
+            to,
+            copy_keys,
+            out_link,
+        } => {
+            let version = match version.as_str() {
+                "auto" => None,
+                v => Some(v.parse()?),
+            };
+            let dest = to.as_deref().map(|to| release::Destination {
+                rclone: &rclone,
+                to,
+            });
+            let req = release::BuildRequest {
+                document: &doc.file,
+                system: &doc.system,
+                keys: &keys,
+                copy_keys,
+                version,
+                dest: dest.as_ref(),
+                out_link,
+            };
+            let nix_build = Program::from_env("GOLCONDA_NIX_BUILD", "nix-build");
+            let tools = release::Tools {
+                nix_build: &nix_build,
+                git: &git,
+                gpgv: &gpgv,
+            };
+            let b = release::build(&req, &tools)?;
+            Ok(format!(
+                "{} {} built: {}\nrelease commit {}\n",
+                b.record.id,
+                b.record.version,
+                b.release.dir.display(),
+                b.record.commit
+            ))
         }
         Releases::List { image, to, repo } => {
             list_releases(&git, &rclone, image.as_deref(), to.as_deref(), &repo)

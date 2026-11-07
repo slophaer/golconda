@@ -9,10 +9,13 @@
 //! `gpgv` is a program, as `age` and `ssh` are for vars: `GOLCONDA_GPGV` names it.
 
 use crate::candidate::rfc3339;
+use crate::document::set;
+use crate::system::{find_root, write_beside};
 use crate::vars::Program;
 use ring::digest::{Context, SHA256};
 use serde_json::Value;
 use std::cmp::Ordering;
+use std::ffi::OsStr;
 use std::fmt::{self, Write as _};
 use std::fs;
 use std::io::{self, Read};
@@ -327,14 +330,14 @@ pub fn sha256(path: &Path) -> io::Result<String> {
         }
         ctx.update(&buf[..n]);
     }
-    Ok(ctx
-        .finish()
-        .as_ref()
-        .iter()
-        .fold(String::new(), |mut s, b| {
-            let _ = write!(s, "{b:02x}");
-            s
-        }))
+    Ok(hex(ctx.finish().as_ref()))
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().fold(String::new(), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    })
 }
 
 /// A checked release directory.
@@ -755,6 +758,231 @@ pub fn publish(
     }
 }
 
+/// What `golconda release build` is asked for.
+pub struct BuildRequest<'a> {
+    /// the system's document (server.toml), inside a Golconda checkout and a git repository
+    pub document: &'a Path,
+    /// the build host's Nix system double: pure evaluation has no `builtins.currentSystem`
+    pub system: &'a str,
+    /// the key set; passed as a string, so its private keys stay out of the store, or with
+    /// `copy_keys` as a path that the expression copies whole (a daemon with a chroot store sees
+    /// no other)
+    pub keys: &'a Path,
+    pub copy_keys: bool,
+    /// None: `--version auto`
+    pub version: Option<Version>,
+    /// a destination whose versions count as seen
+    pub dest: Option<&'a Destination<'a>>,
+    /// where the build's output is linked (a GC root)
+    pub out_link: PathBuf,
+}
+
+/// The programs a build runs. The build goes through nix-build, not iets: the image's
+/// outputs are content-addressed, and nix-build is the client that gets their paths from any
+/// daemon (iets 0.2 builds them but reports no output path).
+pub struct Tools<'a> {
+    pub nix_build: &'a Program,
+    pub git: &'a Program,
+    pub gpgv: &'a Program,
+}
+
+/// A built, checked and committed release.
+#[derive(Debug)]
+pub struct Built {
+    pub release: Release,
+    pub record: Record,
+}
+
+/// The build's expression: Golconda's mkImage on the document, its disk step (the release
+/// directory is in it).
+const BUILD_EXPR: &str = "{ config, keys, system }: \
+    ((import ./default.nix).lib.mkImage { inherit config keys system; }).disk";
+
+/// The same with the key set copied into the store, by name and whole (`--copy-keys`).
+const BUILD_COPY_EXPR: &str = "{ config, keys, system }: \
+    ((import ./default.nix).lib.mkImage { \
+      inherit config system; \
+      keys = builtins.path { path = keys; name = \"golconda-keys\"; filter = _: _: true; }; \
+    }).disk";
+
+fn git_out(git: &Program, dir: &Path, args: &[&str]) -> Result<String> {
+    let mut all = vec!["-C", dir.to_str().unwrap_or(".")];
+    all.extend(args);
+    git.run(&all, None)
+        .map(|o| String::from_utf8_lossy(&o).trim().to_string())
+        .map_err(|e| Error(e.0))
+}
+
+/// The image id and version the document sets in `/system`.
+fn system_of(text: &str) -> Result<(String, Option<Version>)> {
+    let doc: toml_edit::DocumentMut = text
+        .parse()
+        .map_err(|e| Error(format!("the document: {e}")))?;
+    let sys = doc.get("/system");
+    let name = sys
+        .and_then(|t| t.get("name"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| Error("the document sets no /system name".into()))?;
+    let version = match sys.and_then(|t| t.get("version")).and_then(|v| v.as_str()) {
+        Some(v) => Some(v.parse()?),
+        None => None,
+    };
+    Ok((name.into(), version))
+}
+
+/// Replaces the document with `text`, its mode kept (through a symlink, the target).
+fn write_document(document: &Path, text: &str) -> Result<()> {
+    let target = fs::canonicalize(document).unwrap_or_else(|_| document.to_path_buf());
+    let fail = |e: io::Error| Error(format!("{}: {e}", target.display()));
+    let copy = write_beside(document, "release", text).map_err(fail)?;
+    let mode = fs::metadata(&target).map_err(fail)?.permissions();
+    fs::set_permissions(&copy, mode).map_err(fail)?;
+    copy.persist(&target).map_err(|e| fail(e.error))
+}
+
+/// Builds a release: refuses a dirty tree, picks the version (auto: today, after the
+/// document's version and the destination's), writes it into the document, builds mkImage's
+/// disk, checks its release directory and commits the version line with the release trailers.
+/// A failure after the write puts the document back as it was.
+pub fn build(req: &BuildRequest<'_>, tools: &Tools<'_>) -> Result<Built> {
+    let document = path::absolute(req.document).map_err(|e| Error(e.to_string()))?;
+    let dir = document.parent().unwrap_or(Path::new("/"));
+    let repo = PathBuf::from(git_out(tools.git, dir, &["rev-parse", "--show-toplevel"])?);
+    let dirty = git_out(
+        tools.git,
+        &repo,
+        &["status", "--porcelain", "--untracked-files=no"],
+    )?;
+    if !dirty.is_empty() {
+        return err(format!(
+            "{} has uncommitted changes: a release is built from a commit\n{dirty}",
+            repo.display()
+        ));
+    }
+    let root = find_root(&document).ok_or_else(|| {
+        Error(format!(
+            "{}: not inside a Golconda checkout",
+            document.display()
+        ))
+    })?;
+    let text =
+        fs::read_to_string(&document).map_err(|e| Error(format!("{}: {e}", document.display())))?;
+    let (id, current) = system_of(&text)?;
+    let mut seen: Vec<Version> = current.into_iter().collect();
+    if let Some(d) = req.dest {
+        seen.extend(versions_in(&d.files()?, &id));
+        if let Some((_, served)) = d.index()? {
+            seen.push(served.version);
+        }
+    }
+    let version = match req.version {
+        Some(v) => {
+            v.newer_than(&seen, "the document's version or the destination's")?;
+            v
+        }
+        None => Version::next(Version::today(), &seen)?,
+    };
+    let edited = set(
+        &text,
+        "/system",
+        &["version"],
+        toml_edit::Value::from(version.to_string()),
+    )
+    .map_err(|e| Error(e.to_string()))?;
+    write_document(&document, &edited)?;
+    let built = build_and_check(req, tools, &root, &document, &edited, &id, version).and_then(
+        |(release, record)| {
+            let rel = document.strip_prefix(&repo).unwrap_or(&document);
+            let msg = format!("release: {id} {version}\n\n{}", record.trailers());
+            git_out(
+                tools.git,
+                &repo,
+                &[
+                    "commit",
+                    "-q",
+                    "-m",
+                    &msg,
+                    "--",
+                    rel.to_str().unwrap_or_default(),
+                ],
+            )?;
+            let commit = git_out(tools.git, &repo, &["rev-parse", "HEAD"])?;
+            Ok(Built {
+                release,
+                record: Record { commit, ..record },
+            })
+        },
+    );
+    if built.is_err() {
+        write_document(&document, &text)?;
+    }
+    built
+}
+
+fn build_and_check(
+    req: &BuildRequest<'_>,
+    tools: &Tools<'_>,
+    root: &Path,
+    document: &Path,
+    text: &str,
+    id: &str,
+    version: Version,
+) -> Result<(Release, Record)> {
+    let keys = path::absolute(req.keys).map_err(|e| Error(e.to_string()))?;
+    let keys_arg = if req.copy_keys { "--arg" } else { "--argstr" };
+    let out_link = path::absolute(&req.out_link).map_err(|e| Error(e.to_string()))?;
+    let args: Vec<&OsStr> = vec![
+        "--arg".as_ref(),
+        "config".as_ref(),
+        document.as_os_str(),
+        keys_arg.as_ref(),
+        "keys".as_ref(),
+        keys.as_os_str(),
+        "--argstr".as_ref(),
+        "system".as_ref(),
+        req.system.as_ref(),
+        "--out-link".as_ref(),
+        out_link.as_os_str(),
+        "--expr".as_ref(),
+        if req.copy_keys {
+            BUILD_COPY_EXPR
+        } else {
+            BUILD_EXPR
+        }
+        .as_ref(),
+    ];
+    tools
+        .nix_build
+        .in_dir(root)
+        .run(&args, None)
+        .map_err(|e| Error(format!("the build failed: {}", e.0)))?;
+    let release = check(&out_link.join("release"), &keyring(req.keys), tools.gpgv)?;
+    if (release.index.id.as_str(), release.index.version) != (id, version) {
+        return err(format!(
+            "the build made {} {}, not {id} {version}",
+            release.index.id, release.index.version
+        ));
+    }
+    let store_path =
+        fs::canonicalize(&out_link).map_err(|e| Error(format!("{}: {e}", out_link.display())))?;
+    let mut ctx = Context::new(&SHA256);
+    ctx.update(text.as_bytes());
+    let config = format!("sha256:{}", hex(ctx.finish().as_ref()));
+    let record = Record {
+        commit: String::new(),
+        id: id.into(),
+        version,
+        config,
+        digests: release
+            .index
+            .files
+            .clone()
+            .map(|f| format!("sha256:{}", f.digest)),
+        store_path: store_path.to_string_lossy().into_owned(),
+    };
+    Ok((release, record))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1138,6 +1366,9 @@ mod tests {
         let repo = f.tmp.path().join("repo");
         fs::create_dir_all(&repo).unwrap();
         sh(&repo, "git", &["init", "-q", "-b", "main"]);
+        // the build commits with the repository's identity: the package build has no other
+        sh(&repo, "git", &["config", "user.name", "t"]);
+        sh(&repo, "git", &["config", "user.email", "t@t"]);
         sh(
             &repo,
             "git",
@@ -1436,5 +1667,263 @@ mod tests {
         assert_eq!(p("hetzner:"), "hetzner:SHA256SUMS");
         assert_eq!(p("hetzner:updates/web/"), "hetzner:updates/web/SHA256SUMS");
         assert_eq!(p("/srv/www"), "/srv/www/SHA256SUMS");
+    }
+
+    // build: real git, a stand-in iets that links a prepared release of the version it finds
+
+    const DOC: &str = "# the example server\n[\"/system\"]\nname = \"server\"\nversion = \"20261105.1\" # bumped by release build\n\n[\"/services/sshd\"]\nport = 22\n";
+
+    impl Scene {
+        /// The repository as a Golconda checkout with server.toml committed, and an iets that
+        /// builds the releases `outs` holds (out-<version>/release).
+        fn checkout(&self) -> (PathBuf, Program) {
+            fs::create_dir_all(self.repo.join("lib")).unwrap();
+            fs::write(self.repo.join("lib/system.nix"), "{ }").unwrap();
+            fs::write(self.repo.join("server.toml"), DOC).unwrap();
+            sh(&self.repo, "git", &["add", "."]);
+            sh(
+                &self.repo,
+                "git",
+                &[
+                    "-c",
+                    "user.name=t",
+                    "-c",
+                    "user.email=t@t",
+                    "commit",
+                    "-q",
+                    "-m",
+                    "server",
+                ],
+            );
+            let script = self.tmp.path().join("iets");
+            let t = self.tmp.path().display();
+            fs::write(
+                &script,
+                format!(
+                    "#!/bin/sh\necho \"$(pwd) $*\" > {t}/iets.log\nv=$(sed -n 's/^version = \"\\([^\"]*\\)\".*/\\1/p' \"$3\")\n[ -d {t}/out-$v ] || {{ echo \"error: no build for $v\" >&2; exit 1; }}\nln -sfn {t}/out-$v \"${{11}}\"\n"
+                ),
+            )
+            .unwrap();
+            fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+            let iets = Program::from_env("GOLCONDA_TEST_UNSET_IETS", script.to_str().unwrap());
+            (self.repo.join("server.toml"), iets)
+        }
+
+        /// A build output for `version` whose release says `made` (another version, to test
+        /// that build notices)
+        fn out(&self, version: &str, made: &str) {
+            let r = self.release(made, "build");
+            let out = self.tmp.path().join(format!("out-{version}"));
+            fs::create_dir_all(&out).unwrap();
+            symlink(&r.dir, out.join("release")).unwrap();
+        }
+
+        fn build(
+            &self,
+            doc: &Path,
+            iets: &Program,
+            version: Option<&str>,
+            dest: bool,
+        ) -> Result<Built> {
+            let to = self.dest.to_string_lossy().into_owned();
+            let d = Destination {
+                rclone: &self.rclone,
+                to: &to,
+            };
+            let req = BuildRequest {
+                document: doc,
+                system: "x86_64-linux",
+                keys: &self.tmp.path().join("keys"),
+                copy_keys: false,
+                version: version.map(v),
+                dest: dest.then_some(&d),
+                out_link: self.tmp.path().join("result"),
+            };
+            let tools = Tools {
+                nix_build: iets,
+                git: &self.git,
+                gpgv: &self.gpgv,
+            };
+            build(&req, &tools)
+        }
+
+        fn head(&self) -> String {
+            sh(&self.repo, "git", &["log", "-1", "--format=%s"])
+        }
+    }
+
+    fn auto() -> Version {
+        Version::next(Version::today(), &[v("20261105.1")]).unwrap()
+    }
+
+    #[test]
+    fn build_writes_the_version_builds_checks_and_commits_the_record() {
+        let s = scene();
+        let (doc, iets) = s.checkout();
+        let want = auto().to_string();
+        s.out(&want, &want);
+        let b = s.build(&doc, &iets, None, false).unwrap();
+        assert_eq!(b.release.index.version.to_string(), want);
+        // only the version line changed; the comments stay
+        let text = fs::read_to_string(&doc).unwrap();
+        assert_eq!(text, DOC.replace("20261105.1", &want));
+        assert_eq!(s.head(), format!("release: server {want}"));
+        assert_eq!(sh(&s.repo, "git", &["status", "--porcelain"]), "");
+        // the commit's trailers are found again and match the directory
+        let found = records(&s.git, &s.repo, Some("server"), Some(v(&want))).unwrap();
+        assert_eq!(found, vec![b.record.clone()]);
+        assert!(b.record.matches(&b.release.index));
+        assert_eq!(
+            b.record.config,
+            format!(
+                "sha256:{}",
+                hex(ring::digest::digest(&SHA256, text.as_bytes()).as_ref())
+            )
+        );
+        assert_eq!(
+            b.record.store_path,
+            fs::canonicalize(s.tmp.path().join("out-".to_string() + &want))
+                .unwrap()
+                .to_str()
+                .unwrap()
+        );
+        // iets ran in the checkout with the keys as a string and absolute paths
+        let log = fs::read_to_string(s.tmp.path().join("iets.log")).unwrap();
+        let args: Vec<&str> = log.split_whitespace().collect();
+        assert_eq!(
+            args[0],
+            fs::canonicalize(&s.repo).unwrap().to_str().unwrap()
+        );
+        assert_eq!(&args[1..3], &["--arg", "config"]);
+        assert_eq!(
+            &args[4..7],
+            &[
+                "--argstr",
+                "keys",
+                s.tmp.path().join("keys").to_str().unwrap()
+            ]
+        );
+        // and what it built is what publish takes
+        assert!(matches!(
+            s.publish(&b.release, false).unwrap(),
+            Published::Uploaded { record: Some(_) }
+        ));
+    }
+
+    #[test]
+    fn auto_counts_what_the_destination_serves() {
+        let s = scene();
+        let (doc, iets) = s.checkout();
+        let served = Version {
+            revision: 3,
+            ..auto()
+        };
+        let r = s.release(&served.to_string(), "served");
+        s.publish(&r, true).unwrap();
+        let want = Version {
+            revision: 4,
+            ..auto()
+        }
+        .to_string();
+        s.out(&want, &want);
+        assert_eq!(
+            s.build(&doc, &iets, None, true)
+                .unwrap()
+                .release
+                .index
+                .version
+                .to_string(),
+            want
+        );
+    }
+
+    #[test]
+    fn a_version_not_newer_is_refused_before_anything_is_built() {
+        let s = scene();
+        let (doc, iets) = s.checkout();
+        let e = s.build(&doc, &iets, Some("20261105.1"), false).unwrap_err();
+        assert!(e.0.contains("is not newer than 20261105.1"), "{e}");
+        assert_eq!(fs::read_to_string(&doc).unwrap(), DOC);
+        assert!(!s.tmp.path().join("iets.log").exists());
+    }
+
+    #[test]
+    fn a_dirty_tree_is_refused() {
+        let s = scene();
+        let (doc, iets) = s.checkout();
+        fs::write(&doc, DOC.replace("port = 22", "port = 2222")).unwrap();
+        let e = s.build(&doc, &iets, Some("20261106.1"), false).unwrap_err();
+        assert!(
+            e.0.contains("uncommitted changes") && e.0.contains("server.toml"),
+            "{e}"
+        );
+        // an untracked file does not count
+        fs::write(&doc, DOC).unwrap();
+        fs::write(s.repo.join("notes.txt"), "x").unwrap();
+        s.out("20261106.1", "20261106.1");
+        s.build(&doc, &iets, Some("20261106.1"), false).unwrap();
+    }
+
+    #[test]
+    fn a_failed_build_or_check_puts_the_document_back_and_commits_nothing() {
+        let s = scene();
+        let (doc, iets) = s.checkout();
+        let e = s.build(&doc, &iets, Some("20261106.1"), false).unwrap_err();
+        assert!(
+            e.0.contains("the build failed") && e.0.contains("no build for 20261106.1"),
+            "{e}"
+        );
+        assert_eq!(fs::read_to_string(&doc).unwrap(), DOC);
+        assert_eq!(s.head(), "server");
+        // a build whose release is another version
+        s.out("20261106.2", "20261106.3");
+        let e = s.build(&doc, &iets, Some("20261106.2"), false).unwrap_err();
+        assert!(
+            e.0.contains("made server 20261106.3, not server 20261106.2"),
+            "{e}"
+        );
+        assert_eq!(fs::read_to_string(&doc).unwrap(), DOC);
+        // a release the check refuses
+        s.out("20261106.4", "20261106.4");
+        fs::remove_file(s.tmp.path().join("keys/release/index.pgp")).unwrap();
+        let e = s.build(&doc, &iets, Some("20261106.4"), false).unwrap_err();
+        assert!(e.0.contains("no release key"), "{e}");
+        assert_eq!(fs::read_to_string(&doc).unwrap(), DOC);
+        assert_eq!(s.head(), "server");
+        assert_eq!(
+            sh(
+                &s.repo,
+                "git",
+                &["status", "--porcelain", "--untracked-files=no"]
+            ),
+            ""
+        );
+    }
+
+    #[test]
+    fn copy_keys_passes_a_path_that_the_expression_copies() {
+        let s = scene();
+        let (doc, iets) = s.checkout();
+        s.out("20261106.1", "20261106.1");
+        let req = BuildRequest {
+            document: &doc,
+            system: "x86_64-linux",
+            keys: &s.tmp.path().join("keys"),
+            copy_keys: true,
+            version: Some(v("20261106.1")),
+            dest: None,
+            out_link: s.tmp.path().join("result"),
+        };
+        let tools = Tools {
+            nix_build: &iets,
+            git: &s.git,
+            gpgv: &s.gpgv,
+        };
+        build(&req, &tools).unwrap();
+        let log = fs::read_to_string(s.tmp.path().join("iets.log")).unwrap();
+        let args: Vec<&str> = log.split_whitespace().collect();
+        assert_eq!(&args[4..6], &["--arg", "keys"]);
+        assert!(!args.contains(&"--impure"));
+        assert!(log.contains("builtins.path { path = keys;"), "{log}");
     }
 }

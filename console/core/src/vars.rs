@@ -137,6 +137,7 @@ fn var_file(var: &str, file: &str) -> String {
 #[derive(Debug, Clone)]
 pub struct Program {
     argv: Vec<OsString>,
+    dir: Option<PathBuf>,
 }
 
 impl Program {
@@ -150,6 +151,16 @@ impl Program {
             .into_owned();
         Program {
             argv: text.split_whitespace().map(OsString::from).collect(),
+            dir: None,
+        }
+    }
+
+    /// The same program, run in `dir`.
+    #[must_use]
+    pub fn in_dir(&self, dir: &Path) -> Program {
+        Program {
+            dir: Some(dir.to_path_buf()),
+            ..self.clone()
         }
     }
 
@@ -195,8 +206,11 @@ impl Program {
             .ok_or(Error("an empty program".into()))?;
         let name = program.to_string_lossy();
         let spawn = || {
-            Command::new(program)
-                .args(lead)
+            let mut c = Command::new(program);
+            if let Some(d) = &self.dir {
+                c.current_dir(d);
+            }
+            c.args(lead)
                 .args(args)
                 .stdin(if stdin.is_some() {
                     Stdio::piped()
@@ -455,6 +469,7 @@ mod tests {
         fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
         Program {
             argv: vec![p.into_os_string()],
+            dir: None,
         }
     }
 
@@ -609,6 +624,7 @@ esac
         });
         let prog = Program {
             argv: vec![p.clone().into_os_string()],
+            dir: None,
         };
         assert_eq!(prog.run::<&str>(&[], None).unwrap(), b"ran\n");
         closer.join().unwrap();
