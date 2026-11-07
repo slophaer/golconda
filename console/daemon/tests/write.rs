@@ -10,11 +10,13 @@ use golconda_core::candidate::Operator;
 use golconda_core::git::Person;
 use golcondad::app::{App, Identity, Level, Signin, router};
 use golcondad::write::Writes;
+use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 use tempfile::TempDir;
 use tower::ServiceExt;
 
@@ -846,4 +848,58 @@ async fn the_audit_index_is_made_again_at_start() {
         .map(|e| e["action"].as_str().unwrap())
         .collect();
     assert_eq!(actions, ["config.unlock", "config.lock"]);
+}
+
+/// Reads the event stream until `want` is in it (or fails after 5 s).
+async fn until(body: &mut Body, want: &str) -> String {
+    let mut seen = String::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while !seen.contains(want) {
+        let frame = tokio::time::timeout_at(deadline, body.frame())
+            .await
+            .unwrap_or_else(|_| panic!("no {want:?} in:\n{seen}"))
+            .expect("the stream ended")
+            .unwrap();
+        if let Ok(data) = frame.into_data() {
+            seen += &String::from_utf8_lossy(&data);
+        }
+    }
+    seen
+}
+
+async fn stream(app: &axum::Router, page: &str) -> Body {
+    let req = Request::get(format!("/systems/server/events?page={page}"))
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.headers()[header::CONTENT_TYPE], "text/event-stream");
+    res.into_body()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_event_stream_carries_presence_and_the_lock() {
+    let s = small_scene();
+    let alice = app_as(&s, "Alice");
+    let mut watch = stream(&alice, "/systems/server/changes").await;
+    let first = until(&mut watch, "event: presence").await;
+    assert!(
+        first.contains(r#"{"name":"Alice","page":"/systems/server/changes"}"#),
+        "{first}"
+    );
+    // a second page of the same person, then gone again
+    let other = stream(&alice, "/systems/server/config").await;
+    until(&mut watch, r#""page":"/systems/server/config""#).await;
+    drop(other);
+    let left = until(&mut watch, "event: presence").await;
+    assert!(
+        !left
+            .rsplit("event: presence")
+            .next()
+            .unwrap()
+            .contains("/config"),
+        "{left}"
+    );
+    post(&alice, "/systems/server/lock", json!({ "minutes": 5 })).await;
+    let lock = until(&mut watch, "event: lock").await;
+    assert!(lock.contains(r#""name":"Alice""#), "{lock}");
 }

@@ -12,6 +12,7 @@ use golconda_core::vars::Program;
 use golcondad::app::{App, Identity, Level, Signin, router};
 use golcondad::jobs::{JobConfig, Runner};
 use golcondad::write::Writes;
+use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -459,4 +460,31 @@ async fn jobs_are_refused_to_readers_and_for_what_is_not_there() {
         assert_eq!(st, StatusCode::BAD_REQUEST, "{v}");
         assert!(v["error"].as_str().unwrap().contains(want), "{v}");
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_jobs_lines_and_end_go_to_the_systems_stream() {
+    let s = scene("20261106.1");
+    let app = s.app(alice(), false);
+    let req = Request::get("/systems/server/events?page=/jobs/1")
+        .header(header::HOST, "127.0.0.1")
+        .body(Body::empty())
+        .unwrap();
+    let mut body = app.clone().oneshot(req).await.unwrap().into_body();
+    fs::write(s.m.join("available"), "20261106.1").unwrap();
+    job(&app, "update", Some("web1")).await;
+    let mut seen = String::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while !seen.contains(r#""state":"ok""#) {
+        let frame = tokio::time::timeout_at(deadline, body.frame())
+            .await
+            .unwrap_or_else(|_| panic!("no job end in:\n{seen}"))
+            .unwrap()
+            .unwrap();
+        if let Ok(d) = frame.into_data() {
+            seen += &String::from_utf8_lossy(&d);
+        }
+    }
+    assert!(seen.contains("event: job"), "{seen}");
+    assert!(seen.contains("Successfully installed update"), "{seen}");
 }

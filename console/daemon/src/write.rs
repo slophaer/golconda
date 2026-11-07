@@ -340,7 +340,10 @@ pub fn operation(
         o
     };
     match done {
-        Ok(op) => Outcome::Done(op.to_json()),
+        Ok(op) => {
+            app.events.send(system, "rev", op.to_json());
+            Outcome::Done(op.to_json())
+        }
         Err(Refused::Conflict(theirs)) => refusal(Outcome::Conflict {
             yours: json!({ "target": target, "value": after }),
             theirs,
@@ -406,6 +409,7 @@ pub fn lock(
         let _ = journal.unlock(system, &by);
         return Outcome::Failed(format!("not recorded, so not locked: {err}"));
     }
+    app.events.send(system, "lock", l.to_json());
     Outcome::Done(json!({ "lock": l.to_json() }))
 }
 
@@ -432,7 +436,10 @@ pub fn unlock(app: &App, w: &Writes, who: &Identity, via: &str, system: &str) ->
         return Outcome::Failed(format!("not recorded, so not unlocked: {err}"));
     }
     match journal.unlock(system, &operator(who)) {
-        Ok(true) => Outcome::Done(json!({ "unlocked": true })),
+        Ok(true) => {
+            app.events.send(system, "lock", Value::Null);
+            Outcome::Done(json!({ "unlocked": true }))
+        }
         Ok(false) => Outcome::Bad("there is no lock".into()),
         Err(e) => Outcome::Failed(e.to_string()),
     }
@@ -468,7 +475,10 @@ pub fn break_lock(
         return Outcome::Failed(format!("not recorded, so not broken: {err}"));
     }
     match journal.break_lock(system) {
-        Ok(_) => Outcome::Done(json!({ "broken": held.to_json() })),
+        Ok(_) => {
+            app.events.send(system, "lock", Value::Null);
+            Outcome::Done(json!({ "broken": held.to_json() }))
+        }
         Err(e) => Outcome::Failed(e.to_string()),
     }
 }
@@ -573,11 +583,14 @@ pub fn commit(
         })
     });
     match done {
-        Ok(c) => Outcome::Done(json!({
-            "commit": c.id, "pushed": c.pushed,
-            "ops": c.ops.iter().map(Op::to_json).collect::<Vec<_>>(),
-            "outside": c.outside.iter().map(Op::to_json).collect::<Vec<_>>(),
-        })),
+        Ok(c) => {
+            app.events.send(
+                system,
+                "rev",
+                json!({ "commit": c.id, "by": { "name": who.name }, "ops": c.ops.len() }),
+            );
+            commit_done(&c)
+        }
         Err(commit::Error::Conflict { outside, yours }) => {
             record_outside(w, system, &outside);
             let _ = w.record(&Entry {
@@ -590,11 +603,26 @@ pub fn commit(
                 theirs: outside,
             }
         }
-        Err(commit::Error::Nothing) => Outcome::Bad("nothing to commit".into()),
-        Err(commit::Error::Invalid(e)) => {
+        Err(other) => commit_failed(w, system, &by, via, other),
+    }
+}
+
+fn commit_done(c: &commit::Committed) -> Outcome {
+    Outcome::Done(json!({
+        "commit": c.id, "pushed": c.pushed,
+        "ops": c.ops.iter().map(Op::to_json).collect::<Vec<_>>(),
+        "outside": c.outside.iter().map(Op::to_json).collect::<Vec<_>>(),
+    }))
+}
+
+/// A commit that did not happen, other than by a conflict: refused (and an audit entry) or failed.
+fn commit_failed(w: &Writes, system: &str, by: &Operator, via: &str, e: commit::Error) -> Outcome {
+    match e {
+        commit::Error::Nothing => Outcome::Bad("nothing to commit".into()),
+        commit::Error::Invalid(e) => {
             let _ = w.record(&Entry {
                 system: Some(system.into()),
-                ..Entry::new(&by, via, "config.commit", "refused")
+                ..Entry::new(by, via, "config.commit", "refused")
             });
             Outcome::Invalid(vec![Problem {
                 line: None,
@@ -602,7 +630,7 @@ pub fn commit(
                 message: e,
             }])
         }
-        Err(e) => Outcome::Failed(e.to_string()),
+        e => Outcome::Failed(e.to_string()),
     }
 }
 
@@ -633,6 +661,11 @@ pub fn discard(app: &App, w: &Writes, who: &Identity, via: &str, system: &str) -
     }
     match journal.discard(system) {
         Ok(ops) => {
+            app.events.send(
+                system,
+                "rev",
+                json!({ "discarded": ops.len(), "by": { "name": who.name } }),
+            );
             Outcome::Done(json!({ "discarded": ops.iter().map(Op::to_json).collect::<Vec<_>>() }))
         }
         Err(e) => Outcome::Failed(e.to_string()),

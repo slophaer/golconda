@@ -81,3 +81,4 @@ table.audit td{font-size:12.5px}table.audit small{color:var(--mute)}
 form.inline{display:inline-block;margin:0 4px 4px 0}
 pre.log{font:12px/1.5 var(--mono);background:var(--paper);border:1px solid var(--line);border-radius:4px;padding:10px 12px;overflow-x:auto;white-space:pre-wrap}
 pre.log span.m{color:var(--mute)}
+#presence{font-size:12px;color:var(--mute);margin-left:10px}

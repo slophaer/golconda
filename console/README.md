@@ -188,6 +188,18 @@ first, filtered by operator, system, action and day; as JSON with `Accept: appli
 reads from an index (`STATE/audit-index.db`) that the daemon makes from the repository at every
 start and adds each entry to; the repository is the record, the index can be thrown away.
 
+## Live updates
+
+Every page loads one optional script, `/assets/live.js` (under 10 KB, no framework, `defer`); the
+pages work the same without it. It listens to the system's Server-Sent Events,
+`/systems/NAME/events?page=PATH`: `rev` (an operation, a commit, a discard), `lock`, `job` (each
+output line, and the end) and `presence` (who has which page of the system open, from the open
+streams). With it a notice says who changed what; the Changes and configuration pages show the
+change in place, unless someone is typing in a form there; the strip names who else is on the
+system; a job's page appends its lines as they come instead of reloading every three seconds; and
+forms are sent without a full reload. The content security policy stays: the script is the daemon's
+own file, nothing is inline.
+
 ## Machines and jobs
 
 `machines.toml` beside a system's document names its machines and its update source:
