@@ -89,6 +89,8 @@ pub struct Model {
     pub machines: Vec<Value>,
     pub machine_at: usize,
     pub packages: Vec<Value>,
+    /// why OSV could not be asked about the packages, if so
+    pub packages_error: Option<String>,
     pub package_at: usize,
     pub changes: Vec<Value>,
     pub jobs: Vec<Value>,
@@ -131,6 +133,7 @@ impl Model {
             machines: Vec::new(),
             machine_at: 0,
             packages: Vec::new(),
+            packages_error: None,
             package_at: 0,
             changes: Vec::new(),
             jobs: Vec::new(),
@@ -172,9 +175,10 @@ impl Model {
                 step(&mut self.machine_at, self.machines.len(), false);
             }),
             Screen::Config => self.load_config(src),
-            Screen::Packages => src
-                .get(&self.path("packages"))
-                .map(|v| self.packages = list(&v)),
+            Screen::Packages => src.get(&self.path("packages")).map(|v| {
+                self.packages = list(&v["packages"]);
+                self.packages_error = v["advisories"]["error"].as_str().map(str::to_string);
+            }),
             Screen::Changes => src
                 .get(&self.path("changes"))
                 .map(|v| self.changes = list(&v["changes"])),

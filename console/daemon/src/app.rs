@@ -14,9 +14,11 @@ use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use futures_util::stream;
+use golconda_core::advisories::{Advisories, Advisory, Report};
 use golconda_core::diff::{Change, against_git};
 use golconda_core::document::parse_path;
 use golconda_core::eval::Iets;
+use golconda_core::packages::Package;
 use golconda_core::system::{Explanation, System};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -80,6 +82,8 @@ pub struct App {
     pub iets: Iets,
     /// the Nix system to evaluate for
     pub platform: String,
+    /// the vulnerabilities OSV knows of the packages; none: the daemon does not ask
+    pub advisories: Option<Advisories>,
 }
 
 impl App {
@@ -99,7 +103,15 @@ impl App {
             read_only,
             iets: Iets::from_env(),
             platform: format!("{}-linux", consts::ARCH),
+            advisories: None,
         }
+    }
+
+    /// This daemon asks OSV for the packages' vulnerabilities.
+    #[must_use]
+    pub fn with_advisories(mut self, advisories: Advisories) -> Self {
+        self.advisories = Some(advisories);
+        self
     }
 
     /// This daemon writes, with the journal and audit log in `writes`.
@@ -1126,30 +1138,56 @@ async fn bom_of(
         })
 }
 
+/// The Packages route's JSON: the packages in the order shown, each with its advisories
+/// (`null`: not asked about), and what the check as a whole came to (`null`: no check).
+fn packages_json(order: &[&Package], report: Option<&Report>) -> Value {
+    let shown: Vec<Value> = order
+        .iter()
+        .map(|pkg| {
+            let mut json = pkg.to_json();
+            json["advisories"] = report.and_then(|r| r.of(pkg)).map_or(Value::Null, |found| {
+                Value::Array(found.iter().map(Advisory::to_json).collect())
+            });
+            json
+        })
+        .collect();
+    let status = report.map(|r| serde_json::json!({ "checkedAt": r.checked_at, "error": r.error }));
+    serde_json::json!({ "packages": shown, "advisories": status })
+}
+
 async fn packages(
     State(app): State<Shared>,
     Extension(who): Extension<Identity>,
     Path(name): Path<String>,
-    h: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+    headers: HeaderMap,
 ) -> Response {
-    let json = wants_json(&h);
-    let p = match bom_of(&app, &name, json).await {
-        Ok(p) => p,
-        Err(r) => return *r,
+    let json = wants_json(&headers);
+    let bom = match bom_of(&app, &name, json).await {
+        Ok(bom) => bom,
+        Err(refused) => return *refused,
     };
+    // OSV is asked off the async threads, and only when an answer is missing or old
+    let (asker, list) = (app.clone(), bom.list.clone());
+    let report =
+        tokio::task::spawn_blocking(move || asker.advisories.as_ref().map(|osv| osv.check(&list)))
+            .await
+            .expect("advisories thread");
+    let unchecked = Report::default();
+    let order = report.as_ref().unwrap_or(&unchecked).order(&bom.list);
     if json {
-        let v: Vec<Value> = p
-            .list
-            .iter()
-            .map(golconda_core::packages::Package::to_json)
-            .collect();
-        return axum::Json(Value::Array(v)).into_response();
+        return axum::Json(packages_json(&order, report.as_ref())).into_response();
     }
     let sys = match load(&app, &name, false).await {
-        Ok(s) => s,
-        Err(r) => return *r,
+        Ok(sys) => sys,
+        Err(refused) => return *refused,
     };
-    pages::packages(&app, &who, &name, &sys, &p.list).into_response()
+    let view = pages::PackagesView {
+        list: &order,
+        report: report.as_ref(),
+        only_vulnerable: params.get("show").is_some_and(|s| s == "vulnerable"),
+    };
+    pages::packages(&app, &who, &name, &sys, &view).into_response()
 }
 
 /// The CycloneDX document itself.

@@ -1,6 +1,7 @@
 //! `golcondad`: the console daemon.
 
 use clap::Parser;
+use golconda_core::advisories::{self, Advisories};
 use golconda_core::machine::Patience;
 use golconda_core::vars::Program;
 use golcondad::app::{App, Identity, Level, Signin};
@@ -84,6 +85,15 @@ pub struct Args {
     /// store, which sees no path outside it
     #[arg(long, requires = "release_keys")]
     release_copy_keys: bool,
+    /// The OSV server the packages' known vulnerabilities come from
+    #[arg(long, value_name = "URL", default_value = advisories::OSV_URL)]
+    osv_url: String,
+    /// How long an OSV answer is kept before the package is asked about again, in seconds
+    #[arg(long, value_name = "SECONDS", default_value_t = advisories::LIFETIME.as_secs())]
+    osv_every: u64,
+    /// Never ask OSV (the Packages page then shows no vulnerabilities)
+    #[arg(long, conflicts_with = "osv_url")]
+    no_osv: bool,
     /// How long a job waits for a machine to come back blessed after a reboot, in seconds
     #[arg(long, value_name = "SECONDS", default_value_t = 900)]
     confirm_timeout: u64,
@@ -202,6 +212,17 @@ fn job_config(a: &Args) -> JobConfig {
     }
 }
 
+/// OSV, unless `--no-osv`; with `--state` its answers are kept in `STATE/advisories.json`.
+fn advisories(a: &Args) -> Option<Advisories> {
+    (!a.no_osv).then(|| {
+        Advisories::open(
+            &a.osv_url,
+            a.state.as_ref().map(|s| s.join("advisories.json")),
+            time::Duration::from_secs(a.osv_every),
+        )
+    })
+}
+
 /// Changes made elsewhere: fetched on a timer (and before every commit), when the checkouts
 /// have a remote.
 fn fetch_on_a_timer(app: &sync::Arc<App>, fetch_every: u64) {
@@ -267,7 +288,11 @@ async fn main() -> ExitCode {
         },
     );
     let jobs = job_config(&a);
+    let osv = advisories(&a);
     let mut app = App::new(a.systems, signin, a.read_only);
+    if let Some(osv) = osv {
+        app = app.with_advisories(osv);
+    }
     if let Some(state) = &a.state {
         let host = fs::read_to_string("/proc/sys/kernel/hostname")
             .map_or_else(|_| "localhost".into(), |h| h.trim().to_string());
@@ -366,6 +391,29 @@ mod tests {
         assert!(a.signing_key.as_ref().unwrap().is_absolute());
         assert!(a.state.as_ref().unwrap().is_absolute());
         assert!(a.signing_key.unwrap().ends_with("key"));
+    }
+
+    #[test]
+    fn osv_is_asked_every_six_hours_unless_told_not_to() {
+        let (a, _) = args("--system s=x --dev-identity a:operator").unwrap();
+        assert_eq!(a.osv_url, "https://api.osv.dev");
+        assert_eq!(a.osv_every, 21600);
+        assert!(!a.no_osv);
+        let (a, _) = args(
+            "--system s=x --dev-identity a:operator --osv-url http://127.0.0.1:9 --osv-every 60",
+        )
+        .unwrap();
+        assert_eq!(
+            (a.osv_url.as_str(), a.osv_every),
+            ("http://127.0.0.1:9", 60)
+        );
+        let (a, _) = args("--system s=x --dev-identity a:operator --no-osv").unwrap();
+        assert!(a.no_osv);
+        assert!(
+            args("--system s=x --dev-identity a:operator --no-osv --osv-url http://x")
+                .unwrap_err()
+                .contains("cannot be used with")
+        );
     }
 
     #[test]
