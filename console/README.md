@@ -9,9 +9,11 @@ Rust, built with repkgs' toolchain like every Golconda package (`console/package
   `moduleDocs`; it finds options in the schema and in the TOML document.
 - `core/src/vars.rs`: admin vars from the deploy host: the age-encrypted store, the machine's
   manifests over ssh, the push.
+- `core/src/release.rs`: release directories (docs/design/releases.md): the version grammar, the
+  index and its signature.
 - `cli/`: the `golconda` binary.
-- `daemon/`: `golcondad`, the daemon. This first part shows each system's configuration and its
-  changes against git as web pages and JSON, and changes nothing.
+- `daemon/`: `golcondad`, the daemon: each system's configuration as web pages and JSON, a shared
+  candidate, signed commits and an audit log.
 
 ## Use
 
@@ -171,10 +173,27 @@ golconda audit verify --repo audit --allowed-signers allowed_signers
 `allowed_signers` names the daemon's key (or its CA, `cert-authority`) in git's format. Every commit
 must be signed by it, add exactly one entry and remove nothing.
 
+## Releases
+
+A build writes a release directory (`release/`): four files, the index `SHA256SUMS` and its
+signature `SHA256SUMS.gpg` ([Releases](../docs/design/releases.md)). Check one before serving it:
+
+```sh
+golconda release check result/release --keys /srv/golconda-keys
+```
+
+It refuses an index without exactly the four lines in their fixed order (usr, verity, signature,
+UKI), a digest that does not match its file, names that do not share one image id and one version
+(`YYYYMMDD.N`, the grammar of `lib/version.nix`), UUIDs in the names that are not the halves of the
+root hash the verity signature names, and a signature that `gpgv` does not accept from the key set's
+`release/index.pgp`, the key the machines carry. `--json` prints the id, version, root hash and
+files.
+
 ## Develop
 
 cargo, rustc and the C linker come from repkgs (`pkgs.rust` and the set's `toolchain`), so they need
-a build host for repkgs (docs/reference/build-host.md). With them and iets on PATH:
+a build host for repkgs (docs/reference/build-host.md). The tests also run git, ssh-keygen and gpg.
+With them and iets on PATH:
 
 ```sh
 cd console

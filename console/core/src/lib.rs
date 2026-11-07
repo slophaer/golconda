@@ -12,6 +12,7 @@ pub mod diff;
 pub mod document;
 pub mod eval;
 pub mod git;
+pub mod release;
 pub mod schema;
 pub mod system;
 pub mod validate;

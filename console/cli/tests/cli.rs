@@ -7,6 +7,7 @@
 use golconda_core::audit::{Audit, Entry};
 use golconda_core::candidate::Operator;
 use golconda_core::git::{Git, Person};
+use golconda_core::release;
 use std::env;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -893,5 +894,102 @@ fn candidate_commit_and_discard_need_a_server() {
         Some(2),
         "{}",
         String::from_utf8_lossy(&o.stderr)
+    );
+}
+
+/// A release directory of `server` 20261105.1, and a gpgv that accepts or refuses every
+/// signature.
+fn release_fixture(gpgv_ok: bool) -> (TempDir, PathBuf) {
+    let tmp = TempDir::new().unwrap();
+    let dir = tmp.path().join("release");
+    fs::create_dir_all(tmp.path().join("keys/release")).unwrap();
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(tmp.path().join("keys/release/index.pgp"), "key").unwrap();
+    let root = "ab".repeat(32);
+    let uuid = |h: &str| {
+        format!(
+            "{}-{}-{}-{}-{}",
+            &h[..8],
+            &h[8..12],
+            &h[12..16],
+            &h[16..20],
+            &h[20..32]
+        )
+    };
+    let stem = "server_20261105.1";
+    let files = [
+        (
+            format!("{stem}.usr.{}.raw", uuid(&root[..32])),
+            "usr".to_string(),
+        ),
+        (
+            format!("{stem}.usr-verity.{}.raw", uuid(&root[32..])),
+            "verity".into(),
+        ),
+        (
+            format!("{stem}.usr-verity-sig.raw"),
+            format!(r#"{{"rootHash":"{root}"}}"#),
+        ),
+        (format!("{stem}.efi"), "uki".into()),
+    ];
+    let mut index = String::new();
+    for (name, body) in &files {
+        fs::write(dir.join(name), body).unwrap();
+        let digest = release::sha256(&dir.join(name)).unwrap();
+        index += &format!("{digest}  {name}\n");
+    }
+    fs::write(dir.join("SHA256SUMS"), index).unwrap();
+    fs::write(dir.join("SHA256SUMS.gpg"), "sig").unwrap();
+    let gpgv = tmp.path().join("gpgv");
+    fs::write(
+        &gpgv,
+        if gpgv_ok {
+            "#!/bin/sh\nexit 0\n"
+        } else {
+            "#!/bin/sh\necho 'BAD signature' >&2\nexit 1\n"
+        },
+    )
+    .unwrap();
+    fs::set_permissions(&gpgv, fs::Permissions::from_mode(0o755)).unwrap();
+    (tmp, gpgv)
+}
+
+fn release_check(tmp: &TempDir, gpgv: &PathBuf, json: bool) -> Output {
+    let mut c = Command::new(env!("CARGO_BIN_EXE_golconda"));
+    c.env("GOLCONDA_GPGV", gpgv)
+        .args(["release", "check"])
+        .arg(tmp.path().join("release"))
+        .arg("--keys")
+        .arg(tmp.path().join("keys"));
+    if json {
+        c.arg("--json");
+    }
+    c.output().unwrap()
+}
+
+#[test]
+fn release_check_says_what_it_checked() {
+    let (tmp, gpgv) = release_fixture(true);
+    let out = stdout(&release_check(&tmp, &gpgv, false));
+    assert_eq!(
+        out,
+        "server 20261105.1: 4 files match SHA256SUMS, signed by the release key\n"
+    );
+    let v: serde_json::Value =
+        serde_json::from_str(&stdout(&release_check(&tmp, &gpgv, true))).unwrap();
+    assert_eq!(v["version"], "20261105.1");
+    assert_eq!(v["files"].as_array().unwrap().len(), 4);
+    assert_eq!(v["rootHash"], "ab".repeat(32));
+}
+
+#[test]
+fn release_check_refuses_a_signature_the_release_key_did_not_make() {
+    let (tmp, gpgv) = release_fixture(false);
+    let o = release_check(&tmp, &gpgv, false);
+    assert_eq!(o.status.code(), Some(1));
+    let e = String::from_utf8_lossy(&o.stderr);
+    assert!(
+        e.contains("not a signature by the release key") && e.contains("BAD signature"),
+        "{e}"
     );
 }

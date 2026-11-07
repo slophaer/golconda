@@ -8,6 +8,7 @@ use golconda_core::diff::{Change, against_git, diff};
 use golconda_core::document::{self, parse_path, parse_value};
 use golconda_core::eval::Iets;
 use golconda_core::git::{Git, Person};
+use golconda_core::release;
 use golconda_core::system::System;
 use golconda_core::vars::{self, Program, Remote, Store};
 use std::env::{self, consts};
@@ -21,8 +22,8 @@ use std::process::ExitCode;
 /// OPTION is a TOML dotted key below the module (networks.lan.network.DNS, networks."lan.1").
 /// VALUE is TOML (22, "22", [1, 2], { a = 1 }); text that is not TOML is a string; a value
 /// that starts with a dash and is not a number goes after `--`. set and delete write only
-/// when the result passes the schema and evaluates; comments and layout stay. iets, ssh and
-/// age come from PATH, or GOLCONDA_IETS, GOLCONDA_SSH, GOLCONDA_AGE ("ssh -p 2222", rage).
+/// when the result passes the schema and evaluates; comments and layout stay. iets, ssh,
+/// age and gpgv come from PATH, or GOLCONDA_<NAME> (GOLCONDA_SSH="ssh -p 2222").
 #[derive(Parser)]
 #[command(version, verbatim_doc_comment)]
 struct Cli {
@@ -64,6 +65,26 @@ enum Command {
     /// The audit log: a git repository with one signed entry per commit
     #[command(subcommand)]
     Audit(Audit),
+    /// Releases: the directory a build writes, which machines install from
+    #[command(subcommand)]
+    Release(Releases),
+}
+
+#[derive(Subcommand)]
+enum Releases {
+    /// Check a release directory: SHA256SUMS has the four files in their fixed order with
+    /// matching digests, the names carry one image id and version and the root hash's UUIDs,
+    /// and SHA256SUMS.gpg is a signature by the key set's release key
+    Check {
+        /// The release directory (a build's release/)
+        dir: PathBuf,
+        /// The key set (scripts/make-keys): its release/index.pgp is the key machines trust
+        #[arg(long, value_name = "DIR")]
+        keys: PathBuf,
+        /// JSON instead of text
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -259,6 +280,52 @@ fn verify_audit(repo: PathBuf, allowed_signers: &Path) -> Result<String, Box<dyn
     Ok(format!("{n} entries, each one signed line\n"))
 }
 
+/// candidate, commit and discard without --server: a usage error, there is no candidate
+fn needs_server(c: &Config) -> ! {
+    let name = match c {
+        Config::Candidate => "candidate",
+        Config::Commit { .. } => "commit",
+        _ => "discard",
+    };
+    Cli::command()
+        .error(
+            clap::error::ErrorKind::MissingRequiredArgument,
+            format!("config {name} works on a daemon's candidate: give --server"),
+        )
+        .exit()
+}
+
+fn run_release(command: Releases) -> Result<String, Box<dyn error::Error>> {
+    let gpgv = Program::from_env("GOLCONDA_GPGV", "gpgv");
+    match command {
+        Releases::Check { dir, keys, json } => {
+            let r = release::check(&dir, &release::keyring(&keys), &gpgv)?;
+            let i = &r.index;
+            Ok(if json {
+                let files: Vec<_> = i
+                    .files
+                    .iter()
+                    .map(|f| serde_json::json!({ "name": f.name, "sha256": f.digest }))
+                    .collect();
+                format!(
+                    "{:#}\n",
+                    serde_json::json!({
+                        "id": i.id,
+                        "version": i.version.to_string(),
+                        "rootHash": r.root_hash,
+                        "files": files,
+                    })
+                )
+            } else {
+                format!(
+                    "{} {}: 4 files match SHA256SUMS, signed by the release key\n",
+                    i.id, i.version
+                )
+            })
+        }
+    }
+}
+
 fn run(command: Command) -> Result<String, Box<dyn error::Error>> {
     let iets = Iets::from_env();
     let config = match command {
@@ -269,20 +336,11 @@ fn run(command: Command) -> Result<String, Box<dyn error::Error>> {
             rev,
         } => return run_diff(&iets, &doc, json, from, &rev),
         Command::Config(c @ (Config::Candidate | Config::Commit { .. } | Config::Discard)) => {
-            let name = match c {
-                Config::Candidate => "candidate",
-                Config::Commit { .. } => "commit",
-                _ => "discard",
-            };
-            Cli::command()
-                .error(
-                    clap::error::ErrorKind::MissingRequiredArgument,
-                    format!("config {name} works on a daemon's candidate: give --server"),
-                )
-                .exit()
+            needs_server(&c)
         }
         Command::Config(c) => c,
         Command::Vars(v) => return run_vars(v),
+        Command::Release(r) => return run_release(r),
         Command::Audit(Audit::Verify {
             repo,
             allowed_signers,
