@@ -68,6 +68,7 @@
   ast-grep = ./ast-grep;
   tree-sitter-nu = ./tree-sitter-nu;
   mdbook = ./mdbook;
+  mdbook-pele = ./mdbook-pele;
   # Hetzner Cloud's command line, for the Hetzner run (docs/reference/hetzner-cloud.md)
   hcloud = ./hcloud;
   # the Markdown formatter and the Python libraries it needs

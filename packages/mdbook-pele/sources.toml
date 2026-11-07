@@ -1,0 +1,11 @@
+# pele, the Mermaid renderer (npm); the preprocessor script is ours (mdbook-pele.mjs)
+[upstream]
+purl = "pkg:npm/pele"
+
+[[source]]
+key = "default"
+url = "https://registry.npmjs.org/pele/-/pele-{version}.tgz"
+hash = "sha256-FQw0Qzo1LR7xv/743uXpXH0xTmwrxrflRNRkPFfnSRQ="
+
+[pin]
+version = "1.12.0"
