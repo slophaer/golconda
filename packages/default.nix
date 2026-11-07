@@ -59,4 +59,6 @@
   rclone = ./rclone;
   # an S3-compatible store: the release tool's tests publish to it through rclone
   garage = ./garage;
+  # development tools (nix/dev, nix/checks.nix), in place of the dev-only nixpkgs pin
+  nixfmt-rs = ./nixfmt-rs;
 }
