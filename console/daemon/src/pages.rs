@@ -4,7 +4,7 @@
 use crate::app::{App, Identity, Level, Signin};
 use crate::locked;
 use axum::http::StatusCode;
-use golconda_core::candidate::Op;
+use golconda_core::candidate::{Lock, Op};
 use golconda_core::diff::Change;
 use golconda_core::document::{option_name, toml_text};
 use golconda_core::jobs::State;
@@ -49,6 +49,9 @@ fn layout(
                     div.strip {
                         span.host { (system.map_or("golconda", |(n, _)| n)) }
                         @if let Some(v) = version { span.pill.p-grey { "image " (v) } }
+                        @if let Some(l) = system.and_then(|(n, _)| lock_of(app, n)) {
+                            span.pill.p-amber { "locked by " (l.by.name) " until " (l.until_text()) }
+                        }
                         span.cr {
                             @if app.read_only || who.level == Level::ReadOnly {
                                 span.pill.p-amber { "read-only" }
@@ -86,6 +89,52 @@ fn layout(
                         }
                         main.main { (main) }
                     }
+                }
+            }
+        }
+    }
+}
+
+/// The system's lock, while it lasts.
+fn lock_of(app: &App, name: &str) -> Option<Lock> {
+    let w = app.writes.as_ref()?;
+    locked(&w.journal).lock_of(name).ok()?
+}
+
+/// The Changes page's lock section: who holds it, and the forms to take, give up or break it.
+fn lock_box(app: &App, who: &Identity, name: &str, ev: &EditView) -> Markup {
+    let back = format!("/systems/{name}/changes");
+    let lock = lock_of(app, name);
+    html! {
+        h3 { "Lock" }
+        @match &lock {
+            None => {
+                p { "Nobody holds the lock: everyone may change the candidate." }
+                form.inline method="post" action={ "/systems/" (name) "/lock" } {
+                    input type="hidden" name="csrf" value=(ev.csrf);
+                    input type="hidden" name="return" value=(back);
+                    select name="minutes" {
+                        @for m in [15, 30, 60, 120, 240] { option value=(m) selected[m == 30] { (m) " minutes" } }
+                    }
+                    " " button.btn type="submit" { "Lock" }
+                }
+            }
+            Some(l) if l.by.id == who.id => {
+                p { "You hold the lock since " (l.since) " until " (l.until_text()) ": only you change the candidate." }
+                form.inline method="post" action={ "/systems/" (name) "/unlock" } {
+                    input type="hidden" name="csrf" value=(ev.csrf);
+                    input type="hidden" name="return" value=(back);
+                    button.btn type="submit" { "Unlock" }
+                }
+            }
+            Some(l) => {
+                p { (l.by.name) " holds the lock since " (l.since) " until " (l.until_text()) ": only they change the candidate." }
+                form.field method="post" action={ "/systems/" (name) "/lock/break" } {
+                    input type="hidden" name="csrf" value=(ev.csrf);
+                    input type="hidden" name="return" value=(back);
+                    label { "Why break it (the audit log keeps it)" }
+                    input type="text" name="reason" required;
+                    div.row { button.btn type="submit" { "Break the lock" } }
                 }
             }
         }
@@ -614,6 +663,7 @@ pub fn changes(
                 }
             }
         }
+        @if let (Some(ev), Some(_)) = (edit, ops) { (lock_box(app, who, name, ev)) }
         @if let (Some(ev), Some(ops)) = (edit, ops) {
             @if !ops.is_empty() {
                 form.field method="post" action={ "/systems/" (name) "/commit" } {

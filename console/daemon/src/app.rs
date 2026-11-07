@@ -131,6 +131,9 @@ pub fn router_shared(app: Arc<App>) -> Router {
         .route("/systems/{name}/ops", post(write_op))
         .route("/systems/{name}/commit", post(write_commit))
         .route("/systems/{name}/discard", post(write_discard))
+        .route("/systems/{name}/lock", post(write_lock))
+        .route("/systems/{name}/unlock", post(write_unlock))
+        .route("/systems/{name}/lock/break", post(write_break_lock))
         .route("/systems/{name}/machines", get(machines))
         .route("/systems/{name}/packages", get(packages))
         .route("/systems/{name}/sbom.json", get(sbom))
@@ -585,6 +588,10 @@ fn outcome(o: write::Outcome) -> Response {
                 "line": p.line, "path": p.path, "message": p.message })).collect::<Vec<_>>() }),
         ),
         Outcome::Bad(m) => (StatusCode::BAD_REQUEST, serde_json::json!({ "error": m })),
+        Outcome::Locked(l) => (
+            StatusCode::LOCKED,
+            serde_json::json!({ "error": "locked", "lock": l }),
+        ),
         Outcome::Failed(m) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             serde_json::json!({ "error": m }),
@@ -646,6 +653,15 @@ fn form_outcome(
         }
         Outcome::Denied(m) => problem(false, StatusCode::FORBIDDEN, &m),
         Outcome::Bad(m) => problem(false, StatusCode::BAD_REQUEST, &m),
+        Outcome::Locked(l) => problem(
+            false,
+            StatusCode::LOCKED,
+            &format!(
+                "{} holds the lock on this system until {}: ask them, or break it with a reason on the Changes page",
+                l["by"]["name"].as_str().unwrap_or("someone"),
+                l["until"].as_str().unwrap_or("?")
+            ),
+        ),
         Outcome::Failed(m) => problem(false, StatusCode::INTERNAL_SERVER_ERROR, &m),
     }
 }
@@ -1095,4 +1111,74 @@ async fn sbom(State(app): State<Shared>, Path(name): Path<String>) -> Response {
         Ok(p) => axum::Json(p.bom).into_response(),
         Err(r) => *r,
     }
+}
+
+/// Take or extend the lock: { minutes } (30 without).
+async fn write_lock(
+    State(app): State<Shared>,
+    Extension(who): Extension<Identity>,
+    Extension(csrf): Extension<Csrf>,
+    Path(name): Path<String>,
+    h: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    let (asked, form) = match write_body(&h, &body, &who, &csrf) {
+        Ok(x) => x,
+        Err(refused) => return refused,
+    };
+    let minutes = match &asked["minutes"] {
+        Value::Number(n) => n.as_u64(),
+        Value::String(t) => t.parse().ok(),
+        _ => Some(30),
+    }
+    .unwrap_or(30)
+    .clamp(1, 24 * 60);
+    let via = via(&h);
+    let system = name.clone();
+    write(app, name, form, move |app, w, _| {
+        write::lock(app, w, &who, via, &system, minutes)
+    })
+    .await
+}
+
+async fn write_unlock(
+    State(app): State<Shared>,
+    Extension(who): Extension<Identity>,
+    Extension(csrf): Extension<Csrf>,
+    Path(name): Path<String>,
+    h: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    let (_, form) = match write_body(&h, &body, &who, &csrf) {
+        Ok(x) => x,
+        Err(refused) => return refused,
+    };
+    let via = via(&h);
+    let system = name.clone();
+    write(app, name, form, move |app, w, _| {
+        write::unlock(app, w, &who, via, &system)
+    })
+    .await
+}
+
+/// Break whoever's lock: { reason }.
+async fn write_break_lock(
+    State(app): State<Shared>,
+    Extension(who): Extension<Identity>,
+    Extension(csrf): Extension<Csrf>,
+    Path(name): Path<String>,
+    h: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    let (asked, form) = match write_body(&h, &body, &who, &csrf) {
+        Ok(x) => x,
+        Err(refused) => return refused,
+    };
+    let reason = asked["reason"].as_str().unwrap_or("").to_string();
+    let via = via(&h);
+    let system = name.clone();
+    write(app, name, form, move |app, w, _| {
+        write::break_lock(app, w, &who, via, &system, &reason)
+    })
+    .await
 }
