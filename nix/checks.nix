@@ -20,29 +20,12 @@ let
     substring
     toFile
     ;
-  dev = import ./dev { inherit sources; } double;
+  dev = import ./dev { inherit sources; } double set;
   nixpkgs = import sources.nixpkgs-dev-only { system = double; };
-  seed = set.bootstrap.seed;
   rp = set.pkgs;
 
-  # run NAME TOOLS SCRIPT: SCRIPT under the seed's sh, TOOLS' bin/ before the seed's on PATH; it
-  # must create $out
-  run =
-    name: tools: script:
-    derivation {
-      name = "check-${name}";
-      system = set.platform.system;
-      __contentAddressed = true;
-      outputHashMode = "recursive";
-      outputHashAlgo = "sha256";
-      builder = "${seed}/bin/sh";
-      args = [
-        "-eu"
-        "-c"
-        script
-      ];
-      PATH = concatStringsSep ":" (map (t: "${t}/bin") tools ++ [ "${seed}/bin" ]);
-    };
+  # run NAME TOOLS SCRIPT: a check, built on the seed's shell (nix/run.nix)
+  run = name: import ./run.nix set "check-${name}";
 
   src = builtins.path {
     path = self;

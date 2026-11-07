@@ -63,7 +63,7 @@ directories to a booted machine.
 
 ```sh
 nix-shell                                   # or: direnv allow
-treefmt                                     # format and lint (lints/, nu --ide-check, shellcheck too)
+nix fmt                                     # treefmt: format and lint (lints/, nu --ide-check, shellcheck too)
 ./scripts/lint                              # strict iets lint, module tests, sandboxed and native package checks
 scripts/docs                                # generate the module pages, then build the book
 scripts/docs serve                          # the same, then mdbook serve (pages are not committed)
@@ -79,10 +79,11 @@ The required checks include the native tests in `tests/packages/`, also availabl
 `packages.<system>.tests-<name>`. They do not build foreign-target tests or every package output. A
 cold run can build these packages; a cached run reuses their results.
 
-The dev shell carries treefmt, `golconda-ast-grep` (the rules in `lints/`), mdbook with the Pele
-diagram renderer, iets and npins. `./scripts/lint` now builds native package tests and needs the
-same patched Nix client and daemon as package builds. The daemon needs `ca-derivations`,
-`dynamic-derivations` and the system feature `builder-rpc-v0`;
-[reference/build-host](docs/reference/build-host.md) says how to get one. Start reading at
-[README](README.md), then [docs/SUMMARY](docs/SUMMARY.md); the module code is small enough to read
-whole, starting with `modules/system/default.nix` and `modules/lib/`.
+The dev shell carries `golconda-ast-grep` (the rules in `lints/`), mdbook with the Pele diagram
+renderer, iets and npins. treefmt is the formatter output (`nix fmt`), not in the shell: it and its
+formatters are built by repkgs (content-addressed), which nixpkgs' shell cannot take as inputs.
+`./scripts/lint` now builds native package tests and needs the same patched Nix client and daemon as
+package builds. The daemon needs `ca-derivations`, `dynamic-derivations` and the system feature
+`builder-rpc-v0`; [reference/build-host](docs/reference/build-host.md) says how to get one. Start
+reading at [README](README.md), then [docs/SUMMARY](docs/SUMMARY.md); the module code is small
+enough to read whole, starting with `modules/system/default.nix` and `modules/lib/`.
