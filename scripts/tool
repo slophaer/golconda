@@ -1,0 +1,13 @@
+#!/bin/sh
+# scripts/tool NAME [ARGS]...: run the program NAME of the package NAME, built by repkgs or
+# packages/ (an output packages.<system>.NAME of default.nix), through scripts/tools.sh. For the
+# tools the dev shell cannot carry, because nixpkgs' shell cannot take a content-addressed input:
+#   scripts/tool npins update
+set -eu
+[ $# -ge 1 ] || { echo "usage: scripts/tool NAME [ARGS]..." >&2; exit 2; }
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+. "$SCRIPT_DIR/tools.sh"
+name=$1
+shift
+bin=$(tools_path "$(dirname "$SCRIPT_DIR")" "$name") || exit 1
+exec "$bin/$name" "$@"

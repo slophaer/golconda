@@ -64,6 +64,7 @@ directories to a booted machine.
 ```sh
 nix-shell                                   # or: direnv allow
 nix fmt                                     # treefmt: format and lint (lints/, nu --ide-check, shellcheck too)
+scripts/tool NAME ARGS...                   # run one of our packages' programs (scripts/tools.sh), e.g. npins
 ./scripts/lint                              # strict iets lint, module tests, sandboxed and native package checks
 scripts/docs                                # generate the module pages, then build the book
 scripts/docs serve                          # the same, then mdbook serve (pages are not committed)
