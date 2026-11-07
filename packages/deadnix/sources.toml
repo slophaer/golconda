@@ -1,0 +1,11 @@
+[upstream]
+purl = "pkg:github/astro/deadnix"
+
+[[source]]
+key = "default"
+url = "https://github.com/astro/deadnix/archive/refs/tags/{tag}.tar.gz"
+hash = "sha256-Lx49eqWINMTi3jgacSUHQ0SAU7jWlqaO2ZMrER+Bd/A="
+
+[pin]
+version = "1.3.2"
+tag = "v1.3.2"
