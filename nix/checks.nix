@@ -4,7 +4,7 @@
 # Each check is `run`: a content-addressed derivation whose builder is the repkgs seed's shell, as
 # repkgs' own tests are, with tools from repkgs where it has them (python3, gnumake, coreutils) and
 # the seed's nu, which Golconda's builders run. The dev pin (nixpkgs) is left for the tools repkgs
-# does not package yet: python's jsonschema (the dev-tools inventory in the knowledge base).
+# does not package yet: python's jsonschema for the metaschema check (the dev-tools inventory in the knowledge base).
 {
   sources,
   self,
@@ -157,7 +157,7 @@ in
     touch $out
   '';
 
-  # clippy over the console, tests included, as a repkgs cargo build (console/clippy)
+  # clippy over the console, tests and examples included, as a repkgs cargo build (console/checks)
   console-clippy = rp.golconda-console-clippy;
 
   # nixpkgs is dev tooling only: the dev pin is named nowhere but nix/dev and nix/checks.nix in
@@ -198,9 +198,18 @@ in
         )
       );
     in
-    # python's jsonschema is not packaged by repkgs (rpds-py, a Rust extension, among its needs)
-    run "schema-parity" [ (nixpkgs.python3.withPackages (p: [ p.jsonschema ])) ] ''
-      python3 ${src}/tests/schema/validate.py ${schemaFile} ${fixtures}
+    # the console's validator (console/checks/schema-parity), the one golconda validate runs
+    run "schema-parity" [ rp.golconda-schema-parity ] ''
+      schema-parity ${schemaFile} ${fixtures}
       touch $out
     '';
+
+  # the schema is valid JSON Schema 2020-12, by python's jsonschema: a whole implementation of the
+  # draft, from the dev pin (repkgs does not package it: rpds-py, a Rust extension, among its needs)
+  schema-metaschema =
+    run "schema-metaschema" [ (nixpkgs.python3.withPackages (p: [ p.jsonschema ])) ]
+      ''
+        python3 ${src}/tests/schema/metaschema.py ${schemaFile}
+        touch $out
+      '';
 }
