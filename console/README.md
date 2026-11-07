@@ -265,101 +265,145 @@ golconda --server https://console.example.com job list
 
 ## Packages
 
-`/systems/NAME/packages` lists the image's packages from its SBOM (CycloneDX), which mkSystem makes
-and the console evaluates without building anything (0.3 s): the ones the image names itself first,
-then what they need, each with its version, its origin (`golconda`, `repkgs`, or the downstream
-repository that adds it), its purl and its cpe, and what a downstream replacement stands in for.
-`/systems/NAME/sbom.json` is the CycloneDX document; JSON lists the packages.
-`golconda packages -f server.toml` prints the same, `--sbom` the document.
+`/systems/NAME/packages` lists the packages of the image. The list comes from the image's SBOM
+(CycloneDX), which mkSystem makes; the console evaluates it without building anything (0.3 s).
+
+Each package shows:
+
+| What                   | Where it comes from                                                           |
+| ---------------------- | ----------------------------------------------------------------------------- |
+| version, purl, cpe     | the SBOM                                                                      |
+| origin                 | `golconda`, `repkgs`, or the downstream repository that adds the package      |
+| replaces               | what a downstream replacement stands in for                                   |
+| age                    | `[pin] date` of the package's `sources.toml`: "from 2025-05-18, 538 days old" |
+| known vulnerabilities  | OSV, below                                                                    |
+| newer upstream version | uptrack, below                                                                |
+
+The order: vulnerable packages, then outdated ones, then the ones the image names itself, then what
+they need. `?show=vulnerable` and `?show=outdated` list only the first two kinds.
+`/systems/NAME/sbom.json` is the CycloneDX document.
+
+The command line shows the same:
+
+```sh
+golconda packages -f server.toml                # the list
+golconda packages -f server.toml --sbom         # the CycloneDX document
+golconda packages -f server.toml --advisories   # with known vulnerabilities
+golconda packages -f server.toml --upstream --uptrack-tree DIR   # with newer versions
+```
+
+The TUI's packages screen shows the advisory ids and "-> VERSION" after each package.
+
+The age needs no network. The console reads the date in the same evaluation that gives it the SBOM;
+the SBOM itself stays as repkgs' generator writes it. About half of the pins have a date.
 
 ### Known vulnerabilities (OSV)
 
-The page also shows the known vulnerabilities of each package, from [OSV](https://osv.dev). The
-daemon asks `POST /v1/querybatch` for the packages whose purl is of a type it indexes (below; a purl
-without a version gets the package's version as `version`), then `GET /v1/vulns/ID` once for each id
-it finds, for its summary and severity. OSV has records for some purl types only (`pypi`, `npm`,
-`cargo`, `golang`, `maven`, `nuget`, `gem`, `hex`, `composer`, `pub`, `hackage`, `cran`, `swift`,
-`deb`, `rpm`, `bitnami`; the list is `COVERED_TYPES` in `core/src/advisories.rs`). For any other
-type, such as `pkg:github` or `pkg:generic`, which most of the image has, it answers with no
-vulnerabilities, which looks the same as a package that has none. So such a package is not asked
-about and shows a grey "not covered by OSV", never a green "none known"; the JSON says
-`"osvCovered": false` and `advisories: null`, `golconda packages --advisories` appends "not covered
-by OSV" to its line, and the TUI shows "not in OSV". A package without a purl is not asked about and
-shows a dash.
+The daemon asks [OSV](https://osv.dev) in two steps:
 
-The answers are kept, each with the time it was asked, for `--osv-every` seconds (a day); with
-`--state DIR` in `DIR/advisories.json`, so a restart keeps them. A page view asks OSV only for what
-is missing or older, so a view within the lifetime makes no request at all. "checked 3 h ago" is the
-age of the oldest answer on the page. When OSV cannot be reached the page still comes, with "could
-not check" and the reason, and any older answer still shows; the daemon leaves OSV alone for five
-minutes after a failure instead of waiting for it on every view. `--osv-url URL` names another OSV
-server (a mirror, or a stub in tests); `--no-osv` never asks, and the page says "not checked".
+1. `POST /v1/querybatch` with the purl of each package, up to 1000 in one request. A purl without a
+   version gets the package's version as `version`.
+1. `GET /v1/vulns/ID` once for each id it finds, for its summary and severity.
 
-The vulnerable packages come first (then the ones the image names itself), and `?show=vulnerable`
-lists only them. JSON from the route is an object:
-`{ "packages": [...], "advisories": { "checkedAt": 1730000000, "error": null } }`, `advisories`
-being `null` when the daemon does not ask. Each package has `advisories`, a list of
-`{ id, summary, severity }`, `[]` for "none known", and `null` when it was not asked about. The
-severity is the word OSV's record carries (`database_specific.severity`, such as `HIGH`), which only
-some records have; the CVSS vector is not read.
+A package shows one of four states:
 
-`golconda packages -f server.toml --advisories [--osv-url URL]` does the same from the command line:
-vulnerable packages first, each followed by its advisories, and a last line saying when OSV was
-asked or why it could not be. Its answers are kept in `$XDG_CACHE_HOME/golconda/advisories.json`
-(`~/.cache/golconda` without it) for the same day. The TUI's packages screen shows the ids after
-each package.
+| Shown                       | Meaning                                                    |
+| --------------------------- | ---------------------------------------------------------- |
+| its advisories              | OSV knows vulnerabilities of this version                  |
+| "none known" (green)        | OSV was asked and knows none                               |
+| "not covered by OSV" (grey) | OSV has no records for this purl type, so it was not asked |
+| a dash                      | the package has no purl                                    |
 
-### Age and newer upstream versions
+OSV has records only for some purl types: `pypi`, `npm`, `cargo`, `golang`, `maven`, `nuget`, `gem`,
+`hex`, `composer`, `pub`, `hackage`, `cran`, `swift`, `deb`, `rpm` and `bitnami` (`COVERED_TYPES` in
+`core/src/advisories.rs`). For any other type, such as `pkg:github` or `pkg:generic`, it answers "no
+vulnerabilities", the same answer as for a package that has none. Most of the image has such purls.
+So the console never asks about them and never shows them green. `golconda packages --advisories`
+ends their line with "not covered by OSV", and the TUI shows "not in OSV".
 
-A package whose `sources.toml` has a `[pin] date` shows "from 2025-05-18, 538 days old" under its
-version, on the page (`pinned`, `ageDays` in the JSON) and in `golconda packages`. The console reads
-the date itself, in the evaluation that gives it the SBOM: `[pin] date` of the `sources.toml` beside
-each package. The SBOM stays as repkgs' generator writes it; about half of the pins have a date.
+The answers are kept for a day, each with the time it was asked:
 
-The newest upstream version comes from uptrack (repkgs' tool, `pkgs/up/uptrack`), which learns it
-only by asking the network. Golconda packages it (`packages.<system>.uptrack`, repkgs' source as
-Golconda pins it, run by repkgs' nushell); the console runs it as a program, `uptrack` from PATH or
-`GOLCONDA_UPTRACK`:
+- A page view asks only for what is missing or older, so most views make no request.
+- "checked 3 h ago" is the age of the oldest answer on the page.
+- When OSV cannot be reached, the page still comes, with "could not check" and the reason. Older
+  answers still show. After a failure the daemon leaves OSV alone for five minutes.
+
+| Flag                  | Effect                                                              |
+| --------------------- | ------------------------------------------------------------------- |
+| `--osv-every SECONDS` | how long an answer is kept (a day)                                  |
+| `--state DIR`         | keeps the answers in `DIR/advisories.json`, so a restart keeps them |
+| `--osv-url URL`       | another OSV server: a mirror, or a stub in tests                    |
+| `--no-osv`            | never ask; the page says "not checked"                              |
+
+The command line keeps its answers in `$XDG_CACHE_HOME/golconda/advisories.json`
+(`~/.cache/golconda` without it), also for a day, and takes `--osv-url` too.
+
+### Newer upstream versions (uptrack)
+
+uptrack (repkgs' tool, `pkgs/up/uptrack`) finds the newest upstream version of a package by asking
+the network. Golconda packages it as `packages.<system>.uptrack`: repkgs' source as Golconda pins
+it, run by repkgs' nushell. The console runs `uptrack` from PATH, or `GOLCONDA_UPTRACK`:
 
 ```sh
 PATH=$(nix-build -A packages.x86_64-linux.uptrack)/bin:$PATH golcondad \
   --system server=server.toml --uptrack-tree /path/to/repkgs
 ```
 
-For every `--uptrack-tree` the daemon finds the packages of the image that the tree tracks (a
-directory of that name with a `sources.toml` that has `[upstream] purl`) and runs
-`UPTRACK_ROOT=TREE uptrack check NAME… --json`. From each plan entry it takes `to` (the newer
-version, `outdated`), `pin.date` (its release date), and `error` or `note` (why uptrack cannot say).
-The page marks the package "outdated" with the newer version, lists the outdated ones after the
-vulnerable ones, and has `?show=outdated`.
+How it works:
 
-uptrack takes seconds to minutes, so a page view never waits for it. The first view starts one run
-in the background and says "checking now"; the answers appear on a later view. They are kept for
-`--uptrack-every` seconds (a day; `DIR/upstream.json` with `--state`), and a view asks nothing while
-they are good. A run is stopped after 30 minutes; a failed one is not repeated for five minutes, and
-the older answers stay on the page with "could not check" and uptrack's message. JSON: each package
-has `upstream` (`{ newest, outdated, released, error }`, `null` when no tree tracks it) and the
-route has a top-level `upstream` (`{ checkedAt, error, running }`, `null` when uptrack is not set
-up). uptrack keeps its own cache of what it fetched under `$XDG_CACHE_HOME/uptrack`, and uses
-`GITHUB_TOKEN` or `gh`'s login against GitHub's rate limit.
+1. For each `--uptrack-tree`, the daemon finds the image's packages that the tree tracks: a
+   directory of that name with a `sources.toml` that has `[upstream] purl`.
+1. It runs `UPTRACK_ROOT=TREE uptrack check NAME… --json` in the background. A run takes seconds to
+   minutes, so a page view never waits. The first view says "checking now"; the answers appear on a
+   later one.
+1. From each answer it takes `to` (the newer version), `pin.date` (its release date), and `error` or
+   `note` (why uptrack cannot say). The page marks the package "outdated" with the newer version.
 
-`golconda packages -f server.toml --upstream --uptrack-tree DIR` does the same and waits for
-uptrack, with its answers kept in `$XDG_CACHE_HOME/golconda/upstream.json`; the TUI shows "->
-VERSION" after a package that has a newer one.
+The answers are kept for a day (`--uptrack-every SECONDS`; `DIR/upstream.json` with `--state`). A
+run is stopped after 30 minutes. A failed run is not repeated for five minutes; the older answers
+stay, with "could not check" and uptrack's message.
 
-What uptrack needs, and where that stops this:
+uptrack keeps its own cache under `$XDG_CACHE_HOME/uptrack`. It uses `GITHUB_TOKEN`, or `gh`'s
+login, against GitHub's rate limit. The command line (`--upstream`) waits for uptrack and keeps its
+answers in `$XDG_CACHE_HOME/golconda/upstream.json`.
 
-- The package keeps repkgs' layout for the modules uptrack loads by paths relative to itself, and
-  its `bin/uptrack` brings nushell. The tree it works on is anywhere (`UPTRACK_ROOT`): a repkgs
-  checkout, or Golconda's `packages/`.
-- It reads every `sources.toml` of the tree and refuses the whole run if one has a key it does not
-  know (`checks.uptrack-sources` runs `uptrack list` on Golconda's `packages/`, so a key it refuses
-  fails a check). Both the repkgs tree and Golconda's `packages/` pass.
-- Its names are directory names, and its datasources are the purl types it knows (`github`,
-  `gitlab`, `pypi`, `cargo`, `npm`, `hackage`, `gnu`, `generic`, …). A package it cannot resolve
-  (`pkg:deb`, `pkg:sourceforge`) shows uptrack's message.
-- It compares with the tree's pin, not with the version in the image: they are the same when the
+Limits:
+
+- uptrack reads every `sources.toml` of the tree, and one with a key it does not know fails the
+  whole run. `checks.uptrack-sources` runs `uptrack list` on Golconda's `packages/`, so such a key
+  fails a check. The repkgs tree and Golconda's `packages/` both pass.
+- Its names are directory names. Its datasources are the purl types it knows (`github`, `gitlab`,
+  `pypi`, `cargo`, `npm`, `hackage`, `gnu`, `generic`, …). For a package it cannot resolve
+  (`pkg:deb`, `pkg:sourceforge`) the page shows uptrack's message.
+- It compares with the tree's pin, not with the version in the image. They are the same when the
   tree is the one the image was built from.
+- The package keeps repkgs' layout, because uptrack loads its modules by paths relative to itself.
+  The tree it works on can be anywhere.
+
+### JSON
+
+`/systems/NAME/packages` with `Accept: application/json` gives:
+
+```json
+{
+  "packages": [...],
+  "advisories": { "checkedAt": 1730000000, "error": null },
+  "upstream": { "checkedAt": 1730000000, "error": null, "running": false }
+}
+```
+
+The top-level `advisories` is `null` when the daemon does not ask OSV, and `upstream` is `null` when
+uptrack is not set up. Each package has:
+
+| Field               | Value                                                                               |
+| ------------------- | ----------------------------------------------------------------------------------- |
+| `pinned`, `ageDays` | the pin's release date and its age; `null` without a date                           |
+| `advisories`        | a list of `{ id, summary, severity }`; `[]` for "none known"; `null` when not asked |
+| `osvCovered`        | `false` for a purl type OSV does not index                                          |
+| `upstream`          | `{ newest, outdated, released, error }`; `null` when no tree tracks the package     |
+
+`severity` is the word in OSV's record (`database_specific.severity`, such as `HIGH`). Only some
+records have it; the CVSS vector is not read.
 
 ## Audit log
 
