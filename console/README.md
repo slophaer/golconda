@@ -316,11 +316,12 @@ the date itself, in the evaluation that gives it the SBOM: `[pin] date` of the `
 each package. The SBOM stays as repkgs' generator writes it; about half of the pins have a date.
 
 The newest upstream version comes from uptrack (repkgs' tool, `pkgs/up/uptrack`), which learns it
-only by asking the network. It is not a package of repkgs or of Golconda (repkgs' `shell.nix` has
-nushell for it), so the console runs it as a program:
+only by asking the network. Golconda packages it (`packages.<system>.uptrack`, repkgs' source as
+Golconda pins it, run by repkgs' nushell); the console runs it as a program, `uptrack` from PATH or
+`GOLCONDA_UPTRACK`:
 
 ```sh
-GOLCONDA_UPTRACK="nu /path/to/repkgs/pkgs/up/uptrack/src/uptrack" golcondad \
+PATH=$(nix-build -A packages.x86_64-linux.uptrack)/bin:$PATH golcondad \
   --system server=server.toml --uptrack-tree /path/to/repkgs
 ```
 
@@ -347,9 +348,9 @@ VERSION" after a package that has a newer one.
 
 What uptrack needs, and where that stops this:
 
-- uptrack is a nushell script that loads its modules by paths relative to itself (it reaches
-  `builder/sys-libs.nu`), so it runs from a repkgs checkout, and `nu` must be on the daemon's PATH.
-  The tree it works on can be elsewhere (`UPTRACK_ROOT`).
+- The package keeps repkgs' layout for the modules uptrack loads by paths relative to itself, and
+  its `bin/uptrack` brings nushell. The tree it works on is anywhere (`UPTRACK_ROOT`): a repkgs
+  checkout, or Golconda's `packages/`.
 - It reads every `sources.toml` of the tree and refuses the whole run if one has a key it does not
   know (`checks.uptrack-sources` runs `uptrack list` on Golconda's `packages/`, so a key it refuses
   fails a check). Both the repkgs tree and Golconda's `packages/` pass.
