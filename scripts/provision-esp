@@ -21,26 +21,17 @@
 
 set -eu
 
-# --- bootstrap: re-exec under nix-shell if tools are missing ---
-# Always the pinned systemd-creds: a host's older one sends a null-key request to the host's
-# credentials service, which refuses it without authentication.
-if [ -z "${PROVISION_ESP_IN_SHELL:-}" ]; then
-  SCRIPT_DIR="$(dirname "$(realpath "$0")")"
-  REPO_DIR="$(dirname "$SCRIPT_DIR")"
-  DEV_PIN=$(nix-instantiate --eval -E "(import $REPO_DIR/nix/sources.nix).nixpkgs-dev-only" 2>/dev/null | tr -d '"')
-  if [ -z "$DEV_PIN" ] || [ ! -d "$DEV_PIN" ]; then
-    echo "Error: cannot find nixpkgs-dev-only pin" >&2
-    exit 1
-  fi
-  # quote each argument for the shell nix-shell runs
-  ARGS=""
-  for a in "$@"; do
-    ARGS="$ARGS '$(printf %s "$a" | sed "s/'/'\\\\''/g")'"
-  done
-  PROVISION_ESP_IN_SHELL=1
-  export PROVISION_ESP_IN_SHELL
-  exec nix-shell -I "nixpkgs=$DEV_PIN" -p systemd mtools util-linux python3 --run "$0$ARGS"
-fi
+# --- tools: Golconda's own packages (scripts/tools.sh) ---
+# Golconda's systemd-creds (262), not the host's: an older one sends a null-key request to the
+# host's credentials service, which refuses it without authentication. util-linux for sfdisk,
+# cpython for the GPT's JSON, mtools to write the FAT ESP without mounting it.
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+. "$SCRIPT_DIR/tools.sh"
+TOOLS=$(tools_path "$(dirname "$SCRIPT_DIR")" systemd mtools util-linux cpython) || {
+  echo "Error: cannot build the tools (packages: systemd mtools util-linux cpython)" >&2
+  exit 1
+}
+PATH="$TOOLS:$PATH"
 
 usage() {
   echo "Usage: $0 <disk.raw> [--hostname NAME] [--authorized-keys FILE] [--credential NAME=FILE]..." >&2
