@@ -142,6 +142,8 @@ pub enum Error {
     /// a commit that is not one signed entry
     #[error("commit {commit}: {why}")]
     Bad { commit: String, why: String },
+    #[error("the audit index: {0}")]
+    Index(#[from] rusqlite::Error),
 }
 
 /// The audit repository.
@@ -234,6 +236,107 @@ impl Audit<'_> {
 fn day_file(time: &str) -> PathBuf {
     let d = time.get(..10).unwrap_or("0000-00-00");
     PathBuf::from(format!("{}/{}/{}.jsonl", &d[..4], &d[5..7], &d[8..10]))
+}
+
+/// What the audit page asks for: each one given must be part of its field (the operator's id or
+/// name, the system, the action, the time, so a day is `2026-11-05`).
+#[derive(Debug, Default, Clone)]
+pub struct Filter {
+    pub operator: Option<String>,
+    pub system: Option<String>,
+    pub action: Option<String>,
+    pub day: Option<String>,
+}
+
+/// The audit page's index: the entries in SQLite, rebuilt from the repository's day files at
+/// start and added to with each new entry. The repository is the record; the index can be
+/// thrown away.
+pub struct Index {
+    conn: rusqlite::Connection,
+}
+
+/// The day files under `dir` (YYYY/MM/DD.jsonl), oldest first.
+fn day_files(dir: &Path) -> io::Result<Vec<PathBuf>> {
+    let mut days = Vec::new();
+    let sorted = |d: &Path| -> io::Result<Vec<PathBuf>> {
+        let mut v: Vec<PathBuf> = fs::read_dir(d)?
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.file_name().is_some_and(|n| n != ".git"))
+            .collect();
+        v.sort();
+        Ok(v)
+    };
+    for year in sorted(dir)?.into_iter().filter(|p| p.is_dir()) {
+        for month in sorted(&year)?.into_iter().filter(|p| p.is_dir()) {
+            days.extend(
+                sorted(&month)?
+                    .into_iter()
+                    .filter(|p| p.extension().is_some_and(|e| e == "jsonl")),
+            );
+        }
+    }
+    Ok(days)
+}
+
+impl Index {
+    /// The index at `path`, made again from the repository at `repo`.
+    pub fn rebuild(path: &Path, repo: &Path) -> Result<Index, Error> {
+        let conn = rusqlite::Connection::open(path)?;
+        conn.execute_batch(
+            "DROP TABLE IF EXISTS entries;
+             CREATE TABLE entries (
+               seq INTEGER PRIMARY KEY AUTOINCREMENT, time TEXT, operator_id TEXT,
+               operator_name TEXT, system TEXT, action TEXT, json TEXT NOT NULL);",
+        )?;
+        let index = Index { conn };
+        let tx = index.conn.unchecked_transaction()?;
+        for day in day_files(repo)? {
+            for line in fs::read_to_string(&day)?.lines() {
+                if let Ok(v) = serde_json::from_str::<Value>(line) {
+                    index.add(&v)?;
+                }
+            }
+        }
+        tx.commit()?;
+        Ok(index)
+    }
+
+    /// Adds an entry (its JSON line) as the newest.
+    pub fn add(&self, v: &Value) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "INSERT INTO entries (time, operator_id, operator_name, system, action, json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                v["time"].as_str(),
+                v["operator"]["id"].as_str(),
+                v["operator"]["name"].as_str(),
+                v["system"].as_str(),
+                v["action"].as_str(),
+                v.to_string()
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// The entries `f` keeps, newest first, at most `limit`.
+    pub fn query(&self, f: &Filter, limit: usize) -> rusqlite::Result<Vec<Value>> {
+        let mut q = self.conn.prepare(
+            "SELECT json FROM entries WHERE
+               (?1 IS NULL OR instr(operator_id, ?1) > 0 OR instr(operator_name, ?1) > 0)
+               AND (?2 IS NULL OR instr(system, ?2) > 0)
+               AND (?3 IS NULL OR instr(action, ?3) > 0)
+               AND (?4 IS NULL OR instr(time, ?4) > 0)
+             ORDER BY seq DESC LIMIT ?5",
+        )?;
+        let limit = i64::try_from(limit).unwrap_or(i64::MAX);
+        let rows = q.query_map(
+            rusqlite::params![f.operator, f.system, f.action, f.day, limit],
+            |r| r.get::<_, String>(0),
+        )?;
+        Ok(rows
+            .filter_map(|r| r.ok().and_then(|t| serde_json::from_str(&t).ok()))
+            .collect())
+    }
 }
 
 fn is_day_file(p: &str) -> bool {
@@ -445,5 +548,66 @@ mod tests {
         );
         assert!(is_day_file("2026/11/03.jsonl"));
         assert!(!is_day_file("2026/11/03.json") && !is_day_file("x/11/03.jsonl"));
+    }
+
+    #[test]
+    fn the_index_is_the_day_files_newest_first_and_filters_them() {
+        let tmp = TempDir::new().unwrap();
+        let repo = tmp.path().join("audit");
+        let line = |time: &str, name: &str, action: &str| {
+            json!({ "time": time, "operator": { "id": format!("{name}@x"), "name": name, "via": "web" },
+                    "action": action, "system": "server", "result": "ok" })
+            .to_string()
+        };
+        fs::create_dir_all(repo.join("2026/11")).unwrap();
+        fs::create_dir_all(repo.join(".git")).unwrap();
+        fs::write(
+            repo.join("2026/11/04.jsonl"),
+            format!(
+                "{}\n{}\n",
+                line("2026-11-04T10:00:00Z", "Alice", "config.set"),
+                line("2026-11-04T11:00:00Z", "Bob", "config.commit")
+            ),
+        )
+        .unwrap();
+        fs::write(
+            repo.join("2026/11/05.jsonl"),
+            line("2026-11-05T09:00:00Z", "Alice", "job.deploy") + "\n",
+        )
+        .unwrap();
+        let path = tmp.path().join("index.db");
+        let index = Index::rebuild(&path, &repo).unwrap();
+        let times = |v: Vec<Value>| -> Vec<String> {
+            v.iter()
+                .map(|e| e["time"].as_str().unwrap()[..13].to_string())
+                .collect()
+        };
+        assert_eq!(
+            times(index.query(&Filter::default(), 10).unwrap()),
+            ["2026-11-05T09", "2026-11-04T11", "2026-11-04T10"]
+        );
+        let alice = Filter {
+            operator: Some("lic".into()),
+            ..Filter::default()
+        };
+        assert_eq!(index.query(&alice, 10).unwrap().len(), 2);
+        let day = Filter {
+            day: Some("2026-11-04".into()),
+            action: Some("commit".into()),
+            ..Filter::default()
+        };
+        assert_eq!(times(index.query(&day, 10).unwrap()), ["2026-11-04T11"]);
+        assert_eq!(index.query(&Filter::default(), 1).unwrap().len(), 1);
+        // a new entry is the newest; a rebuild forgets what the repository does not hold
+        let new: Value =
+            serde_json::from_str(&line("2026-11-05T10:00:00Z", "Carol", "config.lock")).unwrap();
+        index.add(&new).unwrap();
+        assert_eq!(
+            index.query(&Filter::default(), 1).unwrap()[0]["operator"]["name"],
+            "Carol"
+        );
+        drop(index);
+        let again = Index::rebuild(&path, &repo).unwrap();
+        assert_eq!(again.query(&Filter::default(), 10).unwrap().len(), 3);
     }
 }

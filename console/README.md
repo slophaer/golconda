@@ -184,7 +184,9 @@ conflict page: both values, who and when, and keep theirs, apply mine on top, or
 Changes page shows the candidate's operations and what they change against the commit, with "Commit
 and push" and "Discard all". Every form carries the session's CSRF token, and its Origin must be the
 daemon's own; someone who may only read gets no form at all. `/audit` lists the audit log, newest
-first, filtered by operator, system, action and day; as JSON with `Accept: application/json`.
+first, filtered by operator, system, action and day; as JSON with `Accept: application/json`. It
+reads from an index (`STATE/audit-index.db`) that the daemon makes from the repository at every
+start and adds each entry to; the repository is the record, the index can be thrown away.
 
 ## Machines and jobs
 

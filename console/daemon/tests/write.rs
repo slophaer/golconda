@@ -828,3 +828,22 @@ async fn an_operation_under_someone_elses_lock_is_refused() {
     let (st, v) = post(&alice, "/systems/server/ops", op).await;
     assert_eq!(st, StatusCode::OK, "{v}");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_audit_index_is_made_again_at_start() {
+    let s = small_scene();
+    let alice = app_as(&s, "Alice");
+    post(&alice, "/systems/server/lock", json!({})).await;
+    post(&alice, "/systems/server/unlock", json!({})).await;
+    // the index file thrown away: the next start makes it from the repository
+    fs::remove_file(s.state.join("audit-index.db")).unwrap();
+    let again = app_as(&s, "Bob");
+    let entries = get(&again, "/audit?operator=Alice").await;
+    let actions: Vec<&str> = entries
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["action"].as_str().unwrap())
+        .collect();
+    assert_eq!(actions, ["config.unlock", "config.lock"]);
+}
