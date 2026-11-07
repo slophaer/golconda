@@ -14,9 +14,9 @@
 use serde_json::Value;
 use std::collections::BTreeSet;
 use std::ffi::{OsStr, OsString};
-use std::io::Write;
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
+use std::process::{Child, Command, Output, Stdio};
 use std::thread;
 use std::time;
 use std::{env, fs, result};
@@ -155,6 +155,11 @@ impl Program {
         }
     }
 
+    /// A program and its leading arguments, as given.
+    pub fn new(argv: Vec<OsString>) -> Program {
+        Program { argv, dir: None }
+    }
+
     /// The same program, run in `dir`.
     #[must_use]
     pub fn in_dir(&self, dir: &Path) -> Program {
@@ -193,18 +198,14 @@ impl Program {
             .map_or_else(String::new, |p| p.to_string_lossy().into_owned())
     }
 
-    /// Runs the program and returns how it ended, whatever its status: for a caller that
-    /// tells one failure (a file that is not there) from the others.
-    ///
-    /// # Errors
-    ///
-    /// When it cannot start.
-    pub fn output<S: AsRef<OsStr>>(&self, args: &[S], stdin: Option<&[u8]>) -> Result<Output> {
+    /// Starts the program with its output piped. ETXTBSY: the program is still open for
+    /// writing somewhere, typically a file just written whose descriptor a process forked
+    /// meanwhile holds until it execs. That passes within moments; wait up to half a second.
+    fn spawn<S: AsRef<OsStr>>(&self, args: &[S], stdin: bool) -> Result<Child> {
         let (program, lead) = self
             .argv
             .split_first()
             .ok_or(Error("an empty program".into()))?;
-        let name = program.to_string_lossy();
         let spawn = || {
             let mut c = Command::new(program);
             if let Some(d) = &self.dir {
@@ -212,28 +213,69 @@ impl Program {
             }
             c.args(lead)
                 .args(args)
-                .stdin(if stdin.is_some() {
-                    Stdio::piped()
-                } else {
-                    Stdio::null()
-                })
+                .stdin(if stdin { Stdio::piped() } else { Stdio::null() })
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
         };
-        // ETXTBSY: the program is still open for writing somewhere, typically a file just
-        // written whose descriptor a process forked meanwhile holds until it execs. That
-        // passes within moments; wait up to half a second for it.
         let mut tries = 0;
-        let mut child = loop {
+        loop {
             match spawn() {
                 Err(e) if e.raw_os_error() == Some(26) && tries < 50 => {
                     tries += 1;
                     thread::sleep(time::Duration::from_millis(10));
                 }
-                other => break other.map_err(|e| Error(format!("cannot run {name}: {e}")))?,
+                other => {
+                    return other.map_err(|e| Error(format!("cannot run {}: {e}", self.name())));
+                }
             }
-        };
+        }
+    }
+
+    /// Runs the program and hands each line of its standard output to `line` as it comes; then
+    /// whether it succeeded, and its standard error.
+    ///
+    /// # Errors
+    ///
+    /// When it cannot start.
+    pub fn stream<S: AsRef<OsStr>>(
+        &self,
+        args: &[S],
+        line: &mut dyn FnMut(&str),
+    ) -> Result<(bool, String)> {
+        let mut child = self.spawn(args, false)?;
+        let mut err_pipe = child.stderr.take();
+        // standard error in a thread of its own: a full pipe there must not stop the output
+        let stderr = thread::spawn(move || {
+            let mut text = String::new();
+            if let Some(p) = err_pipe.as_mut() {
+                let _ = p.read_to_string(&mut text);
+            }
+            text
+        });
+        if let Some(out) = child.stdout.take() {
+            for l in BufReader::new(out).lines() {
+                match l {
+                    Ok(l) => line(&l),
+                    Err(_) => break,
+                }
+            }
+        }
+        let status = child
+            .wait()
+            .map_err(|e| Error(format!("{}: {e}", self.name())))?;
+        Ok((status.success(), stderr.join().unwrap_or_default()))
+    }
+
+    /// Runs the program and returns how it ended, whatever its status: for a caller that
+    /// tells one failure (a file that is not there) from the others.
+    ///
+    /// # Errors
+    ///
+    /// When it cannot start.
+    pub fn output<S: AsRef<OsStr>>(&self, args: &[S], stdin: Option<&[u8]>) -> Result<Output> {
+        let name = self.name();
+        let mut child = self.spawn(args, stdin.is_some())?;
         if let Some(input) = stdin
             && let Some(mut pipe) = child.stdin.take()
         {

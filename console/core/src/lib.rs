@@ -12,6 +12,8 @@ pub mod diff;
 pub mod document;
 pub mod eval;
 pub mod git;
+pub mod jobs;
+pub mod machine;
 pub mod release;
 pub mod schema;
 pub mod system;
