@@ -220,6 +220,16 @@ golconda --server https://console.example.com job start deploy --wait
 golconda --server https://console.example.com job list
 ```
 
+## Packages
+
+`/systems/NAME/packages` lists the image's packages from its SBOM (CycloneDX), which mkSystem makes
+and the console evaluates without building anything (0.3 s): the ones the image names itself first,
+then what they need, each with its version, its origin (`golconda`, `repkgs`, or the downstream
+repository that adds it), its purl and its cpe, and what a downstream replacement stands in for.
+`/systems/NAME/sbom.json` is the CycloneDX document; JSON lists the packages.
+`golconda packages -f server.toml` prints the same, `--sbom` the document. Advisories (OSV) and
+upstream updates (uptrack) are not shown yet.
+
 ## Audit log
 
 The daemon keeps an audit log in a git repository of its own: one entry per commit, one JSON line

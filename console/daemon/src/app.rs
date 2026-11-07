@@ -132,6 +132,8 @@ pub fn router_shared(app: Arc<App>) -> Router {
         .route("/systems/{name}/commit", post(write_commit))
         .route("/systems/{name}/discard", post(write_discard))
         .route("/systems/{name}/machines", get(machines))
+        .route("/systems/{name}/packages", get(packages))
+        .route("/systems/{name}/sbom.json", get(sbom))
         .route("/systems/{name}/jobs", post(start_job))
         .route("/jobs", get(job_list))
         .route("/jobs/{id}", get(job_page))
@@ -1033,4 +1035,64 @@ async fn job_page(
             .into_response();
     }
     pages::job(&app, &who, &job, &lines).into_response()
+}
+
+/// The SBOM of a system, evaluated (0.3 s), off the async threads.
+async fn bom_of(
+    app: &Shared,
+    name: &str,
+    json: bool,
+) -> Result<golconda_core::packages::Packages, Box<Response>> {
+    let Some(doc) = app.document(name).cloned() else {
+        return Err(Box::new(problem(
+            json,
+            StatusCode::NOT_FOUND,
+            &format!("no system {name}"),
+        )));
+    };
+    let a = app.clone();
+    tokio::task::spawn_blocking(move || golconda_core::packages::load(&a.iets, &doc, &a.platform))
+        .await
+        .expect("evaluation thread")
+        .map_err(|e| {
+            Box::new(problem(
+                json,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &e.to_string(),
+            ))
+        })
+}
+
+async fn packages(
+    State(app): State<Shared>,
+    Extension(who): Extension<Identity>,
+    Path(name): Path<String>,
+    h: HeaderMap,
+) -> Response {
+    let json = wants_json(&h);
+    let p = match bom_of(&app, &name, json).await {
+        Ok(p) => p,
+        Err(r) => return *r,
+    };
+    if json {
+        let v: Vec<Value> = p
+            .list
+            .iter()
+            .map(golconda_core::packages::Package::to_json)
+            .collect();
+        return axum::Json(Value::Array(v)).into_response();
+    }
+    let sys = match load(&app, &name, false).await {
+        Ok(s) => s,
+        Err(r) => return *r,
+    };
+    pages::packages(&app, &who, &name, &sys, &p.list).into_response()
+}
+
+/// The CycloneDX document itself.
+async fn sbom(State(app): State<Shared>, Path(name): Path<String>) -> Response {
+    match bom_of(&app, &name, true).await {
+        Ok(p) => axum::Json(p.bom).into_response(),
+        Err(r) => *r,
+    }
 }

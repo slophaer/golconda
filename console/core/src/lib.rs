@@ -14,6 +14,7 @@ pub mod eval;
 pub mod git;
 pub mod jobs;
 pub mod machine;
+pub mod packages;
 pub mod release;
 pub mod schema;
 pub mod system;

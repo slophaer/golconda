@@ -8,6 +8,7 @@ use golconda_core::candidate::Op;
 use golconda_core::diff::Change;
 use golconda_core::document::{option_name, toml_text};
 use golconda_core::jobs::State;
+use golconda_core::packages::Package;
 use golconda_core::system::{Explanation, System};
 use maud::{DOCTYPE, Markup, PreEscaped, html};
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
@@ -21,6 +22,7 @@ enum Tab {
     Config,
     Changes,
     Status,
+    Packages,
 }
 
 /// The frame: the strip (system, image, who), the read-only banner, the rail.
@@ -72,6 +74,7 @@ fn layout(
                                     @if let Some(n) = open_count(app, name) { small { (n) } }
                                 }
                                 a class=[(tab == Some(Tab::Status)).then_some("on")] href={ "/systems/" (name) "/machines" } { "Status" }
+                                a class=[(tab == Some(Tab::Packages)).then_some("on")] href={ "/systems/" (name) "/packages" } { "Packages" }
                             }
                             // the system's pages first, the daemon's own after them
                             @if app.jobs.is_some() {
@@ -800,6 +803,44 @@ pub fn job(
         }
     };
     layout(app, who, None, None, &format!("Job {}", j.id), &main)
+}
+
+/// The image's packages, from its SBOM: what the image takes itself first.
+pub fn packages(app: &App, who: &Identity, name: &str, sys: &System, list: &[Package]) -> Markup {
+    let roots = list.iter().filter(|p| p.root).count();
+    let main = html! {
+        h2 { "Packages" }
+        p {
+            (list.len()) " components, " (roots) " of them named by the image itself, the rest what they need. "
+            a href={ "/systems/" (name) "/sbom.json" } { "The SBOM" } " (CycloneDX)."
+        }
+        table {
+            tr { th { "package" } th { "version" } th { "origin" } th { "identifier" } }
+            @for p in list.iter().filter(|p| p.root).chain(list.iter().filter(|p| !p.root)) {
+                tr {
+                    td {
+                        (p.name)
+                        @if p.root { " " span.pill.p-sky { "in the image" } }
+                        @if !p.replaces.is_empty() { br; small { "replaces " (p.replaces.join(", ")) } }
+                    }
+                    td.m { (p.version) }
+                    td { @if let Some(o) = &p.origin { span class=(if o == "golconda" || o == "repkgs" { "pill p-grey" } else { "pill p-amber" }) { (o) } } }
+                    td.m {
+                        @if let Some(u) = &p.purl { (u) }
+                        @if let Some(c) = &p.cpe { br; small { (c) } }
+                    }
+                }
+            }
+        }
+    };
+    layout(
+        app,
+        who,
+        Some((name, sys)),
+        Some(Tab::Packages),
+        "Packages",
+        &main,
+    )
 }
 
 #[cfg(test)]
