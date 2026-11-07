@@ -118,7 +118,8 @@ mod tests {
                           "advisories": [{ "id": "CVE-2022-0778", "severity": "HIGH" }],
                           "upstream": { "newest": "3.0.2", "outdated": true } },
                         { "name": "systemd", "version": "262.1", "origin": "golconda", "root": true,
-                          "advisories": [] }],
+                          "purl": "pkg:github/systemd/systemd@v262.1",
+                          "advisories": null, "osvCovered": false }],
                     "advisories": { "checkedAt": 1,
                         "error": self.osv_down.get().then_some("connection refused") },
                     "upstream": { "checkedAt": 1, "running": false,
@@ -315,6 +316,7 @@ mod tests {
         assert!(s.contains("systemd") && s.contains("in the image"), "{s}");
         assert!(s.contains("CVE-2022-0778"), "{s}");
         assert!(s.contains("3.0.2"), "{s}");
+        assert!(s.contains("not in OSV"), "{s}");
         assert!(!s.contains("could not check"), "{s}");
     }
 

@@ -599,6 +599,9 @@ fn run_packages(iets: &Iets, args: &PackageArgs) -> Result<String, Box<dyn error
         if let (Some(date), Some(days)) = (&p.pinned, p.age_days(today)) {
             let _ = write!(out, "  from {date}, {days} days old");
         }
+        if report.is_some() && p.purl.is_some() && !advisories::covered(p) {
+            out.push_str("  not covered by OSV");
+        }
         out.push('\n');
         if let Some(f) = status.as_ref().and_then(|s| s.of(p)) {
             if let Some(e) = &f.error {

@@ -32,8 +32,8 @@ esac
 fn sbom() -> Value {
     json!({ "roots": ["systemd"], "dates": { "systemd": "2020-01-01" }, "bom": { "components": [
         { "name": "acl", "version": "2.4.0" },
-        { "name": "openssl", "version": "3.0.1", "purl": "pkg:generic/openssl@3.0.1" },
-        { "name": "systemd", "version": "262.1", "purl": "pkg:github/systemd/systemd@v262.1" },
+        { "name": "openssl", "version": "3.0.1", "purl": "pkg:gem/openssl@3.0.1" },
+        { "name": "systemd", "version": "262.1", "purl": "pkg:gem/systemd@262.1" },
         { "name": "zlib", "version": "1.3", "purl": "pkg:generic/zlib@1.3" },
     ] } })
 }
@@ -195,6 +195,18 @@ async fn the_json_lists_vulnerable_packages_first_with_their_advisories() {
     );
     assert_eq!(p[1]["advisories"], json!([]), "asked, nothing found");
     assert_eq!(p[2]["advisories"], Value::Null, "no purl, not asked");
+    assert_eq!(
+        p[3]["advisories"],
+        Value::Null,
+        "pkg:generic: OSV does not index it"
+    );
+    let covered: Vec<&Value> = p
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| &p["osvCovered"])
+        .collect();
+    assert_eq!(covered, [true, true, false, false], "{body}");
     assert_eq!(v["advisories"]["error"], Value::Null);
     assert!(v["advisories"]["checkedAt"].as_u64().is_some(), "{body}");
 }
@@ -208,6 +220,16 @@ async fn the_page_shows_the_advisory_when_it_was_checked_and_can_show_only_those
     assert!(page.contains("CVE-2022-0778"), "{page}");
     assert!(page.contains("Infinite loop in BN_mod_sqrt()"), "{page}");
     assert!(page.contains("HIGH"), "{page}");
+    // zlib's pkg:generic purl is not one OSV indexes: no green "none known" for it
+    let zlib = &page[page.find("<td>zlib").unwrap()..];
+    let zlib = &zlib[..zlib.find("</tr>").unwrap()];
+    assert!(
+        zlib.contains("not covered by OSV") && !zlib.contains("none known"),
+        "{zlib}"
+    );
+    let systemd = &page[page.find("<td>systemd").unwrap()..];
+    let systemd = &systemd[..systemd.find("</tr>").unwrap()];
+    assert!(systemd.contains("none known"), "{systemd}");
     assert!(page.contains("checked just now"), "{page}");
     let (open, shut) = (page.find("openssl").unwrap(), page.find("systemd").unwrap());
     assert!(open < shut, "vulnerable first");

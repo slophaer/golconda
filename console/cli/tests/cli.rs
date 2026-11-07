@@ -1442,10 +1442,10 @@ impl Image {
         fs::write(t.join("lib/system.nix"), "{ }").unwrap();
         fs::write(t.join("server.toml"), "").unwrap();
         let sbom = r#"{"roots":["systemd"],"dates":{"systemd":"2020-01-01"},"bom":{"components":[
-            {"name":"acl","version":"2.4.0","purl":"pkg:generic/acl@2.4.0"},
-            {"name":"openssl","version":"3.0.1","purl":"pkg:generic/openssl@3.0.1"},
+            {"name":"acl","version":"2.4.0","purl":"pkg:gem/acl@2.4.0"},
+            {"name":"openssl","version":"3.0.1","purl":"pkg:gem/openssl@3.0.1"},
             {"name":"systemd","version":"262.1"},
-            {"name":"zlib","version":"1.3"}]}}"#;
+            {"name":"zlib","version":"1.3","purl":"pkg:generic/zlib@1.3"}]}}"#;
         fs::write(t.join("sbom.json"), sbom).unwrap();
         let iets = t.join("iets");
         fs::write(&iets, "#!/bin/sh\ncat \"$(dirname \"$0\")/sbom.json\"\n").unwrap();
@@ -1546,6 +1546,13 @@ fn packages_with_advisories_lists_the_vulnerable_first_and_asks_once() {
     );
     assert!(lines[2].starts_with("systemd  262.1"), "{out}");
     assert!(lines[3].starts_with("acl  2.4.0"), "{out}");
+    assert!(!lines[3].contains("not covered"), "{out}");
+    assert!(lines[4].starts_with("zlib  1.3"), "{out}");
+    assert!(lines[4].ends_with("  not covered by OSV"), "{out}");
+    assert!(
+        !lines[2].contains("not covered"),
+        "systemd has no purl: {out}"
+    );
     assert!(out.contains("checked just now"), "{out}");
     // the next run, a process later, reads the cache
     let n = seen.lock().unwrap().len();
