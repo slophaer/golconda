@@ -85,16 +85,16 @@ in
       version,
       platform,
       buildSystem,
-      pkgs,
       ...
     }:
     let
       sys = initrdSystem args;
     in
     usrTreeLib.usrTree {
-      # the kernel is in the UKI, not in the initrd
+      # the kernel is in the UKI, not in the initrd. The initrd's own set: with
+      # /system.secureBoot = false the image's kernel is another derivation
       composerOutput = sys.composed // {
-        packages = filter (p: p != pkgs.linux-kernel) sys.composed.packages;
+        packages = filter (p: p != sys.pkgs.linux-kernel) sys.composed.packages;
       };
       inherit platform version buildSystem;
     };

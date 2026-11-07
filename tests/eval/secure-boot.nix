@@ -76,6 +76,21 @@ in
     && configOf (sysWith { secureBoot = false; } otherCert) == c
     && configOf (sysWith { secureBoot = false; } cert) == c
   ))
+  # the initrd's system is its own, with the Secure Boot default: its set's kernel is another
+  # derivation than the image's, and the kernel belongs in the UKI only
+  (check "secureBoot: false keeps every kernel out of the initrd's tree" (
+    let
+      sys = sysWith { secureBoot = false; } storeCert;
+      tree = (import ../../lib/image { }).initrdTree {
+        imageId = "test";
+        version = "20261031.1";
+        inherit (sys) pkgs;
+        platform.name = platform;
+        buildSystem = platform;
+      };
+    in
+    !(builtins.any (p: (p.pname or "") == "linux-kernel") tree.drvAttrs.roots)
+  ))
   (check "secureBoot: false without the image's keys is an error" (
     !(tryEval (deepSeq (trusted (sysWith { secureBoot = false; } null)) true)).success
   ))
