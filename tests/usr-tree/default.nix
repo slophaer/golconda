@@ -1,7 +1,12 @@
-# Real-builder destination ownership tests, with tiny store-backed farm sources.
-{ pkgs, src }:
+# Real-builder destination ownership tests, with tiny store-backed farm sources. `run` and
+# `tools` come from nix/checks.nix (the seed's shell, repkgs' python3, coreutils and findutils).
+{
+  run,
+  tools,
+  src,
+}:
 let
-  fixtures = pkgs.runCommand "usr-tree-fixtures" { } ''
+  fixtures = run "usr-tree-fixtures" [ ] ''
     mkdir -p $out/a/lib/systemd/system/multi-user.target.wants $out/b/lib/systemd/system
     mkdir -p $out/a/lib/security $out/a/share/zoneinfo $out/a/bin
     printf sentinel > $out/a/lib/systemd/system/demo.service
@@ -26,16 +31,7 @@ let
     done
   '';
 in
-pkgs.runCommand "check-usr-tree-builder"
-  {
-    nativeBuildInputs = [
-      pkgs.nushell
-      pkgs.python3
-      pkgs.coreutils
-      pkgs.findutils
-    ];
-  }
-  ''
-    python3 ${src}/tests/usr-tree/builder.py ${src}/lib/usr-tree ${fixtures}
-    touch $out
-  ''
+run "usr-tree-builder" tools ''
+  python3 ${src}/tests/usr-tree/builder.py ${src}/lib/usr-tree ${fixtures}
+  touch $out
+''
