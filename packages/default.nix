@@ -64,4 +64,5 @@
   treefmt = ./treefmt;
   statix = ./statix;
   deadnix = ./deadnix;
+  taplo = ./taplo;
 }
