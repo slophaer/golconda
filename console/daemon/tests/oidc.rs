@@ -334,6 +334,8 @@ async fn setup_cli(mode: Mode, cli: Option<&str>) -> (Arc<Stub>, Router) {
         read_only_group: "golconda-readers".into(),
         ca_pem: None,
         cli_client_id: cli.map(str::to_string),
+        session_idle: golcondad::auth::SESSION_IDLE,
+        session_max: golcondad::auth::SESSION_MAX,
     };
     let oidc = tokio::task::spawn_blocking(move || Oidc::discover(cfg))
         .await
@@ -424,6 +426,8 @@ async fn an_operator_signs_in_and_gets_a_session_cookie() {
         set.contains("HttpOnly") && set.contains("SameSite=Lax") && set.contains("Path=/"),
         "{set}"
     );
+    // the browser keeps it no longer than the session can last: eight hours
+    assert!(set.contains("Max-Age=28800"), "{set}");
     // http in the public address: no Secure (a browser would drop the cookie)
     assert!(!set.contains("Secure"), "{set}");
     // the session names who and at what level, as JSON
@@ -666,6 +670,8 @@ async fn the_issuer_must_use_https_except_on_loopback() {
         read_only_group: "r".into(),
         ca_pem: None,
         cli_client_id: None,
+        session_idle: golcondad::auth::SESSION_IDLE,
+        session_max: golcondad::auth::SESSION_MAX,
     };
     let e = tokio::task::spawn_blocking(move || Oidc::discover(cfg("http://idp.example")).err())
         .await
@@ -743,6 +749,8 @@ async fn a_provider_behind_our_own_ca_is_trusted_with_the_ca_file_only() {
         read_only_group: "r".into(),
         ca_pem: ca.map(str::to_string),
         cli_client_id: None,
+        session_idle: golcondad::auth::SESSION_IDLE,
+        session_max: golcondad::auth::SESSION_MAX,
     };
     let (without, with) = (cfg(None), cfg(Some(include_str!("fixtures/tls-ca.pem"))));
     let e = tokio::task::spawn_blocking(move || Oidc::discover(without).err())

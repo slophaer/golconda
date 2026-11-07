@@ -101,12 +101,13 @@ golcondad --listen 0.0.0.0:8796 --system server=server.toml \
 
 The provider must know `<public-url>/auth/callback` as a redirect URI. The daemon checks the ID
 token itself (RS256 or ES256, the issuer, the audience, the expiry, the nonce), keeps sessions in
-memory (a restart signs everyone out; a session lasts 12 hours, and every lookup drops the expired
-sessions and the sign-ins never finished) in an `HttpOnly`, `SameSite=Lax` cookie, `Secure` when the
-public URL is https, and answers only to the public URL's host name. `/auth/me` says who is signed
-in, as JSON. A provider that wants a client secret gets it from `--oidc-client-secret-file`. The
-issuer must use https, except on loopback. Its TLS certificate is checked against the public roots
-built into the daemon, or, with `--oidc-ca-file`, against our own CA's certificates (step-ca)
+memory (a restart signs everyone out; a session ends after an hour without a request and after eight
+hours in any case, `--session-idle MINUTES` and `--session-max HOURS`, and every lookup drops the
+ended sessions and the sign-ins never finished) in an `HttpOnly`, `SameSite=Lax` cookie, `Secure`
+when the public URL is https, and answers only to the public URL's host name. `/auth/me` says who is
+signed in, as JSON. A provider that wants a client secret gets it from `--oidc-client-secret-file`.
+The issuer must use https, except on loopback. Its TLS certificate is checked against the public
+roots built into the daemon, or, with `--oidc-ca-file`, against our own CA's certificates (step-ca)
 instead.
 
 The CLI and the TUI sign in through the device flow with a public client of their own,
