@@ -13,7 +13,7 @@
 
 use serde_json::Value;
 use std::collections::BTreeSet;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -154,7 +154,12 @@ impl Program {
     }
 
     /// Runs the program with `args`, `stdin` on its standard input; its standard output.
-    fn run(&self, args: &[&str], stdin: Option<&[u8]>) -> Result<Vec<u8>> {
+    ///
+    /// # Errors
+    ///
+    /// When it cannot start or exits with a failure: the message names it, its arguments and
+    /// what it wrote to standard error.
+    pub fn run<S: AsRef<OsStr>>(&self, args: &[S], stdin: Option<&[u8]>) -> Result<Vec<u8>> {
         let (program, lead) = self
             .argv
             .split_first()
@@ -188,7 +193,9 @@ impl Program {
         };
         if let Some(input) = stdin {
             // a child that exits early closes the pipe; its status says why
-            let _ = child.stdin.take().expect("piped").write_all(input);
+            if let Some(mut pipe) = child.stdin.take() {
+                let _ = pipe.write_all(input);
+            }
         }
         let out = child
             .wait_with_output()
@@ -196,7 +203,10 @@ impl Program {
         if !out.status.success() {
             return err(format!(
                 "{name} {}: {}: {}",
-                args.join(" "),
+                args.iter()
+                    .map(|a| a.as_ref().to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join(" "),
                 out.status,
                 String::from_utf8_lossy(&out.stderr).trim()
             ));
@@ -583,7 +593,7 @@ esac
         let prog = Program {
             argv: vec![p.clone().into_os_string()],
         };
-        assert_eq!(prog.run(&[], None).unwrap(), b"ran\n");
+        assert_eq!(prog.run::<&str>(&[], None).unwrap(), b"ran\n");
         closer.join().unwrap();
     }
 
