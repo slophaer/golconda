@@ -4,7 +4,7 @@
 # Each check is `run`: a content-addressed derivation whose builder is the repkgs seed's shell, as
 # repkgs' own tests are, with tools from repkgs where it has them (python3, gnumake, coreutils) and
 # the seed's nu, which Golconda's builders run. The dev pin (nixpkgs) is left for the tools repkgs
-# does not package yet: mdformat, the book's diagram preprocessor (mdbook-pele, Node), the Rust build
+# does not package yet: the book's diagram preprocessor (mdbook-pele, Node), the Rust build
 # behind clippy, and python's jsonschema (the dev-tools inventory in the knowledge base).
 {
   sources,

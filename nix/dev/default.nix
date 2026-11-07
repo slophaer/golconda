@@ -137,7 +137,7 @@ let
         includes = [ "*.nix" ];
       };
       "formatter.markdown" = {
-        command = "${pkgs.mdformat.withPlugins (p: [ p.mdformat-gfm ])}/bin/mdformat";
+        command = "${rp.mdformat}/bin/mdformat";
         options = [ "--wrap=100" ];
         includes = [ "*.md" ];
       };
