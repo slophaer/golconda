@@ -52,7 +52,7 @@ else is a module the document names with its table ([Configuration](config.md)).
 
 | component                      | role                                                                               | where                                              |
 | ------------------------------ | ---------------------------------------------------------------------------------- | -------------------------------------------------- |
-| npins                          | pins repkgs, adios, flake-incompat, iets, pele                                     | `npins/`                                           |
+| npins                          | pins repkgs, adios, flake-incompat, iets                                           | `npins/`                                           |
 | flake-incompat                 | output schema, per-system arguments                                                | `default.nix`, `nix/default.nix`                   |
 | platform record                | repkgs' record, every tool reads it                                                | `nix/packages.nix`                                 |
 | repkgs                         | packages, toolchain, relocatable outputs                                           | `nix/packages.nix`, `packages/`                    |

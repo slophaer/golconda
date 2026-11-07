@@ -193,16 +193,6 @@ let
     exec ${rp.treefmt}/bin/treefmt --config-file ${treefmtConfig} "$@"
   '';
 
-  # mermaid blocks become inline SVG at build time with Pele (pin `pele`)
-  mdbook-pele = pkgs.writeShellScriptBin "mdbook-pele" ''
-    exec ${pkgs.nodejs-slim}/bin/node ${
-      builtins.path {
-        path = ./mdbook-pele.mjs;
-        name = "mdbook-pele.mjs";
-      }
-    } ${sources.pele}/dist/pele.js "$@"
-  '';
-
   # iets from its own flake (crane build); the system Nix is its fallback only
   # in classic mode, which the dev shell does not use.
   iets =
@@ -214,18 +204,16 @@ in
 {
   inherit
     treefmt
-    mdbook-pele
     iets
     ast-grep
     ;
 
   # nixpkgs' mkShell cannot take a content-addressed input on this daemon, so treefmt,
-  # golconda-ast-grep and mdbook (ours now) are not in it: `nix fmt` runs the formatter output,
+  # golconda-ast-grep, mdbook and mdbook-pele (ours now) are not in it: `nix fmt` runs the formatter output,
   # which runs the lint rules too, checks.lint-rules tests them, and scripts/docs and scripts/tool
   # find our packages through scripts/tools.sh
   shell = pkgs.mkShellNoCC {
     packages = [
-      mdbook-pele
       iets
       pkgs.npins
     ];
