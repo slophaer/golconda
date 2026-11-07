@@ -70,8 +70,9 @@ let
     path = ../../lints;
     name = "golconda-lints";
   };
-  sgconfig = pkgs.writeText "sgconfig.yml" (
-    builtins.toJSON {
+  sgconfig = run "sgconfig.yml" [ ] ''
+    cat > $out <<'GOLCONDA_SGCONFIG_EOF'
+    ${toJSON {
       ruleDirs = map (d: "${lints}/${d}") [
         "rust"
         "nu"
@@ -79,15 +80,19 @@ let
       ];
       testConfigs = [ { testDir = "${lints}/tests"; } ];
       customLanguages.nu = {
-        libraryPath = "${pkgs.tree-sitter-grammars.tree-sitter-nu}/parser";
+        libraryPath = "${rp.tree-sitter-nu}/parser";
         extensions = [ "nu" ];
         expandoChar = "_";
       };
-    }
-  );
+    }}
+    GOLCONDA_SGCONFIG_EOF
+  '';
   # the nu grammar is a native library: allow it, it is the pinned one above
-  ast-grep = pkgs.writeShellScriptBin "golconda-ast-grep" ''
-    exec ${pkgs.ast-grep}/bin/ast-grep "$1" --config=${sgconfig} --custom-languages=allow "''${@:2}"
+  # ($1: the subcommand; the rest after the config)
+  ast-grep = writeScript "golconda-ast-grep" ''
+    sub=$1
+    shift
+    exec ${rp.ast-grep}/bin/ast-grep "$sub" --config=${sgconfig} --custom-languages=allow "$@"
   '';
 
   # nu's own parser and type checker over each file: a misspelt command, a wrong
@@ -216,18 +221,18 @@ in
     ast-grep
     ;
 
-  # nixpkgs' mkShell cannot take a content-addressed input on this daemon, so treefmt (ours now)
-  # is not in it: `nix fmt` runs the formatter output
+  # nixpkgs' mkShell cannot take a content-addressed input on this daemon, so treefmt and
+  # golconda-ast-grep (ours now) are not in it: `nix fmt` runs the formatter output, which runs the
+  # lint rules too, and checks.lint-rules tests them
   shell = pkgs.mkShellNoCC {
     packages = [
-      ast-grep
       mdbook
       mdbook-pele
       iets
       pkgs.npins
     ];
     shellHook = ''
-      echo "golconda dev shell: nix fmt | golconda-ast-grep scan|test | iets lint: ./scripts/lint | docs: scripts/docs serve"
+      echo "golconda dev shell: nix fmt | iets lint: ./scripts/lint | docs: scripts/docs serve"
     '';
   };
 }
