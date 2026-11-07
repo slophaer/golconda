@@ -1318,3 +1318,83 @@ fn login_refuses_a_provider_without_https() {
         "nothing asked of the provider"
     );
 }
+
+/// A daemon with one machine and a job 7 that runs once and then ends `end`.
+fn jobs_stub(end: &'static str) -> (String, sync::Arc<sync::Mutex<Vec<Seen>>>) {
+    let polls = sync::Arc::new(sync::Mutex::new(0));
+    routes(Box::new(move |_, req| {
+        let path = req.line.split(' ').nth(1).unwrap_or("");
+        let job = |state: &str| serde_json::json!({ "id": 7, "kind": "update", "machine": "web1", "by": { "name": "Alice" }, "state": state, "summary": if state == "running" { None } else { Some("web1: 20261106.1 is installed for the next boot") } });
+        let v = match path {
+            "/systems/server/machines" => serde_json::json!({ "updates": "www", "machines": [
+                { "name": "web1", "status": { "version": "20261105.1", "available": "20261106.1", "entries": [
+                    { "version": "20261105.1", "selected": true, "default": true },
+                    { "id": "auto", "selected": false } ] } },
+                { "name": "web2", "error": "web2: ssh: Connection refused" } ] }),
+            "/systems/server/jobs" => serde_json::json!({ "job": 7 }),
+            "/jobs?system=server" => serde_json::json!([job("ok")]),
+            "/jobs/7?after=0" => {
+                let mut n = polls.lock().unwrap();
+                *n += 1;
+                if *n == 1 {
+                    serde_json::json!({ "job": job("running"), "lines": [{ "n": 1, "at": "t", "line": "Selected update '20261106.1' for install." }] })
+                } else {
+                    serde_json::json!({ "job": job(end), "lines": [] })
+                }
+            }
+            "/jobs/7?after=1" => {
+                serde_json::json!({ "job": job(end), "lines": [{ "n": 2, "at": "t", "line": "done" }] })
+            }
+            _ => return (404, r#"{"error":"no"}"#.into()),
+        };
+        (200, v.to_string())
+    }))
+}
+
+#[test]
+fn machines_and_jobs_through_a_daemon() {
+    let state = TempDir::new().unwrap();
+    let (url, seen) = jobs_stub("ok");
+    let out = stdout(&golconda_state(&state, &["--server", &url, "machines"]));
+    assert_eq!(
+        out,
+        "web1  20261105.1  slots: 20261105.1 (booted)  20261106.1 available\nweb2  unreachable: web2: ssh: Connection refused\n"
+    );
+    let o = golconda_state(
+        &state,
+        &["--server", &url, "job", "start", "update", "web1", "--wait"],
+    );
+    assert_eq!(
+        stdout(&o),
+        "Selected update '20261106.1' for install.\ndone\n"
+    );
+    let posted = seen
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|s| s.line.starts_with("POST"))
+        .cloned()
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_str(&posted.body).unwrap();
+    assert_eq!(
+        body,
+        serde_json::json!({ "kind": "update", "machine": "web1" })
+    );
+    let list = stdout(&golconda_state(&state, &["--server", &url, "job", "list"]));
+    assert_eq!(
+        list,
+        "7  update  web1  Alice  ok  web1: 20261106.1 is installed for the next boot\n"
+    );
+}
+
+#[test]
+fn a_failed_job_makes_wait_exit_1() {
+    let state = TempDir::new().unwrap();
+    let (url, _) = jobs_stub("failed");
+    let o = golconda_state(
+        &state,
+        &["--server", &url, "job", "start", "update", "web1", "--wait"],
+    );
+    assert_eq!(o.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&o.stderr).contains("job 7 failed"));
+}

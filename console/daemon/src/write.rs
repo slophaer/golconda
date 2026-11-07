@@ -27,7 +27,12 @@ use std::thread;
 
 /// What a daemon that writes has: the journal, the audit repository, its signing key.
 pub struct Writes {
+    /// the state directory: journal.db, jobs.db, audit/, releases/
+    pub state: PathBuf,
     pub journal: Mutex<Journal>,
+    /// held while something writes a system's checkout (a commit, a fetch, a release build),
+    /// which takes minutes for a build: edits need the journal only
+    pub checkout: Mutex<()>,
     /// the audit repository; its lock also orders the entries
     pub audit: Mutex<Git>,
     /// the remote the audit repository is pushed to
@@ -66,7 +71,9 @@ impl Writes {
         Audit::open(&git).map_err(|e| e.to_string())?;
         let socket = PathBuf::from("/run/systemd/journal/socket");
         Ok(Writes {
+            state: state.to_path_buf(),
             journal: Mutex::new(journal),
+            checkout: Mutex::new(()),
             audit: Mutex::new(git),
             audit_push,
             audit_unpushed: Arc::default(),
@@ -372,7 +379,9 @@ pub fn operation(
 }
 
 /// The checkout a system's document is in, and the branch it is on.
-fn repo_of(w: &Writes, doc: &Path) -> Result<(Git, PathBuf, String), String> {
+/// The checkout around `doc` as the daemon commits in it, the document's path in it, and its
+/// current branch.
+pub(crate) fn repo_of(w: &Writes, doc: &Path) -> Result<(Git, PathBuf, String), String> {
     let dir = doc
         .parent()
         .filter(|d| !d.as_os_str().is_empty())
@@ -454,6 +463,7 @@ pub fn commit(
         platform: &app.platform,
     };
     let by = operator(who);
+    let _checkout = locked(&w.checkout);
     let mut journal = locked(&w.journal);
     let done = commit::commit_with(&mut journal, &repo, &eval, system, &by, message, |c| {
         record_outside(w, system, &c.outside);
@@ -547,6 +557,7 @@ pub fn fetch_all(app: &App, w: &Writes) {
             iets: &app.iets,
             platform: &app.platform,
         };
+        let _checkout = locked(&w.checkout);
         let mut journal = locked(&w.journal);
         match commit::fetch(&mut journal, &repo, &eval, system) {
             Ok(outside) => record_outside(w, system, &outside),

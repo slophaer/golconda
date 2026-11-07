@@ -7,6 +7,7 @@ use axum::http::StatusCode;
 use golconda_core::candidate::Op;
 use golconda_core::diff::Change;
 use golconda_core::document::{option_name, toml_text};
+use golconda_core::jobs::State;
 use golconda_core::system::{Explanation, System};
 use maud::{DOCTYPE, Markup, PreEscaped, html};
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
@@ -19,6 +20,7 @@ use std::path::PathBuf;
 enum Tab {
     Config,
     Changes,
+    Status,
 }
 
 /// The frame: the strip (system, image, who), the read-only banner, the rail.
@@ -69,8 +71,12 @@ fn layout(
                                     "Changes"
                                     @if let Some(n) = open_count(app, name) { small { (n) } }
                                 }
+                                a class=[(tab == Some(Tab::Status)).then_some("on")] href={ "/systems/" (name) "/machines" } { "Status" }
                             }
                             // the system's pages first, the daemon's own after them
+                            @if app.jobs.is_some() {
+                                a class=[(title == "Jobs" || title.starts_with("Job ")).then_some("on")] href="/jobs" { "Jobs" }
+                            }
                             @if app.writes.is_some() {
                                 a class=[(title == "Audit log").then_some("on")] href="/audit" { "Audit log" }
                             }
@@ -630,6 +636,170 @@ pub fn changes(
         "Changes",
         &main,
     )
+}
+
+/// A form that starts a job: its kind, the machine, back to `back`.
+fn job_form(name: &str, csrf: &str, kind: &str, machine: Option<&str>, label: &str) -> Markup {
+    html! {
+        form.inline method="post" action={ "/systems/" (name) "/jobs" } {
+            input type="hidden" name="csrf" value=(csrf);
+            input type="hidden" name="kind" value=(kind);
+            @if let Some(m) = machine { input type="hidden" name="machine" value=(m); }
+            button.btn type="submit" { (label) }
+        }
+    }
+}
+
+/// What the Status page shows: the update source, the machines, the recent jobs.
+pub struct StatusView {
+    pub updates: Option<String>,
+    /// a deploy can run: an update source, machines, and the daemon's release keys
+    pub deploys: bool,
+    pub machines: Vec<MachineView>,
+    pub recent: Vec<golconda_core::jobs::Job>,
+}
+
+/// One machine on the Status page: what it says, or why it said nothing.
+pub struct MachineView {
+    pub machine: golconda_core::machine::Machine,
+    pub status: Result<golconda_core::machine::Status, String>,
+}
+
+/// A system's machines: version, slots, a newer version at the source, and the jobs an
+/// operator can start (`csrf`: none for someone who may only read).
+pub fn status(
+    app: &App,
+    who: &Identity,
+    name: &str,
+    sys: &System,
+    view: &StatusView,
+    csrf: Option<&str>,
+) -> Markup {
+    let (updates, machines, recent) = (view.updates.as_deref(), &view.machines, &view.recent);
+    let main = html! {
+        h2 { "Status" }
+        p.m {
+            "update source: "
+            @if let Some(u) = updates { (u) } @else { "none (machines.toml)" }
+            @if let (Some(c), true) = (csrf, view.deploys) { " " (job_form(name, c, "deploy", None, "Deploy")) }
+        }
+        @if machines.is_empty() {
+            p { "No machines: list them in machines.toml beside the document." }
+        } @else {
+            table {
+                tr { th { "machine" } th { "runs" } th { "slots" } th { "at the source" } @if csrf.is_some() { th {} } }
+                @for m in machines {
+                    tr {
+                        td { (m.machine.name) br; small.m { (m.machine.ssh) } }
+                        @match &m.status {
+                            Err(e) => { td.m colspan="3" { span.pill.p-red { "unreachable" } " " (e) } }
+                            Ok(st) => {
+                                td.m { (st.version.as_deref().unwrap_or("?")) br; small { (st.hostname) } }
+                                td.m {
+                                    @for e in st.entries.iter().filter(|e| e.is_image()) {
+                                        div {
+                                            (e.version.as_deref().unwrap_or(""))
+                                            @if e.selected { " " span.pill.p-sky { "booted" } }
+                                            @if e.default && !e.selected { " " span.pill.p-amber { "next boot" } }
+                                            @if let Some(t) = e.tries_left { " " span.pill.p-amber { (t) " tries left" } }
+                                        }
+                                    }
+                                }
+                                td.m {
+                                    @match &st.available {
+                                        Ok(Some(v)) => { span.pill.p-green { (v) } }
+                                        Ok(None) => { "nothing newer" }
+                                        Err(e) => { span.pill.p-amber { "could not check" } " " small { (e) } }
+                                    }
+                                }
+                            }
+                        }
+                        @if let Some(c) = csrf {
+                            td {
+                                (job_form(name, c, "update", Some(&m.machine.name), "Update"))
+                                (job_form(name, c, "reboot", Some(&m.machine.name), "Reboot"))
+                                (job_form(name, c, "rollback", Some(&m.machine.name), "Roll back"))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        @if !recent.is_empty() {
+            h3 { "Recent jobs" }
+            (job_table(recent))
+        }
+    };
+    layout(
+        app,
+        who,
+        Some((name, sys)),
+        Some(Tab::Status),
+        "Status",
+        &main,
+    )
+}
+
+fn state_class(state: State) -> &'static str {
+    match state {
+        State::Ok => "pill p-green",
+        State::Queued | State::Running => "pill p-sky",
+        State::Interrupted => "pill p-amber",
+        State::Failed => "pill p-red",
+    }
+}
+
+fn job_table(jobs: &[golconda_core::jobs::Job]) -> Markup {
+    html! {
+        table {
+            tr { th { "job" } th { "kind" } th { "system" } th { "machine" } th { "by" } th { "created" } th { "state" } th { "summary" } }
+            @for j in jobs {
+                tr {
+                    td.m { a href={ "/jobs/" (j.id) } { (j.id) } }
+                    td.m { (j.kind) }
+                    td.m { (j.system) }
+                    td.m { (j.machine.as_deref().unwrap_or("all")) }
+                    td { (j.by.name) }
+                    td.m { (j.created) }
+                    td { span class=(state_class(j.state)) { (j.state.name()) } }
+                    td { (j.summary.as_deref().unwrap_or("")) }
+                }
+            }
+        }
+    }
+}
+
+pub fn jobs(app: &App, who: &Identity, jobs: &[golconda_core::jobs::Job]) -> Markup {
+    let main = html! {
+        h2 { "Jobs" }
+        @if jobs.is_empty() { p { "No jobs yet." } } @else { (job_table(jobs)) }
+    };
+    layout(app, who, None, None, "Jobs", &main)
+}
+
+/// One job and its output; while it has not ended, the page reloads itself every 3 seconds
+/// (without a script).
+pub fn job(
+    app: &App,
+    who: &Identity,
+    j: &golconda_core::jobs::Job,
+    lines: &[(i64, String, String)],
+) -> Markup {
+    let main = html! {
+        @if !j.state.ended() { meta http-equiv="refresh" content="3"; }
+        h2 { "Job " (j.id) ": " (j.kind) " " (j.machine.as_deref().unwrap_or(&j.system)) }
+        p {
+            span class=(state_class(j.state)) { (j.state.name()) }
+            " · " a href={ "/systems/" (j.system) "/machines" } { (j.system) }
+            " · by " (j.by.name) " · created " (j.created)
+            @if let Some(e) = &j.ended { " · ended " (e) }
+        }
+        @if let Some(s) = &j.summary { p { (s) } }
+        pre.log {
+            @for (_, at, line) in lines { span.m { (at) } "  " (line) "\n" }
+        }
+    };
+    layout(app, who, None, None, &format!("Job {}", j.id), &main)
 }
 
 #[cfg(test)]

@@ -178,6 +178,48 @@ and push" and "Discard all". Every form carries the session's CSRF token, and it
 daemon's own; someone who may only read gets no form at all. `/audit` lists the audit log, newest
 first, filtered by operator, system, action and day; as JSON with `Accept: application/json`.
 
+## Machines and jobs
+
+`machines.toml` beside a system's document names its machines and its update source:
+
+```toml
+[server]
+updates = "hetzner:updates/web"    # where a deploy publishes; the machines' /system.updateSource
+[server.machines.web1]
+ssh = "root@web1.example.com"
+```
+
+The daemon reads a machine over ssh with systemd's own varlink interfaces, `varlinkctl` run on it
+(the image has no other tools): `io.systemd.Hostname` (hostname, image and version, boot id),
+`io.systemd.BootControl` (the boot entries, which one is booted, which comes next, the boot
+counters) and `io.systemd.SysUpdate` (`CheckNew`: a newer version at the update source; one it
+cannot reach is "could not check", not an error). `/systems/NAME/machines` shows them, the Status
+page, with the jobs an operator may start.
+
+A job is `update` (sysupdate writes the newest version to the free slot), `reboot`
+(`io.systemd.Shutdown.Reboot`, which an inhibitor stops; then it waits for the machine to come back
+on the version its loader boots next, blessed), `rollback` (`bootctl set-oneshot` the other slot,
+reboot, wait) or `deploy`, the whole system: `release build` in the system's checkout (the release
+commit's author is the operator, the daemon commits and signs it and pushes it to `--push`),
+`release publish` to `updates`, then on one machine after the other update, reboot, confirm; the
+first that fails stops it, and the job names the machines it did not get to. A deploy needs
+`--release-keys DIR` (and `--release-copy-keys` with a chroot-store build daemon).
+
+Each system has one queue, so its jobs run one after the other. A job's state and output lines are
+in `STATE/jobs.db`: `/jobs` and `/jobs/ID` show them (a running job's page reloads itself), as JSON
+too (`?after=N`: the lines after line N). Every job is an audit entry when it is queued and when it
+ends, a deploy's build and publish one each. A restart marks a job that had not ended interrupted;
+nothing resumes it. `--confirm-timeout` (900 s) is how long a job waits for a machine to come back.
+ssh, nix-build, gpgv and rclone come from PATH or `GOLCONDA_SSH`, `GOLCONDA_NIX_BUILD`,
+`GOLCONDA_GPGV`, `GOLCONDA_RCLONE`.
+
+```sh
+golconda --server https://console.example.com machines
+golconda --server https://console.example.com job start update web1 --wait
+golconda --server https://console.example.com job start deploy --wait
+golconda --server https://console.example.com job list
+```
+
 ## Audit log
 
 The daemon keeps an audit log in a git repository of its own: one entry per commit, one JSON line
