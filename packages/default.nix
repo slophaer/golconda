@@ -51,8 +51,9 @@
   iets = ./iets;
   # the console's command line, for operators' machines (console/)
   golconda-console = ../console;
-  # the console's build with other phases, for checks.console-clippy
+  # the console's build with other phases, for checks.console-clippy and checks.schema-parity
   golconda-console-clippy = ../console/checks/clippy;
+  golconda-schema-parity = ../console/checks/schema-parity;
   # the fonts golcondad serves its pages in (console/daemon)
   ibm-plex-web = ./ibm-plex-web;
   # file encryption for golconda vars, on PATH beside golconda (console/)
