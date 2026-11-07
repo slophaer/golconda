@@ -137,6 +137,14 @@ in
       inherit (pkgs) rclone;
       # an S3-compatible store for the release tool's tests
       inherit (pkgs) garage;
+      # what scripts/provision-esp runs on the build host (scripts/tools.sh): our systemd-creds,
+      # sfdisk, mtools and python, not nixpkgs'
+      inherit (pkgs)
+        systemd
+        mtools
+        util-linux
+        cpython
+        ;
     }
     # tests-<name>: a package's own test from tests/packages/ (they moved with the packages)
     // import ../tests/packages { inherit sources set; }

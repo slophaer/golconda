@@ -74,6 +74,8 @@ needs them is not packaged.
 
 ## Nothing from nixpkgs
 
-Packages come from repkgs and `packages/`. The only nixpkgs reference is the `nixpkgs-dev-only` pin
-behind the formatter, the docs build and the dev shell, and `checks.boundary` fails when it leaks
-anywhere else.
+Packages come from repkgs and `packages/`, and so do the tools the scripts run on the build host
+(`scripts/tools.sh`). The only nixpkgs reference is the `nixpkgs-dev-only` pin behind the formatter,
+the docs build, the dev shell, the sandboxed checks' builders, and the boot test's virtual machine
+(QEMU, OVMF, swtpm, virt-firmware), which repkgs does not build yet. `checks.boundary` fails when a
+Nix file outside `nix/dev` and `nix/checks.nix` names it.
