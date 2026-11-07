@@ -26,34 +26,55 @@ let
         // extraSystem;
       };
     };
-  trusted =
-    sys:
-    let
-      k = builtins.head (filter (p: (p.pname or "") == "linux-kernel") sys.composed.packages);
-    in
-    (extraOf k.spec.env).SYSTEM_TRUSTED_KEYS or null;
+  kernelOf = sys: builtins.head (filter (p: (p.pname or "") == "linux-kernel") sys.composed.packages);
+  trusted = sys: (extraOf (kernelOf sys).spec.env).SYSTEM_TRUSTED_KEYS or null;
+  extraOf = env: builtins.fromJSON env.GOLCONDA_KERNEL_EXTRA_CONFIG;
   # the JSON keeps the certificate's store context (the build needs the file): drop it to read
-  extraOf =
-    env: builtins.fromJSON (builtins.unsafeDiscardStringContext env.GOLCONDA_KERNEL_EXTRA_CONFIG);
+  filesOf = env: builtins.fromJSON (builtins.unsafeDiscardStringContext env.GOLCONDA_KERNEL_FILES);
+  # the fixed path, relative to the kernel tree, that the config names and the build fills
+  fixed = "certs/golconda-verity.pem";
   cert = "/srv/keys/secureboot/db.crt";
   storeCert = "${builtins.toFile "db.crt" "test certificate"}";
+  otherCert = "${builtins.toFile "db.crt" "another test certificate"}";
+  # everything kconfig reads: a change here regenerates autoconf.h, which every object includes
+  configOf =
+    sys:
+    let
+      env = (kernelOf sys).spec.env;
+    in
+    {
+      inherit (env) GOLCONDA_KERNEL_CONFIG GOLCONDA_KERNEL_EXTRA_CONFIG GOLCONDA_KERNEL_FRAGMENTS;
+    };
 in
 [
   (check "secureBoot: on by default, and the kernel has no built-in key" (
-    trusted (sysWith { } cert) == null && trusted mkSystemFixture == null
+    trusted (sysWith { } cert) == null
+    && trusted mkSystemFixture == null
+    && filesOf (kernelOf (sysWith { } cert)).spec.env == { }
   ))
   (check "secureBoot: false puts the db certificate into the kernel's built-in keyring" (
-    trusted (sysWith { secureBoot = false; } cert) == cert
-    &&
-      (extraOf (sysWith { secureBoot = false; } cert).pkgs.linux-kernel.spec.env).SYSTEM_TRUSTED_KEYS
-      == cert
-  ))
-  (check "secureBoot: false with a store certificate keeps its context in the kernel's env" (
     let
-      env = (sysWith { secureBoot = false; } storeCert).pkgs.linux-kernel.spec.env;
+      sys = sysWith { secureBoot = false; } cert;
     in
-    trusted (sysWith { secureBoot = false; } storeCert) == storeCert
-    && builtins.hasContext env.GOLCONDA_KERNEL_EXTRA_CONFIG
+    trusted sys == fixed
+    && (extraOf sys.pkgs.linux-kernel.spec.env).SYSTEM_TRUSTED_KEYS == fixed
+    && filesOf (kernelOf sys).spec.env == { ${fixed} = cert; }
+  ))
+  (check "secureBoot: false with a store certificate keeps it an input of the kernel" (
+    let
+      env = (kernelOf (sysWith { secureBoot = false; } storeCert)).spec.env;
+    in
+    filesOf env == { ${fixed} = storeCert; } && builtins.hasContext env.GOLCONDA_KERNEL_FILES
+  ))
+  # the jig compile cache keys each object on its inputs: a config with the certificate's store
+  # path made every object of the nosb kernel miss whenever the certificate changed
+  (check "secureBoot: false keeps the kernel config free of the certificate's store path" (
+    let
+      c = configOf (sysWith { secureBoot = false; } storeCert);
+    in
+    !(builtins.hasContext c.GOLCONDA_KERNEL_EXTRA_CONFIG)
+    && configOf (sysWith { secureBoot = false; } otherCert) == c
+    && configOf (sysWith { secureBoot = false; } cert) == c
   ))
   (check "secureBoot: false without the image's keys is an error" (
     !(tryEval (deepSeq (trusted (sysWith { secureBoot = false; } null)) true)).success

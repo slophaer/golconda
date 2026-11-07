@@ -77,14 +77,21 @@ let
     inherit sources system platform;
     downstream = project.packages;
     inherit (project) replaces;
-    inherit kernelConfig;
+    inherit kernelConfig kernelFiles;
   };
-  kernelConfig =
+  # Without Secure Boot the kernel's built-in keyring holds the verity certificate. The config
+  # names a fixed path in the kernel tree, and the build copies the certificate there
+  # (packages/kernel/kbuild.nu): a store path in the config would change autoconf.h, which every
+  # object includes, so each certificate would recompile the whole kernel past jig's cache.
+  # The certificate stays an input of the kernel through GOLCONDA_KERNEL_FILES.
+  trustedKeysFile = "certs/golconda-verity.pem";
+  kernelConfig = if secureBoot != false then { } else { SYSTEM_TRUSTED_KEYS = trustedKeysFile; };
+  kernelFiles =
     if secureBoot != false then
       { }
     else
       {
-        SYSTEM_TRUSTED_KEYS =
+        ${trustedKeysFile} =
           if verityCert == null then
             throw "golconda: /system.secureBoot = false needs the image's keys: the kernel carries the db certificate, so build it with lib.mkImage"
           else
@@ -274,7 +281,7 @@ let
   # only for a replacement's ancestor.
   baseSet = import ../nix/packages.nix {
     inherit sources system platform;
-    inherit kernelConfig;
+    inherit kernelConfig kernelFiles;
   };
 
   # Where a package comes from: a downstream package, one of Golconda's packages/ (by its

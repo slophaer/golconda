@@ -56,8 +56,10 @@ iets build -E '((import ./default.nix).lib.mkImage {
 }).disk'
 ```
 
-The kernel is built again for this image: its built-in keyring holds `db.crt`. The output holds
-`disk.raw` and `release/`.
+The kernel is built again for this image: its built-in keyring holds `db.crt`. Its config is the
+same for every key set, so with jig's compile cache (`jigd`) after one such build, only the
+certificate object and the compressed kernel's wrapper compile again, and the kernel relinks. The
+output holds `disk.raw` and `release/`.
 
 ## 4. The machine's credentials
 

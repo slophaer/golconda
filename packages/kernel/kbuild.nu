@@ -11,6 +11,7 @@ def kernel-options []: nothing -> record {
     config: ($values.GOLCONDA_KERNEL_CONFIG | from json)
     extra: ($values.GOLCONDA_KERNEL_EXTRA_CONFIG | from json)
     fragments: ($values.GOLCONDA_KERNEL_FRAGMENTS | from json)
+    files: ($values.GOLCONDA_KERNEL_FILES | from json)
     make: ($values.GOLCONDA_KERNEL_MAKE | from json)
   }
 }
@@ -62,10 +63,32 @@ def verify-fragments [lines: list<string>, dotconfig: string]: nothing -> nothin
   note kbuild-verify $"($last | length) fragment options verified"
 }
 
+# Copy the system's files into the tree at the paths the config names (the verity certificate
+# at SYSTEM_TRUSTED_KEYS): the config stays the same when a file changes, so only the objects
+# that read the file recompile. A path must stay inside the tree and must not replace a
+# kernel file; a missing source fails the copy.
+def copy-files [files: record, src: string]: nothing -> nothing {
+  # a loop, not items: an error inside a closure loses its message
+  for f in ($files | transpose dest from) {
+    let dest = $f.dest
+    let from = $f.from
+    if ($dest | str starts-with "/") or (".." in ($dest | path split)) {
+      error make {msg: $"kernel file ($dest): the path must be relative and inside the tree"}
+    }
+    let to = ($src | path join $dest)
+    if ($to | path exists) { error make {msg: $"kernel file ($dest): the tree already has it"} }
+    if not ($from | path exists) { error make {msg: $"kernel file ($dest): ($from) does not exist"} }
+    mkdir ($to | path dirname)
+    cp $from $to
+  }
+  if ($files | is-not-empty) { note kbuild-files $"($files | columns | str join ' ')" }
+}
+
 export def configure []: nothing -> nothing {
   let c = (ctx)
   let o = (kernel-options)
   cd $c.src
+  copy-files $o.files $c.src
   x make ...(make-flags) defconfig
   let fragments = $o.fragments
   let overridden = (fragment-lines $fragments | each {|l| fragment-name $l } | uniq)
@@ -87,9 +110,28 @@ export def configure []: nothing -> nothing {
   }
 }
 
+# The file CONFIG_SYSTEM_TRUSTED_KEYS names, or null
+def trusted-keys []: nothing -> any {
+  let keys = (open --raw $"((ctx).src)/.config" | lines | parse -r '^CONFIG_SYSTEM_TRUSTED_KEYS="(.+)"$')
+  if ($keys | is-empty) { null } else { (ctx).src | path join $keys.0.capture0 }
+}
+
+# jig keys a cached object on its command line and on the inputs its depfile names, and clang's
+# depfile leaves out .incbin files. Two objects .incbin what changes with neither source nor config:
+# the built-in certificates (certs/system_certificates.o) and the compressed kernel
+# (arch/x86/boot/compressed/piggy.o). The digest of each input goes on the object's command line
+# (AFLAGS_<object>, a make variable kbuild reads), so a cached object never carries another
+# build's certificate or kernel.
+def incbin-flag [object: string, file: string]: nothing -> string {
+  $"AFLAGS_($object).o=-DGOLCONDA_INCBIN_SHA256=(open --raw $file | hash sha256)"
+}
+
 export def build []: nothing -> nothing {
   cd (ctx).src
-  x make ...(make-flags) bzImage
+  let keys = (trusted-keys)
+  let certs = if $keys == null { [] } else { [(incbin-flag system_certificates $keys)] }
+  x make ...(make-flags) ...$certs vmlinux
+  x make ...(make-flags) ...$certs (incbin-flag piggy vmlinux) bzImage
 }
 
 export def install []: nothing -> nothing {
@@ -104,6 +146,9 @@ export def install []: nothing -> nothing {
   cp $"($c.src)/arch/x86/boot/bzImage" $"($moddir)/vmlinuz"
   cp $"($c.src)/System.map" $"($moddir)/System.map"
   cp $"($c.src)/.config" $"($moddir)/config"
+  # record the certificates of the built-in keyring: the config names only a path in the tree
+  let keys = (trusted-keys)
+  if $keys != null { cp $keys $"($moddir)/trusted-keys.pem" }
   mkdir $"($c.out)/boot"
   ^ln -s $"../lib/modules/($version)/vmlinuz" $"($c.out)/boot/vmlinuz-($version)"
   let debug = ((attrs).outputs.debug? | default "")
