@@ -65,5 +65,6 @@
   statix = ./statix;
   deadnix = ./deadnix;
   taplo = ./taplo;
+  ast-grep = ./ast-grep;
   tree-sitter-nu = ./tree-sitter-nu;
 }
