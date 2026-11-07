@@ -120,7 +120,8 @@ ssh root@$IP systemctl --failed
 ## 7. Updates
 
 Change `version` in the document, build again, and publish the new `release/` directory at
-`updateSource` ([Making a release: The release directory](release.md#4-the-release-directory)).
+`updateSource`
+([Making a release: Publish the release directory](release.md#4-publish-the-release-directory)).
 `systemd-sysupdate-update.timer` on the machine installs it into the B slots and the ESP; the next
 boot runs it, and three failed boots return to the old slot ([Updates](../design/updates.md)). To
 update at once: `ssh root@$IP systemctl start systemd-sysupdate-update.service`, then reboot.

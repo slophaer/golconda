@@ -9,8 +9,8 @@ certificate in the firmware. The key layout and the reason for each key are in
 | --------------------------- | -------------------------------------------------------------------------------------- |
 | 1. make the key set         | `openssl` with `-addext` (OpenSSL 1.1.1 or later), and `gpg` (GnuPG 2.2 or later)      |
 | 2. keep it out of the store | `extra-sandbox-paths` on the build daemon, and build users that can read the directory |
-| 3. build                    | a build host with the daemon of [Build host](build-host.md)                            |
-| 4. serve `release/`         | an update source, and `/system.updateSource` on the machine                            |
+| 3. build                    | a build host with the daemon of [Build host](build-host.md), `golconda`, git           |
+| 4. publish `release/`       | an update source rclone reaches, and `/system.updateSource` on the machine             |
 | 5. enrol the certificate    | firmware setup, or the `KEK` private key for an authenticated `db` append              |
 | 6. rotate                   | the old key set, and the same firmware access                                          |
 
@@ -74,7 +74,21 @@ build the two releases of the real-key boot test ([`image.md`](image.md)).
 
 ## 3. Build
 
-Run this in the repository root on the build host:
+Run this in the configuration repository on the build host, with a clean working tree:
+
+```sh
+golconda release build -f server.toml --keys /srv/golconda-keys
+```
+
+`golconda release build` (console/README.md) picks the version (`--version auto`: today's date and
+the revision after the document's `/system.version`, and after what `--to DEST` serves), writes it
+into `server.toml`, builds the image, checks the release directory (step 4) and commits the version
+line as `release: <id> <version>`. The commit's trailers record the document's digest, the four
+files' digests and the store path, so `git log` finds the source of each release; a failed build
+puts the line back and commits nothing. It refuses a version that is not newer than the last one:
+sysupdate would install nothing and say nothing. The output is linked at `result-release`.
+
+By hand, the same build is:
 
 ```sh
 iets build -E '((import ./default.nix).lib.mkImage {
@@ -89,20 +103,38 @@ names a second directory, read for `pcr/` only, and `indexKeys` (default: `keys`
 `system` (default: `builtins.currentSystem`) is the build host. The expression returns seven
 attributes, `erofs` to `disk` plus `release`, listed in
 [Outputs: `lib.mkImage`](outputs.md#libmkimage). `disk` needs every other step; its output holds
-`disk.raw`, `disk.json` and `release/`. The command prints the output path.
+`disk.raw`, `disk.json` and `release/`. `nix-build -E` with the same expression prints the output
+path; iets 0.2 builds the content-addressed disk but finds no output path for it ("built, but the
+builder has no output path"), which is why `golconda release build` uses `nix-build`.
 
 Verification: two releases were built from the path form (`keys = /srv/keys;`) and both booted with
 `--secure-boot --keys` and the whole update test ([What is proven](../proven.md)). **Unverified:**
 no build uses the string form. It is the one that keeps the private keys out of the store, so a
 build with `keys = "/srv/golconda-keys";` and a boot of its disk would test it.
 
-## 4. The release directory
+## 4. Publish the release directory
 
 `release/` holds the four release files, `SHA256SUMS` and `SHA256SUMS.gpg`. The names, the fixed
 line order and what a version means are in
 [Releases: The release directory](../design/releases.md#the-release-directory); do not rename or
 reorder the files. Serve this directory at the URL `/system.updateSource` names; a machine with that
 option set fetches the release from it ([Image artifacts: A release](image.md#a-release)).
+
+```sh
+golconda release check result-release/release --keys /srv/golconda-keys
+golconda release publish result-release/release --to hetzner:updates/web --keys /srv/golconda-keys
+golconda release list --to hetzner:updates/web
+```
+
+`check` verifies the index (four lines, fixed order, every digest), the names and the signature
+against `release/index.pgp`, the key the machines carry. `publish` checks, then uploads through
+rclone to a local directory (an HTTP server's root) or any rclone remote (S3 and S3-compatible
+stores, SFTP): the four files first, the signature and the index last. It refuses a version that is
+not newer than the one the destination serves, the same version with other files, and a release
+whose release commit records other digests or that has none (unless `--unrecorded`, for a release
+built by hand). It deletes nothing, so the older release's files stay for a cache that still serves
+its index. For an S3 bucket, the release prefix needs anonymous `GET`: sysupdate sends no
+credentials, and every file is checked against the signed index anyway.
 
 Verification: `scripts/boot-test --next` serves `release/` on `127.0.0.1:8074` (`10.0.2.2:8074` in
 the guest) and rewrites no transfer file. The markers `http-source` and `http-fetch` show that the
