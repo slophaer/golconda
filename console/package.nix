@@ -1,6 +1,6 @@
 # The console: the command line (`golconda`) and the daemon (`golcondad`), built from this directory with repkgs' Rust
 # toolchain. Not part of an image: it runs where operators work (console/README.md).
-# The version is the workspace's; the source is this directory without the build tree.
+# The version is the workspace's; the source is this directory without the build tree and packages.
 {
   package,
   pkgs,
@@ -12,7 +12,14 @@ package {
   source = builtins.path {
     path = ./.;
     name = "golconda-console-source";
-    filter = path: _: baseNameOf path != "target" && baseNameOf path != "package.nix";
+    # checks/ holds packages of the console's checks, not source
+    filter =
+      path: _:
+      !builtins.elem (baseNameOf path) [
+        "target"
+        "package.nix"
+        "checks"
+      ];
   };
   uses = [ "cargo" ];
   bin = [
