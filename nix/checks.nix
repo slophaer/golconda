@@ -4,7 +4,7 @@
 # Each check is `run`: a content-addressed derivation whose builder is the repkgs seed's shell, as
 # repkgs' own tests are, with tools from repkgs where it has them (python3, gnumake, coreutils) and
 # the seed's nu, which Golconda's builders run. The dev pin (nixpkgs) is left for the tools repkgs
-# does not package yet: the book's diagram preprocessor (mdbook-pele, Node), the Rust build
+# does not package yet: the Rust build
 # behind clippy, and python's jsonschema (the dev-tools inventory in the knowledge base).
 {
   sources,
@@ -89,7 +89,7 @@ in
   '';
 
   # the docs build; a broken include or diagram fails here
-  docs = run "docs" [ rp.mdbook dev.mdbook-pele ] ''
+  docs = run "docs" [ rp.mdbook rp.mdbook-pele ] ''
     # the book's first page includes ../README.md
     cp -r ${src}/docs docs && cp ${src}/README.md README.md && chmod -R u+w docs && cd docs
     # the reference pages that are generated, not committed

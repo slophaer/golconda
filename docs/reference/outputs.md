@@ -40,11 +40,10 @@ and developer tools still have per-system outputs.
 
 Pinned in `npins/sources.json`, read by `nix/sources.nix`:
 
-- `repkgs`: the package set (Golconda's fork, branch `upstream-prep`, the one the pin follows)
+- `repkgs`: the package set (Golconda's fork, branch `golconda`, the one the pin follows)
 - `adios`: the module system (korora types vendored inside)
 - `flake-incompat`: the output schema
 - `iets`: the evaluator and linter
-- `pele`: the diagram renderer for the docs build
 - `nixpkgs-dev-only`: developer tooling, used nowhere else
 
 ## `lib.mkImage`
