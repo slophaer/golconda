@@ -38,6 +38,9 @@ pub struct OidcConfig {
     /// PEM certificates the provider's TLS certificate must chain to, such as our own CA's;
     /// None: the public roots built in (webpki-roots)
     pub ca_pem: Option<String>,
+    /// the public client the CLI and TUI sign in with (the device flow); their ID tokens come
+    /// as bearer tokens and must be meant for it. None: no bearer is taken
+    pub cli_client_id: Option<String>,
 }
 
 struct Pending {
@@ -59,6 +62,8 @@ pub struct Oidc {
     authorize: String,
     token: String,
     jwks_uri: String,
+    /// where the CLI starts the device flow, when the provider has it
+    device: Option<String>,
     keys: RwLock<Vec<Value>>,
     pending: Mutex<HashMap<String, Pending>>,
     sessions: Mutex<HashMap<String, Session>>,
@@ -154,6 +159,9 @@ impl Oidc {
             authorize: field("authorization_endpoint")?,
             token: field("token_endpoint")?,
             jwks_uri: field("jwks_uri")?,
+            device: d["device_authorization_endpoint"]
+                .as_str()
+                .map(str::to_string),
             config,
             keys: RwLock::default(),
             pending: Mutex::default(),
@@ -277,15 +285,9 @@ impl Oidc {
         let token = answer["id_token"]
             .as_str()
             .ok_or_else(|| bad("the token endpoint gave no ID token"))?;
-        let claims = match self.verify(token) {
-            Err(e) if e.contains("unknown key") => {
-                // the provider may have rotated its keys since start
-                self.fetch_keys().map_err(bad)?;
-                self.verify(token)
-            }
-            r => r,
-        }
-        .map_err(|e| bad(format!("the ID token: {e}")))?;
+        let claims = self
+            .verify_fresh(token, &self.config.client_id)
+            .map_err(|e| bad(format!("the ID token: {e}")))?;
         if claims["nonce"] != p.nonce.as_str() {
             return Err(bad("the ID token: its nonce is not this sign-in's"));
         }
@@ -304,8 +306,9 @@ impl Oidc {
         Ok((id, safe_next(&p.next)))
     }
 
-    /// The claims of an ID token whose signature, issuer, audience and expiry check.
-    fn verify(&self, token: &str) -> Result<Value, String> {
+    /// The claims of an ID token whose signature, issuer, audience (`client`) and expiry
+    /// check.
+    fn verify(&self, token: &str, client: &str) -> Result<Value, String> {
         let parts: Vec<&str> = token.split('.').collect();
         let [head, body, sig] = parts[..] else {
             return Err("not a signed JWT".into());
@@ -381,17 +384,17 @@ impl Oidc {
         if !good {
             return Err("its signature does not check".into());
         }
-        self.check_claims(json(body)?)
+        self.check_claims(json(body)?, client)
     }
 
-    /// The claims if they name this issuer and client and are in time.
-    fn check_claims(&self, claims: Value) -> Result<Value, String> {
+    /// The claims if they name this issuer and `client` and are in time.
+    fn check_claims(&self, claims: Value, client: &str) -> Result<Value, String> {
         if claims["iss"] != self.config.issuer.as_str() {
             return Err(format!("issued by {}", claims["iss"]));
         }
         let aud = match &claims["aud"] {
-            Value::String(a) => a == &self.config.client_id,
-            Value::Array(a) => a.iter().any(|x| x == self.config.client_id.as_str()),
+            Value::String(a) => a == client,
+            Value::Array(a) => a.iter().any(|x| x == client),
             _ => false,
         };
         if !aud {
@@ -400,7 +403,7 @@ impl Oidc {
         // with more than one audience, the party it was issued to must be named, and be us
         let several = claims["aud"].as_array().is_some_and(|a| a.len() > 1);
         match claims.get("azp") {
-            Some(azp) if azp != self.config.client_id.as_str() => {
+            Some(azp) if azp != client => {
                 return Err(format!("issued to {azp}"));
             }
             None if several => return Err("several audiences and no azp".into()),
@@ -416,6 +419,44 @@ impl Oidc {
             Some(exp) if exp + LEEWAY > now => Ok(claims),
             _ => Err("it has expired".into()),
         }
+    }
+
+    /// `verify`, once more after fetching the keys when the token names one not known: the
+    /// provider may have rotated them since start.
+    fn verify_fresh(&self, token: &str, client: &str) -> Result<Value, String> {
+        match self.verify(token, client) {
+            Err(e) if e.contains("unknown key") => {
+                self.fetch_keys()?;
+                self.verify(token, client)
+            }
+            r => r,
+        }
+    }
+
+    /// Who a bearer token names: an ID token the CLI got through the device flow, meant for
+    /// the CLI client. Blocking (a key fetch).
+    pub fn bearer(&self, token: &str) -> Result<Identity, Refused> {
+        let Some(client) = &self.config.cli_client_id else {
+            return Err(bad(
+                "this daemon takes no bearer tokens (no --oidc-cli-client-id)",
+            ));
+        };
+        let claims = self
+            .verify_fresh(token, client)
+            .map_err(|e| bad(format!("the bearer token: {e}")))?;
+        self.identity(&claims)
+    }
+
+    /// What the CLI needs to sign in: the issuer, its client and the scopes. None without a
+    /// CLI client or a provider without the device flow.
+    pub fn device_flow(&self) -> Option<Value> {
+        let client = self.config.cli_client_id.as_ref()?;
+        self.device.as_ref()?;
+        Some(serde_json::json!({
+            "issuer": self.config.issuer,
+            "clientId": client,
+            "scope": "openid profile email groups offline_access",
+        }))
     }
 
     /// Who the claims name, and at what level their groups put them.

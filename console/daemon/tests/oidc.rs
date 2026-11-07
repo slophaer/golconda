@@ -63,6 +63,8 @@ enum Mode {
 
 struct Grant {
     user: String,
+    /// the client the token is meant for
+    aud: String,
     nonce: String,
     challenge: String,
     redirect_uri: String,
@@ -101,7 +103,7 @@ impl Stub {
             _ => vec!["staff"],
         };
         let mut claims = json!({
-            "iss": self.issuer, "aud": "console", "sub": format!("id-{}", g.user),
+            "iss": self.issuer, "aud": g.aud, "sub": format!("id-{}", g.user),
             "name": g.user[..1].to_uppercase() + &g.user[1..], "groups": groups,
             "nonce": g.nonce, "iat": now, "exp": now + 300,
         });
@@ -189,6 +191,7 @@ async fn discovery(State(s): State<Arc<Stub>>) -> axum::Json<Value> {
         "authorization_endpoint": format!("{}/authorize", s.issuer),
         "token_endpoint": format!("{}/token", s.issuer),
         "jwks_uri": format!("{}/jwks", s.issuer),
+        "device_authorization_endpoint": format!("{}/device", s.issuer),
     }))
 }
 
@@ -229,6 +232,7 @@ async fn authorize(
         code.clone(),
         Grant {
             user: q["login_hint"].clone(),
+            aud: "console".into(),
             nonce: q["nonce"].clone(),
             challenge: q["code_challenge"].clone(),
             redirect_uri: q["redirect_uri"].clone(),
@@ -302,6 +306,11 @@ fn percent_decode(s: &str) -> String {
 
 /// The stub, serving on 127.0.0.1, and a daemon that signs in through it.
 async fn setup(mode: Mode) -> (Arc<Stub>, Router) {
+    setup_cli(mode, Some("golconda-cli")).await
+}
+
+/// The same, with `cli` as the daemon's CLI client.
+async fn setup_cli(mode: Mode, cli: Option<&str>) -> (Arc<Stub>, Router) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let issuer = format!("http://{}", listener.local_addr().unwrap());
     let stub = Arc::new(Stub {
@@ -324,6 +333,7 @@ async fn setup(mode: Mode) -> (Arc<Stub>, Router) {
         operator_group: "golconda-operators".into(),
         read_only_group: "golconda-readers".into(),
         ca_pem: None,
+        cli_client_id: cli.map(str::to_string),
     };
     let oidc = tokio::task::spawn_blocking(move || Oidc::discover(cfg))
         .await
@@ -655,6 +665,7 @@ async fn the_issuer_must_use_https_except_on_loopback() {
         operator_group: "o".into(),
         read_only_group: "r".into(),
         ca_pem: None,
+        cli_client_id: None,
     };
     let e = tokio::task::spawn_blocking(move || Oidc::discover(cfg("http://idp.example")).err())
         .await
@@ -731,6 +742,7 @@ async fn a_provider_behind_our_own_ca_is_trusted_with_the_ca_file_only() {
         operator_group: "o".into(),
         read_only_group: "r".into(),
         ca_pem: ca.map(str::to_string),
+        cli_client_id: None,
     };
     let (without, with) = (cfg(None), cfg(Some(include_str!("fixtures/tls-ca.pem"))));
     let e = tokio::task::spawn_blocking(move || Oidc::discover(without).err())
@@ -745,4 +757,102 @@ async fn a_provider_behind_our_own_ca_is_trusted_with_the_ca_file_only() {
         .await
         .unwrap();
     assert!(ok.is_ok(), "{ok:?}");
+}
+
+impl Stub {
+    /// An ID token for `user`, meant for `aud`, as the device flow gives the CLI.
+    fn mint(&self, user: &str, aud: &str) -> String {
+        self.token(&Grant {
+            user: user.into(),
+            aud: aud.into(),
+            nonce: String::new(),
+            challenge: String::new(),
+            redirect_uri: String::new(),
+        })
+    }
+}
+
+async fn with_bearer(app: &Router, token: &str) -> (StatusCode, String) {
+    let (s, _, body) = send(
+        app,
+        Request::get("/auth/me")
+            .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    (s, body)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_cli_learns_where_to_sign_in() {
+    let (stub, app) = setup(Mode::Good).await;
+    let (s, _, body) = send(
+        &app,
+        Request::get("/auth/device").body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK);
+    let v: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["issuer"], stub.issuer.as_str());
+    assert_eq!(v["clientId"], "golconda-cli");
+    assert!(
+        v["scope"]
+            .as_str()
+            .unwrap()
+            .split(' ')
+            .any(|s| s == "openid")
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_bearer_token_for_the_cli_client_signs_in() {
+    let (stub, app) = setup(Mode::Good).await;
+    let (s, body) = with_bearer(&app, &stub.mint("alice", "golconda-cli")).await;
+    assert_eq!(s, StatusCode::OK, "{body}");
+    let v: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        (v["id"].as_str(), v["level"].as_str()),
+        (Some("id-alice"), Some("operator"))
+    );
+    let (s, body) = with_bearer(&app, &stub.mint("bob", "golconda-cli")).await;
+    assert_eq!(s, StatusCode::OK, "{body}");
+    assert!(body.contains("read-only"), "{body}");
+    let (s, body) = with_bearer(&app, &stub.mint("carol", "golconda-cli")).await;
+    assert_eq!(s, StatusCode::FORBIDDEN, "{body}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn bearer_tokens_that_do_not_check_are_refused() {
+    let (stub, app) = setup(Mode::Good).await;
+    // the web client's token is not the CLI's
+    let (s, body) = with_bearer(&app, &stub.mint("alice", "console")).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+    assert!(body.contains("meant for"), "{body}");
+    for mode in [
+        Mode::Expired,
+        Mode::UnknownKey,
+        Mode::WrongIssuer,
+        Mode::AlgNone,
+    ] {
+        *stub.mode.lock().unwrap() = mode;
+        let (s, body) = with_bearer(&app, &stub.mint("alice", "golconda-cli")).await;
+        assert_eq!(s, StatusCode::UNAUTHORIZED, "{mode:?}: {body}");
+    }
+    let (s, _) = with_bearer(&app, "not.a-token").await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn without_a_cli_client_there_is_no_bearer_and_no_device_flow() {
+    let (stub, app) = setup_cli(Mode::Good, None).await;
+    let (s, _, _) = send(
+        &app,
+        Request::get("/auth/device").body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    let (s, body) = with_bearer(&app, &stub.mint("alice", "golconda-cli")).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+    assert!(body.contains("no bearer"), "{body}");
 }

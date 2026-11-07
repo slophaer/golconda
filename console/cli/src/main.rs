@@ -18,6 +18,8 @@ use std::io::{self, Read};
 use std::path::{self, Path, PathBuf};
 use std::process::ExitCode;
 
+mod login;
+
 /// Read, explain and change a Golconda system's configuration.
 ///
 /// OPTION is a TOML dotted key below the module (networks.lan.network.DNS, networks."lan.1").
@@ -69,6 +71,12 @@ enum Command {
     /// Releases: the directory a build writes, which machines install from
     #[command(subcommand)]
     Release(Releases),
+    /// Sign in to the daemon --server names, through its OIDC provider's device flow: open the
+    /// address it prints and confirm the code. The tokens stay in
+    /// $XDG_STATE_HOME/golconda/tokens.json
+    Login,
+    /// Forget the tokens for the daemon --server names
+    Logout,
 }
 
 #[derive(Subcommand)]
@@ -277,9 +285,23 @@ struct Doc {
 fn main() -> ExitCode {
     // usage errors exit 2 (clap's)
     let cli = Cli::parse();
-    let done = match cli.server {
-        Some(url) => remote::through(&url, &cli.name, cli.command),
-        None => run(cli.command),
+    let done = match (cli.server, cli.command) {
+        (Some(url), Command::Login) => login::login(&url, &mut io::stderr()),
+        (Some(url), Command::Logout) => login::logout(&url).map(|had| {
+            if had {
+                format!("signed out of {url}\n")
+            } else {
+                format!("not signed in to {url}\n")
+            }
+        }),
+        (None, Command::Login | Command::Logout) => Cli::command()
+            .error(
+                clap::error::ErrorKind::MissingRequiredArgument,
+                "login and logout are for a daemon: give --server",
+            )
+            .exit(),
+        (Some(url), command) => remote::through(&url, &cli.name, command),
+        (None, command) => run(command),
     };
     match done {
         Ok(out) => {
@@ -503,6 +525,7 @@ fn run(command: Command) -> Result<String, Box<dyn error::Error>> {
         Command::Config(c) => c,
         Command::Vars(v) => return run_vars(v),
         Command::Release(r) => return run_release(r),
+        Command::Login | Command::Logout => unreachable!("main takes them"),
         Command::Audit(Audit::Verify {
             repo,
             allowed_signers,
@@ -584,7 +607,7 @@ fn run(command: Command) -> Result<String, Box<dyn error::Error>> {
 
 /// The config commands through a golcondad (--server): its JSON routes.
 mod remote {
-    use super::{Command, Config, run};
+    use super::{Command, Config, login, run};
     use serde_json::{Value, json};
     use std::{error, result};
 
@@ -594,6 +617,8 @@ mod remote {
         url: String,
         name: String,
         agent: ureq::Agent,
+        /// the ID token from golconda login, when it signed in there
+        bearer: Option<String>,
     }
 
     impl Daemon {
@@ -603,18 +628,30 @@ mod remote {
                 self.url.trim_end_matches('/'),
                 self.name
             );
+            let auth = self
+                .bearer
+                .as_ref()
+                .map(|t| format!("Bearer {t}"))
+                .unwrap_or_default();
             let res = match body {
-                None => self
-                    .agent
-                    .get(&url)
-                    .header("Accept", "application/json")
-                    .call(),
-                Some(b) => self
-                    .agent
-                    .post(&url)
-                    .header("Accept", "application/json")
-                    .header("Content-Type", "application/json")
-                    .send(b.to_string()),
+                None => {
+                    let mut r = self.agent.get(&url).header("Accept", "application/json");
+                    if !auth.is_empty() {
+                        r = r.header("Authorization", &auth);
+                    }
+                    r.call()
+                }
+                Some(b) => {
+                    let mut r = self
+                        .agent
+                        .post(&url)
+                        .header("Accept", "application/json")
+                        .header("Content-Type", "application/json");
+                    if !auth.is_empty() {
+                        r = r.header("Authorization", &auth);
+                    }
+                    r.send(b.to_string())
+                }
             }
             .map_err(|e| format!("{method} {url}: {e}"))?;
             let status = res.status().as_u16();
@@ -632,9 +669,11 @@ mod remote {
     fn answer((status, v): (u16, Value)) -> Result<Value> {
         match status {
             200 => Ok(v),
-            401 => {
-                Err("the daemon wants a sign-in, which the CLI cannot do through OIDC yet".into())
-            }
+            401 => Err(format!(
+                "the daemon wants a sign-in: golconda login --server URL ({})",
+                v["error"].as_str().unwrap_or("")
+            )
+            .into()),
             409 => {
                 let theirs: Vec<String> = v["theirs"]
                     .as_array()
@@ -689,13 +728,12 @@ mod remote {
     }
 
     pub fn through(url: &str, name: &str, command: Command) -> Result<String> {
+        let agent = login::agent()?;
         let d = Daemon {
             url: url.into(),
             name: name.into(),
-            agent: ureq::Agent::config_builder()
-                .http_status_as_error(false)
-                .build()
-                .into(),
+            bearer: login::bearer(&agent, url)?,
+            agent,
         };
         let op = |base: Option<u64>,
                   module: String,
