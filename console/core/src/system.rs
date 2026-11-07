@@ -3,6 +3,7 @@
 use crate::document::{key, line_of, option_name, toml_text};
 use crate::eval::{self, Arg, Iets};
 use crate::schema::{self, LookupError};
+use crate::validate;
 use serde_json::{Map, Value, json};
 use std::fs;
 use std::io::{self, Write};
@@ -43,6 +44,9 @@ pub enum Error {
     /// git could not give the document at a revision
     #[error("the document at {0}: {1}")]
     Git(String, String),
+    /// the checkout's schema uses what this console's validator would not check
+    #[error("the schema has what this console cannot check (a newer checkout?): {}", .0.join("; "))]
+    Schema(Vec<String>),
 }
 
 /// A copy of `text` beside `document` for one evaluation (pure evaluation reads under the
@@ -83,6 +87,10 @@ impl System {
                 &[Arg::Path("config", &abs), Arg::Str("system", system)],
             )
             .map_err(Error::Eval)?;
+        let unsupported = validate::unsupported(&v["schema"]);
+        if !unsupported.is_empty() {
+            return Err(Error::Schema(unsupported));
+        }
         Ok(System {
             document: abs.strip_prefix(&root).unwrap_or(&abs).to_path_buf(),
             root,
