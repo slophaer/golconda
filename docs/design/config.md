@@ -2,7 +2,8 @@
 
 A machine is described by one TOML document. The document sets options of modules; a JSON Schema
 exported from the module tree validates it without Nix; the image carries the resolved document
-beside the schema so two images can be diffed as data. The diff tool is *(planned)*.
+beside the schema so two images can be compared as data. `golconda diff` compares two documents
+([Diffing](#diffing)); comparing two built images is not built.
 
 ## The model
 
@@ -84,16 +85,45 @@ The sysupdate transfers from `/system.updateSource` are beside them in `/usr/lib
 There is no `etc.manifest`: `/etc` is symlinks into the factory and `find /etc -type f` lists the
 administrator's changes ([Layout: State](layout.md#state)).
 
-## Diffing *(planned)*
+## Diffing
 
-`golconda diff <a> <b>` compares two images by their `config.json`. Output is a path-based
-set/delete list:
+`golconda diff` (`console/core/src/diff.rs`) compares the effective configuration of two documents:
+defaults included, as mkSystem evaluates them through iets. The new side is `-f FILE`; the old side
+is a git revision (`HEAD` by default) or another document (`--from OTHER`):
+
+```sh
+golconda diff -f server.toml                   # against git's HEAD
+golconda diff -f server.toml HEAD~3
+golconda diff -f server.toml --from other.toml --json
+```
+
+The result is the list of operations that turn the old side into the new one. A `set` means the new
+side has an explicit value; a `delete` means it has none, so the default applies again. Where both
+sides set a table, the diff goes down to the keys that differ, so two changes to different keys have
+different paths. A module that only one side has is one change with an empty path.
+
+```text
+set /factory timezone "Europe/Berlin" (was "UTC", the default)
+set /services/sshd port 2222 (was 22)
+delete /services/sshd authorizedKeys (was ["ssh-ed25519 AAAA… admin@example.com"]; now [], the default)
+```
+
+`--json` gives each operation with its module, its path as a list of keys, and both sides:
 
 ```json
 [
-  {"op": "set", "path": "/services/sshd/port", "value": 2222},
-  {"op": "delete", "path": "/services/nginx"}
+  {
+    "op": "set",
+    "module": "/network",
+    "path": ["networks", "lan", "network", "DNS"],
+    "before": {"explicit": true, "value": ["192.0.2.53"]},
+    "after": {"explicit": true, "value": ["192.0.2.54"]}
+  }
 ]
 ```
 
-This doubles as the edit log and the patch format.
+The same operations are the console's edit log: its Changes page shows the working tree against
+`HEAD` as `golconda diff` does, and an operation is refused when a later one touched the same path,
+a path inside it or a path that contains it (`console/core/src/candidate.rs`).
+
+It does not read a built image. Comparing two images by the `config.json` they carry is not built.
