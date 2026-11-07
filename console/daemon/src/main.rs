@@ -51,6 +51,12 @@ pub struct Args {
     /// must be meant for it. Without it, no bearer token is taken
     #[arg(long, value_name = "ID", requires = "oidc_issuer")]
     oidc_cli_client_id: Option<String>,
+    /// A session ends after this many minutes without a request
+    #[arg(long, value_name = "MINUTES", default_value_t = 60)]
+    session_idle: u64,
+    /// and after this many hours in any case
+    #[arg(long, value_name = "HOURS", default_value_t = 8)]
+    session_max: u64,
     /// Where browsers reach this daemon, such as https://console.example.com: the redirect
     /// address and the one host name it answers to
     #[arg(long, value_name = "URL")]
@@ -201,6 +207,8 @@ fn check(mut a: Args) -> Result<(Args, Mode), String> {
         read_only_group: a.read_only_group.clone(),
         ca_pem,
         cli_client_id: a.oidc_cli_client_id.clone(),
+        session_idle: time::Duration::from_mins(a.session_idle.max(1)),
+        session_max: time::Duration::from_hours(a.session_max.max(1)),
     };
     Ok((a, Mode::Oidc(config)))
 }

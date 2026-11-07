@@ -19,7 +19,9 @@ use std::sync::{Mutex, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// How long a session lasts, and how long a browser has to come back from the provider.
-const SESSION: Duration = Duration::from_hours(12);
+/// A session ends after this long without a request, and after `SESSION_MAX` at most.
+pub const SESSION_IDLE: Duration = Duration::from_hours(1);
+pub const SESSION_MAX: Duration = Duration::from_hours(8);
 const PENDING: Duration = Duration::from_secs(600);
 /// Clock difference allowed between the provider and this host.
 const LEEWAY: i64 = 60;
@@ -41,6 +43,10 @@ pub struct OidcConfig {
     /// the public client the CLI and TUI sign in with (the device flow); their ID tokens come
     /// as bearer tokens and must be meant for it. None: no bearer is taken
     pub cli_client_id: Option<String>,
+    /// a session ends after this long without a request (`SESSION_IDLE`)
+    pub session_idle: Duration,
+    /// and after this long in any case (`SESSION_MAX`)
+    pub session_max: Duration,
 }
 
 struct Pending {
@@ -55,6 +61,8 @@ struct Session {
     /// what this session's forms carry, so a form elsewhere cannot post as it
     csrf: String,
     since: Instant,
+    /// its last request
+    last: Instant,
 }
 
 pub struct Oidc {
@@ -67,8 +75,7 @@ pub struct Oidc {
     keys: RwLock<Vec<Value>>,
     pending: Mutex<HashMap<String, Pending>>,
     sessions: Mutex<HashMap<String, Session>>,
-    /// how long a session and a pending sign-in last: `SESSION` and `PENDING`, shorter in tests
-    session_life: Duration,
+    /// how long a pending sign-in lasts: `PENDING`, shorter in tests
     pending_life: Duration,
     agent: ureq::Agent,
     rng: SystemRandom,
@@ -169,7 +176,6 @@ impl Oidc {
             keys: RwLock::default(),
             pending: Mutex::default(),
             sessions: Mutex::default(),
-            session_life: SESSION,
             pending_life: PENDING,
             agent,
             rng: SystemRandom::new(),
@@ -302,6 +308,7 @@ impl Oidc {
                 who,
                 csrf,
                 since: Instant::now(),
+                last: Instant::now(),
             },
         );
         Ok((id, safe_next(&p.next)))
@@ -490,17 +497,23 @@ impl Oidc {
         })
     }
 
-    /// Drop the sessions past their 12 hours and the sign-ins their browsers never came back
-    /// from. Every lookup does it, so the two tables hold only what is alive, however seldom
-    /// anyone signs in.
+    /// Drop the sessions idle too long or past their upper limit, and the sign-ins their
+    /// browsers never came back from. Every lookup does it, so the two tables hold only what is
+    /// alive, however seldom anyone signs in.
     fn prune(&self) {
-        locked(&self.sessions).retain(|_, s| s.since.elapsed() < self.session_life);
+        let c = &self.config;
+        locked(&self.sessions)
+            .retain(|_, s| s.last.elapsed() < c.session_idle && s.since.elapsed() < c.session_max);
         locked(&self.pending).retain(|_, p| p.since.elapsed() < self.pending_life);
     }
 
+    /// Who a session is; the request counts as its last one.
     pub fn session(&self, id: &str) -> Option<Identity> {
         self.prune();
-        locked(&self.sessions).get(id).map(|s| s.who.clone())
+        let mut sessions = locked(&self.sessions);
+        let s = sessions.get_mut(id)?;
+        s.last = Instant::now();
+        Some(s.who.clone())
     }
 
     /// The CSRF token of a session.
@@ -560,6 +573,8 @@ mod tests {
                 read_only_group: "readers".into(),
                 ca_pem: None,
                 cli_client_id: None,
+                session_idle: LIFE,
+                session_max: Duration::from_hours(1),
             },
             authorize: "http://127.0.0.1/authorize".into(),
             token: "http://127.0.0.1/token".into(),
@@ -568,7 +583,6 @@ mod tests {
             keys: RwLock::default(),
             pending: Mutex::default(),
             sessions: Mutex::default(),
-            session_life: LIFE,
             pending_life: LIFE,
             agent: ureq::Agent::new_with_defaults(),
             rng: SystemRandom::new(),
@@ -584,6 +598,7 @@ mod tests {
             },
             csrf: "c".into(),
             since,
+            last: since,
         }
     }
 
@@ -612,6 +627,49 @@ mod tests {
         assert_eq!(held(&oidc).0, 1, "only the live session stays");
         assert!(oidc.session("live").is_some());
         assert!(oidc.csrf("live").is_some());
+    }
+
+    #[test]
+    fn a_session_ends_after_an_idle_while_and_a_request_keeps_it() {
+        let oidc = offline();
+        let half = Instant::now()
+            .checked_sub(Duration::from_millis(500))
+            .expect("up for half a second");
+        let mut sessions = locked(&oidc.sessions);
+        // signed in long ago, but busy: alive; quiet longer than the idle time: gone
+        sessions.insert(
+            "busy".into(),
+            Session {
+                last: half,
+                ..session_at(ago())
+            },
+        );
+        sessions.insert(
+            "quiet".into(),
+            Session {
+                last: ago(),
+                ..session_at(Instant::now())
+            },
+        );
+        drop(sessions);
+        assert!(oidc.session("busy").is_some());
+        assert!(oidc.session("quiet").is_none());
+        // the lookup counts as a request
+        assert!(locked(&oidc.sessions)["busy"].last.elapsed() < Duration::from_millis(400));
+    }
+
+    #[test]
+    fn a_busy_session_still_ends_at_its_upper_limit() {
+        let mut oidc = offline();
+        oidc.config.session_max = LIFE;
+        locked(&oidc.sessions).insert(
+            "busy".into(),
+            Session {
+                last: Instant::now(),
+                ..session_at(ago())
+            },
+        );
+        assert!(oidc.session("busy").is_none());
     }
 
     #[test]

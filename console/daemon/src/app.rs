@@ -350,8 +350,13 @@ async fn callback(State(app): State<Shared>, Query(q): Query<HashMap<String, Str
     let secure = matches!(&app.signin, Signin::Oidc(o) if o.secure());
     match done {
         Ok((id, next)) => {
+            // the browser keeps it no longer than the session can last
+            let max = match &app.signin {
+                Signin::Oidc(o) => o.config.session_max.as_secs(),
+                Signin::Dev(_) => 0,
+            };
             let cookie = format!(
-                "{}={id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=43200{}",
+                "{}={id}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max}{}",
                 auth::COOKIE,
                 if secure { "; Secure" } else { "" }
             );
