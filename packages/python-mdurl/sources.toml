@@ -1,0 +1,10 @@
+[upstream]
+purl = "pkg:pypi/mdurl"
+
+[[source]]
+key = "default"
+url = "https://files.pythonhosted.org/packages/source/m/mdurl/mdurl-{version}.tar.gz"
+hash = "sha256-q/P432kIpbIOCcvtngXTjDyb7T9uAM7/ge0GnvQfW0s="
+
+[pin]
+version = "0.1.2"

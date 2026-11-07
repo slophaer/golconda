@@ -1,0 +1,10 @@
+[upstream]
+purl = "pkg:pypi/mdit-py-plugins"
+
+[[source]]
+key = "default"
+url = "https://files.pythonhosted.org/packages/source/m/mdit-py-plugins/mdit_py_plugins-{version}.tar.gz"
+hash = "sha256-H9yqR24dxlu7Yvc0I2LJyj6kB3v5S29SpD8vi/8c/5o="
+
+[pin]
+version = "0.6.1"
