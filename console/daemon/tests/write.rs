@@ -14,9 +14,12 @@ use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use std::env;
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::Duration;
+use std::sync::atomic::Ordering;
+use std::thread;
+use std::time::{Duration, Instant};
 use tempfile::TempDir;
 use tower::ServiceExt;
 
@@ -905,4 +908,141 @@ async fn the_event_stream_carries_presence_and_the_lock() {
     // the candidate says so too, for clients without the stream
     let c = get(&alice, "/systems/server/candidate").await;
     assert_eq!(c["lock"]["by"]["name"], "Alice");
+}
+
+/// A bare repository whose pre-receive hook logs each push in `pushes`, notes two at once in
+/// `overlaps`, waits while `hold<N>` exists (N: the push's number), and refuses while
+/// `refuse` exists.
+fn gated_remote(s: &Scene) -> PathBuf {
+    let remote = s.dir.join("audit-remote.git");
+    git(
+        &s.dir,
+        &["init", "-q", "--bare", "-b", "main", "audit-remote.git"],
+    );
+    let hook = remote.join("hooks/pre-receive");
+    fs::write(
+        &hook,
+        "#!/bin/sh\n\
+         echo run >> pushes\n\
+         n=$(wc -l < pushes)\n\
+         mkdir busy 2>/dev/null || echo overlap >> overlaps\n\
+         i=0\n\
+         while [ -e hold$n ] && [ $i -lt 400 ]; do i=$((i+1)); sleep 0.05; done\n\
+         rmdir busy 2>/dev/null\n\
+         [ -e refuse ] && exit 1\n\
+         exit 0\n",
+    )
+    .unwrap();
+    fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).unwrap();
+    remote
+}
+
+/// A hook in the audit repository that logs each push it starts, also one with nothing
+/// new, in `attempts` of the remote.
+fn log_attempts(s: &Scene, remote: &Path) {
+    let hook = s.state.join("audit/.git/hooks/pre-push");
+    fs::write(
+        &hook,
+        format!("#!/bin/sh\necho try >> {}/attempts\n", remote.display()),
+    )
+    .unwrap();
+    fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+/// Lines in `file` of the remote: how many times the hook logged to it.
+fn logged(remote: &Path, file: &str) -> usize {
+    fs::read_to_string(remote.join(file)).map_or(0, |t| t.lines().count())
+}
+
+fn wait_for(what: &str, mut done: impl FnMut() -> bool) {
+    let end = Instant::now() + Duration::from_secs(20);
+    while !done() {
+        assert!(Instant::now() < end, "waited for {what}");
+        thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn audit_writes(s: &Scene, remote: &Path) -> Writes {
+    Writes::open(
+        &s.state,
+        Person {
+            name: "golcondad".into(),
+            id: "golcondad@test".into(),
+        },
+        Some(s.key.clone()),
+        None,
+        Some(remote.to_str().unwrap().into()),
+    )
+    .unwrap()
+}
+
+fn record_one(writes: &Writes, action: &str) {
+    let who = Operator {
+        id: "alice@example.com".into(),
+        name: "Alice".into(),
+    };
+    writes
+        .record(&Entry::new(&who, "web", action, "ok"))
+        .unwrap();
+}
+
+#[test]
+fn a_burst_of_entries_is_pushed_one_push_at_a_time_and_coalesced() {
+    let s = small_scene();
+    let remote = gated_remote(&s);
+    fs::write(remote.join("hold1"), "").unwrap();
+    fs::write(remote.join("hold2"), "").unwrap();
+    let writes = audit_writes(&s, &remote);
+    let unpushed = writes.audit_unpushed.clone();
+    log_attempts(&s, &remote);
+    record_one(&writes, "config.set");
+    wait_for("the first push to start", || logged(&remote, "pushes") >= 1);
+    // the first push is under way, held; nine more entries come in
+    for _ in 0..9 {
+        record_one(&writes, "config.set");
+    }
+    assert!(unpushed.load(Ordering::SeqCst));
+    fs::remove_file(remote.join("hold1")).unwrap();
+    wait_for("the second push to start", || {
+        logged(&remote, "pushes") >= 2
+    });
+    // the first push is done and the nine entries are not pushed yet: still unpushed
+    assert!(unpushed.load(Ordering::SeqCst), "entries are waiting");
+    fs::remove_file(remote.join("hold2")).unwrap();
+    wait_for("the push to succeed", || !unpushed.load(Ordering::SeqCst));
+    thread::sleep(Duration::from_millis(300));
+    assert_eq!(logged(&remote, "pushes"), 2, "ten entries, two pushes");
+    assert_eq!(logged(&remote, "attempts"), 2, "and no push for nothing");
+    assert_eq!(logged(&remote, "overlaps"), 0, "never two pushes at once");
+    assert_eq!(
+        git(&remote, &["rev-parse", "main"]),
+        git(&s.state.join("audit"), &["rev-parse", "HEAD"]),
+        "the remote has every entry"
+    );
+}
+
+#[test]
+fn a_failed_push_is_tried_again_without_a_new_entry() {
+    let s = small_scene();
+    let remote = gated_remote(&s);
+    fs::write(remote.join("refuse"), "").unwrap();
+    let mut writes = audit_writes(&s, &remote);
+    writes.audit_retry = Duration::from_millis(100);
+    let unpushed = writes.audit_unpushed.clone();
+    record_one(&writes, "config.set");
+    wait_for("three tries", || logged(&remote, "pushes") >= 3);
+    assert!(unpushed.load(Ordering::SeqCst), "nothing is pushed yet");
+    fs::remove_file(remote.join("refuse")).unwrap();
+    wait_for("the push to succeed", || !unpushed.load(Ordering::SeqCst));
+    assert_eq!(
+        git(&remote, &["rev-parse", "main"]),
+        git(&s.state.join("audit"), &["rev-parse", "HEAD"]),
+    );
+    let tries = logged(&remote, "pushes");
+    thread::sleep(Duration::from_millis(400));
+    assert_eq!(
+        logged(&remote, "pushes"),
+        tries,
+        "no more tries once pushed"
+    );
 }
