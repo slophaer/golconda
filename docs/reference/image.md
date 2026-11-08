@@ -302,8 +302,9 @@ credentials that point `systemd-imdsd` at `http://10.0.2.2:8075` (`BOOT_TEST_IMD
 keys `/hostname`, `/public-keys/0` and `/userdata`; no `imds.address_ipv4`, whose prohibit route
 would also cut off the update server's host. It passes no SMBIOS host name. The harness serves
 `imds-test`, a key pair it makes, and user data with the credentials `imds-canary` and `login.motd`
-with `python3 -m http.server`; QEMU's DHCP server offers the host name `dhcp-test`
-(`-netdev user,hostname=`).
+through a QEMU `guestfwd` to a stdio HTTP server in the work directory, as the update test does (no
+host port; `BOOT_TEST_IMDS_PORT` is the guest's port); QEMU's DHCP server offers the host name
+`dhcp-test` (`-netdev user,hostname=`).
 
 `--secure-boot` enrolls the throwaway db key with `virt-fw-vars` (one fixed owner GUID) and boots
 `OVMFFull.fd` with `-machine smm=on`: plain `OVMF.fd` has no Secure Boot support. The guest must

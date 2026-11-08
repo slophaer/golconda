@@ -55,8 +55,9 @@
 #   pulls it) nor systemd-imds-import.service ever starts.
 # With --imds (needs --ssh-test; not with --esp-creds): fakes a cloud for /imds (docs/features/
 #   provisioning.md). SMBIOS type 0 says the BIOS vendor is Hetzner (40-imds.hwdb matches
-#   dmi:bvnHetzner:*), type 11 credentials point systemd-imdsd at a host HTTP server
-#   (imds.data_url=http://10.0.2.2:$BOOT_TEST_IMDS_PORT, default 8075, and the keys /hostname,
+#   dmi:bvnHetzner:*), type 11 credentials point systemd-imdsd at an HTTP server of
+#   the run (imds.data_url=http://10.0.2.2:$BOOT_TEST_IMDS_PORT, default 8075, a QEMU guestfwd
+#   like the update server's, no host port; and the keys /hostname,
 #   /public-keys/0 and /userdata; no imds.address_ipv4, whose prohibit route would cut 10.0.2.2
 #   off, the update server's host), and no system.hostname credential is given. The server
 #   answers imds-test, a key pair made in the work directory, and user data that lists the
@@ -171,7 +172,7 @@ FAIL_HEALTH=0
 FACTORY_RESET=0
 ESP_CREDS=0
 IMDS=0
-# the host port for the fake IMDS endpoint (--imds)
+# the guest's port for the fake IMDS endpoint (--imds); no host port is opened
 IMDS_PORT=${BOOT_TEST_IMDS_PORT:-8075}
 
 # the parts: functions and constants, no processes start when they are sourced; boot-test-guest.sh
@@ -260,10 +261,6 @@ if [ "$IMDS" = 1 ]; then
     echo "Error: python3 is required to serve the fake IMDS endpoint, and it is not on PATH" >&2
     exit 1
   fi
-  if port_in_use "$IMDS_PORT"; then
-    echo "Error: 127.0.0.1:$IMDS_PORT is already in use; set BOOT_TEST_IMDS_PORT to a free port" >&2
-    exit 1
-  fi
 fi
 if [ "$FACTORY_RESET" = 1 ] && [ "$SSH_TEST" = 0 ]; then
   echo "Error: --factory-reset needs --ssh-test: the reset is requested over ssh, and only the test image carries the test key" >&2
@@ -314,10 +311,6 @@ cleanup() {
   fi
   if [ -n "${SWTPM_PID:-}" ]; then
     kill "$SWTPM_PID" 2>/dev/null || true
-  fi
-  if [ -n "${IMDS_PID:-}" ]; then
-    kill "$IMDS_PID" 2>/dev/null || true
-    wait "$IMDS_PID" 2>/dev/null || true
   fi
   if [ "$KEEP_WORKDIR" = 0 ]; then
     rm -rf "$WORKDIR"

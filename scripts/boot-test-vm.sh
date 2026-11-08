@@ -215,11 +215,15 @@ start_qemu() {
     NET_HOSTNAME=",hostname=dhcp-test"
   fi
 
-  # --next: the guest's connections to the image's update source, 10.0.2.2:$HTTP_PORT, go to this
-  # run's own server (boot-test-http.sh), whatever the host ports are
+  # --next, --imds: the guest's connections to the image's update source, 10.0.2.2:$HTTP_PORT,
+  # and to the metadata endpoint, 10.0.2.2:$IMDS_PORT, go to this run's own servers
+  # (boot-test-http.sh), whatever the host ports are
   NET_UPDATE=""
   if [ -n "$NEXT" ]; then
-    NET_UPDATE=",guestfwd=tcp:10.0.2.2:$HTTP_PORT-cmd:$WORKDIR/serve"
+    NET_UPDATE=",guestfwd=tcp:10.0.2.2:$HTTP_PORT-cmd:$WORKDIR/serve-http"
+  fi
+  if [ "$IMDS" = 1 ]; then
+    NET_UPDATE="$NET_UPDATE,guestfwd=tcp:10.0.2.2:$IMDS_PORT-cmd:$WORKDIR/serve-imds"
   fi
 
   QEMU_ARGS="-machine q35,accel=kvm:tcg \
