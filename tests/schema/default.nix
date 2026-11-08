@@ -1,7 +1,7 @@
 # Paired input fixtures. Force mkSystem composition, not only loader name checks.
 # JSON cannot encode Nix derivations or functions; package overrides are outside this test.
 {
-  sources ? import ../../nix/sources.nix,
+  sources ? import ../../pins,
   platform ? "x86_64-linux",
 }:
 let

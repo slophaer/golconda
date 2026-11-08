@@ -15,7 +15,7 @@ behind.
 | Boot       | systemd-boot or GRUB, kernel + initrd per generation | signed UKI per slot, measured boot                      |
 | `/etc`     | generated, mostly symlinks into the store            | symlinks into the image's factory, admin files win      |
 | Evaluator  | Nix                                                  | iets (Nix only on the build daemon)                     |
-| Inputs     | flakes or channels                                   | npins; flake output schema via flake-incompat           |
+| Inputs     | flakes or channels                                   | uptrack pins; flake output schema via flake-incompat    |
 
 | taken                                                                   | left behind                                                     |
 | ----------------------------------------------------------------------- | --------------------------------------------------------------- |

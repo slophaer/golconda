@@ -7,7 +7,7 @@
 | `modules/`        | the adios modules, one directory per path (`/base`, `/services/sshd`, …); `modules/lib/`: the shared types, grammar and renderers that `lib/` uses too                                                                           |
 | `lib/`            | the build functions: `mkSystem` (`system.nix`), the `/usr` tree, the image chain (`lib/image/`), the schema, the TOML loader, the component selection (`components.nix`), the docs generator, the one module walker (`tree.nix`) |
 | `image/`          | image parameters as data (partitions, sysupdate transfers, the UKI cmdline); `lib/image/` builds from them, file for file                                                                                                        |
-| `nix/`            | the outputs (`default.nix`), the pins (`sources.nix`), the repkgs set (`packages.nix`), checks, the dev shell                                                                                                                    |
+| `nix/`            | the outputs (`default.nix`), the repkgs set (`packages.nix`), checks, the dev shell                                                                                                                                              |
 | `packages/`       | Golconda's package specs; a name here replaces the repkgs fork's                                                                                                                                                                 |
 | `tests/`          | `eval/`: the pure-Nix tests by area (`nix/tests.nix` imports them); `packages/`: package tests; `usr-tree/`; `kernel/`: the kernel's kbuild phases on a stub tree; `errors/`: configuration error messages; fixtures             |
 | `scripts/`        | developer tools: `lint`, `docs`, `make-keys`, `provision-esp`, `boot-test`                                                                                                                                                       |
@@ -53,12 +53,12 @@ directories to a booted machine.
 - **Docs split.** `docs/design/` says why, `docs/reference/` says what exists in code today. Mark
   what is designed and not started as *(planned)*, and what is deferred past v1 as *(after v1)*. No
   planning or history pages.
-- **Pins.** `npins/sources.json` is the lock (npins format 8); `nix/sources.nix` reads it. Update
-  the repkgs pin with `npins update repkgs` in the dev shell; the forge needs a sign-in, and iets
-  needs the new archive in the store once (see [patches/repkgs](patches/repkgs/README.md)).
+- **Pins.** `pins/<name>/sources.toml`, one per input, in uptrack's format; `pins/default.nix` reads
+  them. `scripts/pins check` shows what moved, `scripts/pins apply repkgs` moves the repkgs pin (see
+  [patches/repkgs](patches/repkgs/README.md)).
 - **Fork patches.** A change to repkgs' build system goes to the fork branch the pin follows
-  (`branch` in `npins/sources.json`, today `golconda`), in the series it belongs to. A new package
-  goes to `packages/` instead.
+  (`?branch=` in `pins/repkgs/sources.toml`, today `golconda`), in the series it belongs to. A new
+  package goes to `packages/` instead.
 
 ## Getting started
 
@@ -84,7 +84,7 @@ The required checks include the native tests in `tests/packages/`, also availabl
 `packages.<system>.tests-<name>`. They do not build foreign-target tests or every package output. A
 cold run can build these packages; a cached run reuses their results.
 
-The dev shell carries iets, npins, treefmt (the formatter output, `nix fmt`, which also scans with
+The dev shell carries iets, uptrack, treefmt (the formatter output, `nix fmt`, which also scans with
 the rules in `lints/`), `golconda-ast-grep` (those rules; `checks.lint-rules` tests them), and
 mdbook and its diagram preprocessor for `scripts/docs`. `./scripts/lint` now builds native package
 tests and needs the same patched Nix client and daemon as package builds. The daemon needs

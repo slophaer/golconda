@@ -32,7 +32,8 @@ flowchart LR
   `/usr` tree builder renders. There is no global namespace and no evaluation-time magic, so iets
   can evaluate and lint it fast and a tool can read it as data.
 - **iets** evaluates the configuration and the package set, runs the strict lints, and talks to the
-  Nix daemon that builds. **npins** pins the inputs; `nix/sources.nix` reads them purely.
+  Nix daemon that builds. **uptrack** (repkgs' update tool) pins the inputs in `pins/`;
+  `pins/default.nix` reads them purely.
 - **systemd** does the rest: repart makes the partitions, ukify the unified kernel image, sysupdate
   the A/B updates, systemd-boot the counting, veritysetup and cryptsetup the integrity and the
   unlock. Golconda adds configuration, never a second mechanism.
@@ -52,7 +53,7 @@ else is a module the document names with its table ([Configuration](config.md)).
 
 | component                      | role                                                                               | where                                              |
 | ------------------------------ | ---------------------------------------------------------------------------------- | -------------------------------------------------- |
-| npins                          | pins repkgs, adios, flake-incompat, iets                                           | `npins/`                                           |
+| uptrack                        | pins repkgs, adios, flake-incompat, iets                                           | `pins/`                                            |
 | flake-incompat                 | output schema, per-system arguments                                                | `default.nix`, `nix/default.nix`                   |
 | platform record                | repkgs' record, every tool reads it                                                | `nix/packages.nix`                                 |
 | repkgs                         | packages, toolchain, relocatable outputs                                           | `nix/packages.nix`, `packages/`                    |

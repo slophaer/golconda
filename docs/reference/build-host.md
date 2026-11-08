@@ -2,8 +2,8 @@
 
 A build host is the machine whose Nix daemon builds Golconda's packages and images. The servers run
 no Nix. This page says what that daemon needs and how iets reaches it. Each fact names its source: a
-file in this repo, or a file in the repkgs or iets pin (`npins/sources.json`). Anything no test in
-this repo has shown is marked **unverified**.
+file in this repo, or a file in the repkgs or iets pin (`pins/`). Anything no test in this repo has
+shown is marked **unverified**.
 
 ## Why the daemon needs more than stock settings
 
@@ -56,7 +56,7 @@ garbage collection) and recommends #16465 and #16477 (CA rebuilds); that branch 
 From a clone of this repo, with any Nix:
 
 ```sh
-nix-build -E 'import "${(import ./nix/sources.nix).repkgs}/nix/nix" { }' -o nix-repkgs
+nix-build -E 'import "${(import ./pins).repkgs}/nix/nix" { }' -o nix-repkgs
 ```
 
 This expression evaluates to `nix-2.36pre20260912_203f85b2`. Building it and running it as the

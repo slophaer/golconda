@@ -14,7 +14,7 @@ let
     match
     substring
     ;
-  sources = import ../../nix/sources.nix;
+  sources = import ../../pins;
   builderTree = builtins.path {
     path = ./.;
     name = "image-builder";

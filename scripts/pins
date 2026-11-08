@@ -1,0 +1,10 @@
+#!/bin/sh
+# scripts/pins COMMAND [ARGS]...: uptrack on pins/, the inputs Nix evaluates (repkgs, iets,
+# adios, flake-incompat, and the boot test's dev pin). uptrack comes from the repkgs tree pinned
+# now, so a new repkgs pin takes effect on the next run.
+#   scripts/pins check            what moved upstream (exits 10 when a pin is behind)
+#   scripts/pins apply repkgs     write the new rev, hash and [pin] of repkgs
+set -eu
+REPO_DIR="$(dirname "$(dirname "$(realpath "$0")")")"
+export UPTRACK_ROOT="$REPO_DIR/pins"
+exec "$REPO_DIR/scripts/tool" uptrack "$@"

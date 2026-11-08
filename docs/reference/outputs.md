@@ -22,7 +22,7 @@ schema is the flake one, produced by flake-incompat.
 | `packages.x86_64-linux.image-smoke-test-rotated`                          | x86_64 only | the same next release signed with a second throwaway `db` key: `scripts/boot-test --next <it> --rotate`                                             |
 | `checks.<system>`                                                         | yes         | `treefmt`, `docs`, `module-docs`, `usr-tree-test`, `boundary`, `etc-systemd-links`, `schema`, `lint-rules`, `console-clippy` (the sandboxed checks) |
 | `formatter.<system>`                                                      | yes         | treefmt (`nix fmt`) with its formatters and the lint rules in `lints/`, built by repkgs                                                             |
-| `devShells.<system>.default`                                              | yes         | mdbook, iets, npins                                                                                                                                 |
+| `devShells.<system>.default`                                              | yes         | mdbook, iets, uptrack                                                                                                                               |
 | `modules`                                                                 | no          | the adios tree; `modules { options = {...}; }` evaluates it                                                                                         |
 | `docs-pages`, `docs-summary`                                              | no          | the generated reference pages, and the module lines `docs/SUMMARY.md` must carry                                                                    |
 | `docs-modules`, `docs-module-paths`                                       | no          | the same pages by module path, and the module paths discovered in `modules/`                                                                        |
@@ -38,13 +38,13 @@ and developer tools still have per-system outputs.
 
 ## Inputs
 
-Pinned in `npins/sources.json`, read by `nix/sources.nix`:
+Pinned in `pins/<name>/sources.toml` (uptrack's format, `scripts/pins`), read by `pins/default.nix`:
 
 - `repkgs`: the package set (Golconda's fork, branch `golconda`, the one the pin follows)
 - `adios`: the module system (korora types vendored inside)
 - `flake-incompat`: the output schema
 - `iets`: the evaluator and linter
-- `nixpkgs-dev-only`: developer tooling, used nowhere else
+- `nixpkgs-dev-only`: the boot test's virtual machine, used nowhere else
 
 ## `lib.mkImage`
 

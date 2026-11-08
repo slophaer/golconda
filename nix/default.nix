@@ -268,12 +268,12 @@ in
     // import ../tests/packages { inherit sources set; };
 
   # `iets fmt` / `nix fmt`: treefmt with every tool pinned (nix/dev/).
-  formatter = { platform, set }: (dev platform.name set).treefmt;
+  formatter = { set }: (dev set).treefmt;
 
   devShells =
-    { platform, set }:
+    { set }:
     {
-      default = (dev platform.name set).shell;
+      default = (dev set).shell;
     };
 
   # The adios module tree (modules/). `modules { options = {...}; }` evaluates it.

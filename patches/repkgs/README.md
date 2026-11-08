@@ -1,8 +1,8 @@
 # repkgs patches
 
 Golconda pins a fork of [Mic92/repkgs](https://github.com/Mic92/repkgs): the branch and URL are in
-`npins/sources.json` (`branch`, today `golconda`). That branch is upstream `main` plus the commits
-Golconda needs from upstream, and nothing else. List them with:
+`pins/repkgs/sources.toml` (`?branch=`, today `golconda`). That branch is upstream `main` plus the
+commits Golconda needs from upstream, and nothing else. List them with:
 
 ```console
 $ git log --oneline origin/main..fork/golconda
@@ -20,38 +20,15 @@ covers the generic SBOM property hook.
 
 ## Changing the fork
 
-Commit to the fork's `golconda` branch, keeping each commit in its series. Then update the pin in
-the dev shell (npins asks git for the forge's sign-in, so git needs a credential helper for it):
+Commit to the fork's `golconda` branch, keeping each commit in its series, and push it to the forge
+and to its public GitHub mirror, `slophaer/repkgs`. The pin follows the mirror: its archive is byte
+for byte the forge's, and it needs no sign-in, neither for Nix nor for iets. Then move the pin:
 
 ```console
-$ npins update repkgs
+$ scripts/pins check repkgs
+$ scripts/pins apply repkgs
 ```
 
-Without a sign-in for git, update the pin by hand: set `revision` and `url` in `npins/sources.json`,
-and `hash` to the output of
-
-```console
-$ nix hash convert --hash-algo sha256 --to sri "$(nix-prefetch-url --unpack <url>)"
-```
-
-The lock is npins' format 8. A newer npins that asks for an upgrade (`npins upgrade`) also needs
-`npins/default.nix`, which this repository does not keep: create an empty one for the upgrade and
-delete it afterwards.
-
-The forge needs a sign-in. Nix reads `netrc-file`, but iets does not: `scripts/lint` then fails with
-`cannot read the tarball … Sign in`. Put the archive into the store the build uses, once, under the
-name `builtins.fetchTarball` gives it; iets then finds the source by its hash (set `NIX_REMOTE` for
-another daemon or a relocated store):
-
-```console
-$ nix-prefetch-url --unpack --name source <url>
-```
-
-Or give iets the file once; it keeps its own input cache by hash:
-
-```console
-$ cp "$(nix-prefetch-url --print-path <url> | tail -n 1)" /tmp/repkgs.tar.gz
-$ iets eval --expr 'builtins.fetchTarball { url = "file:///tmp/repkgs.tar.gz"; sha256 = "<hash>"; }'
-```
-
-With a relocated store, copy the archive from that store's root instead.
+`apply` writes the commit (`rev`), its date as the version (`0-unstable-<date>`) and the hash of the
+unpacked tree. uptrack itself comes from the repkgs tree pinned before, so the new fork takes effect
+for it on the next run.

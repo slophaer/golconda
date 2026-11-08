@@ -105,8 +105,8 @@ set -eu
 if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
   SCRIPT_DIR="$(dirname "$(realpath "$0")")"
   REPO_DIR="$(dirname "$SCRIPT_DIR")"
-  # Get the dev pin path from npins/sources.json via nix-instantiate
-  DEV_PIN=$(nix-instantiate --eval -E "(import $REPO_DIR/nix/sources.nix).nixpkgs-dev-only" 2>/dev/null | tr -d '"')
+  # Get the dev pin path from pins/nixpkgs-dev-only via nix-instantiate
+  DEV_PIN=$(nix-instantiate --eval -E "(import $REPO_DIR/pins).nixpkgs-dev-only" 2>/dev/null | tr -d '"')
   if [ -z "$DEV_PIN" ] || [ ! -d "$DEV_PIN" ]; then
     echo "Error: cannot find nixpkgs-dev-only pin" >&2
     exit 1
@@ -311,7 +311,7 @@ VARS="$WORKDIR/vars.fd"
 # --- find OVMF ---
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
-DEV_PIN=$(nix-instantiate --eval -E "(import $REPO_DIR/nix/sources.nix).nixpkgs-dev-only" 2>/dev/null | tr -d '"')
+DEV_PIN=$(nix-instantiate --eval -E "(import $REPO_DIR/pins).nixpkgs-dev-only" 2>/dev/null | tr -d '"')
 # OVMF.fd has neither Secure Boot nor TPM support. OVMFFull.fd has both, and it is
 # built with SMM, so QEMU gets smm=on below. --tpm needs the TPM measurement, or
 # systemd-stub does not pass the UKI's PCR public key on and credentials are sealed
