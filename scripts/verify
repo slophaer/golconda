@@ -19,7 +19,7 @@
 #                       boot the last; one PASS or FAIL line per commit
 #
 # The tree must be clean: the result belongs to one commit and one repkgs pin, named on the first
-# line. With BOOT_TEST_STORE_ROOT set (a chroot store, as on the spike daemon), the dev shell is
+# line. With BOOT_TEST_STORE_ROOT set (a chroot store, nix --store local?root=DIR), the dev shell is
 # realised in the host store first (nix-shell runs it from /nix/store, the daemon builds it under
 # its root), and the image's links into /nix/store are followed under that root.
 set -u
