@@ -117,10 +117,7 @@ if ! git diff --quiet; then
   finish 1
 fi
 [ $lint_only = 1 ] && finish 0
-# nix build, not nix-build: nix-build cannot name the output of a floating content-addressed
-# derivation with content-addressed inputs (NixOS/nix#16389); nix build takes it from the build
-step image nix --extra-experimental-features 'nix-command ca-derivations' \
-  build -f . "packages.$system.$image" -o result-verify || finish 1
+step image nix-build -A "packages.$system.$image" -o result-verify || finish 1
 [ $boot = 1 ] || finish 0
 # resolve PATH: PATH with every symlink on the way followed, a target in /nix/store looked up
 # under $BOOT_TEST_STORE_ROOT (boot-test itself follows only a final link)
