@@ -38,9 +38,11 @@ fn sbom() -> Value {
     ] } })
 }
 
-/// uptrack's stand-in: logs each run, and says zlib has 1.4 and systemd is current.
+/// uptrack's stand-in: logs each run, and says zlib has 1.4 and systemd is current. While
+/// `uptrack-hold` exists it does not answer, so a test can see a run that has not ended.
 const UPTRACK: &str = r#"#!/bin/sh
 echo "$UPTRACK_ROOT $*" >> "$(dirname "$0")/uptrack.log"
+while [ -f "$(dirname "$0")/uptrack-hold" ]; do sleep 0.05; done
 [ -f "$(dirname "$0")/uptrack-fails" ] && { echo "no network" >&2; exit 1; }
 cat <<'JSON'
 [{"name":"zlib","from":"1.3","to":"1.4","note":null,"pin":{"version":"1.4","date":"2026-09-01"}},
@@ -305,6 +307,9 @@ async fn settled(app: &Router) -> Value {
 async fn upstream_versions_come_from_uptrack_in_the_background() {
     let s = scene().await;
     let app = s.app_with(Some(&s.osv), true);
+    // uptrack does not answer until the first view is seen: a quick run could end before it
+    let hold = s.dir.path().join("uptrack-hold");
+    fs::write(&hold, "").unwrap();
     let (_, first) = get_page(&app, "/systems/server/packages", true).await;
     let first: Value = serde_json::from_str(&first).unwrap();
     assert_eq!(
@@ -316,6 +321,7 @@ async fn upstream_versions_come_from_uptrack_in_the_background() {
         Value::Null,
         "and does not wait for it"
     );
+    fs::remove_file(&hold).unwrap();
     let v = settled(&app).await;
     // vulnerable, then outdated, then the image's own, then the rest
     assert_eq!(names(&v), ["openssl", "zlib", "systemd", "acl"]);
