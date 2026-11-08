@@ -87,9 +87,10 @@ cold run can build these packages; a cached run reuses their results.
 The dev shell carries iets and npins. treefmt and `golconda-ast-grep` (the rules in `lints/`) are
 the formatter output (`nix fmt`, which also scans with the rules; `checks.lint-rules` tests them),
 and `scripts/docs` finds mdbook and its diagram preprocessor itself (`scripts/tools.sh`): they and
-their tools are built by repkgs (content-addressed), which nixpkgs' shell cannot take as inputs.
-`./scripts/lint` now builds native package tests and needs the same patched Nix client and daemon as
-package builds. The daemon needs `ca-derivations`, `dynamic-derivations` and the system feature
-`builder-rpc-v0`; [reference/build-host](docs/reference/build-host.md) says how to get one. Start
-reading at [README](README.md), then [docs/SUMMARY](docs/SUMMARY.md); the module code is small
-enough to read whole, starting with `modules/system/default.nix` and `modules/lib/`.
+their tools are built by repkgs (content-addressed), which nixpkgs' shell could not take as inputs
+on the retired chroot-store daemon. `./scripts/lint` now builds native package tests and needs the
+same patched Nix client and daemon as package builds. The daemon needs `ca-derivations`,
+`dynamic-derivations` and the system feature `builder-rpc-v0`;
+[reference/build-host](docs/reference/build-host.md) says how to get one. Start reading at
+[README](README.md), then [docs/SUMMARY](docs/SUMMARY.md); the module code is small enough to read
+whole, starting with `modules/system/default.nix` and `modules/lib/`.
