@@ -42,6 +42,7 @@ let
     ./secure-boot.nix
     ./index.nix
     ./hwdb.nix
+    ./imds.nix
     ./components.nix
     ./sbom.nix
   ];

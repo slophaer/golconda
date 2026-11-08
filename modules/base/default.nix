@@ -59,6 +59,12 @@
 #! ldconfig.service skips without /usr/bin/ldconfig, modprobe@.service skips
 #! without /usr/bin/modprobe (monolithic kernel, no kmod).
 #!
+#! IMDS (cloud instance metadata): systemd's units for it (the daemon and
+#! its socket, the early network, the metrics socket, the import) carry
+#! `ConditionPathExists=/usr/lib/golconda/imds`, a file only `/imds` ships:
+#! without `/imds` nothing reads the metadata, also on a cloud that hwdb
+#! names, and the initrd (built from /base alone) never does.
+#!
 #! Locale: C.UTF-8 via /usr/lib/locale.conf (PID 1 reads it before /etc
 #! exists, so the factory cannot provide it).
 #!
@@ -109,6 +115,7 @@ in
       boot = import ./parts/boot.nix; # the health gate, the loader update, the /etc link step
       dbus = import ./parts/dbus.nix { inherit p; }; # the system bus on dbus-broker
       dropIns = import ./parts/drop-ins.nix; # conditions for units the systemd farm ships
+      imds = import ./parts/imds.nix; # systemd's IMDS units: off without /imds
       usrLinks = import ./parts/links.nix { inherit p; }; # the /usr links into the packages
 
       # timesyncd drop-in
@@ -181,6 +188,7 @@ in
 
       files =
         dropIns.files
+        // imds.files
         // boot.files
         // dbus.files
         // {

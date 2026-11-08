@@ -8,15 +8,15 @@ a Hetzner server.
 
 What Hetzner Cloud gives and lacks, and what Golconda does about it:
 
-| Hetzner Cloud                                    | Golconda                                                                       |
-| ------------------------------------------------ | ------------------------------------------------------------------------------ |
-| UEFI on the CPX, CCX and CAX types (CX: BIOS)    | UEFI only; take a UEFI type                                                    |
-| no Secure Boot                                   | `/system.secureBoot = false`: the kernel carries the `db` certificate          |
-| no TPM                                           | vars seal to the host key alone ([Trust](../design/trust.md#secrets-and-vars)) |
-| user data and ssh keys for cloud-init (metadata) | no cloud-init: the host name and ssh key are credentials on the ESP            |
-| a console that is a screen (VNC)                 | the kernel's console and the journal on the framebuffer (`tty0`, `tty1`)       |
-| no image upload                                  | write the disk from the rescue system                                          |
-| virtio-scsi disk, virtio-net, DHCPv4             | built into the kernel; DHCP on every wired link (`/network`)                   |
+| Hetzner Cloud                                    | Golconda                                                                                                        |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| UEFI on the CPX, CCX and CAX types (CX: BIOS)    | UEFI only; take a UEFI type                                                                                     |
+| no Secure Boot                                   | `/system.secureBoot = false`: the kernel carries the `db` certificate                                           |
+| no TPM                                           | vars seal to the host key alone ([Trust](../design/trust.md#secrets-and-vars))                                  |
+| user data and ssh keys for cloud-init (metadata) | no cloud-init: the host name and ssh key are credentials on the ESP, or come from the metadata with `["/imds"]` |
+| a console that is a screen (VNC)                 | the kernel's console and the journal on the framebuffer (`tty0`, `tty1`)                                        |
+| no image upload                                  | write the disk from the rescue system                                                                           |
+| virtio-scsi disk, virtio-net, DHCPv4             | built into the kernel; DHCP on every wired link (`/network`)                                                    |
 
 What `secureBoot = false` costs: nothing checks the UKI before it runs. Whoever can write the ESP
 (the provider, or anyone with root on the machine) can replace the kernel, and with it the key that
@@ -130,8 +130,8 @@ update at once: `ssh root@$IP systemctl start systemd-sysupdate-update.service`,
 
 ## Not proven
 
-- Any step on a Hetzner server: the firmware, the disk and network devices, the console, the
-  metadata the server does not read.
+- Any step on a Hetzner server: the firmware, the disk and network devices, the console, and the
+  metadata `/imds` reads (the boot test fakes the endpoint).
 - HTTPS as the update source: the update test serves HTTP (`scripts/boot-test --next`).
 - IPv6: Hetzner assigns each server a `/64`; whether router advertisements reach it, or the address
   needs a static `/network` definition, is not checked.

@@ -32,6 +32,7 @@ in
       attrNames docs.pages == [
         "/base"
         "/factory"
+        "/imds"
         "/network"
         "/pkgs"
         "/security"
@@ -45,6 +46,7 @@ in
     attrNames docs.files == [
       "base.md"
       "factory.md"
+      "imds.md"
       "index.md"
       "network.md"
       "pkgs.md"
@@ -113,6 +115,7 @@ in
     discoveredPaths == [
       "/base"
       "/factory"
+      "/imds"
       "/network"
       "/pkgs"
       "/security"

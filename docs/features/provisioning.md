@@ -36,6 +36,36 @@ On first boot, `systemd-repart` makes the root partition, PID 1 sets the host na
 `systemd-firstboot` runs with `--mute-console=yes`, so it never prompts. tmpfiles writes the root
 key.
 
+### From cloud metadata (`/imds`)
+
+With a `["/imds"]` table, the image also reads the cloud's instance metadata service (IMDS) through
+systemd-imds, and systemd's own `systemd-imds-import.service` runs. systemd-imds-generator finds the
+cloud by hwdb (Hetzner, AWS, GCP, Azure and others); on any other machine no import runs. The import
+runs in the host, once the network is online and before `sysinit.target` and
+`systemd-tmpfiles-setup.service`. It writes credentials to `/run/credstore`, and the usual readers
+take them:
+
+| IMDS gives                      | credential                 | read by                                                                        |
+| ------------------------------- | -------------------------- | ------------------------------------------------------------------------------ |
+| the host name                   | `firstboot.hostname`       | systemd-firstboot, on the first boot: it writes `/etc/hostname`                |
+| the first ssh key               | `ssh.authorized_keys.root` | systemd-tmpfiles-setup: `/root/.ssh/authorized_keys`, when the file is missing |
+| the public addresses            | none                       | resolved: local records for `_public`                                          |
+| user data `systemd.credentials` | each name it lists         | any unit that imports that name (`tmpfiles.*`, `login.*`, `firstboot.*`, …)    |
+
+The host name lands in `/etc/hostname`, which PID 1 reads before the `system.hostname` credential:
+on a machine with both, the IMDS name wins from the second boot on. No DHCP lease sets the host
+name: `/imds` turns `UseHostname=` off in every `.network` file. A user data credential reaches only
+the units that start after the import: `sysusers.extra` and `network.*` miss it, as sysusers and
+networkd run before the network is online. The user data is measured into PCR 12.
+
+The metadata endpoint is plain HTTP without authentication. Whoever can answer on its address sets
+the host name, root's ssh key and any credential, such as `tmpfiles.extra`. Opt in only where the
+network to the endpoint is trusted, as it is when the hypervisor serves it, and put no secret in
+user data. systemd is built with `imds-network=locked`: a prohibit route keeps every process but
+`systemd-imdsd` from the endpoint, and imdsd answers root only. Without `/imds` the IMDS units stay
+off, also on a cloud, and the command line keeps the generator from pulling the import
+(`systemd.imds.import=0`).
+
 ## Using it
 
 `scripts/provision-esp` writes the credentials onto the ESP of a disk image, in place:
@@ -61,12 +91,16 @@ The boot test proves this in QEMU ([What is proven](../proven.md)):
   (`--ssh-test --esp-creds`).
 - `no-firstboot-prompt`: first boot finishes without a prompt.
 
+`/imds` is not boot-tested yet; the eval tests check its drop-ins and links.
+
 ## Limits
 
 - A credential carries no secret. The ESP is not encrypted, and every process reads SMBIOS strings.
   Secrets are [vars](vars.md).
 - With Secure Boot on and a TPM2, the guest refuses ESP credentials. That run fails.
 - No marker covers a cloud's own OEM strings, or fw_cfg on real hardware.
+- `/imds` takes one ssh key on Hetzner: its hwdb entry names `/public-keys/0`.
+- No marker covers a real cloud's endpoint.
 - v1 names two credentials. `--credential` writes others, but the docs name no reader for them.
 
 ## More

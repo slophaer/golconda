@@ -21,6 +21,32 @@
     }
   },
   {
+    "name": "IMDS: an empty table",
+    "accepted": true,
+    "value": {
+      "/system": {
+        "name": "test",
+        "version": "20261031.1"
+      },
+      "/imds": {}
+    }
+  },
+  {
+    "name": "IMDS has no options",
+    "accepted": false,
+    "value": {
+      "/system": {
+        "name": "test",
+        "version": "20261031.1"
+      },
+      "/imds": {
+        "import": [
+          "userdata"
+        ]
+      }
+    }
+  },
+  {
     "name": "missing system table",
     "accepted": false,
     "value": {}

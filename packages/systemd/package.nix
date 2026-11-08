@@ -70,6 +70,13 @@ package {
 
     # === Components ===
     importd = "enabled"; # sysupdate needs importd
+    # cloud instance metadata: systemd-imdsd, systemd-imds, the generator and the units. /base
+    # keeps the units off unless the configuration has /imds (modules/base/parts/imds.nix).
+    # locked: the early network file adds a prohibit route to the endpoint, so only imdsd (with
+    # its fwmark) reaches it, not every process on the machine (a user data with a secret in it,
+    # an SSRF in a service). meson's default is unlocked.
+    imds = "enabled";
+    imds-network = "locked";
     sysupdate = "enabled";
     homed = "disabled";
     machined = false; # boolean in v262
@@ -119,7 +126,7 @@ package {
     libmount = "enabled"; # for systemd-creds, systemd-mount, systemd-cryptsetup
 
     # === Dependencies ===
-    libcurl = "enabled"; # for importd
+    libcurl = "enabled"; # for importd and imds
     libarchive = "enabled"; # for importd (tar/cpio extraction)
     zlib = "enabled";
     bzip2 = "enabled";

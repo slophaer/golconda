@@ -150,9 +150,11 @@ credentials at first boot. This is Golconda's provisioning path; there is no clo
 PID 1 takes the hostname from the first of: `systemd.hostname=` on the kernel command line,
 `/etc/hostname`, the `system.hostname` credential, the fallback `golconda` compiled into systemd
 (repkgs `fallback-hostname`). No factory file and no tmpfiles line writes `/etc/hostname`, so the
-credential wins until an admin writes one. PID 1 reads SMBIOS strings from
-`/sys/firmware/dmi/entries` and fw_cfg from `/sys/firmware/qemu_fw_cfg`: the kernel needs
-`CONFIG_DMI_SYSFS=y` and `CONFIG_FW_CFG_SYSFS=y` (built in).
+credential wins until an admin writes one, or until systemd-firstboot writes the host name that
+`/imds` imported
+([Provisioning: From cloud metadata](../features/provisioning.md#from-cloud-metadata-imds)). PID 1
+reads SMBIOS strings from `/sys/firmware/dmi/entries` and fw_cfg from `/sys/firmware/qemu_fw_cfg`:
+the kernel needs `CONFIG_DMI_SYSFS=y` and `CONFIG_FW_CFG_SYSFS=y` (built in).
 
 Delivery, in the order systemd-stub and PID 1 look:
 

@@ -55,6 +55,7 @@
 - [Modules](reference/modules/README.md)
   - [`/base`](reference/modules/generated/base.md)
   - [`/factory`](reference/modules/generated/factory.md)
+  - [`/imds`](reference/modules/generated/imds.md)
   - [`/network`](reference/modules/generated/network.md)
   - [`/pkgs`](reference/modules/generated/pkgs.md)
   - [`/security`](reference/modules/generated/security.md)

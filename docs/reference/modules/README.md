@@ -17,6 +17,7 @@ this shape: [design/modules](../../design/modules.md).
 | `/factory`       | built in: the `/etc` seed under `/usr/share/factory/etc` and the `L` lines that link it                                                                                    |
 | `/vars`          | installs `/usr/lib/golconda/golconda-var-run` (mode `0755`), the POSIX sh runner for var units (`modules/vars/golconda-var-run`); built in                                 |
 | `/services/sshd` | OpenSSH as a service with its configuration under `/usr/lib/sshd/` and an ed25519 host key var; keys and certificates only                                                 |
+| `/imds`          | optional, no options: systemd's IMDS stack and its own import (host name, root's ssh key, user data credentials) where hwdb finds a cloud                                  |
 
 ## The composer output
 
