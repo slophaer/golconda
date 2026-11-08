@@ -19,7 +19,7 @@ let
     substring
     toFile
     ;
-  dev = import ./dev { inherit sources; } double set;
+  dev = import ./dev { inherit sources; } set;
   rp = set.pkgs;
 
   # run NAME TOOLS SCRIPT: a check, built on the seed's shell (nix/run.nix)
@@ -177,16 +177,15 @@ in
   # clippy over the console, tests and examples included, as a repkgs cargo build (console/checks)
   console-clippy = rp.golconda-console-clippy;
 
-  # nixpkgs is dev tooling only: the dev pin is named nowhere but nix/dev in Nix files, and in
-  # scripts only by scripts/boot-test, for the virtual machine repkgs does not build yet (QEMU's
-  # system emulator, OVMF, swtpm, virt-firmware)
+  # nixpkgs is named in no Nix file, and in scripts only by scripts/boot-test, for the virtual
+  # machine repkgs does not build yet (QEMU's system emulator, OVMF, swtpm, virt-firmware)
   boundary = run "boundary" [ ] ''
     cd ${src}
     # in pieces, so that this file does not name the pin
     n=nixpkgs
     pattern="$n-dev-only\|<$n>"
-    if grep -rn --include='*.nix' "$pattern" . | grep -v '^./nix/dev/' | grep -v '^./npins/'; then
-      echo "nixpkgs referenced in Nix outside nix/dev (docs/design/principles.md)" >&2
+    if grep -rn --include='*.nix' "$pattern" .; then
+      echo "nixpkgs referenced in Nix (docs/design/principles.md)" >&2
       exit 1
     fi
     if grep -rn "$pattern" scripts | grep -v '^scripts/boot-test:'; then

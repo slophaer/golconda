@@ -1,5 +1,5 @@
 [upstream]
-frozen = "numtide/iets main, pinned to the commit Golconda's npins uses (v0.2.0 is older)"
+frozen = "numtide/iets main, pinned to the commit of pins/iets (v0.2.0 is older)"
 
 [[source]]
 key = "default"

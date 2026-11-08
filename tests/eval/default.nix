@@ -7,7 +7,7 @@
 # a function of the harness that returns a list of checks. Add an area by adding
 # its file to `areas`.
 {
-  sources ? import ../../nix/sources.nix,
+  sources ? import ../../pins,
   platform ? "x86_64-linux",
 }:
 let

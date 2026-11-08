@@ -1,0 +1,12 @@
+[upstream]
+purl = "pkg:github/numtide/iets?branch=main"
+
+[[source]]
+key = "default"
+url = "https://github.com/numtide/iets/archive/{rev}.tar.gz"
+hash = "sha256-EtfSeZgBLJweh+QCfD/qyvcpRyNFZ7TWTRyLyZSoZxo="
+
+[pin]
+version = "0.2.0-unstable-2026-10-28"
+date = "2026-10-28"
+rev = "e171eb868c8558ff61e407f671f58f3e48c24728"

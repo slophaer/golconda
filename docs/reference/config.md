@@ -180,7 +180,7 @@ golconda.lib.mkSystem {
 | `config`         | a path to a TOML file, or an attribute set of options already loaded                                                                    |
 | `platform`       | the target platform, default `system`                                                                                                   |
 | `system`         | the build host, default `builtins.currentSystem`, which `iets eval` refuses unless `--impure`: pass it explicitly                       |
-| `sources`        | the pins, default `nix/sources.nix`                                                                                                     |
+| `sources`        | the pins, default `pins/` (`import ./pins`)                                                                                             |
 | `extraFragments` | the build's own fragments, each with a `name` (`lib/image`: the loader, the update index, the initrd's tools); listed in `modules.json` |
 
 `extraFragments` adds the image's own fragments (`mkImage`'s loader and keyring) beside the

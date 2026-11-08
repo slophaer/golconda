@@ -80,7 +80,7 @@ if [ -n "$each" ]; then
 fi
 
 pin=$(nix-instantiate --eval --strict -E \
-  '(builtins.fromJSON (builtins.readFile ./npins/sources.json)).pins.repkgs.revision' 2>/dev/null |
+  '(builtins.fromTOML (builtins.readFile ./pins/repkgs/sources.toml)).pin.rev' 2>/dev/null |
   tr -d '"' | cut -c1-7)
 echo "verify $(git rev-parse --short HEAD), repkgs ${pin:-unknown}"
 

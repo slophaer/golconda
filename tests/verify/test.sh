@@ -58,7 +58,7 @@ unset BOOT_TEST_STORE_ROOT NIX_REMOTE || true
 
 # A repository with scripts/verify, a fake boot-test, and two commits.
 repo=$WORK/repo
-mkdir -p "$repo/scripts" "$repo/npins"
+mkdir -p "$repo/scripts" "$repo/pins/repkgs"
 cp "$ROOT/scripts/verify" "$repo/scripts/verify"
 cat >"$repo/scripts/boot-test" <<'EOF'
 #!/bin/sh
@@ -66,7 +66,7 @@ echo "boot-test $*" >>"$CALLS"
 exit 0
 EOF
 chmod +x "$repo/scripts/verify" "$repo/scripts/boot-test"
-echo '{}' >"$repo/npins/sources.json"
+printf '[pin]\nrev = "0123456789abcdef"\n' >"$repo/pins/repkgs/sources.toml"
 echo readme >"$repo/README.md"
 git -C "$repo" init -q
 git -C "$repo" add -A

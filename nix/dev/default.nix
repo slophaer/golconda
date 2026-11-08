@@ -1,14 +1,8 @@
-# Developer tooling only: formatter, linters, docs build, dev shell.
-#
-# This directory is the ONLY place allowed to import nixpkgs (pin
-# `nixpkgs-dev-only`). Nothing it builds ships in an image or is a dependency
-# of a package; checks/boundary enforces that. It exists because repkgs does not
-# package these tools yet; each one moves to packages/ when it does. The ones
-# that moved come from the repkgs set (`rp`), and whatever names them is built
-# with nix/run.nix, not with nixpkgs' writers. (Only the retired chroot-store
-# daemon refused a nixpkgs derivation that depends on a content-addressed one.)
+# Developer tooling only: formatter, linters, docs build, dev shell. Every tool comes from the
+# repkgs set (`rp`: repkgs and packages/), and what names them is built with nix/run.nix: no
+# nixpkgs here (checks.boundary).
 { sources }:
-double: set:
+set:
 let
   inherit (builtins)
     attrNames
@@ -16,7 +10,6 @@ let
     isList
     toJSON
     ;
-  pkgs = import sources.nixpkgs-dev-only { system = double; };
   rp = set.pkgs;
   run = import ../run.nix set;
   seed = set.bootstrap.seed;
@@ -117,7 +110,6 @@ let
     cat > $out <<'GOLCONDA_TOML_EOF'
     ${toTOML {
       global.excludes = [
-        "npins/*"
         "result*"
         "LICENSE"
       ];
@@ -185,6 +177,7 @@ let
           "scripts/make-keys"
           "scripts/tool"
           "scripts/provision-esp"
+          "scripts/pins"
         ];
       };
     }}
@@ -193,28 +186,49 @@ let
   treefmt = writeScript "treefmt" ''
     exec ${rp.treefmt}/bin/treefmt --config-file ${treefmtConfig} "$@"
   '';
+
+  # The dev shell, for nix-shell (shell.nix) and direnv: iets (packages/iets, the iets pin's
+  # commit), uptrack (scripts/pins), treefmt (the formatter output, `nix fmt`), golconda-ast-grep
+  # (the rules in lints/, which treefmt runs too), and mdbook and mdbook-pele for scripts/docs.
+  # nix-shell sources $stdenv/setup and then evals $shellHook, so a setup file of our own stands
+  # in for nixpkgs' stdenv: the tools first, then the caller's PATH (nix-shell appends it after
+  # setup), and with --pure the seed's tools for the rest. The derivation itself builds nothing.
+  shellTools = [
+    rp.iets
+    rp.uptrack
+    treefmt
+    ast-grep
+    rp.mdbook
+    rp.mdbook-pele
+  ];
+  setup = run "golconda-shell-setup" [ ] ''
+    mkdir -p $out
+    cat > $out/setup <<'GOLCONDA_SETUP_EOF'
+    export PATH="${concatStringsSep ":" (map (t: "${t}/bin") shellTools)}''${PATH:+:$PATH}"
+    if [ "''${IN_NIX_SHELL:-}" = pure ]; then PATH="$PATH:${seed}/bin"; fi
+    GOLCONDA_SETUP_EOF
+  '';
+  shell = derivation {
+    name = "golconda-shell";
+    inherit (set.platform) system;
+    __contentAddressed = true;
+    outputHashMode = "recursive";
+    outputHashAlgo = "sha256";
+    builder = "${seed}/bin/sh";
+    args = [
+      "-c"
+      "echo 'golconda-shell is entered with nix-shell, not built' >&2; exit 1"
+    ];
+    stdenv = setup;
+    shellHook = ''
+      echo "golconda dev shell: treefmt | iets lint: ./scripts/lint | docs: scripts/docs serve | pins: scripts/pins check"
+    '';
+  };
 in
 {
   inherit
     treefmt
     ast-grep
+    shell
     ;
-
-  # The shell carries the repkgs-built tools too (content-addressed inputs to nixpkgs' mkShell,
-  # which the system daemon takes): iets (packages/iets, the iets pin's commit), treefmt (the
-  # formatter output, `nix fmt`), golconda-ast-grep (the rules in lints/, which treefmt runs too),
-  # and mdbook and mdbook-pele for scripts/docs.
-  shell = pkgs.mkShellNoCC {
-    packages = [
-      rp.iets
-      pkgs.npins
-      treefmt
-      ast-grep
-      rp.mdbook
-      rp.mdbook-pele
-    ];
-    shellHook = ''
-      echo "golconda dev shell: treefmt | iets lint: ./scripts/lint | docs: scripts/docs serve"
-    '';
-  };
 }

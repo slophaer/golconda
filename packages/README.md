@@ -6,5 +6,5 @@ repkgs README, "Writing a package"). `default.nix` maps the name to the director
 replaces an in-tree package of the same name. A package's own test is
 `tests/packages/<name>/test.nu` ([Packaging](../docs/design/packaging.md#where-a-package-lives)).
 
-`uptrack` has no `sources.toml`: its source is the repkgs tree in `npins/sources.json`, so it is
-always the uptrack that matches the pinned set, and there is no second pin to keep in step.
+`uptrack` has no `sources.toml`: its source is the repkgs tree in `pins/repkgs`, so it is always the
+uptrack that matches the pinned set, and there is no second pin to keep in step.

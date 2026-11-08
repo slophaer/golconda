@@ -118,7 +118,7 @@ in
     }:
     let
       # Get nushell from the bootstrap seed for the BUILD host
-      sources = import ../nix/sources.nix;
+      sources = import ../pins;
       bootstrap = import "${sources.repkgs}/bootstrap" {
         seed = null;
         system = buildSystem;

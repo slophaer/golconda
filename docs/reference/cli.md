@@ -16,7 +16,7 @@ The commands a developer and a release run. All are `iets` invocations or script
 | `golconda vars set\|push\|list\|pub HOST …`                                                                                                                                 | the admin vars of a machine, from the deploy host ([console/README.md](../../console/README.md))                                            |
 | `nix fmt`                                                                                                                                                                   | treefmt (the formatter output, built by repkgs): format in place and run the linters                                                        |
 | `scripts/docs serve`                                                                                                                                                        | check the module list in `docs/SUMMARY.md`, generate the module pages, then serve the book                                                  |
-| `npins update`                                                                                                                                                              | bump the pins (the repkgs pin is edited by hand, see `patches/repkgs/README.md`)                                                            |
+| `scripts/pins check`, `scripts/pins apply NAME`                                                                                                                             | show and bump the pins in `pins/` with uptrack (`patches/repkgs/README.md`)                                                                 |
 
 The update test needs two releases with the same keys, and both are outputs:
 

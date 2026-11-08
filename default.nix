@@ -1,10 +1,10 @@
 # Golconda: entry point for classic Nix and iets.
 #   iets build -A packages.x86_64-linux.nix
 #   nix-build -A checks.x86_64-linux.treefmt
-# Inputs are pinned by npins (npins/sources.json). The output schema is the
+# Inputs are pinned in pins/ (uptrack, scripts/pins). The output schema is the
 # flake one, provided by flake-incompat; flake.nix is a thin wrapper.
 let
-  sources = import ./nix/sources.nix;
+  sources = import ./pins;
   flake-incompat = import sources.flake-incompat;
 in
 flake-incompat.mkFlake {

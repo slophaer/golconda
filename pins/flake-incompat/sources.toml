@@ -1,0 +1,12 @@
+[upstream]
+purl = "pkg:github/adisbladis/flake-incompat?branch=master"
+
+[[source]]
+key = "default"
+url = "https://github.com/adisbladis/flake-incompat/archive/{rev}.tar.gz"
+hash = "sha256-EGskv1eiZqjkN/uPiq7yUaXA/r/F9usFXyUrwu+xXuc="
+
+[pin]
+version = "0-unstable-2026-03-18"
+date = "2026-03-18"
+rev = "c2ea95c680aadbd751f93954da06521a9c171762"
