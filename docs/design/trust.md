@@ -118,11 +118,13 @@ would change `include/generated/autoconf.h`, which every object includes. jig's 
 an `.incbin` input (clang's depfile leaves it out): without more, a second certificate got the first
 one's cached `certs/system_certificates.o`, and the kernel trusted the old key while its record
 named the new one. So the build puts the digest of the certificate file on that object's command
-line, and the digest of `vmlinux` on that of `arch/x86/boot/compressed/piggy.o`. A missing file
-fails the build (the copy, then make, which has no rule for it), and so does an empty one
-(`extract-cert` needs at least one certificate): the keyring is never silently empty. The kernel
-package installs the certificate as `lib/modules/<version>/trusted-keys.pem`, so `/usr` records
-which key its kernel trusts; the config names only the path.
+line, and the digest of `vmlinux` on that of `arch/x86/boot/compressed/piggy.o`. jig itself now
+refuses to cache a compile that names `.incbin` or `.include` (repkgs, llvm/llvm-project#54996); the
+digests stay as a second guard, because a stale certificate object would be a trust failure, not a
+slow build. A missing file fails the build (the copy, then make, which has no rule for it), and so
+does an empty one (`extract-cert` needs at least one certificate): the keyring is never silently
+empty. The kernel package installs the certificate as `lib/modules/<version>/trusted-keys.pem`, so
+`/usr` records which key its kernel trusts; the config names only the path.
 
 **Status.** Proven by boot with `--secure-boot`: the kernel loads the `db` certificate into the
 platform keyring, and with `/sys/kernel/security/ipe/success_audit` on, IPE logs
