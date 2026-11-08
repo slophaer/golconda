@@ -121,7 +121,8 @@ def trusted-keys []: nothing -> any {
 # the built-in certificates (certs/system_certificates.o) and the compressed kernel
 # (arch/x86/boot/compressed/piggy.o). The digest of each input goes on the object's command line
 # (AFLAGS_<object>, a make variable kbuild reads), so a cached object never carries another
-# build's certificate or kernel.
+# build's certificate or kernel. jig now refuses to cache a compile that names .incbin; the digests
+# stay as a second guard for the trust property (docs/design/trust.md).
 def incbin-flag [object: string, file: string]: nothing -> string {
   $"AFLAGS_($object).o=-DGOLCONDA_INCBIN_SHA256=(open --raw $file | hash sha256)"
 }
