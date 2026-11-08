@@ -209,17 +209,20 @@ in
     ast-grep
     ;
 
-  # treefmt, golconda-ast-grep, mdbook and mdbook-pele (ours now) are not in it: the retired
-  # chroot-store daemon refused a content-addressed input to nixpkgs' mkShell. `nix fmt` runs the
-  # formatter output, which runs the lint rules too, checks.lint-rules tests them, and
-  # scripts/docs and scripts/tool find our packages through scripts/tools.sh
+  # The shell carries the repkgs-built tools too (content-addressed inputs to nixpkgs' mkShell,
+  # which the system daemon takes): treefmt (the formatter output, `nix fmt`), golconda-ast-grep
+  # (the rules in lints/, which treefmt runs too), and mdbook and mdbook-pele for scripts/docs.
   shell = pkgs.mkShellNoCC {
     packages = [
       iets
       pkgs.npins
+      treefmt
+      ast-grep
+      rp.mdbook
+      rp.mdbook-pele
     ];
     shellHook = ''
-      echo "golconda dev shell: nix fmt | iets lint: ./scripts/lint | docs: scripts/docs serve"
+      echo "golconda dev shell: treefmt | iets lint: ./scripts/lint | docs: scripts/docs serve"
     '';
   };
 }

@@ -150,7 +150,7 @@ in
       # what scripts/make-keys runs (scripts/tools.sh): openssl for the db and PCR keys, and
       # Golconda's gnupg, the gpg that systemd-pull checks the release index with on the image
       inherit (pkgs) openssl gnupg;
-      # what scripts/docs and scripts/tool run (scripts/tools.sh)
+      # the dev shell's book tools (scripts/docs), and what scripts/tool runs (scripts/tools.sh)
       inherit (pkgs) mdbook mdbook-pele hcloud;
     }
     # tests-<name>: a package's own test from tests/packages/ (they moved with the packages)

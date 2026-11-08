@@ -2,12 +2,10 @@
 # Write the generated module pages (docs/reference/modules/generated/, not
 # committed), check that the module list in the committed docs/SUMMARY.md is
 # current, then build the book, or serve it with `scripts/docs serve`. Run from
-# anywhere, inside the dev shell (iets). mdbook and its diagram preprocessor are ours
-# (packages/mdbook, packages/mdbook-pele), through scripts/tools.sh.
+# anywhere, inside the dev shell (iets, and our mdbook and its diagram preprocessor:
+# packages/mdbook, packages/mdbook-pele).
 set -eu
 cd "$(dirname "$0")/.."
-. scripts/tools.sh
-PATH="$(tools_path . mdbook mdbook-pele):$PATH"
 out=docs/reference/modules/generated
 # Delete the old pages first: a removed module's page must not linger in the book.
 rm -rf "$out"
