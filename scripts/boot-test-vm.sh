@@ -197,8 +197,22 @@ start_qemu() {
   fi
 
   SMBIOS_HOSTNAME="-smbios type=11,value=io.systemd.credential:system.hostname=boot-test"
-  if [ "$ESP_CREDS" = 1 ]; then
+  if [ "$ESP_CREDS" = 1 ] || [ "$IMDS" = 1 ]; then
     SMBIOS_HOSTNAME=""
+  fi
+  # --imds: a cloud by DMI, and imdsd's endpoint by credentials (they win over hwdb's); QEMU's
+  # DHCP server offers a host name, which networkd must not apply
+  SMBIOS_IMDS=""
+  NET_HOSTNAME=""
+  if [ "$IMDS" = 1 ]; then
+    C=io.systemd.credential
+    SMBIOS_IMDS="-smbios type=0,vendor=Hetzner \
+      -smbios type=11,value=$C:imds.vendor=boot-test \
+      -smbios type=11,value=$C:imds.data_url=http://10.0.2.2:$IMDS_PORT \
+      -smbios type=11,value=$C:imds.key_hostname=/hostname \
+      -smbios type=11,value=$C:imds.key_ssh_key=/public-keys/0 \
+      -smbios type=11,value=$C:imds.key_userdata=/userdata"
+    NET_HOSTNAME=",hostname=dhcp-test"
   fi
 
   # --next: the guest's connections to the image's update source, 10.0.2.2:$HTTP_PORT, go to this
@@ -219,7 +233,8 @@ start_qemu() {
     -display none \
     $NO_REBOOT \
     $SMBIOS_HOSTNAME \
-    -netdev user,id=net0,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22$NET_UPDATE \
+    $SMBIOS_IMDS \
+    -netdev user,id=net0,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22$NET_UPDATE$NET_HOSTNAME \
     -device virtio-net-pci,netdev=net0"
   
   if [ "$TPM" = 1 ] || [ "$SECURE_BOOT" = 1 ]; then

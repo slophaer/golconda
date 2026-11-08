@@ -296,6 +296,15 @@ lists the directory. It finds the ESP in the GPT and refuses a path in `/nix/sto
 ([Bootstrap credentials](../design/boot.md#bootstrap-credentials)), so that run fails.
 `BOOT_TEST_ESP_NO_KEY=1` leaves the key out of the ESP: the login must then fail.
 
+`--imds` (with `--ssh-test`, not with `--esp-creds`) fakes a cloud for `/imds`, which the test image
+has. QEMU gets `-smbios type=0,vendor=Hetzner`, so `40-imds.hwdb` matches, and `imds.*` type 11
+credentials that point `systemd-imdsd` at `http://10.0.2.2:8075` (`BOOT_TEST_IMDS_PORT`) with the
+keys `/hostname`, `/public-keys/0` and `/userdata`; no `imds.address_ipv4`, whose prohibit route
+would also cut off the update server's host. It passes no SMBIOS host name. The harness serves
+`imds-test`, a key pair it makes, and user data with the credentials `imds-canary` and `login.motd`
+with `python3 -m http.server`; QEMU's DHCP server offers the host name `dhcp-test`
+(`-netdev user,hostname=`).
+
 `--secure-boot` enrolls the throwaway db key with `virt-fw-vars` (one fixed owner GUID) and boots
 `OVMFFull.fd` with `-machine smm=on`: plain `OVMF.fd` has no Secure Boot support. The guest must
 report `Secure Boot: enabled` (the `secure-boot-enabled` marker); the same disk with an unsigned
@@ -303,10 +312,10 @@ loader on the ESP is refused by firmware, which is the negative control for this
 
 The script creates a 40 GiB qcow2 overlay (room for the root partition), copies the OVMF variable
 store, passes the host name `boot-test` as a credential (`-smbios type=11,...`, not with
-`--esp-creds`), and logs the serial console to a file. QEMU runs with `-display none` and no monitor
-or QMP socket: the harness reaches the guest through the serial log and ssh, and nothing else. QEMU
-runs with `-no-reboot` unless `--tpm`, `--next` or `--factory-reset` is given, because those reboot
-the guest.
+`--esp-creds` or `--imds`), and logs the serial console to a file. QEMU runs with `-display none`
+and no monitor or QMP socket: the harness reaches the guest through the serial log and ssh, and
+nothing else. QEMU runs with `-no-reboot` unless `--tpm`, `--next` or `--factory-reset` is given,
+because those reboot the guest.
 
 ### The markers
 
@@ -337,7 +346,8 @@ With `--ssh-test` (the harness logs in as root with `tests/fixtures/snakeoil-ssh
 | marker                         | what it proves                                                                                                              |
 | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
 | `ssh-login`                    | an ssh login with the test key works                                                                                        |
-| `hostname`                     | `hostname` prints `boot-test`: PID 1 applied the `system.hostname` credential                                               |
+| `hostname`                     | `hostname` prints `boot-test`: PID 1 applied the `system.hostname` credential (not with `--imds`)                           |
+| `imds-import-inactive`         | without `--imds`: no cloud in DMI, so `systemd-imds-early-network.service` and `systemd-imds-import.service` never started  |
 | `esp-authorized-keys`          | with `--esp-creds`: `/root/.ssh/authorized_keys` holds the generated key                                                    |
 | `no-failed-units`              | `systemctl --failed` lists no unit                                                                                          |
 | `varlinkctl-list-interfaces`   | `io.systemd.Manager` answers on its varlink socket                                                                          |
@@ -347,6 +357,16 @@ With `--ssh-test` (the harness logs in as root with `tests/fixtures/snakeoil-ssh
 | `cert-login`                   | a certificate from the test user CA (`tests/fixtures/snakeoil-user-ca`) logs in as root for the principal `boot-test-admin` |
 | `cert-wrong-principal-refused` | a certificate for another principal is refused                                                                              |
 | `index-keyring`                | `/usr/lib/systemd/import-pubring.pgp` is the key set's `release/index.pgp`                                                  |
+
+With `--imds` (instead of `hostname`):
+
+| marker                     | what it proves                                                                                                                          |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `imds-hostname`            | the generator pulled `systemd-imds-import.service` in, and `hostname` and `/etc/hostname` are `imds-test` (`firstboot.hostname`)        |
+| `imds-ssh-key`             | the served key logs in as root; `/root/.ssh/authorized_keys` (from `ssh.authorized_keys.root`) is 0600                                  |
+| `imds-userdata-credential` | the server saw `GET /userdata`, `/run/credstore/imds-canary` holds its value, and tmpfiles wrote `login.motd` to `/etc/motd.d`          |
+| `imds-dhcp-hostname`       | the lease holds `dhcp-test`, `/imds`'s `UseHostname=no` drop-in is in effect, and after `networkctl renew` the host name is `imds-test` |
+| `imds-no-ordering-cycle`   | the journal has no ordering cycle: the import runs after `network-online.target` and before `sysinit.target`                            |
 
 The loader checks ([Boot loader](../design/bootloader.md)) run on the first boot, again after an
 update, and after a rotation:

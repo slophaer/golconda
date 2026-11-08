@@ -1,6 +1,6 @@
 # shellcheck shell=sh
 # Part of scripts/boot-test, sourced by it (no processes start when sourced).
-# The modes of one boot: the first-boot checks, the TPM reboot, the factory reset.
+# The modes of one boot: the first-boot checks, --imds, the TPM reboot, the factory reset.
 # shellcheck disable=SC2154 # the globals are set by scripts/boot-test and the other parts
 # shellcheck disable=SC2034 # and read there
 
@@ -21,16 +21,21 @@ test_ssh() {
   ssh $SSH_OPTS -o UserKnownHostsFile="$WORKDIR/known_hosts" -o StrictHostKeyChecking=accept-new \
     -i "$WORKDIR/ssh/user" root@localhost true 2>/dev/null || true
 
-  echo ""
-  echo "=== hostname ==="
-  HN=$(guest hostname 2>&1) || true
-  echo "$HN"
-  EXPECT_HN=boot-test
-  if [ "$ESP_CREDS" = 1 ]; then
-    EXPECT_HN=esp-test
+  if [ "$IMDS" = 1 ]; then
+    test_imds
+  else
+    echo ""
+    echo "=== hostname ==="
+    HN=$(guest hostname 2>&1) || true
+    echo "$HN"
+    EXPECT_HN=boot-test
+    if [ "$ESP_CREDS" = 1 ]; then
+      EXPECT_HN=esp-test
+    fi
+    RC=0; [ "$HN" = "$EXPECT_HN" ] || RC=1
+    verdict "hostname (system.hostname credential applied)" $RC
+    check_imds_off
   fi
-  RC=0; [ "$HN" = "$EXPECT_HN" ] || RC=1
-  verdict "hostname (system.hostname credential applied)" $RC
 
   if [ "$ESP_CREDS" = 1 ]; then
     echo ""
@@ -127,6 +132,19 @@ test_ssh() {
     SEALED_HASH=$(guest_hash "$HOSTKEY_CRED")
   fi
   return 0
+}
+
+# --- --imds: a faked cloud (scripts/boot-test-http.sh serves its endpoint) ---
+test_imds() {
+  echo ""
+  echo "=== /imds: waiting for $IMDS_UNIT ==="
+  echo "DMI BIOS vendor: $(guest cat /sys/class/dmi/id/bios_vendor 2>&1)"
+  wait_imds_import
+  check_imds_hostname
+  check_imds_ssh_key
+  check_imds_userdata_credential
+  check_imds_dhcp_hostname
+  check_imds_ordering
 }
 
 # --- second boot, TPM: the host key is unsealed, not regenerated ---

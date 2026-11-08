@@ -90,8 +90,10 @@ The boot test proves this in QEMU ([What is proven](../proven.md)):
 - `hostname`, `esp-authorized-keys` and `ssh-login` with a key only the ESP holds
   (`--ssh-test --esp-creds`).
 - `no-firstboot-prompt`: first boot finishes without a prompt.
-
-`/imds` is not boot-tested yet; the eval tests check its drop-ins and links.
+- `imds-hostname`, `imds-ssh-key`, `imds-userdata-credential` and `imds-dhcp-hostname` on a faked
+  cloud (`--ssh-test --imds`): SMBIOS names Hetzner, and credentials point imdsd at a host HTTP
+  server.
+- `imds-import-inactive`: without a cloud in DMI, the test image's `/imds` runs no import.
 
 ## Limits
 

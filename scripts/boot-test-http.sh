@@ -1,8 +1,20 @@
 # shellcheck shell=sh
 # Part of scripts/boot-test, sourced by it (no processes start when sourced).
-# The update server: the release directory over HTTP for --next, as a QEMU guest forward.
+# The update server: the release directory over HTTP for --next, as a QEMU guest forward; the fake
+# IMDS endpoint (--imds).
 # shellcheck disable=SC2154 # the globals are set by scripts/boot-test and the other parts
 # shellcheck disable=SC2034,SC2153 # and read there
+
+# http_answers PORT: true when 127.0.0.1:PORT accepts a connection
+http_answers() {
+  python3 - "$1" <<'EOF'
+import socket, sys
+try:
+    socket.create_connection(("127.0.0.1", int(sys.argv[1])), 1).close()
+except OSError:
+    sys.exit(1)
+EOF
+}
 
 # --- the release HTTP server (--next) ---
 # The image's url-file source is http://10.0.2.2:$HTTP_PORT/ (8074 in the test image). The harness
@@ -78,4 +90,39 @@ start_http_server() {
   : > "$HTTP_LOG"
 
   echo "Serving $NEXT_RELEASE to the guest as http://10.0.2.2:$HTTP_PORT/ (QEMU guestfwd, no host port; log $HTTP_LOG)"
+}
+
+# --- the fake IMDS endpoint (--imds) ---
+# start_imds_server: what a cloud's metadata service answers, on 127.0.0.1:$IMDS_PORT (the guest's
+# 10.0.2.2): a host name, a public key made here (its private half logs in), and user data that
+# lists two credentials: imds-canary, and login.motd, which tmpfiles writes to /etc/motd.d. The
+# server's log shows every GET.
+start_imds_server() {
+  IMDS_ROOT="$WORKDIR/imds"
+  IMDS_LOG="$WORKDIR/imds.log"
+  mkdir -p "$IMDS_ROOT/public-keys"
+  printf 'imds-test' > "$IMDS_ROOT/hostname"
+  ssh-keygen -q -t ed25519 -N "" -C boot-test-imds -f "$WORKDIR/ssh/imds"
+  # Hetzner serves the key without a newline
+  printf '%s' "$(cat "$WORKDIR/ssh/imds.pub")" > "$IMDS_ROOT/public-keys/0"
+  printf '%s' '{"systemd.credentials":[{"name":"imds-canary","text":"canary"},{"name":"login.motd","text":"imds motd"}]}' > "$IMDS_ROOT/userdata"
+  echo "Serving the fake IMDS endpoint on http://127.0.0.1:$IMDS_PORT/ (the guest uses http://10.0.2.2:$IMDS_PORT/)"
+  python3 -m http.server "$IMDS_PORT" --bind 127.0.0.1 --directory "$IMDS_ROOT" > "$IMDS_LOG" 2>&1 &
+  IMDS_PID=$!
+  WAIT=0
+  while [ "$WAIT" -lt 50 ]; do
+    if ! kill -0 "$IMDS_PID" 2>/dev/null; then
+      echo "Error: the IMDS server on 127.0.0.1:$IMDS_PORT exited; its log:" >&2
+      cat "$IMDS_LOG" >&2 || true
+      return 1
+    fi
+    if http_answers "$IMDS_PORT"; then
+      echo "IMDS server ready (pid $IMDS_PID)"
+      return 0
+    fi
+    WAIT=$((WAIT + 1))
+    sleep 0.2
+  done
+  echo "Error: the IMDS server on 127.0.0.1:$IMDS_PORT did not answer within 10 s" >&2
+  return 1
 }

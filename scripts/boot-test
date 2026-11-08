@@ -2,14 +2,15 @@
 # scripts/boot-test: VM boot test for Golconda images.
 #
 # Usage: boot-test <disk.raw> --keys DIR [--secure-boot] [--tpm] [--timeout SECONDS]
-#                  [--ssh-test [--esp-creds]] [--next DIR [--rotate | --fail-health]] [--factory-reset]
+#                  [--ssh-test [--esp-creds | --imds]] [--next DIR [--rotate | --fail-health]]
+#                  [--factory-reset]
 #
 # The script boots the image in QEMU with:
 #   - a 40 GiB qcow2 overlay (room for root partition)
 #   - OVMF firmware (UEFI)
 #   - optional Secure Boot with keys enrolled from --keys
 #   - optional TPM 2.0 via swtpm
-#   - SMBIOS type 11 credential: system.hostname=boot-test (not with --esp-creds)
+#   - SMBIOS type 11 credential: system.hostname=boot-test (not with --esp-creds or --imds)
 #   - user-mode networking with hostfwd to SSH (127.0.0.1:$BOOT_TEST_SSH_PORT; without it, the
 #     first free port from 10022 up, printed)
 #   - serial console logged to a file
@@ -49,6 +50,24 @@
 #   /root/.ssh/authorized_keys in the guest holds the new key. With --secure-boot and --tpm the
 #   null-key credentials are refused (creds-util.c, relaxed policy): the run is expected to fail.
 #   BOOT_TEST_ESP_NO_KEY=1 leaves the key out of the ESP (a negative control: the login must fail).
+#   Without --imds, the ssh checks also check imds-import-inactive: the test image has /imds, and
+#   QEMU's DMI names no cloud, so neither systemd-imds-early-network.service (only the generator
+#   pulls it) nor systemd-imds-import.service ever starts.
+# With --imds (needs --ssh-test; not with --esp-creds): fakes a cloud for /imds (docs/features/
+#   provisioning.md). SMBIOS type 0 says the BIOS vendor is Hetzner (40-imds.hwdb matches
+#   dmi:bvnHetzner:*), type 11 credentials point systemd-imdsd at a host HTTP server
+#   (imds.data_url=http://10.0.2.2:$BOOT_TEST_IMDS_PORT, default 8075, and the keys /hostname,
+#   /public-keys/0 and /userdata; no imds.address_ipv4, whose prohibit route would cut 10.0.2.2
+#   off, the update server's host), and no system.hostname credential is given. The server
+#   answers imds-test, a key pair made in the work directory, and user data that lists the
+#   credentials imds-canary and login.motd. QEMU's DHCP server offers the host name dhcp-test.
+#   Checks: imds-hostname (systemd's import ran, pulled in by the generator, and the host name and
+#   /etc/hostname are imds-test), imds-ssh-key (the new key logs in; /root/.ssh/authorized_keys
+#   is 0600), imds-userdata-credential (the server saw GET /userdata, /run/credstore/imds-canary
+#   holds the value, and tmpfiles wrote login.motd to /etc/motd.d), imds-dhcp-hostname (the lease
+#   holds dhcp-test, /imds's UseHostname=no drop-in is in effect, and after a renewal the host
+#   name is still imds-test) and
+#   imds-no-ordering-cycle (the import before sysinit.target made no ordering cycle).
 # With --secure-boot: boots OVMFFull and checks that the firmware enforces Secure Boot.
 # With --ssh-test: also checks the boot loader (docs/design/bootloader.md): the ESP's two
 #   copies of systemd-boot are the signed file in /usr, loader/loader.conf is the one
@@ -110,7 +129,7 @@
 # It sources the parts beside it:
 #   boot-test-log.sh     the serial markers and check_markers
 #   boot-test-vm.sh      Secure Boot keys, swtpm, the guest's credentials, QEMU
-#   boot-test-http.sh    the update server (--next)
+#   boot-test-http.sh    the update server (--next), the fake IMDS endpoint (--imds)
 #   boot-test-guest.sh   ssh, wait_for_ssh, verdict, guest_hash, reboot_guest
 #   boot-test-checks.sh  the shared checks (one function each; every mode calls them)
 #   boot-test-modes.sh   the first boot's ssh checks, the TPM reboot, --factory-reset
@@ -151,6 +170,9 @@ ROTATE=0
 FAIL_HEALTH=0
 FACTORY_RESET=0
 ESP_CREDS=0
+IMDS=0
+# the host port for the fake IMDS endpoint (--imds)
+IMDS_PORT=${BOOT_TEST_IMDS_PORT:-8075}
 
 # the parts: functions and constants, no processes start when they are sourced; boot-test-guest.sh
 # reads SSH_PORT above
@@ -170,7 +192,7 @@ ESP_CREDS=0
 . "$SCRIPT_DIR/boot-test-update.sh"
 
 usage() {
-  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot] [--tpm] [--timeout SECONDS] [--ssh-test [--esp-creds]] [--next DIR [--rotate | --fail-health]] [--factory-reset]"
+  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot] [--tpm] [--timeout SECONDS] [--ssh-test [--esp-creds | --imds]] [--next DIR [--rotate | --fail-health]] [--factory-reset]"
   exit 1
 }
 
@@ -186,6 +208,7 @@ while [ $# -gt 0 ]; do
     --fail-health) FAIL_HEALTH=1; shift ;;
     --factory-reset) FACTORY_RESET=1; shift ;;
     --esp-creds) ESP_CREDS=1; shift ;;
+    --imds) IMDS=1; shift ;;
     --help|-h) usage ;;
     -*)
       echo "Unknown option: $1" >&2
@@ -227,6 +250,20 @@ fi
 if [ "$ESP_CREDS" = 1 ] && [ "$SSH_TEST" = 0 ]; then
   echo "Error: --esp-creds needs --ssh-test: the checks log in with the generated key" >&2
   exit 1
+fi
+if [ "$IMDS" = 1 ] && { [ "$SSH_TEST" = 0 ] || [ "$ESP_CREDS" = 1 ]; }; then
+  echo "Error: --imds needs --ssh-test (the checks run over ssh) and excludes --esp-creds (both set the host name and the root key)" >&2
+  exit 1
+fi
+if [ "$IMDS" = 1 ]; then
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "Error: python3 is required to serve the fake IMDS endpoint, and it is not on PATH" >&2
+    exit 1
+  fi
+  if port_in_use "$IMDS_PORT"; then
+    echo "Error: 127.0.0.1:$IMDS_PORT is already in use; set BOOT_TEST_IMDS_PORT to a free port" >&2
+    exit 1
+  fi
 fi
 if [ "$FACTORY_RESET" = 1 ] && [ "$SSH_TEST" = 0 ]; then
   echo "Error: --factory-reset needs --ssh-test: the reset is requested over ssh, and only the test image carries the test key" >&2
@@ -277,6 +314,10 @@ cleanup() {
   fi
   if [ -n "${SWTPM_PID:-}" ]; then
     kill "$SWTPM_PID" 2>/dev/null || true
+  fi
+  if [ -n "${IMDS_PID:-}" ]; then
+    kill "$IMDS_PID" 2>/dev/null || true
+    wait "$IMDS_PID" 2>/dev/null || true
   fi
   if [ "$KEEP_WORKDIR" = 0 ]; then
     rm -rf "$WORKDIR"
@@ -330,6 +371,7 @@ main() {
   echo "TPM: $TPM"
   echo "Factory reset: $FACTORY_RESET"
   echo "ESP credentials: $ESP_CREDS"
+  echo "IMDS: $IMDS"
   echo "Timeout: ${TIMEOUT}s"
   echo "Work directory: $WORKDIR"
   echo ""
@@ -351,6 +393,9 @@ main() {
     if ! start_http_server; then
       exit 1
     fi
+  fi
+  if [ "$IMDS" = 1 ]; then
+    start_imds_server || exit 1
   fi
 
   start_qemu

@@ -241,3 +241,117 @@ test_etc_links() {
   [ "${3:-1}" = 0 ] || RC=1
   verdict "etc-links-stable ($1 links, $2 naming a store path, $3 dangling)" $RC
 }
+
+# --- /imds (docs/features/provisioning.md) ---
+IMDS_UNIT=systemd-imds-import.service
+
+# check_imds_off: without a cloud in DMI, the generator pulls nothing in: neither the early network
+# unit (which only the generator pulls) nor the import it hangs off ever left inactive. The
+# imdsd socket may listen: systemd's preset enables it, and the test image has /imds.
+check_imds_off() {
+  echo ""
+  echo "=== /imds without a cloud ==="
+  RC=0
+  for u in systemd-imds-early-network.service "$IMDS_UNIT"; do
+    A=$(guest systemctl is-active "$u" 2>/dev/null) || true
+    T=$(guest systemctl show -P InactiveExitTimestampMonotonic "$u" 2>/dev/null) || true
+    echo "$u: ${A:-no answer}, left inactive at ${T:-no answer}"
+    { [ "$A" = inactive ] && [ "$T" = 0 ]; } || RC=1
+  done
+  verdict "imds-import-inactive (no cloud in DMI: the early network unit and $IMDS_UNIT never started)" $RC
+}
+
+# wait_imds_import: the import the generator pulled in runs before sysinit.target, so it has ended
+# by the first login; wait a little anyway. Never start it here, so a missed detection cannot pass.
+# Sets IMDS_STATE.
+wait_imds_import() {
+  IMDS_STATE=""
+  IW=0
+  while [ "$IW" -lt 60 ] && qemu_running; do
+    IMDS_STATE=$(guest systemctl is-active "$IMDS_UNIT" 2>/dev/null) || true
+    case $IMDS_STATE in active | failed) break ;; esac
+    IW=$((IW + 2))
+    sleep 2
+  done
+  guest journalctl -b -u "$IMDS_UNIT" -u systemd-firstboot.service -o cat --no-pager 2>&1 || true
+}
+
+# check_imds_hostname: the import ran and wrote firstboot.hostname, and systemd-firstboot set it
+check_imds_hostname() {
+  echo ""
+  echo "=== /imds: host name ==="
+  HN=$(guest hostname 2>&1) || true
+  EH=$(guest cat /etc/hostname 2>&1) || true
+  echo "$IMDS_UNIT: ${IMDS_STATE:-no answer}; hostname: $HN; /etc/hostname: $EH"
+  RC=0; { [ "$IMDS_STATE" = active ] && [ "$HN" = imds-test ] && [ "$EH" = imds-test ]; } || RC=1
+  verdict "imds-hostname (the generator pulled systemd's import in; hostname and /etc/hostname are imds-test)" $RC
+}
+
+# check_imds_ssh_key: the key IMDS gives logs in as root (the image's own file names only the
+# test key), from the 0600 /root/.ssh/authorized_keys tmpfiles wrote from ssh.authorized_keys.root
+check_imds_ssh_key() {
+  echo ""
+  echo "=== /imds: ssh key ==="
+  RC=0
+  # shellcheck disable=SC2086
+  ssh $SSH_OPTS $NO_HOSTKEY_CHECK -o IdentitiesOnly=yes -i "$WORKDIR/ssh/imds" root@localhost true || RC=1
+  M=$(guest stat -c %a /root/.ssh/authorized_keys 2>&1) || true
+  echo "/root/.ssh/authorized_keys mode: $M"
+  [ "$M" = 600 ] || RC=1
+  verdict "imds-ssh-key (the IMDS key logs in; authorized_keys is 0600)" $RC
+}
+
+# check_imds_userdata_credential: the user data's credentials arrive in /run/credstore, and a
+# reader that starts after the import takes one: tmpfiles writes login.motd to /etc/motd.d
+check_imds_userdata_credential() {
+  echo ""
+  echo "=== /imds: user data credentials ==="
+  echo "requests:"
+  grep '"GET ' "$IMDS_LOG" || true
+  RC=0
+  grep -q '"GET /userdata' "$IMDS_LOG" || RC=1
+  V=$(guest cat /run/credstore/imds-canary 2>&1) || true
+  MOTD=$(guest cat /etc/motd.d/50-provision.conf 2>&1) || true
+  echo "/run/credstore/imds-canary: $V"
+  echo "/etc/motd.d/50-provision.conf: $MOTD"
+  [ "$V" = canary ] || RC=1
+  [ "$MOTD" = "imds motd" ] || RC=1
+  verdict "imds-userdata-credential (imds-canary in /run/credstore; tmpfiles wrote login.motd)" $RC
+}
+
+# check_imds_ordering: the import is ordered after network-online.target and before sysinit.target
+# and tmpfiles; systemd breaks an ordering cycle by dropping a job, so the journal must have none
+check_imds_ordering() {
+  N=$(guest journalctl -b -o cat --no-pager 2>/dev/null | grep -ci "ordering cycle") || N=0
+  echo "ordering cycles in the journal: $N"
+  RC=0; [ "$N" = 0 ] || RC=1
+  verdict "imds-no-ordering-cycle (the import before sysinit.target)" $RC
+}
+
+# check_imds_dhcp_hostname: QEMU's DHCP server offers dhcp-test, and /imds's networkd drop-ins
+# keep the lease from setting it: the lease holds the name, and after a renewal the host name is
+# still IMDS's
+check_imds_dhcp_hostname() {
+  echo ""
+  echo "=== /imds: the DHCP host name ==="
+  # the lease's host name is in networkd's JSON (Interfaces[].DHCPv4Client.Lease.Hostname)
+  J=$(guest networkctl status --json=short --no-pager 2>/dev/null) || true
+  LEASE_HN=$(echo "$J" | grep -o '"Hostname":"[^"]*"' | sort -u) || true
+  LINKS=$(guest networkctl list --no-legend --no-pager 2>/dev/null | awk '$3 == "ether" { print $2 }') || true
+  # the drop-in /imds adds to the .network file in use (85-imds-early.network on a cloud)
+  DROPINS=$(echo "$J" | grep -o '"NetworkFileDropins":\[[^]]*\]' | sort -u) || true
+  echo "ether links: ${LINKS:-none}; lease host names: ${LEASE_HN:-none}"
+  echo "network file drop-ins: ${DROPINS:-none}"
+  RC=0
+  echo "$LEASE_HN" | grep -qx '"Hostname":"dhcp-test"' || RC=1
+  echo "$DROPINS" | grep -q 'network.d/golconda-imds.conf' || RC=1
+  [ -n "$LINKS" ] || RC=1
+  for l in $LINKS; do
+    guest networkctl renew "$l" 2>&1 || RC=1
+  done
+  sleep 3
+  HN=$(guest hostname 2>&1) || true
+  echo "hostname after the renewal: $HN"
+  [ "$HN" = imds-test ] || RC=1
+  verdict "imds-dhcp-hostname (the lease offers dhcp-test, /imds's UseHostname=no drop-in is in effect, and after a renewal the host name is still imds-test)" $RC
+}
