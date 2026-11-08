@@ -261,10 +261,11 @@ nix-build -A packages.x86_64-linux.image-smoke-test
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-test
 ```
 
-The harness forwards host port 10022 (`BOOT_TEST_SSH_PORT`) to the guest's port 22 and logs in as
-root with `ssh -i tests/fixtures/snakeoil-ssh -p 10022 root@localhost`. In the run *(boot)*,
-`--ssh-test` printed `PASS: ssh-login`, `PASS: no-failed-units` and
-`PASS: varlinkctl-list-interfaces`, and the 27 ssh checks of that run all passed.
+The harness forwards a host port (`BOOT_TEST_SSH_PORT`, or the first free one from 10022 up) to the
+guest's port 22 and logs in as root with
+`ssh -i tests/fixtures/snakeoil-ssh -p 10022 root@localhost`. In the run *(boot)*, `--ssh-test`
+printed `PASS: ssh-login`, `PASS: no-failed-units` and `PASS: varlinkctl-list-interfaces`, and the
+27 ssh checks of that run all passed.
 
 Certificate login: uncomment the three lines at the end of `examples/server.toml`. The evaluation
 *(eval, with an `admin@example.com` principal)* adds `/usr/lib/sshd/ca.pub` and

@@ -264,9 +264,17 @@ scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-te
 `--next` pushes admin vars with `golconda vars`, as an operator does: build it
 (`nix-build -A packages.x86_64-linux.golconda-cli`) and name its binary in `BOOT_TEST_GOLCONDA`, and
 put `age` and `age-keygen` (`packages.x86_64-linux.age`) and `ssh-keygen` on PATH.
-`BOOT_TEST_SSH_PORT` sets the host port for the guest's sshd (default 10022). `BOOT_TEST_HTTP_PORT`
-sets the port of the release HTTP server for `--next` (default 8074). The test image's
-`updateSource` names 8074, so another port needs an image built with that `updateSource`.
+`BOOT_TEST_SSH_PORT` sets the host port for the guest's sshd; without it the harness takes the first
+free port from 10022 up and prints it (`ssh: 127.0.0.1:10023 -> guest 22`). `BOOT_TEST_HTTP_PORT`
+sets the port the guest uses for the release server of `--next` (default 8074): it is an address
+inside the guest's network, not a host port. The test image's `updateSource` names 8074, so another
+port needs an image built with that `updateSource`.
+
+Several runs can share one host and one image. Each has a work directory from `mktemp -d`, its own
+swtpm socket and state, firmware variables, disk overlay, keys, ssh port and update server. A run
+claims its ssh port with a `flock` on `$BOOT_TEST_PORT_LOCKS/PORT` (default
+`$XDG_RUNTIME_DIR/boot-test-ports-UID`), so two runs that start together never pick the same one,
+and the lock goes away when the run dies. Each run needs about 2 GiB of RAM and 2 CPUs.
 `BOOT_TEST_STORE_ROOT` names the root of a chroot store (`--store 'local?root=DIR'`): the harness
 follows a `/nix/store` symlink under it.
 
@@ -416,10 +424,11 @@ The test SSH keypair is a committed test fixture (`tests/fixtures/snakeoil-ssh*`
 be held. `DIR` is a built release (`DIR/disk/release`, `DIR/keys`). The harness:
 
 1. checks the release's `SHA256SUMS` on the host (`release-index`);
-1. resolves the release's symlinks into `$WORKDIR/http` (`cp -L`) and serves that directory on
-   `127.0.0.1:$BOOT_TEST_HTTP_PORT` with `python3 -m http.server`, waiting until it answers. QEMU
-   user networking maps `10.0.2.2` to the host loopback, so the image's `http://10.0.2.2:8074/`
-   reaches the server;
+1. resolves the release's symlinks into `$WORKDIR/http` (`cp -L`) and writes `$WORKDIR/serve`, an
+   HTTP server over stdin and stdout (Python's `SimpleHTTPRequestHandler`), which it first asks for
+   `SHA256SUMS` on the host. QEMU's user network forwards the guest's connections to `10.0.2.2:8074`
+   to that command (`guestfwd=tcp:10.0.2.2:8074-cmd:$WORKDIR/serve`), one process per connection, so
+   the image's `http://10.0.2.2:8074/` reaches this run's server and no host port is opened;
 1. checks that the guest's own `/usr/lib/sysupdate.d/10-usr.transfer` has `Type=url-file` and
    `Path=http://10.0.2.2:8074/` (`http-source`). No definition is rewritten;
 1. starts `systemd-sysupdate-update.service` and waits for it. The journal's
@@ -434,11 +443,12 @@ be held. `DIR` is a built release (`DIR/disk/release`, `DIR/keys`). The harness:
    and back, and `bootctl reboot-to-firmware` reaches OVMF's boot menu.
 
 `image-smoke-test` sets `updateSource = "http://10.0.2.2:8074/"` (under QEMU user networking
-10.0.2.2 is the host). The harness serves `DIR/disk/release` at that address with
-`python3 -m http.server`, so the image's own `url-file` definitions fetch the release over HTTP; it
-rewrites nothing under `/run`. `BOOT_TEST_HTTP_PORT` changes the host port; the image's
-`updateSource` must then name the same port. The harness stops the server in its cleanup, on every
-exit path.
+10.0.2.2 is the host). The harness serves `DIR/disk/release` at that address through the guest
+forward above, so the image's own `url-file` definitions fetch the release over HTTP; it rewrites
+nothing under `/run`. `BOOT_TEST_HTTP_PORT` changes the port the guest connects to; the image's
+`updateSource` must then name the same port. There is no server process to stop: QEMU starts the
+command for each connection and it ends with the connection. The requests are logged in
+`$WORKDIR/http.log`.
 
 The next release comes from `packages.<system>.image-smoke-test-next` (version `20261031.2`, the
 same keys as the first release; [Outputs](outputs.md)), and `--next` takes its path. The firmware

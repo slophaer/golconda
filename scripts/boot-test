@@ -10,7 +10,8 @@
 #   - optional Secure Boot with keys enrolled from --keys
 #   - optional TPM 2.0 via swtpm
 #   - SMBIOS type 11 credential: system.hostname=boot-test (not with --esp-creds)
-#   - user-mode networking with hostfwd to SSH (host port $BOOT_TEST_SSH_PORT, default 10022)
+#   - user-mode networking with hostfwd to SSH (127.0.0.1:$BOOT_TEST_SSH_PORT; without it, the
+#     first free port from 10022 up, printed)
 #   - serial console logged to a file
 #
 # --keys DIR: the throwaway keys directory (from image-smoke-test's keys symlink
@@ -56,8 +57,9 @@
 # With --next DIR (implies --ssh-test): DIR is the next release's image-smoke output
 #   (DIR/disk/release, DIR/keys). The harness checks that release directory against
 #   docs/design/releases.md (four SHA256SUMS lines, fixed order, digests match), resolves its
-#   symlinks into $WORKDIR/http, serves that directory on 127.0.0.1:$BOOT_TEST_HTTP_PORT with
-#   python3 -m http.server, and installs it with systemd-sysupdate-update.service. The guest reads
+#   symlinks into $WORKDIR/http, serves that directory to the guest at 10.0.2.2:$BOOT_TEST_HTTP_PORT
+#   (a QEMU guestfwd to a stdio HTTP server in $WORKDIR; no host port), and installs it with
+#   systemd-sysupdate-update.service. The guest reads
 #   its own /usr/lib/sysupdate.d/*.transfer (Type=url-file, Path=http://10.0.2.2:PORT/), so it
 #   fetches SHA256SUMS and the artifacts over HTTP; the harness rewrites no definition. Then it
 #   reboots into the release, and checks that golconda-loader-update.service put the new loader on
@@ -88,8 +90,12 @@
 #   reset boot), so give a --timeout large enough, such as 480, and do not combine it with --next.
 # BOOT_TEST_TAMPER_INDEX=1 (with --next): serve SHA256SUMS with one byte added, so its signature
 #   (SHA256SUMS.gpg) no longer matches; the update must fail (the signed index's negative control).
-# BOOT_TEST_HTTP_PORT: the host port for the release HTTP server (default 8074). The test image's
-#   updateSource is http://10.0.2.2:8074/, so another port needs an image built for it.
+# BOOT_TEST_HTTP_PORT: the port the guest uses for the release server (default 8074): the test
+#   image's updateSource is http://10.0.2.2:8074/, so another port needs an image built for it.
+#   It is a guest-side address only; runs at the same time all use 8074.
+# Runs at the same time: every run has its own work directory (mktemp), its own ssh port (a flock
+#   in $BOOT_TEST_PORT_LOCKS, default $XDG_RUNTIME_DIR/boot-test-ports-UID), swtpm socket, firmware
+#   variables, disk overlay and keys, and its own update server; nothing else is shared.
 # BOOT_TEST_STORE_ROOT: the root of a chroot store (nix --store 'local?root=DIR'); a symlink
 #   into /nix/store under DIR is followed there.
 # With --ssh-test --tpm: also checks that the host key is sealed with the TPM
@@ -131,9 +137,8 @@ fi
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 
 # --- argument parsing ---
-# the host port for the guest's sshd: set BOOT_TEST_SSH_PORT when another VM uses 10022
-SSH_PORT=${BOOT_TEST_SSH_PORT:-10022}
-# the host port for the release HTTP server: the test image's updateSource uses 8074
+# SSH_PORT, the host port for the guest's sshd, is claimed below (claim_ssh_port)
+# the guest's port for the release HTTP server: the test image's updateSource uses 8074
 HTTP_PORT=${BOOT_TEST_HTTP_PORT:-8074}
 DISK=""
 KEYS_DIR=""
@@ -260,15 +265,10 @@ if [ -n "$NEXT" ]; then
       exit 1
     fi
   done
-  if http_port_in_use "$HTTP_PORT"; then
-    echo "Error: 127.0.0.1:$HTTP_PORT is already in use; set BOOT_TEST_HTTP_PORT to a free port, and use a test image whose updateSource names that port (the image's default is 8074)" >&2
-    exit 1
-  fi
 fi
 
 # --- working directory ---
-WORKDIR="${BOOT_TEST_TMPDIR:-${TMPDIR:-/tmp}}/boot-test-$$"
-mkdir -p "$WORKDIR"
+WORKDIR=$(mktemp -d "${BOOT_TEST_TMPDIR:-${TMPDIR:-/tmp}}/boot-test.XXXXXX")
 KEEP_WORKDIR=1  # Keep on failure
 
 cleanup() {
@@ -278,10 +278,6 @@ cleanup() {
   if [ -n "${SWTPM_PID:-}" ]; then
     kill "$SWTPM_PID" 2>/dev/null || true
   fi
-  if [ -n "${HTTP_PID:-}" ]; then
-    kill "$HTTP_PID" 2>/dev/null || true
-    wait "$HTTP_PID" 2>/dev/null || true
-  fi
   if [ "$KEEP_WORKDIR" = 0 ]; then
     rm -rf "$WORKDIR"
   else
@@ -289,6 +285,13 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+
+# QEMU's -netdev option is split at commas and spaces
+case $WORKDIR in
+  *[,\ ]*) echo "Error: the work directory $WORKDIR has a comma or a space; set TMPDIR" >&2; exit 1 ;;
+esac
+claim_ssh_port
+init_ssh_opts
 
 # --- prepare disk overlay ---
 OVERLAY="$WORKDIR/disk.qcow2"

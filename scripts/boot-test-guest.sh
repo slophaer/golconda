@@ -7,9 +7,12 @@
 # --- SSH tests ---
 # ssh takes the first value of an option: the host key options are separate
 NO_HOSTKEY_CHECK="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-SSH_OPTS="-F /dev/null \
-  -o ConnectTimeout=2 -o ServerAliveInterval=2 -o ServerAliveCountMax=2 \
-  -o BatchMode=yes -o LogLevel=ERROR -p $SSH_PORT"
+# init_ssh_opts: SSH_OPTS names the port claim_ssh_port chose
+init_ssh_opts() {
+  SSH_OPTS="-F /dev/null \
+    -o ConnectTimeout=2 -o ServerAliveInterval=2 -o ServerAliveCountMax=2 \
+    -o BatchMode=yes -o LogLevel=ERROR -p $SSH_PORT"
+}
 
 guest() {
   # shellcheck disable=SC2086

@@ -19,6 +19,60 @@ real_path() {
   echo "$rp"
 }
 
+# --- host ports ---
+# The one host port a run needs is the guest's ssh (hostfwd). Runs on one host must not take the
+# same port, and two runs that both look for a free port must not find the same one: each claims a
+# port with a flock on $PORT_LOCKS/PORT, held on a file descriptor until the run ends (the kernel
+# drops it when the process dies, so no stale lock stays), and also checks that nothing listens.
+PORT_LOCKS=${BOOT_TEST_PORT_LOCKS:-${XDG_RUNTIME_DIR:-/tmp}/boot-test-ports-$(id -u)}
+
+# port_in_use PORT: true when 127.0.0.1:PORT is already bound
+port_in_use() {
+  python3 - "$1" <<'EOF'
+import socket, sys
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+try:
+    s.bind(("127.0.0.1", int(sys.argv[1])))
+except OSError:
+    sys.exit(0)
+sys.exit(1)
+EOF
+}
+
+# claim_port FD PORT: take the lock for PORT on descriptor FD (kept to the end of the run); false
+# when another run holds it or something listens on it
+claim_port() {
+  mkdir -p "$PORT_LOCKS"
+  eval "exec $1>\"\$PORT_LOCKS/\$2\"" 2>/dev/null || return 1
+  if flock -n "$1" && ! port_in_use "$2"; then
+    return 0
+  fi
+  eval "exec $1>&-"
+  return 1
+}
+
+# claim_ssh_port: SSH_PORT is BOOT_TEST_SSH_PORT (an error when it is taken), or the first free
+# port from 10022 up
+claim_ssh_port() {
+  if [ -n "${BOOT_TEST_SSH_PORT:-}" ]; then
+    SSH_PORT=$BOOT_TEST_SSH_PORT
+    if ! claim_port 9 "$SSH_PORT"; then
+      echo "Error: host port $SSH_PORT (BOOT_TEST_SSH_PORT) is in use or claimed by another boot-test run" >&2
+      exit 1
+    fi
+  else
+    SSH_PORT=10022
+    while ! claim_port 9 "$SSH_PORT"; do
+      SSH_PORT=$((SSH_PORT + 1))
+      if [ "$SSH_PORT" -ge 10122 ]; then
+        echo "Error: no free host port for ssh in 10022..10121" >&2
+        exit 1
+      fi
+    done
+  fi
+  echo "ssh: 127.0.0.1:$SSH_PORT -> guest 22"
+}
+
 # --- enroll Secure Boot keys ---
 enroll_keys() {
   DB_CERT="$KEYS_DIR/secureboot/db.crt"
@@ -147,6 +201,13 @@ start_qemu() {
     SMBIOS_HOSTNAME=""
   fi
 
+  # --next: the guest's connections to the image's update source, 10.0.2.2:$HTTP_PORT, go to this
+  # run's own server (boot-test-http.sh), whatever the host ports are
+  NET_UPDATE=""
+  if [ -n "$NEXT" ]; then
+    NET_UPDATE=",guestfwd=tcp:10.0.2.2:$HTTP_PORT-cmd:$WORKDIR/serve"
+  fi
+
   QEMU_ARGS="-machine q35,accel=kvm:tcg \
     -cpu max \
     -m 2G \
@@ -158,7 +219,7 @@ start_qemu() {
     -display none \
     $NO_REBOOT \
     $SMBIOS_HOSTNAME \
-    -netdev user,id=net0,hostfwd=tcp::$SSH_PORT-:22 \
+    -netdev user,id=net0,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22$NET_UPDATE \
     -device virtio-net-pci,netdev=net0"
   
   if [ "$TPM" = 1 ] || [ "$SECURE_BOOT" = 1 ]; then
