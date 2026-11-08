@@ -1,7 +1,7 @@
-# age, the file encryption tool golconda vars stores admin vars with (console/core/src/vars.rs):
+# age, the file encryption tool golconda vars stores admin vars with (cli/src/vars.rs):
 # `age` and `age-keygen`. The reference implementation, as a program rather than a crate: it
 # finds its plugins on PATH (age-plugin-yubikey, age-plugin-tpm), so an operator's key can stay
-# in hardware. Not part of an image: it goes on PATH beside golconda (console/README.md).
+# in hardware. Not part of an image: it goes on PATH beside golconda (docs/reference/cli.md).
 {
   package,
   sources,

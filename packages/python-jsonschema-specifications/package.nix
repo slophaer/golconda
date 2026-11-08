@@ -1,4 +1,4 @@
-# jsonschema-specifications: the JSON Schema metaschemas, as data; for python's jsonschema (checks.schema-metaschema, packages/python-jsonschema)
+# jsonschema-specifications: the JSON Schema metaschemas, as data; for python's jsonschema (checks.schema-parity, packages/python-jsonschema)
 {
   package,
   sources,

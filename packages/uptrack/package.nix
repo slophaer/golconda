@@ -1,7 +1,6 @@
 # uptrack, repkgs' update tool (docs/uptrack.md in the repkgs tree): nushell scripts that poll the
-# upstreams named in sources.toml files and write new pins. The console runs `uptrack check NAMES
-# --json` with UPTRACK_ROOT set to a tree, so it needs no repkgs checkout; scripts/pins runs it on
-# pins/. Not part of an image: it goes on PATH beside golconda.
+# upstreams named in sources.toml files and write new pins. With UPTRACK_ROOT set to a tree it
+# needs no repkgs checkout; scripts/pins runs it on pins/. Not part of an image.
 #
 # The source is the repkgs tree Golconda pins (pins/repkgs), so the tool is always the one that
 # matches the sources.toml format of the set the packages come from. There is no sources.toml

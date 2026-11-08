@@ -80,8 +80,8 @@ The boot test proves the sshd host key. With `--ssh-test --tpm` it checks these 
 
 See [What is proven](../proven.md).
 
-Admin vars are pushed with the console: `golconda vars set`, `push`, `list`, `pub`
-([console/README.md](../../console/README.md)). With `--next` the boot test pushes sshd's host
+Admin vars are pushed with `golconda vars set`, `push`, `list` and `pub`
+([Commands](../reference/cli.md#golconda-vars)). With `--next` the boot test pushes sshd's host
 certificate and revocation list with it (`admin-vars-pushed`, `admin-vars-sealed`), the next release
 reads them (`host-cert-presented`, `cert-revoked-refused`), and a second push rotates the revocation
 list (`krl-rotated`).

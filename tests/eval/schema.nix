@@ -26,8 +26,8 @@ let
     ;
 in
 [
-  # The console builds a typed editor from every option and type definition; an opaque type would
-  # leave it a raw text field. The published schema therefore has none, $defs included.
+  # An editor builds its form from every option and type definition; an opaque type would leave
+  # it a raw text field. The published schema therefore has none, $defs included.
   (check "schema: the published schema has no opaque type" (
     let
       opaqueIn =

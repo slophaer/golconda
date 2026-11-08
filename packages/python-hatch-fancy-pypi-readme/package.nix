@@ -1,4 +1,4 @@
-# hatch-fancy-pypi-readme: a hatchling plugin that builds a package's readme from fragments; for python's jsonschema (checks.schema-metaschema, packages/python-jsonschema)
+# hatch-fancy-pypi-readme: a hatchling plugin that builds a package's readme from fragments; for python's jsonschema (checks.schema-parity, packages/python-jsonschema)
 {
   package,
   buildPkgs,

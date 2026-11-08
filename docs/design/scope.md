@@ -45,6 +45,7 @@ scope is not forgotten, it is refused ([Principles](principles.md)).
 | debug access        | a debug image or a sysext with tools and a getty; never in the production image                                                                                                                                  |
 | hardware            | firmware and kernel modules only when a target needs them (monolithic kernel in v1)                                                                                                                              |
 | aarch64             | postponed after v1 (2026-11-01). Neither the cross-compiled `/usr` tree nor an image is built: an aarch64 package needs an aarch64 builder, and this host has none (no binfmt, and the farm cannot build repkgs) |
+| management console  | a web daemon and a terminal UI to edit a system's document and run deploys *(after v1)*; the last version is at git tag `archive/console-2026-11-08`                                                             |
 
 ## Out of scope by design
 

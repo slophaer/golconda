@@ -81,13 +81,13 @@ Run this in the configuration repository on the build host, with a clean working
 golconda release build -f server.toml --keys /srv/golconda-keys
 ```
 
-`golconda release build` (console/README.md) picks the version (`--version auto`: today's date and
-the revision after the document's `/system.version`, and after what `--to DEST` serves), writes it
-into `server.toml`, builds the image, checks the release directory (step 4) and commits the version
-line as `release: <id> <version>`. The commit's trailers record the document's digest, the four
-files' digests and the store path, so `git log` finds the source of each release; a failed build
-puts the line back and commits nothing. It refuses a version that is not newer than the last one:
-sysupdate would install nothing and say nothing. The output is linked at `result-release`.
+`golconda release build` ([Commands](cli.md#golconda-release)) picks the version (`--version auto`:
+today's date and the revision after the document's `/system.version`, and after what `--to DEST`
+serves), writes it into `server.toml`, builds the image, checks the release directory (step 4) and
+commits the version line as `release: <id> <version>`. The commit's trailers record the document's
+digest, the four files' digests and the store path, so `git log` finds the source of each release; a
+failed build puts the line back and commits nothing. It refuses a version that is not newer than the
+last one: sysupdate would install nothing and say nothing. The output is linked at `result-release`.
 
 By hand, the same build is:
 

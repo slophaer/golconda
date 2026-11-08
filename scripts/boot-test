@@ -33,10 +33,10 @@
 #   With the test image it also logs in with certificates from tests/fixtures/snakeoil-user-ca
 #   (cert-login, cert-wrong-principal-refused).
 # With --next: before the update it pushes the host certificate (the guest's host key signed by
-#   tests/fixtures/snakeoil-host-ca) and a revocation list with `golconda vars` (the console; set
-#   BOOT_TEST_GOLCONDA, and put age and age-keygen on PATH), and the next release, which turns
-#   both on, must present the certificate, refuse the revoked certificate, and take a second
-#   revocation list pushed while it runs.
+#   tests/fixtures/snakeoil-host-ca) and a revocation list with `golconda vars`
+#   (packages.<system>.golconda-cli; set BOOT_TEST_GOLCONDA, and put age and age-keygen on PATH),
+#   and the next release, which turns both on, must present the certificate, refuse the revoked
+#   certificate, and take a second revocation list pushed while it runs.
 # With --tpm: the host key is sealed to TPM2 and the signed PCR 11 policy; after a reboot, and
 #   with --next after the update or --fail-health's fallback, it is the first boot's key, its
 #   credential has the first boot's bytes, and sshd runs (hostkey-unchanged).
@@ -264,7 +264,7 @@ if [ -n "$NEXT" ]; then
     exit 1
   fi
   # the next release reads the host certificate and the revocation list: the harness pushes them
-  # with the console (golconda vars) and age, as an operator would (docs/design/trust.md)
+  # with `golconda vars` and age, as an operator would (docs/design/trust.md)
   GOLCONDA=${BOOT_TEST_GOLCONDA:-golconda}
   for tool in "$GOLCONDA" age age-keygen ssh-keygen; do
     if ! command -v "$tool" >/dev/null 2>&1; then
@@ -602,7 +602,7 @@ expect_login() {
   verdict "$1" $RC
 }
 
-# vars CMD...: the console's `golconda vars` against this guest, as an operator runs it: an ssh
+# vars CMD...: `golconda vars` against this guest, as an operator runs it: an ssh
 # config names the guest boot-test, the store is $WORKDIR/vars, encrypted to a fresh age key
 vars() {
   GOLCONDA_SSH="ssh -F $WORKDIR/ssh/config" "$GOLCONDA" vars "$@"

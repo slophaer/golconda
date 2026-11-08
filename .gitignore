@@ -3,4 +3,4 @@ docs/book/
 .direnv/
 docs/reference/modules/generated/
 .review/
-console/target/
+cli/target/

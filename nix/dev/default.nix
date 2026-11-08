@@ -139,7 +139,7 @@ let
         options = [ "format" ];
         includes = [ "*.toml" ];
       };
-      # console/: the edition is the workspace's (console/Cargo.toml)
+      # cli/: the edition is the crate's (cli/Cargo.toml)
       "formatter.rust" = {
         command = "${rp.rust}/bin/rustfmt";
         options = [

@@ -65,9 +65,8 @@ and others). The boot-test images carry them. No boot marker reads these files. 
 
 ## Limits
 
-- **`golconda diff` compares documents, not images.** It evaluates a document against a git revision
-  or another document ([Configuration: Diffing](../design/config.md#diffing)). Comparing the
-  `config.json` of two built images is not built.
+- **Diffing is *(planned)*.** `golconda diff <a> <b>` would compare two `config.json` files. It does
+  not exist.
 - Nix stays necessary for a module of your own and a package that is not in the set
   ([Your own modules and packages](extending.md)).
 - korora hides the members of structs and enums, so the schema marks those types

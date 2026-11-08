@@ -175,7 +175,7 @@ let
           treeLib.modulePathsAt "/local" project.modules
         )
     );
-  # Each module's #! doc text (lib/doc-comments.nix), or null: what the console shows beside a
+  # Each module's #! doc text (lib/doc-comments.nix), or null: what the module pages show beside a
   # module's options, downstream modules included.
   moduleDocs = builtins.listToAttrs (
     map (m: {

@@ -129,13 +129,13 @@ in
       # repkgs' own Nix package (stock Nix with a relocation patch), built by repkgs, so it
       # needs a daemon with CA and dynamic derivations first (docs/reference/build-host.md)
       inherit (pkgs) nix;
-      # the console's command line (console/), built by repkgs like nix
-      inherit (pkgs) golconda-console;
+      # the command line (cli/), built by repkgs like nix
+      inherit (pkgs) golconda-cli;
       # what golconda vars encrypts with, on PATH beside it
       inherit (pkgs) age;
       # copies a release to its update source (golconda release publish), on PATH beside golconda
       inherit (pkgs) rclone;
-      # repkgs' update tool: the console's upstream check runs it
+      # repkgs' update tool: the packages' upstream check runs it
       inherit (pkgs) uptrack;
       # an S3-compatible store for the release tool's tests
       inherit (pkgs) garage;

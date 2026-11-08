@@ -1,4 +1,4 @@
-# jsonschema: a whole JSON Schema implementation. A development tool, not part of an image: checks.schema-metaschema checks Golconda's schema against 2020-12's metaschema with it
+# jsonschema: a whole JSON Schema implementation. A development tool, not part of an image: checks.schema-parity checks Golconda's schema and its fixtures with it
 {
   package,
   sources,

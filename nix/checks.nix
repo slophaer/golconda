@@ -39,7 +39,7 @@ let
           ".direnv"
           "book"
           "generated"
-          # cargo's build tree (console/target)
+          # cargo's build tree (cli/target)
           "target"
         ];
       in
@@ -164,7 +164,7 @@ in
   '';
 
   # Golconda's sources.toml as uptrack reads them: one it refuses (a key it does not know) fails
-  # its whole run, which the console runs on packages/ for the newest upstream versions. uptrack
+  # its whole run, which scripts run on packages/ for the newest upstream versions. uptrack
   # checks them itself, so this check keeps no list of its keys. `list` needs no network.
   uptrack-sources = run "uptrack-sources" [ rp.uptrack ] ''
     export HOME="$PWD" UPTRACK_ROOT=${src}/packages
@@ -174,8 +174,8 @@ in
     touch $out
   '';
 
-  # clippy over the console, tests and examples included, as a repkgs cargo build (console/checks)
-  console-clippy = rp.golconda-console-clippy;
+  # clippy over the command line, tests included, as a repkgs cargo build (cli/checks)
+  cli-clippy = rp.golconda-cli-clippy;
 
   # nixpkgs is named in no Nix file, and in scripts only by scripts/boot-test, for the virtual
   # machine repkgs does not build yet (QEMU's system emulator, OVMF, swtpm, virt-firmware)
@@ -205,6 +205,10 @@ in
   # Export at evaluation time; the sandbox cannot fetch module sources.
   schema = schemaFile;
 
+  # the schema is valid JSON Schema 2020-12, and it accepts each fixture exactly when Nix does
+  # (tests/schema), by python's jsonschema (packages/python-jsonschema): a whole implementation of
+  # the draft. repkgs has no python environment: PYTHONPATH holds the site-packages of jsonschema
+  # and of each library it imports, for repkgs' cpython
   schema-parity =
     let
       fixtures = toFile "schema-fixtures.json" (
@@ -215,18 +219,6 @@ in
           }
         )
       );
-    in
-    # the console's validator (console/checks/schema-parity), the one golconda validate runs
-    run "schema-parity" [ rp.golconda-schema-parity ] ''
-      schema-parity ${schemaFile} ${fixtures}
-      touch $out
-    '';
-
-  # the schema is valid JSON Schema 2020-12, by python's jsonschema (packages/python-jsonschema): a
-  # whole implementation of the draft. repkgs has no python environment: PYTHONPATH holds the
-  # site-packages of jsonschema and of each library it imports, for repkgs' cpython
-  schema-metaschema =
-    let
       libs = [
         rp.python-jsonschema
         rp.python-jsonschema-specifications
@@ -235,10 +227,10 @@ in
         rp.rpds-py
       ];
     in
-    run "schema-metaschema" [ rp.cpython ] ''
+    run "schema-parity" [ rp.cpython ] ''
       PYTHONPATH=$(printf '%s:' ${concatStringsSep " " (map (l: "${l}/lib/python3*/site-packages") libs)})
       export PYTHONPATH
-      python3 ${src}/tests/schema/metaschema.py ${schemaFile}
+      python3 ${src}/tests/schema/validate.py ${schemaFile} ${fixtures}
       touch $out
     '';
 }

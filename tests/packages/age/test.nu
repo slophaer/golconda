@@ -1,4 +1,4 @@
-# age as golconda vars uses it (console/core/src/vars.rs): age-keygen makes a key, -e -R
+# age as golconda vars uses it (cli/src/vars.rs): age-keygen makes a key, -e -R
 # encrypts to its recipients file, -d -i decrypts with the identity; another identity fails.
 use checks.nu *
 let bin = $"($env.pkg)/bin"

@@ -1,4 +1,4 @@
-# uptrack as the console runs it: `uptrack list` with UPTRACK_ROOT on a small tree, from another
+# uptrack outside a repkgs checkout: `uptrack list` with UPTRACK_ROOT on a small tree, from another
 # directory, finds the modules it installs beside bin/ (pipeline.nu imports builder/sys-libs.nu)
 # and reads the sources.toml files. `check` polls the network, so it is not run here.
 use checks.nu *

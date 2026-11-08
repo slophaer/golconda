@@ -368,10 +368,10 @@ A **var** is a value the image names but never contains. Two classes:
 Bootstrap credentials (the host name) are not vars: they are plain systemd credentials from the
 firmware or the ESP ([Boot: Bootstrap credentials](boot.md#bootstrap-credentials)).
 
-The deploy tool is the console's `golconda vars` ([console/README.md](../../console/README.md)). It
-keeps each value age-encrypted in the configuration repository (`vars/<host>/<var>/<file>.age`, to
-the keys in `vars/recipients.txt`), reads the machine's own manifests over ssh, pipes each value
-into `golconda-var-run --admin`, which seals it only if the image declares that var and file, and
+The deploy tool is `golconda vars` ([Commands](../reference/cli.md#golconda-vars)). It keeps each
+value age-encrypted in the configuration repository (`vars/<host>/<var>/<file>.age`, to the keys in
+`vars/recipients.txt`), reads the machine's own manifests over ssh, pipes each value into
+`golconda-var-run --admin`, which seals it only if the image declares that var and file, and
 restarts the units the manifest names as consumers. `age` and `ssh` are programs on the deploy host;
 the machine needs neither.
 

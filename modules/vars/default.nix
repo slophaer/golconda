@@ -39,7 +39,7 @@
 #! unit: the consumer's unit waits for the push. The deploy host keeps the
 #! value age-encrypted, pushes it over ssh, and the machine seals it with its
 #! own `systemd-creds` into `/etc/credstore.encrypted/<name>.<file>`; the
-#! deploy tool (`golconda vars push`, console/) then restarts the
+#! deploy tool (`golconda vars push`, cli/) then restarts the
 #! `consumers`. It reads the manifest from the machine, never from evaluation.
 #!
 #! ## On the machine

@@ -11,6 +11,7 @@
 | `packages/`       | Golconda's package specs; a name here replaces the repkgs fork's                                                                                                                                                                 |
 | `tests/`          | `eval/`: the pure-Nix tests by area (`nix/tests.nix` imports them); `packages/`: package tests; `usr-tree/`; `kernel/`: the kernel's kbuild phases on a stub tree; `errors/`: configuration error messages; fixtures             |
 | `scripts/`        | developer tools: `lint`, `docs`, `make-keys`, `provision-esp`, `boot-test`                                                                                                                                                       |
+| `cli/`            | the `golconda` command line (`vars`, `release`): one Rust crate, `packages.<system>.golconda-cli`; its README is for developers                                                                                                  |
 | `examples/`       | example configurations                                                                                                                                                                                                           |
 | `patches/repkgs/` | issue drafts for the fork's commits                                                                                                                                                                                              |
 | `docs/`           | `design/` says why, `reference/` says what exists                                                                                                                                                                                |
@@ -48,8 +49,8 @@ directories to a booted machine.
 - **Lint rules.** `lints/` holds ast-grep rules for Rust (from iets), nu and Nix (from repkgs), each
   with cases in `lints/tests/` (`checks.lint-rules`); treefmt runs them. A rule that is wrong for a
   line is fixed in the rule, not silenced at the line. An optional list or set is `on cond value`
-  (`modules/lib/on.nix`), not `if … else [ ]`. The console's clippy levels are pedantic
-  (`console/Cargo.toml`, `checks.console-clippy`).
+  (`modules/lib/on.nix`), not `if … else [ ]`. The clippy levels of `cli/` are pedantic
+  (`cli/Cargo.toml`, `checks.cli-clippy`).
 - **Docs split.** `docs/design/` says why, `docs/reference/` says what exists in code today. Mark
   what is designed and not started as *(planned)*, and what is deferred past v1 as *(after v1)*. No
   planning or history pages.

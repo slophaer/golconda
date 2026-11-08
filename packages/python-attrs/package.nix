@@ -1,4 +1,4 @@
-# attrs: classes without boilerplate; for python's jsonschema (checks.schema-metaschema, packages/python-jsonschema)
+# attrs: classes without boilerplate; for python's jsonschema (checks.schema-parity, packages/python-jsonschema)
 {
   package,
   sources,

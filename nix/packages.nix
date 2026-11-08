@@ -10,7 +10,7 @@
 # - `set`: the full repkgs set (all packages, as repkgs defines it)
 # - `catalogue`: name -> { version; purl?; cpe?; origin; replaces?; } for every package of the
 #   target set (repkgs' tree, Golconda's packages/, the downstream directory; aliases are not
-#   names): what the console offers for a package option. `origin` is downstream, golconda or
+#   names): the packages a package option can name. `origin` is downstream, golconda or
 #   repkgs; `replaces` is on downstream entries only. purl and cpe are what the SBOM generator
 #   writes for the package. A package the platform does not support is
 #   { origin; supported = false; }.

@@ -1,4 +1,4 @@
-# referencing: JSON references ($ref) across schemas; for python's jsonschema (checks.schema-metaschema, packages/python-jsonschema)
+# referencing: JSON references ($ref) across schemas; for python's jsonschema (checks.schema-parity, packages/python-jsonschema)
 {
   package,
   sources,

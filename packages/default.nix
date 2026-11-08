@@ -49,18 +49,15 @@
   python-pefile = ./python-pefile;
   # the evaluator the dev shell and lint use
   iets = ./iets;
-  # the console's command line, for operators' machines (console/)
-  golconda-console = ../console;
-  # the console's build with other phases, for checks.console-clippy and checks.schema-parity
-  golconda-console-clippy = ../console/checks/clippy;
-  golconda-schema-parity = ../console/checks/schema-parity;
-  # the fonts golcondad serves its pages in (console/daemon)
-  ibm-plex-web = ./ibm-plex-web;
-  # file encryption for golconda vars, on PATH beside golconda (console/)
+  # the command line, for operators' machines (cli/)
+  golconda-cli = ../cli;
+  # the command line's build with other phases, for checks.cli-clippy
+  golconda-cli-clippy = ../cli/checks/clippy;
+  # file encryption for golconda vars, on PATH beside golconda (cli/)
   age = ./age;
   # copies a release to its update source for golconda release publish (local, S3, SFTP)
   rclone = ./rclone;
-  # repkgs' update tool: the console checks the packages' upstreams with it
+  # repkgs' update tool: scripts check the packages' upstreams with it
   uptrack = ./uptrack;
   # an S3-compatible store: the release tool's tests publish to it through rclone
   garage = ./garage;
@@ -83,7 +80,7 @@
   python-mdit-py-plugins = ./python-mdit-py-plugins;
   python-mdurl = ./python-mdurl;
   python-wcwidth = ./python-wcwidth;
-  # python's jsonschema, for checks.schema-metaschema, and the Python libraries it needs
+  # python's jsonschema, for checks.schema-parity, and the Python libraries it needs
   python-jsonschema = ./python-jsonschema;
   python-jsonschema-specifications = ./python-jsonschema-specifications;
   python-referencing = ./python-referencing;

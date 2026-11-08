@@ -1,0 +1,22 @@
+[package]
+name = "golconda"
+description = "Golconda's command line: push admin vars, check, build and publish releases"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+ring = "0.17"
+serde_json = "1"
+tempfile = "3.27.0"
+thiserror = "2"
+toml_edit = "0.25"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+doc_markdown = "allow"
+# `s += &format!(..)` reads clearly; the alternatives only move the allocation
+format_push_string = "allow"
+missing_errors_doc = "allow"
+must_use_candidate = "allow"
