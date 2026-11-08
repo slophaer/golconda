@@ -101,6 +101,9 @@ in
             hostCertificate = true;
             revokedKeys = true;
           });
+          # cloud metadata: QEMU's DMI names no cloud, so no import runs and no unit fails; a
+          # boot test that fakes a cloud's DMI and endpoint imports from it
+          "/imds" = { };
         };
 
       # The test image for a host without Secure Boot (Hetzner Cloud): the kernel carries
