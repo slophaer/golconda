@@ -53,7 +53,7 @@ cat >"$WORK/bin/nix-instantiate" <<'EOF'
 echo '"245843bcafe"'
 EOF
 chmod +x "$WORK/bin/"*
-export PATH="$WORK/bin:$PATH" CALLS="$WORK/calls" FAKE_IMAGES="$WORK/images"
+export RV="$WORK" PATH="$WORK/bin:$PATH" CALLS="$WORK/calls" FAKE_IMAGES="$WORK/images"
 unset BOOT_TEST_STORE_ROOT NIX_REMOTE || true
 
 # A repository with scripts/verify, a fake boot-test, and two commits.
@@ -62,7 +62,21 @@ mkdir -p "$repo/scripts" "$repo/pins/repkgs"
 cp "$ROOT/scripts/verify" "$repo/scripts/verify"
 cat >"$repo/scripts/boot-test" <<'EOF'
 #!/bin/sh
-echo "boot-test $*" >>"$CALLS"
+echo "boot-test ${FAKE_MARK:+mark=$FAKE_MARK }$*" >>"$CALLS"
+# --rendezvous NAME: needs the other of rv-a and rv-b to start, so a serial run times out
+case " $* " in
+*" --rendezvous "*)
+  : >"$RV/rv-$(echo "$*" | sed 's/.*--rendezvous //;s/ .*//')"
+  n=0
+  while [ ! -e "$RV/rv-a" ] || [ ! -e "$RV/rv-b" ]; do
+    n=$((n + 1))
+    [ $n -lt 50 ] || { echo "rendezvous timed out"; exit 5; }
+    sleep 0.1
+  done
+  ;;
+esac
+case " $* " in *" --fail "*) echo "FAIL: fake-check"; echo "fake boot failed"; exit 6 ;; esac
+echo "fake boot ok"
 exit 0
 EOF
 chmod +x "$repo/scripts/verify" "$repo/scripts/boot-test"
@@ -149,5 +163,31 @@ git worktree list | grep -q verify-each && fail "scratch worktree left behind"
 FAKE_IMAGE=fail run scripts/verify
 [ $rc != 0 ] || fail "image failure passed"
 grep -q boot-test "$CALLS" && fail "booted after an image failure"
+
+# 9 --boot-set runs the sets at the same time, each with its own log, and prints a line for each;
+#    leading NAME=value words are environment; a failing set fails the run
+rm -f "$WORK/rv-a" "$WORK/rv-b"
+run scripts/verify --boot-set '--rendezvous a --timeout 1' --boot-set 'FAKE_MARK=m1 --rendezvous b'
+[ $rc = 0 ] || fail "--boot-set run exited $rc: $out"
+[ "$(grep -c '^boot-test' "$CALLS")" = 2 ] || fail "want 2 boots: $(cat "$CALLS")"
+grep -q 'boot-test mark=m1 .* --keys .* --rendezvous b$' "$CALLS" || fail "NAME=value not in the environment: $(cat "$CALLS")"
+echo "$out" | grep -qE '^PASS boot\[1\] [0-9]+s --rendezvous a --timeout 1 \(log .*boot-1\.log\)$' || fail "no line for set 1: $out"
+echo "$out" | grep -qE '^PASS boot\[2\] [0-9]+s FAKE_MARK=m1 --rendezvous b \(log .*boot-2\.log\)$' || fail "no line for set 2: $out"
+log=$(echo "$out" | sed -n 's/^PASS boot\[1\] .*(log \(.*\))$/\1/p' | head -1)
+grep -q 'fake boot ok' "$log" || fail "the set's log is empty: $log"
+rm -rf "$(dirname "$log")"
+run scripts/verify --boot-set '--timeout 1' --boot-set '--fail'
+[ $rc != 0 ] || fail "a failing set passed"
+echo "$out" | grep -qE '^PASS boot\[1\] ' || fail "passing set not reported: $out"
+[ "$(echo "$out" | grep -c '^FAIL: fake-check')" = 2 ] || fail "failed checks not listed with the log tail: $out"
+echo "$out" | grep -qE '^FAIL\(6\) boot\[2\] [0-9]+s --fail \(log ' || fail "failing set not reported: $out"
+rm -rf "$(echo "$out" | sed -n 's/^FAIL(6) boot\[2\] .*(log \(.*\)\/boot-2\.log)$/\1/p' | head -1)"
+
+# 10 --each-commit hands the sets to the last commit's run
+run scripts/verify --each-commit "$(git rev-list --max-parents=0 HEAD)" --boot-set '--timeout 1' --boot-set '--timeout 2'
+[ $rc = 0 ] || fail "--each-commit with sets exited $rc: $out"
+[ "$(grep -c '^boot-test' "$CALLS")" = 2 ] || fail "want 2 boots of the last commit: $(cat "$CALLS")"
+echo "$out" | grep -qE '^PASS boot\[2\] .*--timeout 2 ' || fail "set 2 not reported: $out"
+rm -rf "$(echo "$out" | sed -n 's/^PASS boot\[1\] .*(log \(.*\)\/boot-1\.log)$/\1/p' | head -1)"
 
 echo "verify tests passed"

@@ -4,8 +4,8 @@
 # failure. Run it through the build queue on a shared host (qbuild -g vm verify --
 # scripts/verify); a step's output goes to stdout.
 #
-#   scripts/verify [-C DIR] [--image ATTR] [--boot-args ARGS] [--no-boot] [--lint-only]
-#                  [--each-commit BASE]
+#   scripts/verify [-C DIR] [--image ATTR] [--boot-args ARGS | --boot-set ARGS...] [--no-boot]
+#                  [--lint-only] [--each-commit BASE]
 #
 #   -C DIR              verify the tree in DIR (default: this repository)
 #   --image ATTR        the image under packages.<system> (default image-smoke-test); the out-link
@@ -13,6 +13,11 @@
 #   --boot-args ARGS    scripts/boot-test's flags after the disk and --keys (default
 #                       "--secure-boot --ssh-test --tpm --timeout 300": a reboot on a loaded
 #                       host can outlast boot-test's own default)
+#   --boot-set ARGS     one boot of a list (repeat it): all sets boot the image at the same time,
+#                       each with its own log, and the summary has one line per set with its
+#                       result, time, ARGS and the log's path. Leading NAME=value words of ARGS
+#                       are environment (BOOT_TEST_TAMPER_INDEX=1 --next DIR); the run fails when
+#                       any set fails. Replaces --boot-args. The VMs need about 2 GiB each.
 #   --no-boot           build the image, do not boot it
 #   --lint-only         lint only
 #   --each-commit BASE  every commit in BASE..HEAD, in a scratch worktree: lint each, and build and
@@ -30,8 +35,9 @@ boot=1
 boot_args="--secure-boot --ssh-test --tpm --timeout 300"
 lint_only=0
 each=
+boot_sets=
 usage() {
-  sed -n '2,26s/^# \{0,1\}//p' "$self" >&2
+  sed -n '2,32s/^# \{0,1\}//p' "$self" >&2
   exit 2
 }
 while [ $# -gt 0 ]; do
@@ -39,6 +45,8 @@ while [ $# -gt 0 ]; do
   -C) dir=${2:?}; shift 2 ;;
   --image) image=${2:?}; shift 2 ;;
   --boot-args) boot_args=${2?}; shift 2 ;;
+  --boot-set) boot_sets="$boot_sets${boot_sets:+
+}${2?}"; shift 2 ;;
   --no-boot) boot=0; shift ;;
   --lint-only) lint_only=1; shift ;;
   --each-commit) each=${2:?}; shift 2 ;;
@@ -66,6 +74,11 @@ if [ -n "$each" ]; then
     echo "== commit $line"
     if [ "$c" = "$last" ]; then
       set -- -C "$wt" --image "$image" --boot-args "$boot_args"
+      while IFS= read -r bs; do
+        [ -z "$bs" ] || set -- "$@" --boot-set "$bs"
+      done <<EOF
+$boot_sets
+EOF
       [ $boot = 1 ] || set -- "$@" --no-boot
       [ $lint_only = 1 ] && set -- "$@" --lint-only
     else
@@ -143,6 +156,52 @@ print(cur)
 PY
 }
 img=$(resolve result-verify) || finish 1
-# shellcheck disable=SC2086 # boot_args is a list of flags
-step boot ./scripts/boot-test "$(resolve "$img/disk/disk.raw")" --keys "$(resolve "$img/keys")" $boot_args || finish 1
-finish 0
+disk=$(resolve "$img/disk/disk.raw")
+keys=$(resolve "$img/keys")
+if [ -z "$boot_sets" ]; then
+  # shellcheck disable=SC2086 # boot_args is a list of flags
+  step boot ./scripts/boot-test "$disk" --keys "$keys" $boot_args || finish 1
+  finish 0
+fi
+
+# boot_set N SET: boot-test with SET's flags (leading NAME=value words are its environment); the
+# exit code and the seconds it took go to $logs/boot-N.rc
+boot_set() {
+  start=$(date +%s)
+  rest=$2
+  envs=
+  while :; do
+    w=${rest%% *}
+    case $w in
+    [A-Za-z_]*=*) envs="$envs $w"; rest=${rest#"$w"}; rest=${rest# } ;;
+    *) break ;;
+    esac
+  done
+  # shellcheck disable=SC2086 # envs and rest are lists of words
+  env $envs ./scripts/boot-test "$disk" --keys "$keys" $rest >"$logs/boot-$1.log" 2>&1
+  echo "$? $(($(date +%s) - start))" >"$logs/boot-$1.rc"
+}
+logs=$(mktemp -d "${TMPDIR:-/tmp}/verify-boot.XXXXXX")
+n=0
+while IFS= read -r bs; do
+  n=$((n + 1))
+  echo "== boot[$n]: $bs (log $logs/boot-$n.log)"
+  boot_set "$n" "$bs" &
+done <<EOF
+$boot_sets
+EOF
+wait
+i=0
+bad=0
+while IFS= read -r bs; do
+  i=$((i + 1))
+  read -r code secs <"$logs/boot-$i.rc" || { code=1; secs=0; }
+  if [ "$code" = 0 ]; then r=PASS; else r="FAIL($code)"; bad=1; grep '^FAIL' "$logs/boot-$i.log"; tail -n 20 "$logs/boot-$i.log"; fi
+  line="$r boot[$i] ${secs}s $bs (log $logs/boot-$i.log)"
+  echo "$line"
+  summary="$summary$line
+"
+done <<EOF
+$boot_sets
+EOF
+finish $bad
