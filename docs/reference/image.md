@@ -271,6 +271,14 @@ sets the port the guest uses for the release server of `--next` (default 8074): 
 inside the guest's network, not a host port. The test image's `updateSource` names 8074, so another
 port needs an image built with that `updateSource`.
 
+`scripts/verify --boot-set ARGS` (repeat it) builds the image once and boots a list of flag sets at
+the same time, each with its own log. Its summary has one line per set,
+`PASS boot[N] 59s FLAGS (log PATH)` or `FAIL(CODE) boot[N] …`, and the exit status is non-zero when
+any set fails. Leading `NAME=value` words of a set are environment, so
+`BOOT_TEST_TAMPER_INDEX=1 --next DIR …` is a set: the tamper run fails by design (its
+`sysupdate-installed` is the expected `FAIL`), so a matrix that holds it exits 1 unless the other
+sets' lines are all `PASS`.
+
 Several runs can share one host and one image. Each has a work directory from `mktemp -d`, its own
 swtpm socket and state, firmware variables, disk overlay, keys, ssh port and update server. A run
 claims its ssh port with a `flock` on `$BOOT_TEST_PORT_LOCKS/PORT` (default
@@ -446,11 +454,12 @@ The test SSH keypair is a committed test fixture (`tests/fixtures/snakeoil-ssh*`
 be held. `DIR` is a built release (`DIR/disk/release`, `DIR/keys`). The harness:
 
 1. checks the release's `SHA256SUMS` on the host (`release-index`);
-1. resolves the release's symlinks into `$WORKDIR/http` (`cp -L`) and writes `$WORKDIR/serve`, an
-   HTTP server over stdin and stdout (Python's `SimpleHTTPRequestHandler`), which it first asks for
-   `SHA256SUMS` on the host. QEMU's user network forwards the guest's connections to `10.0.2.2:8074`
-   to that command (`guestfwd=tcp:10.0.2.2:8074-cmd:$WORKDIR/serve`), one process per connection, so
-   the image's `http://10.0.2.2:8074/` reaches this run's server and no host port is opened;
+1. resolves the release's symlinks into `$WORKDIR/http` (`cp -L`) and writes `$WORKDIR/serve-http`,
+   an HTTP server over stdin and stdout (Python's `SimpleHTTPRequestHandler`), which it first asks
+   for `SHA256SUMS` on the host. QEMU's user network forwards the guest's connections to
+   `10.0.2.2:8074` to that command (`guestfwd=tcp:10.0.2.2:8074-cmd:$WORKDIR/serve-http`), one
+   process per connection, so the image's `http://10.0.2.2:8074/` reaches this run's server and no
+   host port is opened;
 1. checks that the guest's own `/usr/lib/sysupdate.d/10-usr.transfer` has `Type=url-file` and
    `Path=http://10.0.2.2:8074/` (`http-source`). No definition is rewritten;
 1. starts `systemd-sysupdate-update.service` and waits for it. The journal's

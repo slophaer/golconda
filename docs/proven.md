@@ -37,6 +37,14 @@ of it. The image for a host without Secure Boot (`/system.secureBoot = false`,
 | with `/imds` and no cloud in DMI, no IMDS import runs                                                                                               | `imds-import-inactive`                                                                                      | `--ssh-test`                                    |
 | without Secure Boot, the kernel's built-in key accepts the verity signature                                                                         | no marker of its own: `image-smoke-test-nosb` reaches `multi-user.target` with `ipe.enforce=1`              | no `--secure-boot`                              |
 
+Runs at the same time: the default boot, `--next`, `--next --fail-health`, `--imds` and the tamper
+run (`BOOT_TEST_TAMPER_INDEX=1`) booted one image together with `scripts/verify --boot-set`. Each
+used its own ssh port and its own update or metadata server on the guest's `10.0.2.2:8074` or
+`:8075`, and the four runs without the tamper control passed. The PASS lists of the default boot and
+of `--next` are those of a run alone, plus `imds-import-inactive`. The tamper run failed as it must:
+`sysupdate-installed` and the checks after the update fail, and `index-signed` passes
+([Image artifacts: the boot test](reference/image.md#boot-test-scriptsboot-test)).
+
 Not proven:
 
 - **Enrolment on real firmware.** The harness enrols keys offline in the variable store.
