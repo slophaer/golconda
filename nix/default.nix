@@ -83,9 +83,9 @@ in
           "/system" = {
             name = "boot-test";
             inherit version;
-            # The update test's release server: 10.0.2.2 is the host under QEMU user
-            # networking, where the test serves the next release's disk.release/ with
-            # `python3 -m http.server 8074` (docs/reference/image.md).
+            # The update test's release server: 10.0.2.2 is QEMU's user-network gateway, and
+            # the test forwards the guest's connections to port 8074 there to a per-run HTTP
+            # server of the next release's disk.release/ (guestfwd; docs/reference/image.md).
             updateSource = "http://10.0.2.2:8074/";
           };
           "/services/sshd" = {
