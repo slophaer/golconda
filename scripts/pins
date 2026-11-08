@@ -7,4 +7,6 @@
 set -eu
 REPO_DIR="$(dirname "$(dirname "$(realpath "$0")")")"
 export UPTRACK_ROOT="$REPO_DIR/pins"
+# the dev shell carries uptrack; outside it, build the same package (scripts/tool)
+if command -v uptrack >/dev/null 2>&1; then exec uptrack "$@"; fi
 exec "$REPO_DIR/scripts/tool" uptrack "$@"
