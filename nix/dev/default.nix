@@ -5,8 +5,8 @@
 # of a package; checks/boundary enforces that. It exists because repkgs does not
 # package these tools yet; each one moves to packages/ when it does. The ones
 # that moved come from the repkgs set (`rp`), and whatever names them is built
-# with nix/run.nix: a nixpkgs derivation cannot depend on a content-addressed one
-# on this daemon.
+# with nix/run.nix, not with nixpkgs' writers. (Only the retired chroot-store
+# daemon refused a nixpkgs derivation that depends on a content-addressed one.)
 { sources }:
 double: set:
 let
@@ -209,10 +209,10 @@ in
     ast-grep
     ;
 
-  # nixpkgs' mkShell cannot take a content-addressed input on this daemon, so treefmt,
-  # golconda-ast-grep, mdbook and mdbook-pele (ours now) are not in it: `nix fmt` runs the formatter output,
-  # which runs the lint rules too, checks.lint-rules tests them, and scripts/docs and scripts/tool
-  # find our packages through scripts/tools.sh
+  # treefmt, golconda-ast-grep, mdbook and mdbook-pele (ours now) are not in it: the retired
+  # chroot-store daemon refused a content-addressed input to nixpkgs' mkShell. `nix fmt` runs the
+  # formatter output, which runs the lint rules too, checks.lint-rules tests them, and
+  # scripts/docs and scripts/tool find our packages through scripts/tools.sh
   shell = pkgs.mkShellNoCC {
     packages = [
       iets
