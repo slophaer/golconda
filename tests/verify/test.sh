@@ -1,5 +1,5 @@
 #!/bin/sh
-# scripts/verify on a scratch repository with fake nix-shell, nix-build and boot-test: the steps
+# scripts/verify on a scratch repository with fake nix-shell, nix and boot-test: the steps
 # run in order, stop at the first failure, and the summary names the commit, the pin and each
 # step. No Nix build or VM starts.
 set -eu
@@ -25,12 +25,19 @@ done
 [ "${FAKE_LINT:-}" = fail ] && { echo "lint: finding"; exit 3; }
 exit 0
 EOF
-# nix-build makes the out-link (-o): straight to an image folder, or, with FAKE_ROOT, into
+# nix build makes the out-link (-o): straight to an image folder, or, with FAKE_ROOT, into
 # /nix/store as a chroot store's out-link does, with the image under FAKE_ROOT and its disk/
-# a further store link.
+# a further store link. nix-build aborts as it does for a floating content-addressed image
+# (NixOS/nix#16389): verify must not call it.
 cat >"$WORK/bin/nix-build" <<'EOF'
 #!/bin/sh
 echo "nix-build $*" >>"$CALLS"
+echo "Assertion 'maybeOutputPath' failed" >&2
+exit 134
+EOF
+cat >"$WORK/bin/nix" <<'EOF'
+#!/bin/sh
+echo "nix $*" >>"$CALLS"
 [ "${FAKE_IMAGE:-}" = fail ] && exit 4
 while [ $# -gt 0 ]; do
   case "$1" in -o) link=$2; shift 2 ;; *) shift ;; esac
@@ -91,8 +98,8 @@ for s in lint image boot; do
   echo "$out" | grep -qE "^PASS $s [0-9]+s$" || fail "no PASS line for $s: $out"
 done
 order=$(cut -d' ' -f1 "$CALLS" | tr '\n' ' ')
-[ "$order" = "nix-shell nix-build boot-test " ] || fail "steps out of order: $order"
-grep -q 'nix-build -A packages\.[a-z0-9_]*-linux\.image-smoke-test -o result-verify' "$CALLS" ||
+[ "$order" = "nix-shell nix boot-test " ] || fail "steps out of order: $order"
+grep -q '^nix .*build .*-f \. packages\.[a-z0-9_]*-linux\.image-smoke-test -o result-verify' "$CALLS" ||
   fail "image not built to result-verify: $(cat "$CALLS")"
 grep -q "boot-test $WORK/images/img/disk/disk.raw --keys $WORK/images/img/keys --secure-boot --ssh-test --tpm --timeout 300" "$CALLS" ||
   fail "boot-test not given the image's disk, keys and the smoke flags: $(cat "$CALLS")"
@@ -109,7 +116,7 @@ git checkout -q README.md
 FAKE_LINT=fail run scripts/verify
 [ $rc != 0 ] || fail "lint failure passed"
 echo "$out" | grep -q '^FAIL(3) lint' || fail "no FAIL line for lint: $out"
-grep -q nix-build "$CALLS" && fail "image built after a lint failure"
+grep -q '^nix ' "$CALLS" && fail "image built after a lint failure"
 
 # 4 files the lint step changed fail the run
 FAKE_TREEFMT=change run scripts/verify

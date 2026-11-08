@@ -144,6 +144,12 @@ in
     touch $out
   '';
 
+  # scripts/tools.sh with a fake nix: the tools come from `nix build --print-out-paths` (tests/tools)
+  tools-script = run "tools-script" [ rp.coreutils ] ''
+    sh ${src}/tests/tools/test.sh
+    touch $out
+  '';
+
   # the var runner's two modes on a scratch tree, with a stub systemd-creds (tests/vars)
   vars-runner = run "vars-runner" [ rp.coreutils ] ''
     sh ${src}/tests/vars/runner.sh

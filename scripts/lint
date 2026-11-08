@@ -40,5 +40,13 @@ tests/errors/run.sh
 # scripts/make-keys: layout, modes, certificate extensions (builds its tools through the daemon)
 tests/make-keys/run.sh
 # The pinned iets cannot resolve outputs of dynamic package-test derivations.
-# Keep its strict evaluation above; the patched Nix client builds native checks.
-nix-build --no-out-link --expr '(import ./default.nix).checks.${builtins.currentSystem}'
+# Keep its strict evaluation above; Nix builds the native checks. With nix build, by name: nix-build
+# cannot name the outputs of floating content-addressed checks (NixOS/nix#16389), and nix build
+# takes no attribute set.
+nixx() { nix --extra-experimental-features 'nix-command ca-derivations' "$@"; }
+lint_system=$(nixx eval --impure --raw --expr builtins.currentSystem)
+lint_checks=$(nixx eval --raw -f . "checks.$lint_system" \
+  --apply "c: builtins.concatStringsSep \" \" (map (n: \"checks.$lint_system.\${n}\") (builtins.attrNames c))")
+[ -n "$lint_checks" ] || { echo "lint: no checks for $lint_system" >&2; exit 1; }
+# shellcheck disable=SC2086
+nixx build --no-link -f . $lint_checks

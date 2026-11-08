@@ -3,8 +3,7 @@
 # firmware need: the layout in the script header, mode 0600 on every file and 0700 on every
 # directory, the db certificate's extensions and validity, the key pairs matching, and the
 # OpenPGP files. The refusals (relative path, non-empty directory) too. Run from anywhere with
-# nix on PATH and the build daemon in NIX_REMOTE (a chroot store: GOLCONDA_STORE_ROOT);
-# scripts/lint runs it.
+# nix on PATH and a Nix daemon; scripts/lint runs it.
 set -u
 repo=$(dirname "$(dirname "$(dirname "$(realpath "$0")")")")
 . "$repo/scripts/tools.sh"
