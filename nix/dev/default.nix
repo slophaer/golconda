@@ -193,28 +193,20 @@ let
   treefmt = writeScript "treefmt" ''
     exec ${rp.treefmt}/bin/treefmt --config-file ${treefmtConfig} "$@"
   '';
-
-  # iets from its own flake (crane build); the system Nix is its fallback only
-  # in classic mode, which the dev shell does not use.
-  iets =
-    (import "${sources.iets}/nix/flake-compat.nix" {
-      src = sources.iets;
-      system = double;
-    }).defaultNix.packages.${double}.default;
 in
 {
   inherit
     treefmt
-    iets
     ast-grep
     ;
 
   # The shell carries the repkgs-built tools too (content-addressed inputs to nixpkgs' mkShell,
-  # which the system daemon takes): treefmt (the formatter output, `nix fmt`), golconda-ast-grep
-  # (the rules in lints/, which treefmt runs too), and mdbook and mdbook-pele for scripts/docs.
+  # which the system daemon takes): iets (packages/iets, the iets pin's commit), treefmt (the
+  # formatter output, `nix fmt`), golconda-ast-grep (the rules in lints/, which treefmt runs too),
+  # and mdbook and mdbook-pele for scripts/docs.
   shell = pkgs.mkShellNoCC {
     packages = [
-      iets
+      rp.iets
       pkgs.npins
       treefmt
       ast-grep
