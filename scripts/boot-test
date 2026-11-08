@@ -683,6 +683,27 @@ test_certs_after_update() {
   expect_login "krl-rotated (the good certificate is refused once the new KRL names it)" ok 1
 }
 
+# check_hwdb NAME: the hardware database is compiled into /usr (packages/hwdb, linked by /base), so
+# nothing writes one to /etc and lookups answer: the IMDS entry for Hetzner Cloud's DMI vendor, and
+# PCI and USB names (virtio-net's vendor, the root hub's). Run on the first release and on the one
+# an update installed: each image carries its own.
+check_hwdb() {
+  echo ""
+  echo "=== $1 ==="
+  RC=0
+  Q=$(guest systemd-hwdb query dmi:bvnHetzner: 2>&1) || RC=1
+  echo "$Q"
+  echo "$Q" | grep -q "^IMDS_VENDOR=hetzner-cloud$" || RC=1
+  P=$(guest systemd-hwdb query pci:v00001AF4d00001000 2>&1) || RC=1
+  U=$(guest systemd-hwdb query usb:v1D6Bp0002 2>&1) || RC=1
+  echo "$P"; echo "$U"
+  echo "$P" | grep -q "^ID_VENDOR_FROM_DATABASE=Red Hat, Inc.$" || RC=1
+  echo "$U" | grep -q "^ID_VENDOR_FROM_DATABASE=Linux Foundation$" || RC=1
+  guest test -e /usr/lib/udev/hwdb.bin || RC=1
+  guest test ! -e /etc/udev/hwdb.bin || RC=1
+  verdict "$1 (/usr/lib/udev/hwdb.bin answers for DMI, PCI and USB; none in /etc)" $RC
+}
+
 # check_no_failed NAME: no unit has failed in the running boot
 check_no_failed() {
   echo ""
@@ -772,23 +793,7 @@ test_ssh() {
   expect_login "cert-login (a certificate from the trusted user CA, principal boot-test-admin)" ok 0
   expect_login "cert-wrong-principal-refused" wrong 1
 
-  # the hardware database is compiled into /usr (packages/hwdb, linked by /base), so nothing writes one
-  # to /etc and lookups answer: the IMDS entry for Hetzner Cloud's DMI vendor
-  echo ""
-  echo "=== hwdb ==="
-  RC=0
-  Q=$(guest systemd-hwdb query dmi:bvnHetzner: 2>&1) || RC=1
-  echo "$Q"
-  echo "$Q" | grep -q "^IMDS_VENDOR=hetzner-cloud$" || RC=1
-  # PCI and USB names: virtio-net's vendor, and the root hub's
-  P=$(guest systemd-hwdb query pci:v00001AF4d00001000 2>&1) || RC=1
-  U=$(guest systemd-hwdb query usb:v1D6Bp0002 2>&1) || RC=1
-  echo "$P"; echo "$U"
-  echo "$P" | grep -q "^ID_VENDOR_FROM_DATABASE=Red Hat, Inc.$" || RC=1
-  echo "$U" | grep -q "^ID_VENDOR_FROM_DATABASE=Linux Foundation$" || RC=1
-  guest test -e /usr/lib/udev/hwdb.bin || RC=1
-  guest test ! -e /etc/udev/hwdb.bin || RC=1
-  verdict "hwdb (/usr/lib/udev/hwdb.bin answers for DMI, PCI and USB; none in /etc)" $RC
+  check_hwdb hwdb
 
   # IPE (docs/design/kernel.md): only files on a dm-verity volume with a verified signature run.
   # A copy of /usr's shell on the root partition must be refused with EACCES, and the kernel must
@@ -1101,6 +1106,7 @@ test_next() {
   check_unsealed "after the update to $V"
   test_etc_links
   check_no_failed no-failed-units-after-update
+  check_hwdb hwdb-after-update
   test_certs_after_update
   test_loader "$NEXT_VERSION, its first good boot" 1
   NEW_LOADER=$(guest_hash "$ESP_REMOVABLE")
