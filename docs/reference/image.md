@@ -301,11 +301,12 @@ the guest.
 
 ### The markers
 
-Each check prints `PASS: <marker>` or `FAIL: <marker>`. The script is the source of truth; this list
-was made from it at commit `dbafac0`. To list the names the script prints:
+Each check prints `PASS: <marker>` or `FAIL: <marker>`. The script and its parts
+(`scripts/boot-test-*.sh`, listed in the header of `scripts/boot-test`) are the source of truth;
+this list was made from it at commit `dbafac0`. To list the names the script prints:
 
 ```sh
-grep -ho 'verdict "[a-z0-9-]*\|PASS: [a-z0-9-]*' scripts/boot-test | sed 's/verdict "//;s/PASS: //' | sort -u
+grep -ho 'verdict "[a-z0-9-]*\|PASS: [a-z0-9-]*' scripts/boot-test scripts/boot-test-*.sh | sed 's/verdict "//;s/PASS: //' | sort -u
 ```
 
 Always (read from the serial log; `check_markers`):
