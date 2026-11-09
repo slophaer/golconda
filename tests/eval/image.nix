@@ -70,9 +70,9 @@ in
         };
       };
     in
-    hasInfix "VERSION_ID=20261031.1" osRel
-    && hasInfix "IMAGE_VERSION=20261031.1" osRel
-    && hasInfix "ARCHITECTURE=x86_64" osRel
+    hasInfix "VERSION_ID=\"20261031.1\"\n" osRel
+    && hasInfix "IMAGE_VERSION=\"20261031.1\"\n" osRel
+    && hasInfix "ARCHITECTURE=\"x86_64\"\n" osRel
   ))
   # 12. The image chain's pure parts (lib/image)
   (check "image: versionToEpoch is lib/usr-tree.nix's, one function" (
@@ -137,7 +137,23 @@ in
         imageId = "server";
       };
     in
-    hasInfix "ID=server\n" os && hasInfix "IMAGE_ID=server\n" os
+    hasInfix "ID=\"server\"\n" os && hasInfix "IMAGE_ID=\"server\"\n" os
+  ))
+  (check "image: os-release quotes every value so a shell can source it" (
+    let
+      os = usrTreeLib.renderOsRelease {
+        version = "20261031.1";
+        platform = {
+          name = "x86_64-linux";
+          cpu = "x86_64";
+        };
+        imageId = "a b\"c$d`e\\f";
+      };
+      lines = filter (l: isString l && l != "") (split "\n" os);
+    in
+    hasInfix "PRETTY_NAME=\"Golconda 20261031.1\"\n" os
+    && hasInfix "IMAGE_ID=\"a b\\\"c\\$d\\`e\\\\f\"\n" os
+    && builtins.all (l: builtins.match "[A-Z_]+=\".*\"" l != null) lines
   ))
   (check "image: loader.conf turns the editor off and does not wait" (
     let

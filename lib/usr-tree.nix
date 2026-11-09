@@ -61,6 +61,12 @@ let
   # timestamp, and no revision reaches the next date's.
   versionToEpoch = versionLib.toEpoch;
 
+  # One os-release value, quoted for a shell and for systemd: os-release(5) wants a value with a
+  # space or a special character in quotes, and a shell that sources the file reads them the same
+  # way. Double quotes, with \, $, " and ` escaped. Every value is quoted, so none is missed.
+  quoteOsReleaseValue =
+    v: "\"" + replaceStrings [ "\\" "$" "\"" "`" ] [ "\\\\" "\\$" "\\\"" "\\`" ] v + "\"";
+
   # Render os-release from the template, with the target platform's architecture. The image
   # id (ID=, IMAGE_ID=) is /system.name: what sysupdate matches artifacts against.
   renderOsRelease =
@@ -77,16 +83,18 @@ let
       map (
         k:
         "${k}=${
-          replaceStrings
-            [
-              "{version}"
-              "{arch}"
-            ]
-            [
-              version
-              arch
-            ]
-            osReleaseTemplate.${k}
+          quoteOsReleaseValue (
+            replaceStrings
+              [
+                "{version}"
+                "{arch}"
+              ]
+              [
+                version
+                arch
+              ]
+              osReleaseTemplate.${k}
+          )
         }"
       ) (attrNames osReleaseTemplate)
     )

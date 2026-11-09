@@ -106,10 +106,10 @@ in
         platform = arm;
       };
     in
-    hasInfix "ARCHITECTURE=x86_64" osX86
-    && hasInfix "ARCHITECTURE=aarch64" osArm
-    && hasInfix "VERSION_ID=20261031.1" osX86
-    && hasInfix "IMAGE_VERSION=20261031.1" osArm
+    hasInfix "ARCHITECTURE=\"x86_64\"" osX86
+    && hasInfix "ARCHITECTURE=\"aarch64\"" osArm
+    && hasInfix "VERSION_ID=\"20261031.1\"" osX86
+    && hasInfix "IMAGE_VERSION=\"20261031.1\"" osArm
   ))
   (check "cross: package sets expose target CPU and UEFI names" (
     let
