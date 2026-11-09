@@ -64,9 +64,10 @@
 #   hold in one run. QEMU's user network is 169.254.169.0/24 (as in every mode), and a QEMU
 #   guestfwd serves http://169.254.169.254/ on the guest's link from a stdio HTTP server in the work
 #   directory, in Hetzner's layout: /hetzner/v1/metadata/hostname and the other keys,
-#   /hetzner/v1/metadata/public-keys (a JSON array), /hetzner/v1/userdata. No system.hostname
-#   credential is given. The server answers imds-test, and user data that lists the credentials
-#   imds-canary, login.motd, ssh.authorized_keys.root (a key pair made in the work directory) and
+#   /hetzner/v1/metadata/public-keys (a JSON array of two keys made in the work directory),
+#   /hetzner/v1/userdata. No system.hostname credential is given. The server answers imds-test,
+#   and user data that lists the credentials imds-canary, login.motd, ssh.authorized_keys.root (a
+#   third key pair made in the work directory) and
 #   network.network.60-imds-ipv6 (the static address 2001:db8:5eed::1/64, as Hetzner gives one:
 #   QEMU's router advertisements name only fec0::/64; nothing of the IMDS lock of
 #   85-imds-early.network, which the file replaces). QEMU's DHCP server offers the host name
@@ -74,7 +75,9 @@
 #   Checks: imds-hostname (systemd's import ran, pulled in by the generator, and the host name and
 #   /etc/hostname are imds-test), imds-hetzner-layout (the guest has no imds.* credential, asked
 #   for the host name and the user data at Hetzner's paths, and got no 404),
-#   imds-ssh-key (the user data's key logs in; /root/.ssh/authorized_keys is 0600),
+#   imds-ssh-keys-json (both keys of the JSON array log in; /root/.ssh/authorized_keys is 0600),
+#   imds-ssh-key-precedence (the import skips the user data's ssh.authorized_keys.root: the
+#   metadata's keys came first; its key does not log in),
 #   imds-userdata-credential (/run/credstore/imds-canary holds the value, and tmpfiles wrote
 #   login.motd to /etc/motd.d), imds-ipv6 (the user data's .network file configures the link: it
 #   has the global address 2001:db8:5eed::1), imds-endpoint-locked (with that file, systemd-pull

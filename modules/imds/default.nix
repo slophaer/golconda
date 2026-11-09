@@ -15,11 +15,14 @@
 #! - the host name, as the credential `firstboot.hostname`:
 #!   `systemd-firstboot` writes it to `/etc/hostname` on the first boot, so
 #!   it wins over a `system.hostname` credential from then on;
-#! - the first ssh key, as `ssh.authorized_keys.root`: `systemd-tmpfiles`
-#!   writes `/root/.ssh/authorized_keys` from it when the file does not exist,
-#!   and sshd reads that file. Not on Hetzner: it lists the keys only as a
-#!   JSON array, which systemd-imds cannot read; give the key in the user
-#!   data as the credential `ssh.authorized_keys.root`;
+#! - the ssh keys, as `ssh.authorized_keys.root`: `systemd-tmpfiles` writes
+#!   `/root/.ssh/authorized_keys` from it when the file does not exist, and
+#!   sshd reads that file. Most clouds' hwdb entries name the first key;
+#!   Hetzner gives all of the server's keys, as one JSON array, which
+#!   Golconda's systemd reads (`packages/systemd`'s patch: the well-known key
+#!   `ssh-key-json`). The import writes this credential before the user
+#!   data's, so a user data credential of the same name is skipped where the
+#!   metadata has a key;
 #! - the public IPv4 and IPv6 addresses, as resolved's local records for
 #!   `_public`;
 #! - every credential the user data lists under `systemd.credentials`, in
@@ -45,7 +48,8 @@
 #! `/hetzner/v1/metadata/public-keys/0` and `/hetzner/v1/metadata/userdata`,
 #! which answer 404, and `packages/systemd` patches it to the base URL
 #! `http://169.254.169.254/hetzner/v1`, the keys under `/metadata/`, the
-#! user data at `/userdata`, and no ssh key.
+#! user data at `/userdata`, and the ssh keys as the JSON array
+#! `/metadata/public-keys` (`IMDS_KEY_SSH_KEY_JSON`, a second patch).
 #!
 #! A user data credential `network.network.*` (also `.netdev`, `.link`) takes
 #! effect in the boot that imports it, such as Hetzner's static IPv6 address

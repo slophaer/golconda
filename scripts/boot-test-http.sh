@@ -92,9 +92,10 @@ start_http_server() {
 # (a guestfwd, like the update server's: no host port), and the guest finds the endpoint by hwdb
 # alone, as on Hetzner: base URL http://$IMDS_ADDR/hetzner/v1, the host name and the other keys under
 # /metadata/, the user data at /userdata. /metadata/public-keys is Hetzner's JSON array of the
-# project's keys (a key nothing logs in with: systemd-imds cannot read the array). The user data
+# project's keys: two key pairs made here, each with Hetzner's trailing newline. The user data
 # lists four credentials: imds-canary; login.motd, which tmpfiles writes to /etc/motd.d;
-# ssh.authorized_keys.root, a key made here (its private half logs in); and network.network.$IMDS_NET_CRED,
+# ssh.authorized_keys.root, a third key made here (the import skips it: the metadata's keys come
+# first, under the same credential name); and network.network.$IMDS_NET_CRED,
 # a static global IPv6 address, as Hetzner gives one (no router advertisement, no DHCPv6), with
 # nothing of the IMDS lock. The server's log shows every GET and its status.
 start_imds_server() {
@@ -110,7 +111,9 @@ start_imds_server() {
   printf '198.51.100.7' > "$M/public-ipv4"
   ssh-keygen -q -t ed25519 -N "" -C boot-test-imds -f "$WORKDIR/ssh/imds"
   ssh-keygen -q -t ed25519 -N "" -C boot-test-imds-project -f "$WORKDIR/ssh/imds-project"
-  printf '["%s\\n"]' "$(cat "$WORKDIR/ssh/imds-project.pub")" > "$M/public-keys"
+  ssh-keygen -q -t ed25519 -N "" -C boot-test-imds-project2 -f "$WORKDIR/ssh/imds-project2"
+  printf '["%s\\n","%s\\n"]' "$(cat "$WORKDIR/ssh/imds-project.pub")" "$(cat "$WORKDIR/ssh/imds-project2.pub")" \
+    > "$M/public-keys"
   # the file replaces 85-imds-early.network for the link, and with it that file's prohibit route,
   # the route in imdsd's table and the fwmark rule: the lock must hold without them
   NET='[Match]\nType=ether\nKind=!*\n\n[Network]\nDHCP=ipv4\nIPv6AcceptRA=no\nAddress='"$IMDS_IPV6"'/64\n\n[DHCPv4]\nUseHostname=no\n'

@@ -311,19 +311,36 @@ check_imds_layout() {
   verdict "imds-hetzner-layout (no imds.* credential; GET /hetzner/v1/metadata/hostname and /hetzner/v1/userdata answered 200; no 404)" $RC
 }
 
-# check_imds_ssh_key: the key the user data gives as ssh.authorized_keys.root logs in as root (the
+# check_imds_ssh_keys: both keys of Hetzner's JSON array /metadata/public-keys log in as root (the
 # image's own file names only the test key), from the 0600 /root/.ssh/authorized_keys tmpfiles
-# wrote from the credential
-check_imds_ssh_key() {
+# wrote from the credential ssh.authorized_keys.root (systemd's ssh-key-json key, a Golconda patch
+# until systemd has it). The import writes that credential before the user data's credentials, so
+# it skips the user data's ssh.authorized_keys.root, and that key does not log in.
+check_imds_ssh_keys() {
   echo ""
-  echo "=== /imds: ssh key ==="
+  echo "=== /imds: ssh keys ==="
   RC=0
-  # shellcheck disable=SC2086
-  ssh $SSH_OPTS $NO_HOSTKEY_CHECK -o IdentitiesOnly=yes -i "$WORKDIR/ssh/imds" root@localhost true || RC=1
+  for k in imds-project imds-project2; do
+    # shellcheck disable=SC2086
+    if ssh $SSH_OPTS $NO_HOSTKEY_CHECK -o IdentitiesOnly=yes -i "$WORKDIR/ssh/$k" root@localhost true; then
+      echo "$k: logs in"
+    else
+      echo "$k: refused"; RC=1
+    fi
+  done
   M=$(guest stat -c %a /root/.ssh/authorized_keys 2>&1) || true
   echo "/root/.ssh/authorized_keys mode: $M"
   [ "$M" = 600 ] || RC=1
-  verdict "imds-ssh-key (the user data's ssh.authorized_keys.root logs in; authorized_keys is 0600)" $RC
+  verdict "imds-ssh-keys-json (both keys of the JSON array /metadata/public-keys log in; authorized_keys is 0600)" $RC
+
+  RC=0
+  # shellcheck disable=SC2086
+  if ssh $SSH_OPTS $NO_HOSTKEY_CHECK -o IdentitiesOnly=yes -i "$WORKDIR/ssh/imds" root@localhost true; then
+    echo "imds (the user data's key): logs in"; RC=1
+  fi
+  guest journalctl -b -u "$IMDS_UNIT" -o cat --no-pager 2>&1 \
+    | grep -F "Skipping importing of credential 'ssh.authorized_keys.root'" || RC=1
+  verdict "imds-ssh-key-precedence (the import skips the user data's ssh.authorized_keys.root, and its key does not log in)" $RC
 }
 
 # check_imds_userdata_credential: the user data's credentials arrive in /run/credstore, and a

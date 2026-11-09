@@ -142,7 +142,7 @@ test_imds() {
   wait_imds_import
   check_imds_hostname
   check_imds_layout
-  check_imds_ssh_key
+  check_imds_ssh_keys
   check_imds_userdata_credential
   check_imds_ipv6
   check_imds_locked

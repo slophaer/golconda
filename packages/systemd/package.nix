@@ -38,7 +38,16 @@ package {
   # is the commit prepared for systemd upstream (branch hwdb-imds-hetzner, `git format-patch -U1`,
   # as main's next entry differs from 262.1's); packages/hwdb compiles the fixed entry. Drop it
   # when systemd ships the fix.
-  patches = [ ./hwdb-imds-hetzner.patch ];
+  # imds: Hetzner lists the ssh keys only as a JSON array (/metadata/public-keys), and systemd-imds
+  # reads one plain key. imds-ssh-key-json.patch adds the well-known key ssh-key-json, imported one
+  # line per key into ssh.authorized_keys.root; hwdb-imds-hetzner-ssh-keys.patch names it in the
+  # fixed Hetzner entry. Both are commits drafted for systemd upstream (branch imds-ssh-keys-json,
+  # backported onto 262.1 after the patch above); drop them when systemd ships the key.
+  patches = [
+    ./hwdb-imds-hetzner.patch
+    ./imds-ssh-key-json.patch
+    ./hwdb-imds-hetzner-ssh-keys.patch
+  ];
 
   # Hardening disabled: the EFI stub/boot code cannot use hardened flags (no libc, no stack
   # protector runtime). cc.hardening = false applies to the whole build. Trade-off documented:

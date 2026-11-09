@@ -1,0 +1,392 @@
+From 4e50123a65f6a0c1311c9893df5c9cda78b01aa7 Mon Sep 17 00:00:00 2001
+From: phaer <hello@phaer.org>
+Date: Mon, 9 Nov 2026 17:00:25 +0000
+Subject: [PATCH] imds: import SSH keys provided as a JSON array
+
+Some IMDS services only provide the SSH keys of an instance as one JSON
+array of strings. Hetzner Cloud does that at /metadata/public-keys, and
+has no path that returns a single key in plain text, so systemd-imds
+currently cannot import any of its keys.
+
+Add a new well-known key "ssh-key-json" (IMDS_KEY_SSH_KEY_JSON= in hwdb,
+systemd.imds.key.ssh_key_json= on the kernel command line, the
+imds.key_ssh_key_json credential). "systemd-imds --import" parses it and
+writes each key as one line of the ssh.authorized_keys.root credential,
+after the keys of "ssh-key" if both are set. An entry with control
+characters in it is refused, so that one entry cannot turn into more
+than one authorized_keys line.
+
+Assisted-by: Claude Code (claude-opus-5-5)
+---
+ hwdb.d/40-imds.hwdb                           |  1 +
+ hwdb.d/parse_hwdb.py                          |  1 +
+ man/systemd-imds.xml                          |  9 ++--
+ man/systemd-imdsd@.service.xml                | 20 ++++++++
+ src/imds/imds-tool.c                          | 30 +++++++++--
+ src/imds/imds-util.c                          | 50 +++++++++++++++++++
+ src/imds/imds-util.h                          |  3 ++
+ src/imds/imdsd.c                              |  4 ++
+ src/imds/meson.build                          |  4 ++
+ src/imds/test-imds-util.c                     | 50 +++++++++++++++++++
+ .../varlink-io.systemd.InstanceMetadata.c     |  1 +
+ 11 files changed, 165 insertions(+), 8 deletions(-)
+ create mode 100644 src/imds/test-imds-util.c
+
+diff --git a/hwdb.d/40-imds.hwdb b/hwdb.d/40-imds.hwdb
+index 552e537c3d..839441dff0 100644
+--- a/hwdb.d/40-imds.hwdb
++++ b/hwdb.d/40-imds.hwdb
+@@ -23,6 +23,7 @@
+ #   IMDS_KEY_IPV4_PUBLIC=       → IMDS key for the primary public IPv4 address if there is any
+ #   IMDS_KEY_IPV6_PUBLIC=       → IMDS key for the primary public IPv6 address if there is any
+ #   IMDS_KEY_SSH_KEY=           → IMDS key for an SSH public key to install in the root account
++#   IMDS_KEY_SSH_KEY_JSON=      → IMDS key for SSH public keys to install in the root account, as a JSON array of strings
+ #   IMDS_KEY_USERDATA=          → IMDS key for arbitrary userdata (if there's only one)
+ #   IMDS_KEY_USERDATA_BASE=     → IMDS key for arbitrary userdata (if there are multiple, this is the common prefix)
+ #   IMDS_KEY_USERDATA_BASE64=   → IMDS key for arbitrary userdata (if there's only one, but it is base64 encoded)
+diff --git a/hwdb.d/parse_hwdb.py b/hwdb.d/parse_hwdb.py
+index 1532f5237f..354aca806e 100755
+--- a/hwdb.d/parse_hwdb.py
++++ b/hwdb.d/parse_hwdb.py
+@@ -269,6 +269,7 @@ def property_grammar():
+         ('IMDS_KEY_IPV4_PUBLIC', name_literal),
+         ('IMDS_KEY_IPV6_PUBLIC', name_literal),
+         ('IMDS_KEY_SSH_KEY', name_literal),
++        ('IMDS_KEY_SSH_KEY_JSON', name_literal),
+         ('IMDS_KEY_USERDATA', name_literal),
+         ('IMDS_KEY_USERDATA_BASE', name_literal),
+         ('IMDS_KEY_USERDATA_BASE64', name_literal),
+diff --git a/man/systemd-imds.xml b/man/systemd-imds.xml
+index b8b314ccbd..2e8e70a3ae 100644
+--- a/man/systemd-imds.xml
++++ b/man/systemd-imds.xml
+@@ -92,8 +92,8 @@
+ 
+         <listitem><para>Takes one of <literal>hostname</literal>, <literal>region</literal>,
+         <literal>zone</literal>, <literal>ipv4-public</literal>, <literal>ipv6-public</literal>,
+-        <literal>ssh-key</literal>, <literal>userdata</literal>, <literal>userdata-base</literal>,
+-        <literal>userdata-base64</literal>. Acquires a specific "well-known" field from IMDS. Many of these
++        <literal>ssh-key</literal>, <literal>ssh-key-json</literal>, <literal>userdata</literal>,
++        <literal>userdata-base</literal>, <literal>userdata-base64</literal>. Acquires a specific "well-known" field from IMDS. Many of these
+         fields are commonly supported by various IMDS implementations, but typically some fields are
+         not. Note that if <option>--well-known=userdata-base</option> is used an additional subkey should be
+         specified as positional argument, which encodes the specific userdata item to acquire.</para>
+@@ -149,7 +149,10 @@
+           for information about credentials that may be imported this way.</para></listitem>
+ 
+           <listitem><para>If the well-known <varname>ssh-key</varname> field is available, its value will be
+-          imported into the <varname>ssh.authorized_keys.root</varname> credential.</para></listitem>
++          imported into the <varname>ssh.authorized_keys.root</varname> credential. If the well-known
++          <varname>ssh-key-json</varname> field is available, it must be a JSON array of strings, each an
++          SSH public key; these keys are imported into the same credential, one per line, after those of
++          <varname>ssh-key</varname>.</para></listitem>
+ 
+           <listitem><para>If the well-known <varname>hostname</varname> field is available, its value will be
+           imported into the <varname>firstboot.hostname</varname> credential.</para></listitem>
+diff --git a/man/systemd-imdsd@.service.xml b/man/systemd-imdsd@.service.xml
+index d4007b7c87..ecc00fa2fe 100644
+--- a/man/systemd-imdsd@.service.xml
++++ b/man/systemd-imdsd@.service.xml
+@@ -214,6 +214,18 @@
+           <xi:include href="version-info.xml" xpointer="v261"/>
+         </listitem>
+       </varlistentry>
++
++      <varlistentry>
++        <term><varname>systemd.imds.key.ssh_key_json=</varname></term>
++        <listitem>
++          <para>Like <varname>systemd.imds.key.ssh_key=</varname>, but for IMDS services which return the
++          SSH keys as one JSON array of strings, each an SSH public key, instead of plain text.</para>
++
++          <para>Example: <programlisting>systemd.imds.key.ssh_key_json=/metadata/public-keys</programlisting></para>
++
++          <xi:include href="version-info.xml" xpointer="v263"/>
++        </listitem>
++      </varlistentry>
+     </variablelist>
+   </refsect1>
+ 
+@@ -253,6 +265,14 @@
+ 
+         <xi:include href="version-info.xml" xpointer="v261"/></listitem>
+       </varlistentry>
++
++      <varlistentry>
++        <term><varname>imds.key_ssh_key_json</varname></term>
++        <listitem><para>The same as <varname>systemd.imds.key.ssh_key_json=</varname> on the kernel command
++        line, see above.</para>
++
++        <xi:include href="version-info.xml" xpointer="v263"/></listitem>
++      </varlistentry>
+     </variablelist>
+   </refsect1>
+ 
+diff --git a/src/imds/imds-tool.c b/src/imds/imds-tool.c
+index c77de0a828..2ea134bcbc 100644
+--- a/src/imds/imds-tool.c
++++ b/src/imds/imds-tool.c
+@@ -78,7 +78,7 @@ static int parse_argv(int argc, char *argv[]) {
+                 OPTION('K', "well-known", "KEY",
+                        "Select well-known key/base, one of:"
+                        " hostname, region, zone, ipv4-public, ipv6-public, ssh-key,"
+-                       " userdata, userdata-base, userdata-base64"): {
++                       " ssh-key-json, userdata, userdata-base, userdata-base64"): {
+                         if (isempty(opts.arg)) {
+                                 arg_well_known = _IMDS_WELL_KNOWN_INVALID;
+                                 break;
+@@ -641,16 +641,36 @@ static int import_imds_ssh_key(sd_varlink *link) {
+ 
+         assert(link);
+ 
+-        _cleanup_(iovec_done) struct iovec data = {};
+-        r = acquire_imds_key(link, IMDS_SSH_KEY, /* key= */ NULL, &data);
++        /* The well-known "ssh-key" field has keys in authorized_keys format, the "ssh-key-json" field a
++         * JSON array of keys. Import the keys of both. */
++
++        _cleanup_free_ char *keys = NULL;
++        r = acquire_imds_key_as_string(link, IMDS_SSH_KEY, /* key= */ NULL, &keys);
+         if (r < 0)
+                 return r;
+-        if (r == 0 || !iovec_is_set(&data)) {
++        if (!isempty(keys) && !endswith(keys, "\n") && !strextend(&keys, "\n"))
++                return log_oom();
++
++        _cleanup_free_ char *json = NULL;
++        r = acquire_imds_key_as_string(link, IMDS_SSH_KEY_JSON, /* key= */ NULL, &json);
++        if (r < 0)
++                return r;
++        if (!isempty(json)) {
++                _cleanup_free_ char *k = NULL;
++                r = imds_ssh_keys_from_json(json, &k);
++                if (r < 0)
++                        return log_error_errno(r, "Failed to parse SSH keys from IMDS as JSON array of strings: %m");
++
++                if (k && !strextend(&keys, k))
++                        return log_oom();
++        }
++
++        if (isempty(keys)) {
+                 log_debug("No SSH key supplied via IMDS, not importing.");
+                 return 0;
+         }
+ 
+-        r = write_credential("/run/credstore", "ssh.authorized_keys.root", &data);
++        r = write_credential("/run/credstore", "ssh.authorized_keys.root", &IOVEC_MAKE_STRING(keys));
+         if (r <= 0)
+                 return r;
+ 
+diff --git a/src/imds/imds-util.c b/src/imds/imds-util.c
+index 3c67417e4b..e67173aa62 100644
+--- a/src/imds/imds-util.c
++++ b/src/imds/imds-util.c
+@@ -2,7 +2,11 @@
+ 
+ #include <assert.h>
+ 
++#include "sd-json.h"
++
++#include "alloc-util.h"
+ #include "imds-util.h"
++#include "json-util.h"
+ #include "string-table.h"
+ #include "string-util.h"
+ #include "utf8.h"
+@@ -25,6 +29,51 @@ bool imds_key_is_valid(const char *key) {
+         return true;
+ }
+ 
++int imds_ssh_keys_from_json(const char *json, char **ret) {
++        int r;
++
++        assert(json);
++        assert(ret);
++
++        /* Some IMDS implementations (e.g. Hetzner Cloud) provide all SSH keys as one JSON array of strings,
++         * each a public key in OpenSSH format. Turn this into authorized_keys(5) format, one key per
++         * line. Returns 0 and NULL if the array has no keys. */
++
++        _cleanup_(sd_json_variant_unrefp) sd_json_variant *v = NULL;
++        r = sd_json_parse(json, /* flags= */ 0, &v, /* reterr_line= */ NULL, /* reterr_column= */ NULL);
++        if (r < 0)
++                return r;
++
++        if (!sd_json_variant_is_array(v))
++                return -EBADMSG;
++
++        _cleanup_free_ char *keys = NULL;
++        sd_json_variant *i;
++        JSON_VARIANT_ARRAY_FOREACH(i, v) {
++                if (!sd_json_variant_is_string(i))
++                        return -EBADMSG;
++
++                _cleanup_free_ char *k = strdup(sd_json_variant_string(i));
++                if (!k)
++                        return -ENOMEM;
++
++                /* Hetzner Cloud terminates each key with a newline, drop that */
++                const char *s = strstrip(k);
++                if (isempty(s))
++                        continue;
++
++                /* One array entry must not turn into more than one line */
++                if (string_has_cc(s, /* ok= */ NULL))
++                        return -EBADMSG;
++
++                if (!strextend(&keys, s, "\n"))
++                        return -ENOMEM;
++        }
++
++        *ret = TAKE_PTR(keys);
++        return !!*ret;
++}
++
+ static const char* const imds_well_known_table[_IMDS_WELL_KNOWN_MAX] = {
+         [IMDS_BASE]            = "base",
+         [IMDS_HOSTNAME]        = "hostname",
+@@ -33,6 +82,7 @@ static const char* const imds_well_known_table[_IMDS_WELL_KNOWN_MAX] = {
+         [IMDS_IPV4_PUBLIC]     = "ipv4-public",
+         [IMDS_IPV6_PUBLIC]     = "ipv6-public",
+         [IMDS_SSH_KEY]         = "ssh-key",
++        [IMDS_SSH_KEY_JSON]    = "ssh-key-json",
+         [IMDS_USERDATA]        = "userdata",
+         [IMDS_USERDATA_BASE]   = "userdata-base",
+         [IMDS_USERDATA_BASE64] = "userdata-base64",
+diff --git a/src/imds/imds-util.h b/src/imds/imds-util.h
+index 55ab79510f..5a4b7fb194 100644
+--- a/src/imds/imds-util.h
++++ b/src/imds/imds-util.h
+@@ -21,6 +21,7 @@ typedef enum ImdsWellKnown {
+         IMDS_IPV4_PUBLIC,
+         IMDS_IPV6_PUBLIC,
+         IMDS_SSH_KEY,
++        IMDS_SSH_KEY_JSON,    /* a JSON array of SSH keys */
+         IMDS_USERDATA,
+         IMDS_USERDATA_BASE,   /* typically suffixed */
+         IMDS_USERDATA_BASE64,
+@@ -34,5 +35,7 @@ static inline bool imds_well_known_can_suffix(ImdsWellKnown wk) {
+ 
+ bool imds_key_is_valid(const char *key);
+ 
++int imds_ssh_keys_from_json(const char *json, char **ret);
++
+ DECLARE_STRING_TABLE_LOOKUP(imds_well_known, ImdsWellKnown);
+ DECLARE_STRING_TABLE_LOOKUP(imds_network_mode, ImdsNetworkMode);
+diff --git a/src/imds/imdsd.c b/src/imds/imdsd.c
+index 39a337d4e5..cc06e216ce 100644
+--- a/src/imds/imdsd.c
++++ b/src/imds/imdsd.c
+@@ -2530,6 +2530,7 @@ static const char * const imds_well_known_udev_table[_IMDS_WELL_KNOWN_MAX] = {
+         [IMDS_IPV4_PUBLIC]     = "IMDS_KEY_IPV4_PUBLIC",
+         [IMDS_IPV6_PUBLIC]     = "IMDS_KEY_IPV6_PUBLIC",
+         [IMDS_SSH_KEY]         = "IMDS_KEY_SSH_KEY",
++        [IMDS_SSH_KEY_JSON]    = "IMDS_KEY_SSH_KEY_JSON",
+         [IMDS_USERDATA]        = "IMDS_KEY_USERDATA",
+         [IMDS_USERDATA_BASE]   = "IMDS_KEY_USERDATA_BASE",
+         [IMDS_USERDATA_BASE64] = "IMDS_KEY_USERDATA_BASE64",
+@@ -2669,6 +2670,7 @@ static const char * const imds_well_known_environment_table[_IMDS_WELL_KNOWN_MAX
+         [IMDS_IPV4_PUBLIC]     = "SYSTEMD_IMDS_KEY_IPV4_PUBLIC",
+         [IMDS_IPV6_PUBLIC]     = "SYSTEMD_IMDS_KEY_IPV6_PUBLIC",
+         [IMDS_SSH_KEY]         = "SYSTEMD_IMDS_KEY_SSH_KEY",
++        [IMDS_SSH_KEY_JSON]    = "SYSTEMD_IMDS_KEY_SSH_KEY_JSON",
+         [IMDS_USERDATA]        = "SYSTEMD_IMDS_KEY_USERDATA",
+         [IMDS_USERDATA_BASE]   = "SYSTEMD_IMDS_KEY_USERDATA_BASE",
+         [IMDS_USERDATA_BASE64] = "SYSTEMD_IMDS_KEY_USERDATA_BASE64",
+@@ -2790,6 +2792,7 @@ static const char * const imds_well_known_credential_table[_IMDS_WELL_KNOWN_MAX]
+         [IMDS_IPV4_PUBLIC]     = "imds.key_ipv4_public",
+         [IMDS_IPV6_PUBLIC]     = "imds.key_ipv6_public",
+         [IMDS_SSH_KEY]         = "imds.key_ssh_key",
++        [IMDS_SSH_KEY_JSON]    = "imds.key_ssh_key_json",
+         [IMDS_USERDATA]        = "imds.key_userdata",
+         [IMDS_USERDATA_BASE]   = "imds.key_userdata_base",
+         [IMDS_USERDATA_BASE64] = "imds.key_userdata_base64",
+@@ -2997,6 +3000,7 @@ static int parse_proc_cmdline_item(const char *key, const char *value, void *dat
+                 [IMDS_IPV4_PUBLIC]     = "systemd.imds.key.ipv4_public",
+                 [IMDS_IPV6_PUBLIC]     = "systemd.imds.key.ipv6_public",
+                 [IMDS_SSH_KEY]         = "systemd.imds.key.ssh_key",
++                [IMDS_SSH_KEY_JSON]    = "systemd.imds.key.ssh_key_json",
+                 [IMDS_USERDATA]        = "systemd.imds.key.userdata",
+                 [IMDS_USERDATA_BASE]   = "systemd.imds.key.userdata_base",
+                 [IMDS_USERDATA_BASE64] = "systemd.imds.key.userdata_base64",
+diff --git a/src/imds/meson.build b/src/imds/meson.build
+index ca54acd3f3..9bd1c28f4f 100644
+--- a/src/imds/meson.build
++++ b/src/imds/meson.build
+@@ -27,6 +27,10 @@ executables += [
+                 'sources' : files('imds-generator.c'),
+                 'import' : ['systemd-imdsd'],
+         },
++        test_template + {
++                'sources' : files('test-imds-util.c'),
++                'import' : ['systemd-imdsd'],
++        },
+ ]
+ 
+ install_data(
+diff --git a/src/imds/test-imds-util.c b/src/imds/test-imds-util.c
+new file mode 100644
+index 0000000000..98866f3c1e
+--- /dev/null
++++ b/src/imds/test-imds-util.c
+@@ -0,0 +1,50 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++
++#include "alloc-util.h"
++#include "imds-util.h"
++#include "tests.h"
++
++TEST(imds_well_known_ssh_key_json) {
++        ASSERT_EQ(imds_well_known_from_string("ssh-key-json"), IMDS_SSH_KEY_JSON);
++        ASSERT_STREQ(imds_well_known_to_string(IMDS_SSH_KEY_JSON), "ssh-key-json");
++        ASSERT_FALSE(imds_well_known_can_suffix(IMDS_SSH_KEY_JSON));
++}
++
++static void test_ssh_keys_from_json_one(const char *json, const char *expected) {
++        _cleanup_free_ char *keys = NULL;
++
++        log_info("/* %s(%s) */", __func__, json);
++
++        ASSERT_OK_EQ(imds_ssh_keys_from_json(json, &keys), !!expected);
++        ASSERT_STREQ(keys, expected);
++}
++
++TEST(imds_ssh_keys_from_json) {
++        /* Hetzner Cloud: each key has a trailing newline */
++        test_ssh_keys_from_json_one(
++                        "[\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA== one\\n\", \"ssh-rsa AAAAB3NzaC1yc2E= two\\n\"]",
++                        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA== one\n"
++                        "ssh-rsa AAAAB3NzaC1yc2E= two\n");
++
++        /* Without trailing newlines, and with empty entries */
++        test_ssh_keys_from_json_one(
++                        "[\"ssh-ed25519 AAAA one\", \"\", \"  \", \"ssh-ed25519 BBBB two\"]",
++                        "ssh-ed25519 AAAA one\n"
++                        "ssh-ed25519 BBBB two\n");
++
++        /* No keys at all */
++        test_ssh_keys_from_json_one("[]", NULL);
++        test_ssh_keys_from_json_one("[\"\\n\"]", NULL);
++
++        /* Not an array of strings, or an entry that would turn into more than one line */
++        _cleanup_free_ char *keys = NULL;
++        ASSERT_FAIL(imds_ssh_keys_from_json("", &keys));
++        ASSERT_FAIL(imds_ssh_keys_from_json("ssh-ed25519 AAAA one", &keys));
++        ASSERT_ERROR(imds_ssh_keys_from_json("\"ssh-ed25519 AAAA one\"", &keys), EBADMSG);
++        ASSERT_ERROR(imds_ssh_keys_from_json("{\"key\":\"ssh-ed25519 AAAA one\"}", &keys), EBADMSG);
++        ASSERT_ERROR(imds_ssh_keys_from_json("[\"ssh-ed25519 AAAA one\", 7]", &keys), EBADMSG);
++        ASSERT_ERROR(imds_ssh_keys_from_json("[\"ssh-ed25519 AAAA one\\nssh-ed25519 BBBB two\"]", &keys), EBADMSG);
++        ASSERT_NULL(keys);
++}
++
++DEFINE_TEST_MAIN(LOG_DEBUG);
+diff --git a/src/shared/varlink-io.systemd.InstanceMetadata.c b/src/shared/varlink-io.systemd.InstanceMetadata.c
+index b40bb6d4f3..25079d4835 100644
+--- a/src/shared/varlink-io.systemd.InstanceMetadata.c
++++ b/src/shared/varlink-io.systemd.InstanceMetadata.c
+@@ -12,6 +12,7 @@ static SD_VARLINK_DEFINE_ENUM_TYPE(
+                 SD_VARLINK_DEFINE_ENUM_VALUE(ipv4_public),
+                 SD_VARLINK_DEFINE_ENUM_VALUE(ipv6_public),
+                 SD_VARLINK_DEFINE_ENUM_VALUE(ssh_key),
++                SD_VARLINK_DEFINE_ENUM_VALUE(ssh_key_json),
+                 SD_VARLINK_DEFINE_ENUM_VALUE(userdata),
+                 SD_VARLINK_DEFINE_ENUM_VALUE(userdata_base),
+                 SD_VARLINK_DEFINE_ENUM_VALUE(userdata_base64));

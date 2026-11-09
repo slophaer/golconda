@@ -132,6 +132,9 @@ in
       patches = map toString (fixturePkgs.systemd.drvAttrs.patches or [ ]);
     in
     any (hasSuffix "hwdb-imds-hetzner.patch") patches
+    # the ssh keys as Hetzner's JSON array: the well-known key ssh-key-json, and hwdb naming it
+    && any (hasSuffix "imds-ssh-key-json.patch") patches
+    && any (hasSuffix "hwdb-imds-hetzner-ssh-keys.patch") patches
     && !(withImds.files ? ${hetznerRule})
     && all (p: !(hasInfix "/udev/rules.d/" p)) (attrNames withImds.files)
   ))
