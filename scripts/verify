@@ -15,9 +15,9 @@
 #                       host can outlast boot-test's own default)
 #   --boot-set ARGS     one boot of a list (repeat it): all sets boot the image at the same time,
 #                       each with its own log, and the summary has one line per set with its
-#                       result, time, ARGS and the log's path. Leading NAME=value words of ARGS
-#                       are environment (BOOT_TEST_TAMPER_INDEX=1 --next DIR); the run fails when
-#                       any set fails. Replaces --boot-args. The VMs need about 2 GiB each.
+#                       result, time and ARGS. The run fails when any set fails. A set that fails
+#                       keeps its log (the line names it); a set that passes removes it. Replaces
+#                       --boot-args. The VMs need about 2 GiB each.
 #   --no-boot           build the image, do not boot it
 #   --lint-only         lint only
 #   --each-commit BASE  every commit in BASE..HEAD, in a scratch worktree: lint each, and build and
@@ -30,7 +30,7 @@
 #
 # The logs of --boot-set are in $BOOT_TEST_CACHE/verify.XXXXXX (default
 # ${XDG_CACHE_HOME:-$HOME/.cache}/golconda-boot-test, which is also where scripts/boot-test keeps
-# the work directories of failed runs); verify removes its own directories older than 7 days.
+# the work directory of a failed run); verify removes its own directories older than 7 days.
 set -u
 self=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)/$(basename "$0")
 dir=$(dirname "$self")/..
@@ -168,21 +168,12 @@ if [ -z "$boot_sets" ]; then
   finish 0
 fi
 
-# boot_set N SET: boot-test with SET's flags (leading NAME=value words are its environment); the
-# exit code and the seconds it took go to $logs/boot-N.rc
+# boot_set N SET: boot-test with SET's flags; the exit code and the seconds it took go to
+# $logs/boot-N.rc
 boot_set() {
   start=$(date +%s)
-  rest=$2
-  envs=
-  while :; do
-    w=${rest%% *}
-    case $w in
-    [A-Za-z_]*=*) envs="$envs $w"; rest=${rest#"$w"}; rest=${rest# } ;;
-    *) break ;;
-    esac
-  done
-  # shellcheck disable=SC2086 # envs and rest are lists of words
-  env $envs ./scripts/boot-test "$disk" --keys "$keys" $rest >"$logs/boot-$1.log" 2>&1
+  # shellcheck disable=SC2086 # the set is a list of flags
+  ./scripts/boot-test "$disk" --keys "$keys" $2 >"$logs/boot-$1.log" 2>&1
   echo "$? $(($(date +%s) - start))" >"$logs/boot-$1.rc"
 }
 cache=${BOOT_TEST_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/golconda-boot-test}
@@ -192,7 +183,7 @@ logs=$(mktemp -d "$cache/verify.XXXXXX")
 n=0
 while IFS= read -r bs; do
   n=$((n + 1))
-  echo "== boot[$n]: $bs (log $logs/boot-$n.log)"
+  echo "== boot[$n]: $bs"
   boot_set "$n" "$bs" &
 done <<EOF
 $boot_sets
@@ -203,12 +194,24 @@ bad=0
 while IFS= read -r bs; do
   i=$((i + 1))
   read -r code secs <"$logs/boot-$i.rc" || { code=1; secs=0; }
-  if [ "$code" = 0 ]; then r=PASS; else r="FAIL($code)"; bad=1; grep '^FAIL' "$logs/boot-$i.log"; tail -n 20 "$logs/boot-$i.log"; fi
-  line="$r boot[$i] ${secs}s $bs (log $logs/boot-$i.log)"
+  if [ "$code" = 0 ]; then
+    r=PASS
+    where=
+    rm -f "$logs/boot-$i.log"
+  else
+    r="FAIL($code)"
+    where=" (log $logs/boot-$i.log)"
+    bad=1
+    grep '^FAIL' "$logs/boot-$i.log"
+    tail -n 20 "$logs/boot-$i.log"
+  fi
+  rm -f "$logs/boot-$i.rc"
+  line="$r boot[$i] ${secs}s $bs$where"
   echo "$line"
   summary="$summary$line
 "
 done <<EOF
 $boot_sets
 EOF
+rmdir "$logs" 2>/dev/null
 finish $bad

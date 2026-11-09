@@ -272,18 +272,16 @@ inside the guest's network, not a host port. The test image's `updateSource` nam
 port needs an image built with that `updateSource`.
 
 `scripts/verify --boot-set ARGS` (repeat it) builds the image once and boots a list of flag sets at
-the same time, each with its own log. Its summary has one line per set,
-`PASS boot[N] 59s FLAGS (log PATH)` or `FAIL(CODE) boot[N] …`, and the exit status is non-zero when
-any set fails. Leading `NAME=value` words of a set are environment, so
-`BOOT_TEST_TAMPER_INDEX=1 --next DIR …` is a set: the tamper run fails by design (its
-`sysupdate-installed` is the expected `FAIL`), so a matrix that holds it exits 1 unless the other
-sets' lines are all `PASS`.
+the same time, each with its own log. Its summary has one line per set, `PASS boot[N] 59s FLAGS` or
+`FAIL(CODE) boot[N] 59s FLAGS (log PATH)`, and the exit status is non-zero when any set fails. A set
+that passes removes its log, as `scripts/boot-test` removes the work directory of a run that passes;
+a set that fails keeps both.
 
 The work directory of every run is `run.XXXXXX` under `$BOOT_TEST_CACHE` (default
 `${XDG_CACHE_HOME:-$HOME/.cache}/golconda-boot-test`), not under `/tmp`, which a queue task or a
 reboot may drop. A run that passes removes its directory; a run that fails keeps it, with the serial
-logs, and prints the path. `scripts/verify --boot-set` puts its logs in `verify.XXXXXX` in the same
-directory and removes its own directories older than 7 days.
+logs, and prints the path. `scripts/verify --boot-set` puts the logs of the sets that fail in
+`verify.XXXXXX` in the same directory, and removes its own directories older than 7 days.
 
 Several runs can share one host and one image. Each has its own work directory, its own swtpm socket
 and state, firmware variables, disk overlay, keys, ssh port and update server. A run claims its ssh

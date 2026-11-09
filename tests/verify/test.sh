@@ -62,7 +62,7 @@ mkdir -p "$repo/scripts" "$repo/pins/repkgs"
 cp "$ROOT/scripts/verify" "$repo/scripts/verify"
 cat >"$repo/scripts/boot-test" <<'EOF'
 #!/bin/sh
-echo "boot-test ${FAKE_MARK:+mark=$FAKE_MARK }$*" >>"$CALLS"
+echo "boot-test $*" >>"$CALLS"
 # --rendezvous NAME: needs the other of rv-a and rv-b to start, so a serial run times out
 case " $* " in
 *" --rendezvous "*)
@@ -164,41 +164,43 @@ FAKE_IMAGE=fail run scripts/verify
 [ $rc != 0 ] || fail "image failure passed"
 grep -q boot-test "$CALLS" && fail "booted after an image failure"
 
-# 9 --boot-set runs the sets at the same time, each with its own log, and prints a line for each;
-#    leading NAME=value words are environment; a failing set fails the run
+# 9 --boot-set runs the sets at the same time and prints a line for each; the log of a set that
+#    passes is removed, the log of a failed set stays and its path is on the line
 rm -f "$WORK/rv-a" "$WORK/rv-b"
-run scripts/verify --boot-set '--rendezvous a --timeout 1' --boot-set 'FAKE_MARK=m1 --rendezvous b'
+run scripts/verify --boot-set '--rendezvous a --timeout 1' --boot-set '--rendezvous b'
 [ $rc = 0 ] || fail "--boot-set run exited $rc: $out"
 [ "$(grep -c '^boot-test' "$CALLS")" = 2 ] || fail "want 2 boots: $(cat "$CALLS")"
-grep -q 'boot-test mark=m1 .* --keys .* --rendezvous b$' "$CALLS" || fail "NAME=value not in the environment: $(cat "$CALLS")"
-echo "$out" | grep -qE '^PASS boot\[1\] [0-9]+s --rendezvous a --timeout 1 \(log .*boot-1\.log\)$' || fail "no line for set 1: $out"
-echo "$out" | grep -qE '^PASS boot\[2\] [0-9]+s FAKE_MARK=m1 --rendezvous b \(log .*boot-2\.log\)$' || fail "no line for set 2: $out"
-log=$(echo "$out" | sed -n 's/^PASS boot\[1\] .*(log \(.*\))$/\1/p' | head -1)
-grep -q 'fake boot ok' "$log" || fail "the set's log is empty: $log"
-rm -rf "$(dirname "$log")"
+grep -q 'boot-test .* --keys .* --rendezvous b$' "$CALLS" || fail "set 2 not run: $(cat "$CALLS")"
+echo "$out" | grep -qE '^PASS boot\[1\] [0-9]+s --rendezvous a --timeout 1$' || fail "no line for set 1: $out"
+echo "$out" | grep -qE '^PASS boot\[2\] [0-9]+s --rendezvous b$' || fail "no line for set 2: $out"
+[ -z "$(find "$WORK/cache" -name 'boot-*.log')" ] || fail "the log of a passed set was kept"
+[ -z "$(find "$WORK/cache" -maxdepth 1 -name 'verify.*' -newer "$CALLS")" ] || fail "an empty log directory was kept"
 run scripts/verify --boot-set '--timeout 1' --boot-set '--fail'
 [ $rc != 0 ] || fail "a failing set passed"
-echo "$out" | grep -qE '^PASS boot\[1\] ' || fail "passing set not reported: $out"
+echo "$out" | grep -qE '^PASS boot\[1\] [0-9]+s --timeout 1$' || fail "passing set not reported: $out"
 [ "$(echo "$out" | grep -c '^FAIL: fake-check')" = 2 ] || fail "failed checks not listed with the log tail: $out"
-echo "$out" | grep -qE '^FAIL\(6\) boot\[2\] [0-9]+s --fail \(log ' || fail "failing set not reported: $out"
-rm -rf "$(echo "$out" | sed -n 's/^FAIL(6) boot\[2\] .*(log \(.*\)\/boot-2\.log)$/\1/p' | head -1)"
+echo "$out" | grep -qE '^FAIL\(6\) boot\[2\] [0-9]+s --fail \(log .*boot-2\.log\)$' || fail "failing set not reported: $out"
+log=$(echo "$out" | sed -n 's/^FAIL(6) boot\[2\] .*(log \(.*\))$/\1/p' | head -1)
+grep -q 'fake boot failed' "$log" || fail "the failed set's log is missing: $log"
+[ -e "$(dirname "$log")/boot-1.log" ] && fail "the passed set's log is next to it"
+rm -rf "$(dirname "$log")"
 
 # 10 --each-commit hands the sets to the last commit's run
 run scripts/verify --each-commit "$(git rev-list --max-parents=0 HEAD)" --boot-set '--timeout 1' --boot-set '--timeout 2'
 [ $rc = 0 ] || fail "--each-commit with sets exited $rc: $out"
 [ "$(grep -c '^boot-test' "$CALLS")" = 2 ] || fail "want 2 boots of the last commit: $(cat "$CALLS")"
-echo "$out" | grep -qE '^PASS boot\[2\] .*--timeout 2 ' || fail "set 2 not reported: $out"
-rm -rf "$(echo "$out" | sed -n 's/^PASS boot\[1\] .*(log \(.*\)\/boot-1\.log)$/\1/p' | head -1)"
+echo "$out" | grep -qE '^PASS boot\[2\] [0-9]+s --timeout 2$' || fail "set 2 not reported: $out"
 
-# 11 logs live under BOOT_TEST_CACHE, else ${XDG_CACHE_HOME:-$HOME/.cache}/golconda-boot-test, not
-#    /tmp; directories older than 7 days are removed, newer ones stay
-run scripts/verify --boot-set '--timeout 1'
-log=$(echo "$out" | sed -n 's/^PASS boot\[1\] .*(log \(.*\))$/\1/p' | head -1)
+# 11 the logs of a failed set live under BOOT_TEST_CACHE, else
+#    ${XDG_CACHE_HOME:-$HOME/.cache}/golconda-boot-test, not /tmp; directories older than 7 days
+#    are removed, newer ones stay
+run scripts/verify --boot-set '--fail'
+log=$(echo "$out" | sed -n 's/^FAIL(6) boot\[1\] .*(log \(.*\))$/\1/p' | head -1)
 case $log in "$WORK/cache/"*) ;; *) fail "log not under BOOT_TEST_CACHE: $log" ;; esac
 mkdir -p "$WORK/cache/verify.old" "$WORK/cache/run.old"
 touch -d '10 days ago' "$WORK/cache/verify.old" "$WORK/cache/run.old"
-run env -u BOOT_TEST_CACHE XDG_CACHE_HOME="$WORK/xdg" scripts/verify --boot-set '--timeout 1'
-log=$(echo "$out" | sed -n 's/^PASS boot\[1\] .*(log \(.*\))$/\1/p' | head -1)
+run env -u BOOT_TEST_CACHE XDG_CACHE_HOME="$WORK/xdg" scripts/verify --boot-set '--fail'
+log=$(echo "$out" | sed -n 's/^FAIL(6) boot\[1\] .*(log \(.*\))$/\1/p' | head -1)
 case $log in "$WORK/xdg/golconda-boot-test/"*) ;; *) fail "log not under XDG_CACHE_HOME: $log" ;; esac
 run scripts/verify --boot-set '--timeout 1'
 [ ! -e "$WORK/cache/verify.old" ] || fail "an old log directory was kept"
