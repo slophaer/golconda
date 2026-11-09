@@ -75,7 +75,8 @@
 #   Checks: imds-hostname (systemd's import ran, pulled in by the generator, and the host name and
 #   /etc/hostname are imds-test), imds-hetzner-layout (the guest has no imds.* credential, asked
 #   for the host name and the user data at Hetzner's paths, and got no 404),
-#   imds-ssh-keys-json (both keys of the JSON array log in; /root/.ssh/authorized_keys is 0600),
+#   imds-ssh-keys-json (both keys of the JSON array log in, a bad entry between them is skipped
+#   with a warning; /root/.ssh/authorized_keys is 0600),
 #   imds-ssh-key-precedence (the import skips the user data's ssh.authorized_keys.root: the
 #   metadata's keys came first; its key does not log in),
 #   imds-userdata-credential (/run/credstore/imds-canary holds the value, and tmpfiles wrote

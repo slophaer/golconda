@@ -314,7 +314,8 @@ check_imds_layout() {
 # check_imds_ssh_keys: both keys of Hetzner's JSON array /metadata/public-keys log in as root (the
 # image's own file names only the test key), from the 0600 /root/.ssh/authorized_keys tmpfiles
 # wrote from the credential ssh.authorized_keys.root (systemd's ssh-key-json key, a Golconda patch
-# until systemd has it). The import writes that credential before the user data's credentials, so
+# until systemd has it). The bad entry the server puts between them is skipped alone, with a
+# warning. The import writes that credential before the user data's credentials, so
 # it skips the user data's ssh.authorized_keys.root, and that key does not log in.
 check_imds_ssh_keys() {
   echo ""
@@ -331,7 +332,11 @@ check_imds_ssh_keys() {
   M=$(guest stat -c %a /root/.ssh/authorized_keys 2>&1) || true
   echo "/root/.ssh/authorized_keys mode: $M"
   [ "$M" = 600 ] || RC=1
-  verdict "imds-ssh-keys-json (both keys of the JSON array /metadata/public-keys log in; authorized_keys is 0600)" $RC
+  # the bad entry between them is skipped alone, with a warning
+  if guest grep -F 'bad' /root/.ssh/authorized_keys; then RC=1; fi
+  guest journalctl -b -u "$IMDS_UNIT" -o cat --no-pager 2>&1 \
+    | grep -F 'SSH key in IMDS JSON array contains control characters, skipping.' || RC=1
+  verdict "imds-ssh-keys-json (both keys of the JSON array /metadata/public-keys log in, the bad entry is skipped with a warning; authorized_keys is 0600)" $RC
 
   RC=0
   # shellcheck disable=SC2086

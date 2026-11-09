@@ -92,7 +92,8 @@ start_http_server() {
 # (a guestfwd, like the update server's: no host port), and the guest finds the endpoint by hwdb
 # alone, as on Hetzner: base URL http://$IMDS_ADDR/hetzner/v1, the host name and the other keys under
 # /metadata/, the user data at /userdata. /metadata/public-keys is Hetzner's JSON array of the
-# project's keys: two key pairs made here, each with Hetzner's trailing newline. The user data
+# project's keys: two key pairs made here, each with Hetzner's trailing newline, and between them a
+# bad entry (two keys in one string) that the import skips with a warning. The user data
 # lists four credentials: imds-canary; login.motd, which tmpfiles writes to /etc/motd.d;
 # ssh.authorized_keys.root, a third key made here (the import skips it: the metadata's keys come
 # first, under the same credential name); and network.network.$IMDS_NET_CRED,
@@ -112,8 +113,9 @@ start_imds_server() {
   ssh-keygen -q -t ed25519 -N "" -C boot-test-imds -f "$WORKDIR/ssh/imds"
   ssh-keygen -q -t ed25519 -N "" -C boot-test-imds-project -f "$WORKDIR/ssh/imds-project"
   ssh-keygen -q -t ed25519 -N "" -C boot-test-imds-project2 -f "$WORKDIR/ssh/imds-project2"
-  printf '["%s\\n","%s\\n"]' "$(cat "$WORKDIR/ssh/imds-project.pub")" "$(cat "$WORKDIR/ssh/imds-project2.pub")" \
-    > "$M/public-keys"
+  # and a bad entry between them (two lines in one string), which the import must skip alone
+  printf '["%s\\n","ssh-ed25519 AAAA bad\\nssh-ed25519 BBBB bad","%s\\n"]' \
+    "$(cat "$WORKDIR/ssh/imds-project.pub")" "$(cat "$WORKDIR/ssh/imds-project2.pub")" > "$M/public-keys"
   # the file replaces 85-imds-early.network for the link, and with it that file's prohibit route,
   # the route in imdsd's table and the fwmark rule: the lock must hold without them
   NET='[Match]\nType=ether\nKind=!*\n\n[Network]\nDHCP=ipv4\nIPv6AcceptRA=no\nAddress='"$IMDS_IPV6"'/64\n\n[DHCPv4]\nUseHostname=no\n'
