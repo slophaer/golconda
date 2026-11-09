@@ -2,19 +2,18 @@
 
 ## Repository map
 
-| directory         | what it holds                                                                                                                                                                                                                    |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `modules/`        | the adios modules, one directory per path (`/base`, `/services/sshd`, …); `modules/lib/`: the shared types, grammar and renderers that `lib/` uses too                                                                           |
-| `lib/`            | the build functions: `mkSystem` (`system.nix`), the `/usr` tree, the image chain (`lib/image/`), the schema, the TOML loader, the component selection (`components.nix`), the docs generator, the one module walker (`tree.nix`) |
-| `image/`          | image parameters as data (partitions, sysupdate transfers, the UKI cmdline); `lib/image/` builds from them, file for file                                                                                                        |
-| `nix/`            | the outputs (`default.nix`), the repkgs set (`packages.nix`), checks, the dev shell                                                                                                                                              |
-| `packages/`       | Golconda's package specs; a name here replaces the repkgs fork's                                                                                                                                                                 |
-| `tests/`          | `eval/`: the pure-Nix tests by area (`nix/tests.nix` imports them); `packages/`: package tests; `usr-tree/`; `kernel/`: the kernel's kbuild phases on a stub tree; `errors/`: configuration error messages; fixtures             |
-| `scripts/`        | developer tools: `lint`, `docs`, `make-keys`, `provision-esp`, `boot-test`                                                                                                                                                       |
-| `cli/`            | the `golconda` command line (`vars`, `release`): one Rust crate, `packages.<system>.golconda-cli`; its README is for developers                                                                                                  |
-| `examples/`       | example configurations                                                                                                                                                                                                           |
-| `patches/repkgs/` | issue drafts for the fork's commits                                                                                                                                                                                              |
-| `docs/`           | `design/` says why, `reference/` says what exists                                                                                                                                                                                |
+| directory   | what it holds                                                                                                                                                                                                                    |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `modules/`  | the adios modules, one directory per path (`/base`, `/services/sshd`, …); `modules/lib/`: the shared types, grammar and renderers that `lib/` uses too                                                                           |
+| `lib/`      | the build functions: `mkSystem` (`system.nix`), the `/usr` tree, the image chain (`lib/image/`), the schema, the TOML loader, the component selection (`components.nix`), the docs generator, the one module walker (`tree.nix`) |
+| `image/`    | image parameters as data (partitions, sysupdate transfers, the UKI cmdline); `lib/image/` builds from them, file for file                                                                                                        |
+| `nix/`      | the outputs (`default.nix`), the repkgs set (`packages.nix`), checks, the dev shell                                                                                                                                              |
+| `packages/` | Golconda's package specs; a name here replaces the repkgs fork's                                                                                                                                                                 |
+| `tests/`    | `eval/`: the pure-Nix tests by area (`nix/tests.nix` imports them); `packages/`: package tests; `usr-tree/`; `kernel/`: the kernel's kbuild phases on a stub tree; `errors/`: configuration error messages; fixtures             |
+| `scripts/`  | developer tools: `lint`, `docs`, `make-keys`, `provision-esp`, `boot-test`                                                                                                                                                       |
+| `cli/`      | the `golconda` command line (`vars`, `release`): one Rust crate, `packages.<system>.golconda-cli`; its README is for developers                                                                                                  |
+| `examples/` | example configurations                                                                                                                                                                                                           |
+| `docs/`     | `design/` says why, `reference/` says what exists                                                                                                                                                                                |
 
 Start with [Walkthrough](docs/reference/walkthrough.md): it follows one `server.toml` through these
 directories to a booted machine.
@@ -56,10 +55,32 @@ directories to a booted machine.
   planning or history pages.
 - **Pins.** `pins/<name>/sources.toml`, one per input, in uptrack's format; `pins/default.nix` reads
   them. `scripts/pins check` shows what moved, `scripts/pins apply repkgs` moves the repkgs pin (see
-  [patches/repkgs](patches/repkgs/README.md)).
-- **Fork patches.** A change to repkgs' build system goes to the fork branch the pin follows
-  (`?branch=` in `pins/repkgs/sources.toml`, today `golconda`), in the series it belongs to. A new
-  package goes to `packages/` instead.
+  [The repkgs fork](#the-repkgs-fork)).
+- **Fork patches.** A change to repkgs' build system goes to the fork (see
+  [The repkgs fork](#the-repkgs-fork)). A new package goes to `packages/` instead.
+
+## The repkgs fork
+
+Golconda pins a fork of [Mic92/repkgs](https://github.com/Mic92/repkgs): the branch and URL are in
+`pins/repkgs/sources.toml` (`?branch=`, today `golconda`). That branch is upstream `main` plus
+commits meant for upstream, one per topic, and nothing else; each commit message is the text we
+would send upstream. List them with `git log --oneline origin/main..fork/golconda` in a repkgs
+clone. The packages the image needs are not in the fork: they are in `packages/`.
+
+To change the fork, commit to its `golconda` branch, in the topic the change belongs to, and push it
+to the forge and to its public GitHub mirror, `slophaer/repkgs`. The pin follows the mirror: its
+archive is byte for byte the forge's, and it needs no sign-in, neither for Nix nor for iets. Then
+move the pin and run the full check:
+
+```console
+$ scripts/pins check repkgs
+$ scripts/pins apply repkgs
+$ scripts/verify
+```
+
+`apply` writes the commit (`rev`), its date as the version (`0-unstable-<date>`) and the hash of the
+unpacked tree. uptrack itself comes from the repkgs tree pinned before, so the new fork takes effect
+for it on the next run.
 
 ## Getting started
 

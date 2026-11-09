@@ -18,7 +18,7 @@ the `golconda` command line has two commands, `vars` and `release`.
 | `golconda release check\|publish\|build\|list …`                                                                                                                            | the release directory of an image: build, check, publish, list ([below](#golconda-release))                                                 |
 | `nix fmt`                                                                                                                                                                   | treefmt (the formatter output, built by repkgs): format in place and run the linters                                                        |
 | `scripts/docs serve`                                                                                                                                                        | check the module list in `docs/SUMMARY.md`, generate the module pages, then serve the book                                                  |
-| `scripts/pins check`, `scripts/pins apply NAME`                                                                                                                             | show and bump the pins in `pins/` with uptrack (`patches/repkgs/README.md`)                                                                 |
+| `scripts/pins check`, `scripts/pins apply NAME`                                                                                                                             | show and bump the pins in `pins/` with uptrack (`CONTRIBUTING.md`, "The repkgs fork")                                                       |
 
 The update test needs two releases with the same keys, and both are outputs:
 

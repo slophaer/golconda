@@ -21,7 +21,7 @@ The fork's branch is meant to hold only what upstream should take. A package goe
 ## Why repkgs
 
 Golconda pins a fork of repkgs (branch `golconda`; see
-[patches/repkgs](../../patches/repkgs/README.md) for its commits and their issue drafts) with
+[the repkgs fork](../../CONTRIBUTING.md#the-repkgs-fork) for its commits and how to change it) with
 relocation fixes: PT_INTERP via libc with relative sysroot links, and glibc `$ORIGIN` expansion from
 `AT_EXECFN` instead of `/proc`.
 
@@ -127,5 +127,5 @@ could replace GnuPG ([Signed index](releases.md#the-signed-index)).
 
 A new daemon starts as a recipe in `packages/` ([Comparison](comparison.md)). Only a missing build
 system or toolchain feature needs a fork change. Track such changes in
-[the fork's patch series](../../patches/repkgs/README.md); relocation and toolchain maintenance
+[the fork's branch](../../CONTRIBUTING.md#the-repkgs-fork); relocation and toolchain maintenance
 remain external costs even when a local recipe is small.
