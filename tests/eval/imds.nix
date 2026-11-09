@@ -58,6 +58,8 @@ let
   netUnit = "golconda-imds-network.service";
   netWants = "/usr/lib/systemd/system/${importUnit}.wants/${netUnit}";
   withImds = composeWith { "/imds" = { }; };
+  # the IMDS lock on lo: a user data .network file for the link replaces 85-imds-early.network
+  lockFile = "${netDir}/10-golconda-imds-lock.network";
 in
 [
   (check "imds: systemd builds the IMDS stack, its network mode locked" (
@@ -149,5 +151,22 @@ in
     # reloads and reconfigures the links whose file changed
     && has "\nExecStart=/usr/lib/systemd/systemd-network-generator\n"
     && has "\nExecStart=/usr/bin/networkctl reload\n"
+  ))
+  (check "imds: the endpoint lock is on lo, where a .network file for the link does not replace it" (
+    let
+      t = withImds.files.${lockFile}.text or "";
+      has = x: hasInfix x t;
+    in
+    !((composeWith lan).files ? ${lockFile})
+    && has "[Match]\nName=lo\n"
+    # imdsd's own rule, before the next one: its table has the route while 85-imds-early.network
+    # is in use, and the main table then has a prohibit route to the endpoint
+    && has "[RoutingPolicyRule]\nFirewallMark=0x7FFF0815\nTable=0x7FFF0815\nPriority=32100\n"
+    # once the link has another file, imdsd's table is empty: marked packets take the main table
+    && has "[RoutingPolicyRule]\nFirewallMark=0x7FFF0815\nTable=main\nPriority=32101\n"
+    # every other packet to the endpoint is refused, whatever file the link has
+    && has "[RoutingPolicyRule]\nTo=169.254.169.254/32\nType=prohibit\nPriority=32102\n"
+    # no DHCP host name drop-in: lo has no DHCP
+    && !(withImds.files ? "${netDir}/10-golconda-imds-lock.network.d/golconda-imds.conf")
   ))
 ]
