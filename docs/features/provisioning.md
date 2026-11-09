@@ -149,10 +149,10 @@ The boot test proves this in QEMU ([What is proven](../proven.md)):
 - `imds-import-inactive`: without a cloud in DMI, the test image's `/imds` runs no import.
 
 On a Hetzner Cloud server (2026-11-09, [What is proven](../proven.md#imds-on-hetzner-cloud)), with
-`/imds` and no ESP credential: the import passed, the host name came from the metadata, the user
-data's key logged in, the user data's `.network` file gave the IPv6 address in the first boot, and
-the endpoint stayed locked. That run had the earlier form of the fix: a udev rule for the paths, and
-the lock copied into the user data. The hwdb patch and the lock on `lo` have run in QEMU only.
+`/imds` and no ESP credential, the current form ran: the hwdb patch, the lock on `lo` and the ssh
+keys from the JSON array. The import passed, the host name came from the metadata, both project keys
+logged in, the user data's `ssh.authorized_keys.root` was skipped, the user data's `.network` file
+(with no lock in it) gave the IPv6 address in the first boot, and the endpoint stayed locked.
 
 ## Limits
 
@@ -160,8 +160,8 @@ the lock copied into the user data. The hwdb patch and the lock on `lo` have run
   Secrets are [vars](vars.md).
 - With Secure Boot on and a TPM2, the guest refuses ESP credentials. That run fails.
 - No marker covers a cloud's own OEM strings, or fw_cfg on real hardware.
-- The ssh keys from Hetzner's JSON array have run in QEMU only, not on Hetzner. A user data
-  `ssh.authorized_keys.root` is skipped where the metadata has a key.
+- A user data `ssh.authorized_keys.root` is skipped where the metadata has a key. A bad entry in
+  Hetzner's array has run in QEMU only.
 - No marker covers a real cloud's endpoint; Hetzner's ran by hand. Other clouds' hwdb entries have
   not run.
 - The lock on `lo` covers `169.254.169.254` only. An endpoint on IPv6 (AWS also has `fd00:ec2::254`)

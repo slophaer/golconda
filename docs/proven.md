@@ -37,11 +37,13 @@ of it. The image for a host without Secure Boot (`/system.secureBoot = false`,
 | with `/imds` and no cloud in DMI, no IMDS import runs                                                                                                                                                                                                                                                                                                                                              | `imds-import-inactive`                                                                                                                                                                                   | `--ssh-test`                                    |
 | without Secure Boot, the kernel's built-in key accepts the verity signature                                                                                                                                                                                                                                                                                                                        | no marker of its own: `image-smoke-test-nosb` reaches `multi-user.target` with `ipe.enforce=1`                                                                                                           | no `--secure-boot`                              |
 
-Runs at the same time: the default boot, `--next`, `--next --fail-health`, `--imds` and
-`--next --tamper-index` booted one image together with `scripts/verify --boot-set`. Each used its
-own ssh port and its own update or metadata server (the guest's `169.254.169.2:8074` on QEMU's
-network `169.254.169.0/24`; for `--imds`, `169.254.169.254:80`), all five passed, and the run exited
-with status 0. The PASS lists of the default boot and of `--next` are those of a run alone, plus
+Runs at the same time: the default boot, `--next`, `--next --fail-health`, `--next --tamper-index`,
+`--imds` and `--imds --next` (all with `--secure-boot --tpm`) booted one image together with
+`scripts/verify --boot-set`. Each used its own ssh port and its own update or metadata server (the
+guest's `169.254.169.2:8074` on QEMU's network `169.254.169.0/24`; for `--imds`,
+`169.254.169.254:80`), all six passed, and the run exited with status 0 (2026-11-09, branch
+`imds-line`). With `--image image-smoke-test-nosb`, `--ssh-test --esp-creds` and `--ssh-test --next`
+passed together. The PASS lists of the default boot and of `--next` are those of a run alone, plus
 `imds-import-inactive`
 ([Image artifacts: the boot test](reference/image.md#boot-test-scriptsboot-test)).
 
@@ -52,13 +54,29 @@ run.
 
 ## `/imds` on Hetzner Cloud
 
-On 2026-11-09 one `cpx12` in `fsn1` (UEFI, no Secure Boot, no TPM) booted the image of this branch
-with `["/imds"]`, written from the rescue system, and no credential on the ESP. The user data listed
-`ssh.authorized_keys.root`, a test credential and `network.network.60-hetzner-ipv6`: the server's
-`<prefix>::1/64`, `Gateway=fe80::1`, `UseHostname=no` and the IMDS lock. Runs by hand, not boot-test
-markers. The image had the first form of the fix: a udev rule for Hetzner's paths, and the lock only
-in the user data. The branch now patches systemd's hwdb and keeps the lock on `lo`; that form has
-run in QEMU only (`--imds`).
+Two runs by hand on a `cpx12` in `fsn1` (UEFI, no Secure Boot, no TPM), each with an image written
+from the rescue system, `["/imds"]`, and no credential on the ESP. They are not boot-test markers.
+
+**The final form (2026-11-09, branch `imds-line` at `24ed89b`).** systemd's hwdb patched for
+Hetzner's paths (`hwdb-imds-hetzner.patch`), the IMDS lock on `lo`, and the ssh keys from Hetzner's
+JSON array (`imds-ssh-key-json.patch`, `hwdb-imds-hetzner-ssh-keys.patch`). The server was created
+with two project keys. The user data listed a test credential, `ssh.authorized_keys.root` with a
+third key, and `network.network.60-hetzner-ipv6`: `<prefix>::1/64`, `Gateway=fe80::1`,
+`UseHostname=no`, and no lock.
+
+| claim                                                                                   | evidence                                                                                                                                                                               |
+| --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| imdsd reads Hetzner's paths from systemd's patched hwdb; the import passes              | `udevadm info` on the DMI device: `IMDS_DATA_URL=http://169.254.169.254/hetzner/v1`, `IMDS_KEY_SSH_KEY_JSON=/metadata/public-keys`, no `IMDS_KEY_SSH_KEY`; `systemctl --failed` empty  |
+| the host name comes from the metadata                                                   | `hostname` and `/etc/hostname` are the server's name                                                                                                                                   |
+| both project keys of the JSON array log in                                              | `/metadata/public-keys` held both; `Imported SSH key as credential 'ssh.authorized_keys.root'`; a login with each; `authorized_keys` 0600 with two lines                               |
+| the user data's `ssh.authorized_keys.root` is skipped (the metadata's keys come first)  | `Skipping importing of credential 'ssh.authorized_keys.root', it already exists`; `Permission denied (publickey)` for its key                                                          |
+| the user data's `.network` file gives the global IPv6 address in the first boot         | the link uses `/run/systemd/network/60-hetzner-ipv6.network` and has `<prefix>::1` and `fe80::1`; `systemd-pull` fetched `http://[2a01:4ff:ff00::3:3]/` and `https://ipv6.google.com/` |
+| with that file (no lock in it), only imdsd reaches the endpoint: the lock on `lo` holds | `systemd-pull` of `http://169.254.169.254/hetzner/v1/metadata/hostname`: `Could not connect to server`; `systemd-imds --cache=no -K hostname` answers                                  |
+
+The run did not reboot the server, and its array had no bad entry (the QEMU test covers that).
+
+**The first form (2026-11-09, branch `imds-hetzner` before the hwdb patch).** A udev rule for
+Hetzner's paths, the lock only in the user data's `.network` file, no ssh key from the metadata.
 
 | claim                                                                                              | evidence                                                                                                                                                            |
 | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
