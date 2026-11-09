@@ -45,6 +45,8 @@ valid:
   - "open a.txt | str trim | save -f b.txt"
 invalid:
   - "open f.txt | str trim | save -f f.txt"
+  - "open f.txt | save -f f.txt"
+  - 'open "f.txt" | lines | save -f "f.txt"'
 ---
 id: operator-continuation
 valid:
