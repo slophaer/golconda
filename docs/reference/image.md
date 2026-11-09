@@ -279,9 +279,15 @@ any set fails. Leading `NAME=value` words of a set are environment, so
 `sysupdate-installed` is the expected `FAIL`), so a matrix that holds it exits 1 unless the other
 sets' lines are all `PASS`.
 
-Several runs can share one host and one image. Each has a work directory from `mktemp -d`, its own
-swtpm socket and state, firmware variables, disk overlay, keys, ssh port and update server. A run
-claims its ssh port with a `flock` on `$BOOT_TEST_PORT_LOCKS/PORT` (default
+The work directory of every run is `run.XXXXXX` under `$BOOT_TEST_CACHE` (default
+`${XDG_CACHE_HOME:-$HOME/.cache}/golconda-boot-test`), not under `/tmp`, which a queue task or a
+reboot may drop. A run that passes removes its directory; a run that fails keeps it, with the serial
+logs, and prints the path. `scripts/verify --boot-set` puts its logs in `verify.XXXXXX` in the same
+directory and removes its own directories older than 7 days.
+
+Several runs can share one host and one image. Each has its own work directory, its own swtpm socket
+and state, firmware variables, disk overlay, keys, ssh port and update server. A run claims its ssh
+port with a `flock` on `$BOOT_TEST_PORT_LOCKS/PORT` (default
 `$XDG_RUNTIME_DIR/boot-test-ports-UID`), so two runs that start together never pick the same one,
 and the lock goes away when the run dies. Each run needs about 2 GiB of RAM and 2 CPUs.
 `BOOT_TEST_STORE_ROOT` names the root of a chroot store (`--store 'local?root=DIR'`): the harness

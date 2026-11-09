@@ -64,8 +64,8 @@ export FAKE_REAL_SLEEP
 PATH=$WORK/bin:$PATH
 FAKE_FIRMWARE=$WORK/firmware
 FAKE_FIXTURES=$ROOT/tests/boot-log
-BOOT_TEST_TMPDIR=$WORK/runs
-export PATH FAKE_FIRMWARE FAKE_FIXTURES BOOT_TEST_TMPDIR
+BOOT_TEST_CACHE=$WORK/runs
+export PATH FAKE_FIRMWARE FAKE_FIXTURES BOOT_TEST_CACHE
 ERRORS=0
 for mode in delayed success-systemd mentions-systemd dependency-failed multi-user-only empty exited-after-poll; do
   FAKE_MODE=$mode
@@ -105,5 +105,28 @@ for mode in delayed success-systemd mentions-systemd dependency-failed multi-use
     echo "FAIL: CLI $mode work directory policy"
     ERRORS=$((ERRORS + 1))
   fi
+  # the work directory is under BOOT_TEST_CACHE, not /tmp
+  case $run_dir in
+  "$WORK/runs/"*) echo "PASS: CLI $mode work directory under BOOT_TEST_CACHE" ;;
+  *)
+    echo "FAIL: CLI $mode work directory $run_dir is not under $WORK/runs"
+    ERRORS=$((ERRORS + 1))
+    ;;
+  esac
 done
+# without BOOT_TEST_CACHE the directory is ${XDG_CACHE_HOME:-$HOME/.cache}/golconda-boot-test
+FAKE_MODE=empty FAKE_STOPPED=$WORK/stopped-xdg FAKE_RELEASE=$WORK/release-xdg \
+  FAKE_TIMEOUT_PID=$WORK/timeout-pid-xdg
+export FAKE_MODE FAKE_STOPPED FAKE_RELEASE FAKE_TIMEOUT_PID
+env -u BOOT_TEST_CACHE XDG_CACHE_HOME="$WORK/xdg" \
+  sh "$ROOT/scripts/boot-test" "$WORK/disk.raw" --keys "$WORK/keys" --timeout 3 \
+  > "$WORK/xdg.out" 2>&1 || true
+run_dir=$(awk '/^Work directory:/ { print $3 }' "$WORK/xdg.out")
+case $run_dir in
+"$WORK/xdg/golconda-boot-test/"*) echo "PASS: CLI default work directory is under XDG_CACHE_HOME" ;;
+*)
+  echo "FAIL: CLI default work directory $run_dir is not under $WORK/xdg/golconda-boot-test"
+  ERRORS=$((ERRORS + 1))
+  ;;
+esac
 [ "$ERRORS" -eq 0 ]

@@ -53,7 +53,7 @@ cat >"$WORK/bin/nix-instantiate" <<'EOF'
 echo '"245843bcafe"'
 EOF
 chmod +x "$WORK/bin/"*
-export RV="$WORK" PATH="$WORK/bin:$PATH" CALLS="$WORK/calls" FAKE_IMAGES="$WORK/images"
+export BOOT_TEST_CACHE="$WORK/cache" RV="$WORK" PATH="$WORK/bin:$PATH" CALLS="$WORK/calls" FAKE_IMAGES="$WORK/images"
 unset BOOT_TEST_STORE_ROOT NIX_REMOTE || true
 
 # A repository with scripts/verify, a fake boot-test, and two commits.
@@ -189,5 +189,19 @@ run scripts/verify --each-commit "$(git rev-list --max-parents=0 HEAD)" --boot-s
 [ "$(grep -c '^boot-test' "$CALLS")" = 2 ] || fail "want 2 boots of the last commit: $(cat "$CALLS")"
 echo "$out" | grep -qE '^PASS boot\[2\] .*--timeout 2 ' || fail "set 2 not reported: $out"
 rm -rf "$(echo "$out" | sed -n 's/^PASS boot\[1\] .*(log \(.*\)\/boot-1\.log)$/\1/p' | head -1)"
+
+# 11 logs live under BOOT_TEST_CACHE, else ${XDG_CACHE_HOME:-$HOME/.cache}/golconda-boot-test, not
+#    /tmp; directories older than 7 days are removed, newer ones stay
+run scripts/verify --boot-set '--timeout 1'
+log=$(echo "$out" | sed -n 's/^PASS boot\[1\] .*(log \(.*\))$/\1/p' | head -1)
+case $log in "$WORK/cache/"*) ;; *) fail "log not under BOOT_TEST_CACHE: $log" ;; esac
+mkdir -p "$WORK/cache/verify.old" "$WORK/cache/run.old"
+touch -d '10 days ago' "$WORK/cache/verify.old" "$WORK/cache/run.old"
+run env -u BOOT_TEST_CACHE XDG_CACHE_HOME="$WORK/xdg" scripts/verify --boot-set '--timeout 1'
+log=$(echo "$out" | sed -n 's/^PASS boot\[1\] .*(log \(.*\))$/\1/p' | head -1)
+case $log in "$WORK/xdg/golconda-boot-test/"*) ;; *) fail "log not under XDG_CACHE_HOME: $log" ;; esac
+run scripts/verify --boot-set '--timeout 1'
+[ ! -e "$WORK/cache/verify.old" ] || fail "an old log directory was kept"
+[ -e "$WORK/cache/run.old" ] || fail "a run directory (a failed run's) was removed"
 
 echo "verify tests passed"

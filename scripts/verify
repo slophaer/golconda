@@ -27,6 +27,10 @@
 # line. With BOOT_TEST_STORE_ROOT set (a chroot store, nix --store local?root=DIR), the dev shell is
 # realised in the host store first (nix-shell runs it from /nix/store, the daemon builds it under
 # its root), and the image's links into /nix/store are followed under that root.
+#
+# The logs of --boot-set are in $BOOT_TEST_CACHE/verify.XXXXXX (default
+# ${XDG_CACHE_HOME:-$HOME/.cache}/golconda-boot-test, which is also where scripts/boot-test keeps
+# the work directories of failed runs); verify removes its own directories older than 7 days.
 set -u
 self=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)/$(basename "$0")
 dir=$(dirname "$self")/..
@@ -37,7 +41,7 @@ lint_only=0
 each=
 boot_sets=
 usage() {
-  sed -n '2,32s/^# \{0,1\}//p' "$self" >&2
+  sed -n '2,33s/^# \{0,1\}//p' "$self" >&2
   exit 2
 }
 while [ $# -gt 0 ]; do
@@ -181,7 +185,10 @@ boot_set() {
   env $envs ./scripts/boot-test "$disk" --keys "$keys" $rest >"$logs/boot-$1.log" 2>&1
   echo "$? $(($(date +%s) - start))" >"$logs/boot-$1.rc"
 }
-logs=$(mktemp -d "${TMPDIR:-/tmp}/verify-boot.XXXXXX")
+cache=${BOOT_TEST_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/golconda-boot-test}
+mkdir -p "$cache"
+find "$cache" -maxdepth 1 -name 'verify.*' -mtime +7 -exec rm -rf {} + 2>/dev/null
+logs=$(mktemp -d "$cache/verify.XXXXXX")
 n=0
 while IFS= read -r bs; do
   n=$((n + 1))

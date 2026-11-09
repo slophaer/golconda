@@ -113,6 +113,9 @@
 # BOOT_TEST_HTTP_PORT: the port the guest uses for the release server (default 8074): the test
 #   image's updateSource is http://10.0.2.2:8074/, so another port needs an image built for it.
 #   It is a guest-side address only; runs at the same time all use 8074.
+# BOOT_TEST_CACHE: where the work directories are (default ${XDG_CACHE_HOME:-$HOME/.cache}/
+#   golconda-boot-test, run.XXXXXX). A run that passes removes its directory; one that fails keeps
+#   it, with the serial logs and the guest's journals, and prints its path.
 # Runs at the same time: every run has its own work directory (mktemp), its own ssh port (a flock
 #   in $BOOT_TEST_PORT_LOCKS, default $XDG_RUNTIME_DIR/boot-test-ports-UID), swtpm socket, firmware
 #   variables, disk overlay and keys, and its own update server; nothing else is shared.
@@ -148,13 +151,14 @@ if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
     echo "Error: cannot find nixpkgs-dev-only pin" >&2
     exit 1
   fi
-  # nix-shell sets its own TMPDIR and removes it on exit: keep the work directory outside
-  BOOT_TEST_TMPDIR="${TMPDIR:-/tmp}"
-  export BOOT_TEST_TMPDIR
   exec nix-shell -I "nixpkgs=$DEV_PIN" -p qemu OVMF swtpm openssh python3 python3Packages.virt-firmware --run "$0 $*"
 fi
 
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+
+# the work directories of all runs, and scripts/verify's logs: not /tmp, whose contents a queue task
+# or a reboot may drop with the logs of a failed run
+BOOT_TEST_CACHE=${BOOT_TEST_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/golconda-boot-test}
 
 # --- argument parsing ---
 # SSH_PORT, the host port for the guest's sshd, is claimed below (claim_ssh_port)
@@ -302,7 +306,8 @@ if [ -n "$NEXT" ]; then
 fi
 
 # --- working directory ---
-WORKDIR=$(mktemp -d "${BOOT_TEST_TMPDIR:-${TMPDIR:-/tmp}}/boot-test.XXXXXX")
+mkdir -p "$BOOT_TEST_CACHE"
+WORKDIR=$(mktemp -d "$BOOT_TEST_CACHE/run.XXXXXX")
 KEEP_WORKDIR=1  # Keep on failure
 
 cleanup() {
@@ -322,7 +327,7 @@ trap cleanup EXIT
 
 # QEMU's -netdev option is split at commas and spaces
 case $WORKDIR in
-  *[,\ ]*) echo "Error: the work directory $WORKDIR has a comma or a space; set TMPDIR" >&2; exit 1 ;;
+  *[,\ ]*) echo "Error: the work directory $WORKDIR has a comma or a space; set BOOT_TEST_CACHE" >&2; exit 1 ;;
 esac
 claim_ssh_port
 init_ssh_opts
