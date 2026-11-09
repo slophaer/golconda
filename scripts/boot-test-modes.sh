@@ -145,6 +145,7 @@ test_imds() {
   check_imds_ssh_key
   check_imds_userdata_credential
   check_imds_ipv6
+  check_imds_locked
   check_imds_dhcp_hostname
   check_imds_ordering
 }

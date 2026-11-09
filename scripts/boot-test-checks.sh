@@ -363,6 +363,30 @@ check_imds_ipv6() {
   verdict "imds-ipv6 (the link uses /run/systemd/network/$IMDS_NET_CRED.network from the user data, and has $IMDS_IPV6)" $RC
 }
 
+# check_imds_locked: with the user data's .network file on the link, only imdsd reaches the
+# endpoint: systemd-pull, a root process without imdsd's firewall mark, gets no answer (the
+# prohibit route) and the server sees no request from it, while `systemd-imds --cache=no` (through
+# imdsd) makes the server answer again
+check_imds_locked() {
+  echo ""
+  echo "=== /imds: the endpoint stays locked ==="
+  RC=0
+  URL=http://$IMDS_ADDR/hetzner/v1/metadata/hostname
+  N0=$(grep -c '"GET /hetzner/v1/metadata/hostname ' "$IMDS_LOG") || N0=0
+  P=$(guest "/usr/lib/systemd/systemd-pull raw --direct --verify=no $URL /run/imds-probe 2>&1; echo rc=\$?; rm -f /run/imds-probe") || true
+  N1=$(grep -c '"GET /hetzner/v1/metadata/hostname ' "$IMDS_LOG") || N1=0
+  H=$(guest /usr/lib/systemd/systemd-imds --cache=no -K hostname 2>&1) || true
+  N2=$(grep -c '"GET /hetzner/v1/metadata/hostname ' "$IMDS_LOG") || N2=0
+  echo "systemd-pull: $P"
+  echo "systemd-imds -K hostname: $H"
+  echo "GET .../hostname at the server: $N0 before, $N1 after systemd-pull, $N2 after systemd-imds"
+  echo "$P" | grep -q '^rc=0$' && RC=1
+  [ "$N1" = "$N0" ] || RC=1
+  [ "$N2" -gt "$N1" ] || RC=1
+  echo "$H" | grep -q imds-test || RC=1
+  verdict "imds-endpoint-locked (with the user data's .network file, systemd-pull cannot reach $IMDS_ADDR; imdsd can)" $RC
+}
+
 # check_imds_ordering: the import is ordered after network-online.target and before sysinit.target
 # and tmpfiles; systemd breaks an ordering cycle by dropping a job, so the journal must have none
 check_imds_ordering() {

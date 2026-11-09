@@ -64,15 +64,17 @@
 #   credential is given. The server answers imds-test, and user data that lists the credentials
 #   imds-canary, login.motd, ssh.authorized_keys.root (a key pair made in the work directory) and
 #   network.network.60-imds-ipv6 (the static address 2001:db8:5eed::1/64, as Hetzner gives one:
-#   QEMU's router advertisements name only fec0::/64). QEMU's DHCP server offers the host name
-#   dhcp-test.
+#   QEMU's router advertisements name only fec0::/64; and the IMDS lock of 85-imds-early.network,
+#   which the file replaces). QEMU's DHCP server offers the host name dhcp-test.
 #   Checks: imds-hostname (systemd's import ran, pulled in by the generator, and the host name and
 #   /etc/hostname are imds-test), imds-hetzner-layout (the guest has no imds.* credential, asked
 #   for the host name and the user data at Hetzner's paths, and got no 404),
 #   imds-ssh-key (the user data's key logs in; /root/.ssh/authorized_keys is 0600),
 #   imds-userdata-credential (/run/credstore/imds-canary holds the value, and tmpfiles wrote
 #   login.motd to /etc/motd.d), imds-ipv6 (the user data's .network file configures the link: it
-#   has the global address 2001:db8:5eed::1), imds-dhcp-hostname (the lease holds dhcp-test,
+#   has the global address 2001:db8:5eed::1), imds-endpoint-locked (with that file, systemd-pull
+#   cannot reach 169.254.169.254 and the server sees no request from it; systemd-imds, through
+#   imdsd, can), imds-dhcp-hostname (the lease holds dhcp-test,
 #   /imds's UseHostname=no drop-in reaches 85-imds-early.network, and after a renewal the host
 #   name is still imds-test) and imds-no-ordering-cycle (the import before sysinit.target made no
 #   ordering cycle).

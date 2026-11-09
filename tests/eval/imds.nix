@@ -55,6 +55,9 @@ let
   # Hetzner's endpoint layout over 40-imds.hwdb's: a udev rule after 50-udev-default.rules (which
   # imports the hwdb properties) sets the DMI device's IMDS_* properties systemd-imdsd reads
   hetznerRule = "/usr/lib/udev/rules.d/70-golconda-imds.rules";
+  # the second run of systemd-network-generator, for the user data's network.* credentials
+  netUnit = "golconda-imds-network.service";
+  netWants = "/usr/lib/systemd/system/${importUnit}.wants/${netUnit}";
   withImds = composeWith { "/imds" = { }; };
 in
 [
@@ -141,5 +144,22 @@ in
     && has ''ENV{IMDS_KEY_SSH_KEY}=""''
     # the address stays hwdb's
     && !(has "IMDS_ADDRESS_IPV4")
+  ))
+  (check "imds: user data network.* credentials take effect in the boot that imports them" (
+    let
+      u = withImds.units.${netUnit} or "";
+      has = x: hasInfix x u;
+    in
+    !((composeWith lan).units ? ${netUnit})
+    && !((composeWith lan).links ? ${netWants})
+    # the import pulls it in, so it runs where the import runs
+    && (withImds.links.${netWants}.target or "") == "../${netUnit}"
+    && (withImds.links.${netWants}.kind or "") == "explicit"
+    && has "\nAfter=${importUnit}\n"
+    && has "\nImportCredential=network.netdev.*\nImportCredential=network.link.*\nImportCredential=network.network.*\n"
+    # systemd's own programs, no script: the generator writes /run/systemd/network, networkd
+    # reloads and reconfigures the links whose file changed
+    && has "\nExecStart=/usr/lib/systemd/systemd-network-generator\n"
+    && has "\nExecStart=/usr/bin/networkctl reload\n"
   ))
 ]
