@@ -137,12 +137,12 @@ built by hand). It deletes nothing, so the older release's files stay for a cach
 its index. For an S3 bucket, the release prefix needs anonymous `GET`: sysupdate sends no
 credentials, and every file is checked against the signed index anyway.
 
-Verification: `scripts/boot-test --next` serves `release/` on `127.0.0.1:8074` (`10.0.2.2:8074` in
-the guest) and rewrites no transfer file. The markers `http-source` and `http-fetch` show that the
-guest read its own `Type=url-file` definition and fetched each file over HTTP, and `index-signed`
-that it fetched `SHA256SUMS.gpg`; with `--tamper-index` the index the server sends has one byte more
-than its signature covers, and the run passes only when `sysupdate-refused` shows that the update
-installed nothing.
+Verification: `scripts/boot-test --next` serves `release/` on `127.0.0.1:8074` (`169.254.169.2:8074`
+in the guest) and rewrites no transfer file. The markers `http-source` and `http-fetch` show that
+the guest read its own `Type=url-file` definition and fetched each file over HTTP, and
+`index-signed` that it fetched `SHA256SUMS.gpg`; with `--tamper-index` the index the server sends
+has one byte more than its signature covers, and the run passes only when `sysupdate-refused` shows
+that the update installed nothing.
 
 ## 5. Enrol the certificate in the firmware
 

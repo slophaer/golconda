@@ -14,6 +14,7 @@ done
 cat > "$WORK/bin/qemu-system-x86_64" <<'EOF'
 #!/bin/sh
 set -eu
+[ -z "${FAKE_QEMU_ARGS:-}" ] || echo "$*" > "$FAKE_QEMU_ARGS"
 for arg do
   case "$arg" in file:*) log=${arg#file:} ;; esac
 done
@@ -129,4 +130,29 @@ case $run_dir in
   ERRORS=$((ERRORS + 1))
   ;;
 esac
+# every mode runs on QEMU's user network 169.254.169.0/24 (the --imds endpoint, 169.254.169.254, is
+# on the guest's link; the images' update source is its gateway, 169.254.169.2), not on 10.0.2.0/24
+FAKE_MODE=success-systemd FAKE_STOPPED=$WORK/stopped-net FAKE_RELEASE=$WORK/release-net \
+  FAKE_TIMEOUT_PID=$WORK/timeout-pid-net FAKE_QEMU_ARGS=$WORK/qemu-args
+export FAKE_MODE FAKE_STOPPED FAKE_RELEASE FAKE_TIMEOUT_PID FAKE_QEMU_ARGS
+sh "$ROOT/scripts/boot-test" "$WORK/disk.raw" --keys "$WORK/keys" --timeout 3 \
+  > "$WORK/net.out" 2>&1 || true
+if grep -q -- '-netdev user,[^ ]*net=169\.254\.169\.0/24' "$WORK/qemu-args" && ! grep -q '10\.0\.2\.' "$WORK/qemu-args"; then
+  echo "PASS: CLI the default boot's user network is 169.254.169.0/24"
+else
+  echo "FAIL: CLI the default boot's user network: $(cat "$WORK/qemu-args" 2>&1)"
+  ERRORS=$((ERRORS + 1))
+fi
+unset FAKE_QEMU_ARGS
+# --imds and --next together are accepted: the run goes on to --next's own checks of DIR
+actual=0
+sh "$ROOT/scripts/boot-test" "$WORK/disk.raw" --keys "$WORK/keys" --imds --next "$WORK/no-next" \
+  > "$WORK/imds-next.out" 2>&1 || actual=$?
+if [ "$actual" = 1 ] && grep -q 'no-next has no disk/release/SHA256SUMS' "$WORK/imds-next.out" &&
+   ! grep -q -- '--imds.*excludes\|--imds needs' "$WORK/imds-next.out"; then
+  echo "PASS: CLI --imds with --next is not refused"
+else
+  echo "FAIL: CLI --imds with --next (exit $actual): $(cat "$WORK/imds-next.out")"
+  ERRORS=$((ERRORS + 1))
+fi
 [ "$ERRORS" -eq 0 ]

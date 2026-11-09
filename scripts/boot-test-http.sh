@@ -6,10 +6,10 @@
 # shellcheck disable=SC2034,SC2153 # and read there
 
 # --- the release HTTP server (--next) ---
-# The image's url-file source is http://10.0.2.2:$HTTP_PORT/ (8074 in the test image), and --imds
-# serves Hetzner's metadata at http://169.254.169.254/. The harness opens no host port for
+# The image's url-file source is http://$UPDATE_ADDR:$HTTP_PORT/ (169.254.169.2:8074 in the test
+# image), and --imds serves Hetzner's metadata at http://169.254.169.254/. The harness opens no host port for
 # either: QEMU's user network forwards the guest's connections to such an address to a command
-# (start_qemu: guestfwd=tcp:10.0.2.2:$HTTP_PORT-cmd:$WORKDIR/serve-http), which QEMU starts once
+# (start_qemu: guestfwd=tcp:$UPDATE_ADDR:$HTTP_PORT-cmd:$WORKDIR/serve-http), which QEMU starts once
 # per connection with the connection on its stdin and stdout. Two runs on one host both serve
 # "8074" to their own guest and share nothing. The command is the standard library's
 # SimpleHTTPRequestHandler over stdio, so the guest sees the same server `python3 -m http.server`
@@ -83,12 +83,12 @@ start_http_server() {
   probe_http_server http /SHA256SUMS || return 1
   : > "$HTTP_LOG"
 
-  echo "Serving $NEXT_RELEASE to the guest as http://10.0.2.2:$HTTP_PORT/ (QEMU guestfwd, no host port; log $HTTP_LOG)"
+  echo "Serving $NEXT_RELEASE to the guest as http://$UPDATE_ADDR:$HTTP_PORT/ (QEMU guestfwd, no host port; log $HTTP_LOG)"
 }
 
 # --- the fake IMDS endpoint (--imds) ---
 # start_imds_server: what Hetzner Cloud's metadata service answers, at its own address and paths:
-# QEMU's user network is $IMDS_NET for an --imds run, so http://$IMDS_ADDR/ is on the guest's link
+# QEMU's user network is $GUEST_NET, so http://$IMDS_ADDR/ is on the guest's link
 # (a guestfwd, like the update server's: no host port), and the guest finds the endpoint by hwdb
 # alone, as on Hetzner: base URL http://$IMDS_ADDR/hetzner/v1, the host name and the other keys under
 # /metadata/, the user data at /userdata. /metadata/public-keys is Hetzner's JSON array of the
@@ -125,5 +125,5 @@ start_imds_server() {
   python3 -c 'import json, sys; json.load(open(sys.argv[1])); json.load(open(sys.argv[2]))' \
     "$IMDS_ROOT/hetzner/v1/userdata" "$M/public-keys" || return 1
   : > "$IMDS_LOG"
-  echo "Serving the fake IMDS endpoint to the guest as http://$IMDS_ADDR/hetzner/v1/ (QEMU network $IMDS_NET, guestfwd, no host port; log $IMDS_LOG)"
+  echo "Serving the fake IMDS endpoint to the guest as http://$IMDS_ADDR/hetzner/v1/ (QEMU network $GUEST_NET, guestfwd, no host port; log $IMDS_LOG)"
 }

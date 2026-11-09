@@ -11,8 +11,10 @@
 #   - optional Secure Boot with keys enrolled from --keys
 #   - optional TPM 2.0 via swtpm
 #   - SMBIOS type 11 credential: system.hostname=boot-test (not with --esp-creds or --imds)
-#   - user-mode networking with hostfwd to SSH (127.0.0.1:$BOOT_TEST_SSH_PORT; without it, the
-#     first free port from 10022 up, printed)
+#   - user-mode networking, 169.254.169.0/24 in every mode (not QEMU's default 10.0.2.0/24: the
+#     --imds endpoint, 169.254.169.254, must be on the guest's link; the test images' update
+#     source is the gateway, 169.254.169.2), with hostfwd to SSH (127.0.0.1:$BOOT_TEST_SSH_PORT;
+#     without it, the first free port from 10022 up, printed)
 #   - serial console logged to a file
 #
 # --keys DIR: the throwaway keys directory (from image-smoke-test's keys symlink
@@ -53,11 +55,13 @@
 #   Without --imds, the ssh checks also check imds-import-inactive: the test image has /imds, and
 #   QEMU's DMI names no cloud, so neither systemd-imds-early-network.service (only the generator
 #   pulls it) nor systemd-imds-import.service ever starts.
-# With --imds (needs --ssh-test; not with --esp-creds or --next): fakes Hetzner Cloud for /imds
-#   (docs/features/provisioning.md), and the guest finds the endpoint as on Hetzner: by hwdb and
-#   the image's own data, with no imds.* credential. SMBIOS type 0 says the BIOS vendor is Hetzner
-#   (40-imds.hwdb matches dmi:bvnHetzner:*). QEMU's user network is 169.254.169.0/24 (not
-#   10.0.2.0/24, so --next, whose update source is 10.0.2.2, cannot run with it), and a QEMU
+# With --imds (needs --ssh-test; not with --esp-creds; with --next the update follows the --imds
+#   checks): fakes Hetzner Cloud for /imds (docs/features/provisioning.md), and the guest finds the
+#   endpoint as on Hetzner: by hwdb and the image's own data, with no imds.* credential. SMBIOS
+#   type 0 says the BIOS vendor is Hetzner (40-imds.hwdb matches dmi:bvnHetzner:*). systemd-imds
+#   locks 169.254.169.254 only (a prohibit route), not the update server, 169.254.169.2, on the
+#   same network: imds-endpoint-locked and the update checks (http-fetch, sysupdate-installed)
+#   hold in one run. QEMU's user network is 169.254.169.0/24 (as in every mode), and a QEMU
 #   guestfwd serves http://169.254.169.254/ on the guest's link from a stdio HTTP server in the work
 #   directory, in Hetzner's layout: /hetzner/v1/metadata/hostname and the other keys,
 #   /hetzner/v1/metadata/public-keys (a JSON array), /hetzner/v1/userdata. No system.hostname
@@ -87,10 +91,10 @@
 # With --next DIR (implies --ssh-test): DIR is the next release's image-smoke output
 #   (DIR/disk/release, DIR/keys). The harness checks that release directory against
 #   docs/design/releases.md (four SHA256SUMS lines, fixed order, digests match), resolves its
-#   symlinks into $WORKDIR/http, serves that directory to the guest at 10.0.2.2:$BOOT_TEST_HTTP_PORT
+#   symlinks into $WORKDIR/http, serves that directory to the guest at 169.254.169.2:$BOOT_TEST_HTTP_PORT
 #   (a QEMU guestfwd to a stdio HTTP server in $WORKDIR; no host port), and installs it with
 #   systemd-sysupdate-update.service. The guest reads
-#   its own /usr/lib/sysupdate.d/*.transfer (Type=url-file, Path=http://10.0.2.2:PORT/), so it
+#   its own /usr/lib/sysupdate.d/*.transfer (Type=url-file, Path=http://169.254.169.2:PORT/), so it
 #   fetches SHA256SUMS and the artifacts over HTTP; the harness rewrites no definition. Then it
 #   reboots into the release, and checks that golconda-loader-update.service put the new loader on
 #   the ESP, that no /etc/systemd/system link names the old systemd store path or dangles
@@ -127,7 +131,7 @@
 #   http-fetch, sysupdate-installed and every check that needs the installed release. An update
 #   that installs, or any other failure, fails the run.
 # BOOT_TEST_HTTP_PORT: the port the guest uses for the release server (default 8074): the test
-#   image's updateSource is http://10.0.2.2:8074/, so another port needs an image built for it.
+#   image's updateSource is http://169.254.169.2:8074/, so another port needs an image built for it.
 #   It is a guest-side address only; runs at the same time all use 8074.
 # BOOT_TEST_CACHE: where the work directories are (default ${XDG_CACHE_HOME:-$HOME/.cache}/
 #   golconda-boot-test, run.XXXXXX). A run that passes removes its directory; one that fails keeps
@@ -178,6 +182,12 @@ BOOT_TEST_CACHE=${BOOT_TEST_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/golconda-boot
 
 # --- argument parsing ---
 # SSH_PORT, the host port for the guest's sshd, is claimed below (claim_ssh_port)
+# QEMU's user network, for every mode: 169.254.169.0/24, so that Hetzner's metadata address (--imds)
+# is on the guest's link. Its gateway, 169.254.169.2 (QEMU's "host", as 10.0.2.2 is on the default
+# network), is the update source the test images name: http://169.254.169.2:8074/. Only
+# 169.254.169.254 is locked by systemd-imds; the rest of the network is not.
+GUEST_NET=169.254.169.0/24
+UPDATE_ADDR=169.254.169.2
 # the guest's port for the release HTTP server: the test image's updateSource uses 8074
 HTTP_PORT=${BOOT_TEST_HTTP_PORT:-8074}
 DISK=""
@@ -193,9 +203,8 @@ TAMPER_INDEX=0
 FACTORY_RESET=0
 ESP_CREDS=0
 IMDS=0
-# --imds: QEMU's user network, Hetzner's metadata address on it, and the user data's IPv6 address
-# and .network credential (boot-test-http.sh serves them; no host port is opened)
-IMDS_NET=169.254.169.0/24
+# --imds: Hetzner's metadata address, and the user data's IPv6 address and .network credential
+# (boot-test-http.sh serves them; no host port is opened)
 IMDS_ADDR=169.254.169.254
 IMDS_IPV6=2001:db8:5eed::1
 IMDS_NET_CRED=60-imds-ipv6
@@ -278,8 +287,8 @@ if [ "$ESP_CREDS" = 1 ] && [ "$SSH_TEST" = 0 ]; then
   echo "Error: --esp-creds needs --ssh-test: the checks log in with the generated key" >&2
   exit 1
 fi
-if [ "$IMDS" = 1 ] && { [ "$SSH_TEST" = 0 ] || [ "$ESP_CREDS" = 1 ] || [ -n "$NEXT" ]; }; then
-  echo "Error: --imds needs --ssh-test (the checks run over ssh), excludes --esp-creds (both set the host name and the root key) and --next (its network has no 10.0.2.2, the update source)" >&2
+if [ "$IMDS" = 1 ] && { [ "$SSH_TEST" = 0 ] || [ "$ESP_CREDS" = 1 ]; }; then
+  echo "Error: --imds needs --ssh-test (the checks run over ssh) and excludes --esp-creds (both set the host name and the root key)" >&2
   exit 1
 fi
 if [ "$IMDS" = 1 ]; then

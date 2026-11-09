@@ -83,10 +83,12 @@ in
           "/system" = {
             name = "boot-test";
             inherit version;
-            # The update test's release server: 10.0.2.2 is QEMU's user-network gateway, and
-            # the test forwards the guest's connections to port 8074 there to a per-run HTTP
-            # server of the next release's disk.release/ (guestfwd; docs/reference/image.md).
-            updateSource = "http://10.0.2.2:8074/";
+            # The update test's release server: 169.254.169.2 is the gateway of the test's QEMU
+            # user network (169.254.169.0/24, for --imds: the metadata address 169.254.169.254
+            # must be on the link), and the test forwards the guest's connections to port 8074
+            # there to a per-run HTTP server of the next release's disk.release/ (guestfwd;
+            # docs/reference/image.md). systemd-imds locks only 169.254.169.254.
+            updateSource = "http://169.254.169.2:8074/";
           };
           "/services/sshd" = {
             port = 22;

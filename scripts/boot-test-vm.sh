@@ -202,20 +202,20 @@ start_qemu() {
   fi
   # --imds: Hetzner by DMI, and nothing else: the guest takes the endpoint from hwdb and the
   # image, as on Hetzner. Its address, 169.254.169.254, must be on the guest's link (imdsd's route
-  # to it has Scope=link), so QEMU's user network is IMDS_NET, and QEMU answers ARP for the
-  # guestfwd address. QEMU's DHCP server offers a host name, which networkd must not apply.
+  # to it has Scope=link), so QEMU's user network is GUEST_NET in every mode, and QEMU answers ARP
+  # for the guestfwd address. QEMU's DHCP server offers a host name, which networkd must not apply.
   SMBIOS_IMDS=""
   NET_IMDS=""
   if [ "$IMDS" = 1 ]; then
     SMBIOS_IMDS="-smbios type=0,vendor=Hetzner"
-    NET_IMDS=",net=$IMDS_NET,hostname=dhcp-test,guestfwd=tcp:$IMDS_ADDR:80-cmd:$WORKDIR/serve-imds"
+    NET_IMDS=",hostname=dhcp-test,guestfwd=tcp:$IMDS_ADDR:80-cmd:$WORKDIR/serve-imds"
   fi
 
-  # --next: the guest's connections to the image's update source, 10.0.2.2:$HTTP_PORT, go to this
-  # run's own server (boot-test-http.sh), whatever the host ports are
+  # --next: the guest's connections to the image's update source, $UPDATE_ADDR:$HTTP_PORT, go to
+  # this run's own server (boot-test-http.sh), whatever the host ports are
   NET_UPDATE=""
   if [ -n "$NEXT" ]; then
-    NET_UPDATE=",guestfwd=tcp:10.0.2.2:$HTTP_PORT-cmd:$WORKDIR/serve-http"
+    NET_UPDATE=",guestfwd=tcp:$UPDATE_ADDR:$HTTP_PORT-cmd:$WORKDIR/serve-http"
   fi
 
   QEMU_ARGS="-machine q35,accel=kvm:tcg \
@@ -230,7 +230,7 @@ start_qemu() {
     $NO_REBOOT \
     $SMBIOS_HOSTNAME \
     $SMBIOS_IMDS \
-    -netdev user,id=net0,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22$NET_UPDATE$NET_IMDS \
+    -netdev user,id=net0,net=$GUEST_NET,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22$NET_UPDATE$NET_IMDS \
     -device virtio-net-pci,netdev=net0"
   
   if [ "$TPM" = 1 ] || [ "$SECURE_BOOT" = 1 ]; then

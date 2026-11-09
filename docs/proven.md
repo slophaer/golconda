@@ -39,11 +39,16 @@ of it. The image for a host without Secure Boot (`/system.secureBoot = false`,
 
 Runs at the same time: the default boot, `--next`, `--next --fail-health`, `--imds` and
 `--next --tamper-index` booted one image together with `scripts/verify --boot-set`. Each used its
-own ssh port and its own update or metadata server (the guest's `10.0.2.2:8074`; for `--imds`, then
-`10.0.2.2:8075`, now `169.254.169.254:80` on a QEMU network of its own), all five passed, and the
-run exited 0. The PASS lists of the default boot and of `--next` are those of a run alone, plus
+own ssh port and its own update or metadata server (the guest's `169.254.169.2:8074` on QEMU's
+network `169.254.169.0/24`; for `--imds`, `169.254.169.254:80`), all five passed, and the run exited
+with status 0. The PASS lists of the default boot and of `--next` are those of a run alone, plus
 `imds-import-inactive`
 ([Image artifacts: the boot test](reference/image.md#boot-test-scriptsboot-test)).
+
+`--imds --next` boots the faked Hetzner Cloud and then updates the image from the update server on
+the same network: `imds-endpoint-locked` (only the endpoint `169.254.169.254` is locked) and
+`http-fetch`, `sysupdate-installed`, `boots-next` and `no-failed-units-after-update` pass in one
+run.
 
 ## `/imds` on Hetzner Cloud
 

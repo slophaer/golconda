@@ -85,14 +85,14 @@ expect_status 1 "guest already exited without markers" wait_for_boot
 
 # --tamper-index: the update is refused when sysupdate's journal shows the index check failing and
 # no install; an unrelated failure or an install is not a refusal
-BAD_SIG='Downloading 119B for http://10.0.2.2:8074/SHA256SUMS.gpg.
-Download of http://10.0.2.2:8074/SHA256SUMS.gpg complete.
+BAD_SIG='Downloading 119B for http://169.254.169.2:8074/SHA256SUMS.gpg.
+Download of http://169.254.169.2:8074/SHA256SUMS.gpg complete.
 gpg: BAD signature from "Golconda smoke release index <index@golconda.invalid>" [unknown]
 DOWNLOAD INVALID: Signature verification failed.'
 expect_status 0 "tamper: a bad index signature is a refusal" refusal_evidence "$BAD_SIG"
 expect_status 1 "tamper: an install is no refusal" refusal_evidence "$BAD_SIG
-Successfully installed 'http://10.0.2.2:8074/boot-test_20261031.2.usr.x.raw' as 'usr_20261031.2'"
-expect_status 1 "tamper: a download error is no refusal" refusal_evidence "Failed to download http://10.0.2.2:8074/SHA256SUMS: HTTP 404"
+Successfully installed 'http://169.254.169.2:8074/boot-test_20261031.2.usr.x.raw' as 'usr_20261031.2'"
+expect_status 1 "tamper: a download error is no refusal" refusal_evidence "Failed to download http://169.254.169.2:8074/SHA256SUMS: HTTP 404"
 expect_status 1 "tamper: an empty journal is no refusal" refusal_evidence ""
 
 [ "$ERRORS" -eq 0 ]

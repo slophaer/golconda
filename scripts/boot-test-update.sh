@@ -101,7 +101,7 @@ test_next() {
   test_release_index
   OLD_VERSION=$(guest_version)
   OLD_LOADER=$(guest_hash "$ESP_REMOVABLE")
-  echo "running $OLD_VERSION, installing $NEXT_VERSION from http://10.0.2.2:$HTTP_PORT/"
+  echo "running $OLD_VERSION, installing $NEXT_VERSION from http://$UPDATE_ADDR:$HTTP_PORT/"
   push_admin_vars
 
   echo ""
@@ -110,8 +110,8 @@ test_next() {
   echo "$DEF"
   RC=0
   echo "$DEF" | grep -q '^Type=url-file$' || RC=1
-  echo "$DEF" | grep -q "^Path=http://10.0.2.2:$HTTP_PORT/$" || RC=1
-  verdict "http-source (10-usr.transfer: Type=url-file, Path=http://10.0.2.2:$HTTP_PORT/)" $RC
+  echo "$DEF" | grep -q "^Path=http://$UPDATE_ADDR:$HTTP_PORT/$" || RC=1
+  verdict "http-source (10-usr.transfer: Type=url-file, Path=http://$UPDATE_ADDR:$HTTP_PORT/)" $RC
 
   echo ""
   echo "=== systemd-sysupdate-update.service ==="
@@ -122,7 +122,7 @@ test_next() {
   # sysupdate logs "Successfully installed '<source URL>' ... as '<target>' ...": for a url-file
   # source the source is the http URL, not a local path
   RC_FETCH=0
-  echo "$JOURNAL" | grep -q "Successfully installed 'http://10.0.2.2:$HTTP_PORT/" || RC_FETCH=1
+  echo "$JOURNAL" | grep -q "Successfully installed 'http://$UPDATE_ADDR:$HTTP_PORT/" || RC_FETCH=1
   if [ "$TAMPER_INDEX" != 1 ]; then
     verdict "http-fetch (the journal names the release over http, not a local file)" $RC_FETCH
   fi

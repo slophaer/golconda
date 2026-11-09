@@ -268,8 +268,16 @@ put `age` and `age-keygen` (`packages.x86_64-linux.age`) and `ssh-keygen` on PAT
 `BOOT_TEST_SSH_PORT` sets the host port for the guest's sshd; without it the harness takes the first
 free port from 10022 up and prints it (`ssh: 127.0.0.1:10023 -> guest 22`). `BOOT_TEST_HTTP_PORT`
 sets the port the guest uses for the release server of `--next` (default 8074): it is an address
-inside the guest's network, not a host port. The test image's `updateSource` names 8074, so another
-port needs an image built with that `updateSource`.
+inside the guest's network, not a host port. The test image's `updateSource` names
+`169.254.169.2:8074`, so another port needs an image built with that `updateSource`.
+
+Every mode runs on QEMU's user network `169.254.169.0/24` (`-netdev user,net=`), not the default
+`10.0.2.0/24`: `--imds` needs Hetzner's metadata address, `169.254.169.254`, on the guest's link.
+The network's gateway, `169.254.169.2` (QEMU's "host", where `10.0.2.2` is on the default network),
+is the update source the test images name. systemd's IMDS lock (`imds-network=locked`) is one
+`prohibit` route for the endpoint address alone, so the rest of the network, the update server
+included, stays reachable; `imds-endpoint-locked` and the update markers prove both in one run
+(`--imds --next`).
 
 `scripts/verify --boot-set ARGS` (repeat it) builds the image once and boots a list of flag sets at
 the same time, each with its own log. `@next` in the flags stands for the next release's image:
@@ -313,21 +321,21 @@ lists the directory. It finds the ESP in the GPT and refuses a path in `/nix/sto
 ([Bootstrap credentials](../design/boot.md#bootstrap-credentials)), so that run fails.
 `BOOT_TEST_ESP_NO_KEY=1` leaves the key out of the ESP: the login must then fail.
 
-`--imds` (with `--ssh-test`, not with `--esp-creds` or `--next`) fakes Hetzner Cloud for `/imds`,
-which the test image has, and the guest finds the endpoint as it does on Hetzner: by hwdb alone
-(systemd's entry with `packages/systemd`'s patch), with no `imds.*` credential. QEMU gets
-`-smbios type=0,vendor=Hetzner`, so `40-imds.hwdb` matches. Its user network is `169.254.169.0/24`
-(`-netdev user,net=`), so `169.254.169.254` is on the guest's link, as imdsd's route to it
-(`Scope=link`) needs; the image's update source, `10.0.2.2`, is then not on it, hence no `--next`. A
-QEMU `guestfwd` serves port 80 of `169.254.169.254` from a stdio HTTP server in the work directory,
-in Hetzner's layout: `/hetzner/v1/metadata/hostname` (`imds-test`), `region`, `availability-zone`,
-`public-ipv4`, `public-keys` (a JSON array with a key nothing logs in with) and
-`/hetzner/v1/userdata`. It passes no SMBIOS host name. The user data lists the credentials
-`imds-canary`, `login.motd`, `ssh.authorized_keys.root` (a key pair the harness makes) and
-`network.network.60-imds-ipv6`: the static address `2001:db8:5eed::1/64`, `IPv6AcceptRA=no` and
-`UseHostname=no`, and nothing of the IMDS lock of `85-imds-early.network`, which the file replaces.
-QEMU's router advertisements name only `fec0::/64`, so no other route gives that address. QEMU's
-DHCP server offers the host name `dhcp-test` (`-netdev user,hostname=`).
+`--imds` (with `--ssh-test`, not with `--esp-creds`; with `--next` the update test runs after the
+`--imds` checks) fakes Hetzner Cloud for `/imds`, which the test image has, and the guest finds the
+endpoint as it does on Hetzner: by hwdb alone (systemd's entry with `packages/systemd`'s patch),
+with no `imds.*` credential. QEMU gets `-smbios type=0,vendor=Hetzner`, so `40-imds.hwdb` matches.
+Its user network is `169.254.169.0/24` (`-netdev user,net=`, as in every mode), so `169.254.169.254`
+is on the guest's link, as imdsd's route to it (`Scope=link`) needs. A QEMU `guestfwd` serves port
+80 of `169.254.169.254` from a stdio HTTP server in the work directory, in Hetzner's layout:
+`/hetzner/v1/metadata/hostname` (`imds-test`), `region`, `availability-zone`, `public-ipv4`,
+`public-keys` (a JSON array with a key nothing logs in with) and `/hetzner/v1/userdata`. It passes
+no SMBIOS host name. The user data lists the credentials `imds-canary`, `login.motd`,
+`ssh.authorized_keys.root` (a key pair the harness makes) and `network.network.60-imds-ipv6`: the
+static address `2001:db8:5eed::1/64`, `IPv6AcceptRA=no` and `UseHostname=no`, and nothing of the
+IMDS lock of `85-imds-early.network`, which the file replaces. QEMU's router advertisements name
+only `fec0::/64`, so no other route gives that address. QEMU's DHCP server offers the host name
+`dhcp-test` (`-netdev user,hostname=`).
 
 `--secure-boot` enrolls the throwaway db key with `virt-fw-vars` (one fixed owner GUID) and boots
 `OVMFFull.fd` with `-machine smm=on`: plain `OVMF.fd` has no Secure Boot support. The guest must
@@ -420,7 +428,7 @@ With `--next DIR` ([The update test](#the-update-test)):
 | marker                                                                 | what it proves                                                                                                                                              |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `release-index`                                                        | `SHA256SUMS` has four lines in the fixed order, the digests match, none lists itself                                                                        |
-| `http-source`                                                          | the guest's own `10-usr.transfer` has `Type=url-file` and `Path=http://10.0.2.2:<port>/`                                                                    |
+| `http-source`                                                          | the guest's own `10-usr.transfer` has `Type=url-file` and `Path=http://169.254.169.2:<port>/`                                                               |
 | `http-fetch`                                                           | the sysupdate journal names the release over `http`, so the guest fetched it, not a local file                                                              |
 | `sysupdate-installed`                                                  | `systemd-sysupdate-update.service` installed the release                                                                                                    |
 | `sysupdate-refused`                                                    | with `--tamper-index`: the service failed, its journal names the index signature and no install, and the next release is on no partition or ESP entry       |
@@ -478,11 +486,11 @@ be held. `DIR` is a built release (`DIR/disk/release`, `DIR/keys`). The harness:
 1. resolves the release's symlinks into `$WORKDIR/http` (`cp -L`) and writes `$WORKDIR/serve-http`,
    an HTTP server over stdin and stdout (Python's `SimpleHTTPRequestHandler`), which it first asks
    for `SHA256SUMS` on the host. QEMU's user network forwards the guest's connections to
-   `10.0.2.2:8074` to that command (`guestfwd=tcp:10.0.2.2:8074-cmd:$WORKDIR/serve-http`), one
-   process per connection, so the image's `http://10.0.2.2:8074/` reaches this run's server and no
-   host port is opened;
+   `169.254.169.2:8074` to that command (`guestfwd=tcp:169.254.169.2:8074-cmd:$WORKDIR/serve-http`),
+   one process per connection, so the image's `http://169.254.169.2:8074/` reaches this run's server
+   and no host port is opened;
 1. checks that the guest's own `/usr/lib/sysupdate.d/10-usr.transfer` has `Type=url-file` and
-   `Path=http://10.0.2.2:8074/` (`http-source`). No definition is rewritten;
+   `Path=http://169.254.169.2:8074/` (`http-source`). No definition is rewritten;
 1. starts `systemd-sysupdate-update.service` and waits for it. The journal's
    `Successfully installed 'http://…'` line is `http-fetch`; the service's exit status is
    `sysupdate-installed`. sysupdate fetches `SHA256SUMS` and the four artifacts over HTTP, then
@@ -494,13 +502,13 @@ be held. `DIR` is a built release (`DIR/disk/release`, `DIR/keys`). The harness:
    by `golconda-loader-update`, `bootctl set-oneshot` and `bootctl set-default` boot the other slot
    and back, and `bootctl reboot-to-firmware` reaches OVMF's boot menu.
 
-`image-smoke-test` sets `updateSource = "http://10.0.2.2:8074/"` (under QEMU user networking
-10.0.2.2 is the host). The harness serves `DIR/disk/release` at that address through the guest
-forward above, so the image's own `url-file` definitions fetch the release over HTTP; it rewrites
-nothing under `/run`. `BOOT_TEST_HTTP_PORT` changes the port the guest connects to; the image's
-`updateSource` must then name the same port. There is no server process to stop: QEMU starts the
-command for each connection and it ends with the connection. The requests are logged in
-`$WORKDIR/http.log`.
+`image-smoke-test` sets `updateSource = "http://169.254.169.2:8074/"` (the gateway of the test's
+QEMU user network, `169.254.169.0/24`, is the host). The harness serves `DIR/disk/release` at that
+address through the guest forward above, so the image's own `url-file` definitions fetch the release
+over HTTP; it rewrites nothing under `/run`. `BOOT_TEST_HTTP_PORT` changes the port the guest
+connects to; the image's `updateSource` must then name the same port. There is no server process to
+stop: QEMU starts the command for each connection and it ends with the connection. The requests are
+logged in `$WORKDIR/http.log`.
 
 `--next DIR --tamper-index` is the negative control of the signed index, and it passes when the
 update is refused. The server sends `SHA256SUMS` with one byte more than its signature
