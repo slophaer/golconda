@@ -273,9 +273,10 @@ port needs an image built with that `updateSource`.
 
 `scripts/verify --boot-set ARGS` (repeat it) builds the image once and boots a list of flag sets at
 the same time, each with its own log. Its summary has one line per set, `PASS boot[N] 59s FLAGS` or
-`FAIL(CODE) boot[N] 59s FLAGS (log PATH)`, and the exit status is non-zero when any set fails. A set
-that passes removes its log, as `scripts/boot-test` removes the work directory of a run that passes;
-a set that fails keeps both.
+`FAIL(CODE) boot[N] 59s FLAGS (log PATH)`, followed by the checks that passed,
+`  passed boot[N] (COUNT): NAME …`, so a check that stops running shows without a log. The exit
+status is non-zero when any set fails. A set that passes removes its log, as `scripts/boot-test`
+removes the work directory of a run that passes; a set that fails keeps both.
 
 The work directory of every run is `run.XXXXXX` under `$BOOT_TEST_CACHE` (default
 `${XDG_CACHE_HOME:-$HOME/.cache}/golconda-boot-test`), not under `/tmp`, which a queue task or a

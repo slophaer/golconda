@@ -15,7 +15,8 @@
 #                       host can outlast boot-test's own default)
 #   --boot-set ARGS     one boot of a list (repeat it): all sets boot the image at the same time,
 #                       each with its own log, and the summary has one line per set with its
-#                       result, time and ARGS. The run fails when any set fails. A set that fails
+#                       result, time and ARGS, and a line with the names of the checks that
+#                       passed ("  passed boot[N] (COUNT): NAME ..."). The run fails when any set fails. A set that fails
 #                       keeps its log (the line names it); a set that passes removes it. Replaces
 #                       --boot-args. The VMs need about 2 GiB each.
 #   --no-boot           build the image, do not boot it
@@ -194,6 +195,10 @@ bad=0
 while IFS= read -r bs; do
   i=$((i + 1))
   read -r code secs <"$logs/boot-$i.rc" || { code=1; secs=0; }
+  # the names of the checks that passed ("PASS: NAME"; not the "PASS: N, FAIL: M" totals)
+  passed=$(sed -n '/^PASS: [0-9]*, FAIL: [0-9]*$/d; s/^PASS: \([^ ]*\).*/\1/p' "$logs/boot-$i.log" 2>/dev/null |
+    tr '\n' ' ')
+  passed="  passed boot[$i] ($(echo "$passed" | wc -w)): ${passed% }"
   if [ "$code" = 0 ]; then
     r=PASS
     where=
@@ -206,7 +211,8 @@ while IFS= read -r bs; do
     tail -n 20 "$logs/boot-$i.log"
   fi
   rm -f "$logs/boot-$i.rc"
-  line="$r boot[$i] ${secs}s $bs$where"
+  line="$r boot[$i] ${secs}s $bs$where
+$passed"
   echo "$line"
   summary="$summary$line
 "

@@ -75,7 +75,10 @@ case " $* " in
   done
   ;;
 esac
+echo "PASS: fake-a"
+echo "PASS: 1, FAIL: 0"
 case " $* " in *" --fail "*) echo "FAIL: fake-check"; echo "fake boot failed"; exit 6 ;; esac
+echo "PASS: fake-b"
 echo "fake boot ok"
 exit 0
 EOF
@@ -173,6 +176,8 @@ run scripts/verify --boot-set '--rendezvous a --timeout 1' --boot-set '--rendezv
 grep -q 'boot-test .* --keys .* --rendezvous b$' "$CALLS" || fail "set 2 not run: $(cat "$CALLS")"
 echo "$out" | grep -qE '^PASS boot\[1\] [0-9]+s --rendezvous a --timeout 1$' || fail "no line for set 1: $out"
 echo "$out" | grep -qE '^PASS boot\[2\] [0-9]+s --rendezvous b$' || fail "no line for set 2: $out"
+[ "$(echo "$out" | grep -cxF '  passed boot[1] (2): fake-a fake-b')" = 2 ] ||
+  fail "the passed checks of set 1 not listed under its line and in the summary: $out"
 [ -z "$(find "$WORK/cache" -name 'boot-*.log')" ] || fail "the log of a passed set was kept"
 [ -z "$(find "$WORK/cache" -maxdepth 1 -name 'verify.*' -newer "$CALLS")" ] || fail "an empty log directory was kept"
 run scripts/verify --boot-set '--timeout 1' --boot-set '--fail'
@@ -180,6 +185,7 @@ run scripts/verify --boot-set '--timeout 1' --boot-set '--fail'
 echo "$out" | grep -qE '^PASS boot\[1\] [0-9]+s --timeout 1$' || fail "passing set not reported: $out"
 [ "$(echo "$out" | grep -c '^FAIL: fake-check')" = 2 ] || fail "failed checks not listed with the log tail: $out"
 echo "$out" | grep -qE '^FAIL\(6\) boot\[2\] [0-9]+s --fail \(log .*boot-2\.log\)$' || fail "failing set not reported: $out"
+echo "$out" | grep -qxF '  passed boot[2] (1): fake-a' || fail "the passed checks of a failed set not listed: $out"
 log=$(echo "$out" | sed -n 's/^FAIL(6) boot\[2\] .*(log \(.*\))$/\1/p' | head -1)
 grep -q 'fake boot failed' "$log" || fail "the failed set's log is missing: $log"
 [ -e "$(dirname "$log")/boot-1.log" ] && fail "the passed set's log is next to it"
