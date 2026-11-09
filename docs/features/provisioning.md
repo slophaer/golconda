@@ -103,7 +103,8 @@ patch goes when systemd ships the fix.
 Hetzner lists the server's ssh keys only as one JSON array (`/metadata/public-keys`), and systemd
 262 reads one plain key only. `packages/systemd` carries two more patches, also drafted for systemd
 upstream: `imds-ssh-key-json.patch` adds the well-known key `ssh-key-json`, which the import writes
-as one line per key, after the plain `ssh-key`, to `ssh.authorized_keys.root`;
+as one line per key, after the plain `ssh-key`, to `ssh.authorized_keys.root` (an entry that is not
+a string, or that has a control character in it, is skipped with a warning);
 `hwdb-imds-hetzner-ssh-keys.patch` names `/metadata/public-keys` for it in the Hetzner entry. Most
 clouds' hwdb entries name only their first key. The import writes this credential before the user
 data's credentials, so where the metadata has a key, a user data `ssh.authorized_keys.root` is

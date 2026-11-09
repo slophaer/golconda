@@ -329,13 +329,13 @@ Its user network is `169.254.169.0/24` (`-netdev user,net=`, as in every mode), 
 is on the guest's link, as imdsd's route to it (`Scope=link`) needs. A QEMU `guestfwd` serves port
 80 of `169.254.169.254` from a stdio HTTP server in the work directory, in Hetzner's layout:
 `/hetzner/v1/metadata/hostname` (`imds-test`), `region`, `availability-zone`, `public-ipv4`,
-`public-keys` (a JSON array of two key pairs the harness makes) and `/hetzner/v1/userdata`. It
-passes no SMBIOS host name. The user data lists the credentials `imds-canary`, `login.motd`,
-`ssh.authorized_keys.root` (a third key pair, which the import skips) and
-`network.network.60-imds-ipv6`: the static address `2001:db8:5eed::1/64`, `IPv6AcceptRA=no` and
-`UseHostname=no`, and nothing of the IMDS lock of `85-imds-early.network`, which the file replaces.
-QEMU's router advertisements name only `fec0::/64`, so no other route gives that address. QEMU's
-DHCP server offers the host name `dhcp-test` (`-netdev user,hostname=`).
+`public-keys` (a JSON array of two key pairs the harness makes, with a bad entry between them: two
+keys in one string) and `/hetzner/v1/userdata`. It passes no SMBIOS host name. The user data lists
+the credentials `imds-canary`, `login.motd`, `ssh.authorized_keys.root` (a third key pair, which the
+import skips) and `network.network.60-imds-ipv6`: the static address `2001:db8:5eed::1/64`,
+`IPv6AcceptRA=no` and `UseHostname=no`, and nothing of the IMDS lock of `85-imds-early.network`,
+which the file replaces. QEMU's router advertisements name only `fec0::/64`, so no other route gives
+that address. QEMU's DHCP server offers the host name `dhcp-test` (`-netdev user,hostname=`).
 
 `--secure-boot` enrolls the throwaway db key with `virt-fw-vars` (one fixed owner GUID) and boots
 `OVMFFull.fd` with `-machine smm=on`: plain `OVMF.fd` has no Secure Boot support. The guest must
@@ -396,7 +396,7 @@ With `--imds` (instead of `hostname`):
 | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `imds-hostname`            | the generator pulled `systemd-imds-import.service` in, it succeeded, and `hostname` and `/etc/hostname` are `imds-test` (`firstboot.hostname`)                          |
 | `imds-hetzner-layout`      | the guest has no `imds.*` credential; the server answered `GET /hetzner/v1/metadata/hostname` and `GET /hetzner/v1/userdata` with 200, and nothing 404                  |
-| `imds-ssh-keys-json`       | both keys of the JSON array `/metadata/public-keys` log in as root; `/root/.ssh/authorized_keys` is 0600                                                                |
+| `imds-ssh-keys-json`       | both keys of the JSON array `/metadata/public-keys` log in as root; a bad entry between them is skipped with a warning; `authorized_keys` is 0600                       |
 | `imds-ssh-key-precedence`  | the import skips the user data's `ssh.authorized_keys.root` (the metadata's keys came first); its key does not log in                                                   |
 | `imds-userdata-credential` | `/run/credstore/imds-canary` holds its value, and tmpfiles wrote `login.motd` to `/etc/motd.d`                                                                          |
 | `imds-ipv6`                | the link uses `/run/systemd/network/60-imds-ipv6.network` from the user data, and has `2001:db8:5eed::1`                                                                |
