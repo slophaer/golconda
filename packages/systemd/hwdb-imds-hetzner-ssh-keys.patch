@@ -1,4 +1,4 @@
-From 5aa8d87bfa711d73e60c605b4deb5728b752ee5e Mon Sep 17 00:00:00 2001
+From df2a0fea30ccd17a8bdbe63ec82c5d61f1778daa Mon Sep 17 00:00:00 2001
 From: phaer <hello@phaer.org>
 Date: Mon, 9 Nov 2026 17:37:01 +0000
 Subject: [PATCH] hwdb: import the SSH keys on Hetzner Cloud

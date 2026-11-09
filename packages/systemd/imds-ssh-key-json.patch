@@ -1,4 +1,4 @@
-From 4e50123a65f6a0c1311c9893df5c9cda78b01aa7 Mon Sep 17 00:00:00 2001
+From 9ff36ef02a212d81d941732677309bde714b0e5e Mon Sep 17 00:00:00 2001
 From: phaer <hello@phaer.org>
 Date: Mon, 9 Nov 2026 17:00:25 +0000
 Subject: [PATCH] imds: import SSH keys provided as a JSON array
@@ -12,24 +12,25 @@ Add a new well-known key "ssh-key-json" (IMDS_KEY_SSH_KEY_JSON= in hwdb,
 systemd.imds.key.ssh_key_json= on the kernel command line, the
 imds.key_ssh_key_json credential). "systemd-imds --import" parses it and
 writes each key as one line of the ssh.authorized_keys.root credential,
-after the keys of "ssh-key" if both are set. An entry with control
-characters in it is refused, so that one entry cannot turn into more
-than one authorized_keys line.
+after the keys of "ssh-key" if both are set. An entry which is not a
+string, or which contains control characters (and so could turn into
+more than one authorized_keys line), is skipped with a warning, and the
+other keys are still imported.
 
 Assisted-by: Claude Code (claude-opus-5-5)
 ---
  hwdb.d/40-imds.hwdb                           |  1 +
  hwdb.d/parse_hwdb.py                          |  1 +
- man/systemd-imds.xml                          |  9 ++--
- man/systemd-imdsd@.service.xml                | 20 ++++++++
- src/imds/imds-tool.c                          | 30 +++++++++--
- src/imds/imds-util.c                          | 50 +++++++++++++++++++
- src/imds/imds-util.h                          |  3 ++
+ man/systemd-imds.xml                          | 10 +++-
+ man/systemd-imdsd@.service.xml                | 20 +++++++
+ src/imds/imds-tool.c                          | 30 ++++++++--
+ src/imds/imds-util.c                          | 56 ++++++++++++++++++
+ src/imds/imds-util.h                          |  3 +
  src/imds/imdsd.c                              |  4 ++
  src/imds/meson.build                          |  4 ++
- src/imds/test-imds-util.c                     | 50 +++++++++++++++++++
+ src/imds/test-imds-util.c                     | 58 +++++++++++++++++++
  .../varlink-io.systemd.InstanceMetadata.c     |  1 +
- 11 files changed, 165 insertions(+), 8 deletions(-)
+ 11 files changed, 180 insertions(+), 8 deletions(-)
  create mode 100644 src/imds/test-imds-util.c
 
 diff --git a/hwdb.d/40-imds.hwdb b/hwdb.d/40-imds.hwdb
@@ -57,7 +58,7 @@ index 1532f5237f..354aca806e 100755
          ('IMDS_KEY_USERDATA_BASE', name_literal),
          ('IMDS_KEY_USERDATA_BASE64', name_literal),
 diff --git a/man/systemd-imds.xml b/man/systemd-imds.xml
-index b8b314ccbd..2e8e70a3ae 100644
+index b8b314ccbd..b3682cd9d8 100644
 --- a/man/systemd-imds.xml
 +++ b/man/systemd-imds.xml
 @@ -92,8 +92,8 @@
@@ -71,7 +72,7 @@ index b8b314ccbd..2e8e70a3ae 100644
          fields are commonly supported by various IMDS implementations, but typically some fields are
          not. Note that if <option>--well-known=userdata-base</option> is used an additional subkey should be
          specified as positional argument, which encodes the specific userdata item to acquire.</para>
-@@ -149,7 +149,10 @@
+@@ -149,7 +149,11 @@
            for information about credentials that may be imported this way.</para></listitem>
  
            <listitem><para>If the well-known <varname>ssh-key</varname> field is available, its value will be
@@ -79,7 +80,8 @@ index b8b314ccbd..2e8e70a3ae 100644
 +          imported into the <varname>ssh.authorized_keys.root</varname> credential. If the well-known
 +          <varname>ssh-key-json</varname> field is available, it must be a JSON array of strings, each an
 +          SSH public key; these keys are imported into the same credential, one per line, after those of
-+          <varname>ssh-key</varname>.</para></listitem>
++          <varname>ssh-key</varname>. Array entries which are not strings, or which contain control
++          characters, are skipped with a warning.</para></listitem>
  
            <listitem><para>If the well-known <varname>hostname</varname> field is available, its value will be
            imported into the <varname>firstboot.hostname</varname> credential.</para></listitem>
@@ -176,10 +178,10 @@ index c77de0a828..2ea134bcbc 100644
                  return r;
  
 diff --git a/src/imds/imds-util.c b/src/imds/imds-util.c
-index 3c67417e4b..e67173aa62 100644
+index 3c67417e4b..6f5557983d 100644
 --- a/src/imds/imds-util.c
 +++ b/src/imds/imds-util.c
-@@ -2,7 +2,11 @@
+@@ -2,7 +2,12 @@
  
  #include <assert.h>
  
@@ -188,10 +190,11 @@ index 3c67417e4b..e67173aa62 100644
 +#include "alloc-util.h"
  #include "imds-util.h"
 +#include "json-util.h"
++#include "log.h"
  #include "string-table.h"
  #include "string-util.h"
  #include "utf8.h"
-@@ -25,6 +29,51 @@ bool imds_key_is_valid(const char *key) {
+@@ -25,6 +30,56 @@ bool imds_key_is_valid(const char *key) {
          return true;
  }
  
@@ -203,7 +206,8 @@ index 3c67417e4b..e67173aa62 100644
 +
 +        /* Some IMDS implementations (e.g. Hetzner Cloud) provide all SSH keys as one JSON array of strings,
 +         * each a public key in OpenSSH format. Turn this into authorized_keys(5) format, one key per
-+         * line. Returns 0 and NULL if the array has no keys. */
++         * line. Entries which are not usable are skipped, so that one bad entry does not cost us the
++         * other keys. Returns 0 and NULL if the array has no usable keys. */
 +
 +        _cleanup_(sd_json_variant_unrefp) sd_json_variant *v = NULL;
 +        r = sd_json_parse(json, /* flags= */ 0, &v, /* reterr_line= */ NULL, /* reterr_column= */ NULL);
@@ -216,8 +220,10 @@ index 3c67417e4b..e67173aa62 100644
 +        _cleanup_free_ char *keys = NULL;
 +        sd_json_variant *i;
 +        JSON_VARIANT_ARRAY_FOREACH(i, v) {
-+                if (!sd_json_variant_is_string(i))
-+                        return -EBADMSG;
++                if (!sd_json_variant_is_string(i)) {
++                        log_warning("SSH key in IMDS JSON array is not a string, skipping.");
++                        continue;
++                }
 +
 +                _cleanup_free_ char *k = strdup(sd_json_variant_string(i));
 +                if (!k)
@@ -229,8 +235,10 @@ index 3c67417e4b..e67173aa62 100644
 +                        continue;
 +
 +                /* One array entry must not turn into more than one line */
-+                if (string_has_cc(s, /* ok= */ NULL))
-+                        return -EBADMSG;
++                if (string_has_cc(s, /* ok= */ NULL)) {
++                        log_warning("SSH key in IMDS JSON array contains control characters, skipping.");
++                        continue;
++                }
 +
 +                if (!strextend(&keys, s, "\n"))
 +                        return -ENOMEM;
@@ -243,7 +251,7 @@ index 3c67417e4b..e67173aa62 100644
  static const char* const imds_well_known_table[_IMDS_WELL_KNOWN_MAX] = {
          [IMDS_BASE]            = "base",
          [IMDS_HOSTNAME]        = "hostname",
-@@ -33,6 +82,7 @@ static const char* const imds_well_known_table[_IMDS_WELL_KNOWN_MAX] = {
+@@ -33,6 +88,7 @@ static const char* const imds_well_known_table[_IMDS_WELL_KNOWN_MAX] = {
          [IMDS_IPV4_PUBLIC]     = "ipv4-public",
          [IMDS_IPV6_PUBLIC]     = "ipv6-public",
          [IMDS_SSH_KEY]         = "ssh-key",
@@ -324,10 +332,10 @@ index ca54acd3f3..9bd1c28f4f 100644
  install_data(
 diff --git a/src/imds/test-imds-util.c b/src/imds/test-imds-util.c
 new file mode 100644
-index 0000000000..98866f3c1e
+index 0000000000..a66266954d
 --- /dev/null
 +++ b/src/imds/test-imds-util.c
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,58 @@
 +/* SPDX-License-Identifier: LGPL-2.1-or-later */
 +
 +#include "alloc-util.h"
@@ -366,14 +374,22 @@ index 0000000000..98866f3c1e
 +        test_ssh_keys_from_json_one("[]", NULL);
 +        test_ssh_keys_from_json_one("[\"\\n\"]", NULL);
 +
-+        /* Not an array of strings, or an entry that would turn into more than one line */
++        /* An entry which is not a string, or which would turn into more than one line, is skipped */
++        test_ssh_keys_from_json_one(
++                        "[\"ssh-ed25519 AAAA one\", 7, {\"key\":\"ssh-ed25519 CCCC three\"}, \"ssh-ed25519 BBBB two\"]",
++                        "ssh-ed25519 AAAA one\n"
++                        "ssh-ed25519 BBBB two\n");
++        test_ssh_keys_from_json_one(
++                        "[\"ssh-ed25519 AAAA one\\nssh-ed25519 CCCC three\", \"ssh-ed25519 BBBB two\"]",
++                        "ssh-ed25519 BBBB two\n");
++        test_ssh_keys_from_json_one("[null, \"ssh-ed25519 AAAA\\tone\"]", NULL);
++
++        /* Not a JSON array */
 +        _cleanup_free_ char *keys = NULL;
 +        ASSERT_FAIL(imds_ssh_keys_from_json("", &keys));
 +        ASSERT_FAIL(imds_ssh_keys_from_json("ssh-ed25519 AAAA one", &keys));
 +        ASSERT_ERROR(imds_ssh_keys_from_json("\"ssh-ed25519 AAAA one\"", &keys), EBADMSG);
 +        ASSERT_ERROR(imds_ssh_keys_from_json("{\"key\":\"ssh-ed25519 AAAA one\"}", &keys), EBADMSG);
-+        ASSERT_ERROR(imds_ssh_keys_from_json("[\"ssh-ed25519 AAAA one\", 7]", &keys), EBADMSG);
-+        ASSERT_ERROR(imds_ssh_keys_from_json("[\"ssh-ed25519 AAAA one\\nssh-ed25519 BBBB two\"]", &keys), EBADMSG);
 +        ASSERT_NULL(keys);
 +}
 +
