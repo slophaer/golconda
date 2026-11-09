@@ -63,6 +63,7 @@ cp "$ROOT/scripts/verify" "$repo/scripts/verify"
 cat >"$repo/scripts/boot-test" <<'EOF'
 #!/bin/sh
 echo "boot-test $*" >>"$CALLS"
+echo "golconda=${BOOT_TEST_GOLCONDA:-unset} path=${PATH%%:*}" >>"$RV/boot-env"
 # --rendezvous NAME: needs the other of rv-a and rv-b to start, so a serial run times out
 case " $* " in
 *" --rendezvous "*)
@@ -92,6 +93,7 @@ echo more >>"$repo/README.md"
 git -C "$repo" -c user.email=t@t -c user.name=t commit -qam second
 head=$(git -C "$repo" rev-parse --short HEAD)
 cd "$repo"
+PATH_HEAD=${PATH%%:*}
 run() {
   : >"$CALLS"
   set +e
@@ -211,5 +213,42 @@ case $log in "$WORK/xdg/golconda-boot-test/"*) ;; *) fail "log not under XDG_CAC
 run scripts/verify --boot-set '--timeout 1'
 [ ! -e "$WORK/cache/verify.old" ] || fail "an old log directory was kept"
 [ -e "$WORK/cache/run.old" ] || fail "a run directory (a failed run's) was removed"
+
+# 12 @next in a boot set or in --boot-args stands for the next release's image: verify builds
+#    <image>-next as well (result-verify-next), with its own PASS line, and puts its path where
+#    @next stands. Without @next, and with --no-boot, there is no second build.
+rm -f "$WORK/boot-env"
+run scripts/verify --boot-set '--ssh-test --next @next --timeout 1' --boot-set '--timeout 2'
+[ $rc = 0 ] || fail "@next run exited $rc: $out"
+grep -q 'nix-build -A packages\.[a-z0-9_]*-linux\.image-smoke-test-next -o result-verify-next$' "$CALLS" ||
+  fail "the next image was not built: $(cat "$CALLS")"
+# --next pushes admin vars with golconda and age: verify builds them and puts them on boot-test's PATH
+for a in golconda-cli age; do
+  grep -q "nix-build -A packages\\.[a-z0-9_]*-linux\\.$a -o result-verify-$a\$" "$CALLS" || fail "$a not built: $(cat "$CALLS")"
+  echo "$out" | grep -qE "^PASS $a [0-9]+s\$" || fail "no PASS line for $a: $out"
+done
+grep -qxF "golconda=$WORK/images/img/bin/golconda path=$WORK/images/img/bin" "$WORK/boot-env" ||
+  fail "BOOT_TEST_GOLCONDA or PATH not set for boot-test: $(cat "$WORK/boot-env")"
+echo "$out" | grep -qE '^PASS image-next [0-9]+s$' || fail "no PASS line for the next image: $out"
+grep -q "boot-test .* --ssh-test --next $WORK/images/img --timeout 1\$" "$CALLS" ||
+  fail "@next not replaced by the next image's path: $(cat "$CALLS")"
+grep -q '@next' "$CALLS" && fail "@next left in a boot-test call: $(cat "$CALLS")"
+rm -f "$WORK/boot-env"
+run scripts/verify --boot-set '--timeout 1' --boot-set '--timeout 2'
+[ "$(sort -u "$WORK/boot-env")" = "golconda=unset path=$PATH_HEAD" ] || fail "BOOT_TEST_GOLCONDA set without @next: $(cat "$WORK/boot-env")"
+[ "$(grep -c '^nix-build' "$CALLS")" = 1 ] || fail "built the next image without @next: $(cat "$CALLS")"
+run scripts/verify --no-boot --boot-set '--next @next'
+grep -q 'result-verify-next' "$CALLS" && fail "built the next image despite --no-boot"
+run scripts/verify --image image-smoke-test-nosb --boot-args '--ssh-test --next @next --timeout 480'
+[ $rc = 0 ] || fail "@next in --boot-args exited $rc: $out"
+grep -q '\.image-smoke-test-nosb-next -o result-verify-next$' "$CALLS" || fail "nosb pair wrong: $(cat "$CALLS")"
+grep -q "boot-test .* --ssh-test --next $WORK/images/img --timeout 480\$" "$CALLS" ||
+  fail "@next in --boot-args not replaced: $(cat "$CALLS")"
+FAKE_IMAGE=fail run scripts/verify --boot-set '--next @next'
+grep -q boot-test "$CALLS" && fail "booted after an image failure with @next"
+# each-commit hands the sets, @next included, to the last commit
+run scripts/verify --each-commit "$(git rev-list --max-parents=0 HEAD)" --boot-set '--next @next'
+[ $rc = 0 ] || fail "--each-commit with @next exited $rc: $out"
+grep -q 'result-verify-next' "$CALLS" || fail "--each-commit did not build the next image"
 
 echo "verify tests passed"

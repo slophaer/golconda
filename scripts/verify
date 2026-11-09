@@ -12,7 +12,13 @@
 #                       is result-verify
 #   --boot-args ARGS    scripts/boot-test's flags after the disk and --keys (default
 #                       "--secure-boot --ssh-test --tpm --timeout 300": a reboot on a loaded
-#                       host can outlast boot-test's own default)
+#                       host can outlast boot-test's own default). @next in the flags (and in
+#                       --boot-set) stands for the next release's image: verify builds
+#                       <image>-next too (image-smoke-test-next for the default image,
+#                       image-smoke-test-nosb-next for image-smoke-test-nosb; out-link
+#                       result-verify-next) and puts its path there, as in "--next @next". It
+#                       also builds golconda-cli and age, which --next needs
+#                       (BOOT_TEST_GOLCONDA, PATH)
 #   --boot-set ARGS     one boot of a list (repeat it): all sets boot the image at the same time,
 #                       each with its own log, and the summary has one line per set with its
 #                       result, time and ARGS, and a line with the names of the checks that
@@ -42,7 +48,7 @@ lint_only=0
 each=
 boot_sets=
 usage() {
-  sed -n '2,33s/^# \{0,1\}//p' "$self" >&2
+  sed -n '2,40s/^# \{0,1\}//p' "$self" >&2
   exit 2
 }
 while [ $# -gt 0 ]; do
@@ -163,6 +169,23 @@ PY
 img=$(resolve result-verify) || finish 1
 disk=$(resolve "$img/disk/disk.raw")
 keys=$(resolve "$img/keys")
+# @next in the boot flags is the next release's image (<image>-next, the one boot-test --next
+# installs): build it too and put its path there
+case "$boot_args
+$boot_sets" in
+*@next*)
+  step image-next nix-build -A "packages.$system.$image-next" -o result-verify-next || finish 1
+  next=$(resolve result-verify-next) || finish 1
+  # --next pushes admin vars with golconda, age and age-keygen
+  step golconda-cli nix-build -A "packages.$system.golconda-cli" -o result-verify-golconda-cli || finish 1
+  step age nix-build -A "packages.$system.age" -o result-verify-age || finish 1
+  BOOT_TEST_GOLCONDA=$(resolve result-verify-golconda-cli)/bin/golconda
+  PATH=$(resolve result-verify-age)/bin:$PATH
+  export BOOT_TEST_GOLCONDA PATH
+  boot_args=$(printf '%s\n' "$boot_args" | sed "s|@next|$next|g")
+  boot_sets=$(printf '%s\n' "$boot_sets" | sed "s|@next|$next|g")
+  ;;
+esac
 if [ -z "$boot_sets" ]; then
   # shellcheck disable=SC2086 # boot_args is a list of flags
   step boot ./scripts/boot-test "$disk" --keys "$keys" $boot_args || finish 1
