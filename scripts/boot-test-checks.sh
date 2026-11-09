@@ -287,8 +287,33 @@ check_imds_hostname() {
   verdict "imds-hostname (the generator pulled systemd's import in; hostname and /etc/hostname are imds-test)" $RC
 }
 
-# check_imds_ssh_key: the key IMDS gives logs in as root (the image's own file names only the
-# test key), from the 0600 /root/.ssh/authorized_keys tmpfiles wrote from ssh.authorized_keys.root
+# check_imds_layout: the guest found the endpoint as on Hetzner, by hwdb and the image's own data:
+# it holds no imds.* credential, it asked for the host name and the user data at Hetzner's paths,
+# and the server answered no request with 404 (systemd 262's 40-imds.hwdb asks for
+# /hetzner/v1/metadata/public-keys/0 and /hetzner/v1/metadata/userdata, which Hetzner has not)
+check_imds_layout() {
+  echo ""
+  echo "=== /imds: Hetzner's endpoint, found by hwdb ==="
+  echo "requests:"
+  grep '"GET ' "$IMDS_LOG" || true
+  RC=0
+  # imdsd's ImportCredential=imds.* reads the system credentials and the credstores; with none
+  # passed (no SMBIOS credential in this mode), systemd-creds says so and exits 1
+  CREDS=$(guest systemd-creds --system list --no-legend --no-pager 2>&1) || true
+  echo "system credentials: $CREDS"
+  STORES=$(guest 'ls /etc/credstore /run/credstore /usr/lib/credstore /etc/credstore.encrypted /run/credstore.encrypted /usr/lib/credstore.encrypted 2>/dev/null') || true
+  IMDS_CREDS=$(printf '%s\n%s\n' "$CREDS" "$STORES" | grep '^imds[.]') || true
+  echo "imds.* credentials: ${IMDS_CREDS:-none}"
+  [ -z "$IMDS_CREDS" ] || RC=1
+  grep -q '"GET /hetzner/v1/metadata/hostname HTTP/[0-9.]*" 200' "$IMDS_LOG" || RC=1
+  grep -q '"GET /hetzner/v1/userdata HTTP/[0-9.]*" 200' "$IMDS_LOG" || RC=1
+  if grep '"GET [^"]*" 404' "$IMDS_LOG"; then RC=1; fi
+  verdict "imds-hetzner-layout (no imds.* credential; GET /hetzner/v1/metadata/hostname and /hetzner/v1/userdata answered 200; no 404)" $RC
+}
+
+# check_imds_ssh_key: the key the user data gives as ssh.authorized_keys.root logs in as root (the
+# image's own file names only the test key), from the 0600 /root/.ssh/authorized_keys tmpfiles
+# wrote from the credential
 check_imds_ssh_key() {
   echo ""
   echo "=== /imds: ssh key ==="
@@ -298,7 +323,7 @@ check_imds_ssh_key() {
   M=$(guest stat -c %a /root/.ssh/authorized_keys 2>&1) || true
   echo "/root/.ssh/authorized_keys mode: $M"
   [ "$M" = 600 ] || RC=1
-  verdict "imds-ssh-key (the IMDS key logs in; authorized_keys is 0600)" $RC
+  verdict "imds-ssh-key (the user data's ssh.authorized_keys.root logs in; authorized_keys is 0600)" $RC
 }
 
 # check_imds_userdata_credential: the user data's credentials arrive in /run/credstore, and a
@@ -306,10 +331,7 @@ check_imds_ssh_key() {
 check_imds_userdata_credential() {
   echo ""
   echo "=== /imds: user data credentials ==="
-  echo "requests:"
-  grep '"GET ' "$IMDS_LOG" || true
   RC=0
-  grep -q '"GET /userdata' "$IMDS_LOG" || RC=1
   V=$(guest cat /run/credstore/imds-canary 2>&1) || true
   MOTD=$(guest cat /etc/motd.d/50-provision.conf 2>&1) || true
   echo "/run/credstore/imds-canary: $V"
@@ -317,6 +339,28 @@ check_imds_userdata_credential() {
   [ "$V" = canary ] || RC=1
   [ "$MOTD" = "imds motd" ] || RC=1
   verdict "imds-userdata-credential (imds-canary in /run/credstore; tmpfiles wrote login.motd)" $RC
+}
+
+# check_imds_ipv6: the user data's network.network.* credential takes effect in the boot that
+# imported it: networkd configures the link with that file, and the link has its static global
+# IPv6 address. QEMU's router advertisements name fec0::/64 only, so no other route gives it.
+check_imds_ipv6() {
+  echo ""
+  echo "=== /imds: IPv6 from a user data .network credential ==="
+  RC=0
+  LINKS=$(guest networkctl list --no-legend --no-pager 2>/dev/null | awk '$3 == "ether" { print $2 }') || true
+  [ -n "$LINKS" ] || RC=1
+  for l in $LINKS; do
+    LS=$(guest networkctl status --no-pager "$l" 2>&1) || true
+    echo "$LS" | grep -E 'Network File|Address|Gateway' || true
+    echo "$LS" | grep -q "Network File: /run/systemd/network/$IMDS_NET_CRED.network" || RC=1
+    echo "$LS" | grep -qw "$IMDS_IPV6" || RC=1
+  done
+  if [ "$RC" != 0 ]; then
+    guest ls /run/credstore /run/systemd/network 2>&1 || true
+    guest journalctl -b -u systemd-networkd.service -o cat --no-pager 2>&1 | tail -20 || true
+  fi
+  verdict "imds-ipv6 (the link uses /run/systemd/network/$IMDS_NET_CRED.network from the user data, and has $IMDS_IPV6)" $RC
 }
 
 # check_imds_ordering: the import is ordered after network-online.target and before sysinit.target
@@ -338,13 +382,16 @@ check_imds_dhcp_hostname() {
   J=$(guest networkctl status --json=short --no-pager 2>/dev/null) || true
   LEASE_HN=$(echo "$J" | grep -o '"Hostname":"[^"]*"' | sort -u) || true
   LINKS=$(guest networkctl list --no-legend --no-pager 2>/dev/null | awk '$3 == "ether" { print $2 }') || true
-  # the drop-in /imds adds to the .network file in use (85-imds-early.network on a cloud)
-  DROPINS=$(echo "$J" | grep -o '"NetworkFileDropins":\[[^]]*\]' | sort -u) || true
+  # the drop-in /imds adds to 85-imds-early.network, the file systemd-imdsd writes on a cloud;
+  # the link may have moved on to the user data's .network file (check_imds_ipv6), which sets
+  # UseHostname=no itself
+  EARLY=$(guest networkctl cat --no-pager 85-imds-early.network 2>&1) || true
   echo "ether links: ${LINKS:-none}; lease host names: ${LEASE_HN:-none}"
-  echo "network file drop-ins: ${DROPINS:-none}"
+  echo "85-imds-early.network and its drop-ins:"
+  echo "$EARLY" | grep -E '^# /|UseHostname' || true
   RC=0
   echo "$LEASE_HN" | grep -qx '"Hostname":"dhcp-test"' || RC=1
-  echo "$DROPINS" | grep -q 'network.d/golconda-imds.conf' || RC=1
+  echo "$EARLY" | grep -q '^# /usr/lib/systemd/network/85-imds-early.network.d/golconda-imds.conf$' || RC=1
   [ -n "$LINKS" ] || RC=1
   for l in $LINKS; do
     guest networkctl renew "$l" 2>&1 || RC=1
@@ -353,5 +400,5 @@ check_imds_dhcp_hostname() {
   HN=$(guest hostname 2>&1) || true
   echo "hostname after the renewal: $HN"
   [ "$HN" = imds-test ] || RC=1
-  verdict "imds-dhcp-hostname (the lease offers dhcp-test, /imds's UseHostname=no drop-in is in effect, and after a renewal the host name is still imds-test)" $RC
+  verdict "imds-dhcp-hostname (the lease offers dhcp-test, /imds's UseHostname=no drop-in reaches 85-imds-early.network, and after a renewal the host name is still imds-test)" $RC
 }

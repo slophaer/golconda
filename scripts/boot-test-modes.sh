@@ -141,8 +141,10 @@ test_imds() {
   echo "DMI BIOS vendor: $(guest cat /sys/class/dmi/id/bios_vendor 2>&1)"
   wait_imds_import
   check_imds_hostname
+  check_imds_layout
   check_imds_ssh_key
   check_imds_userdata_credential
+  check_imds_ipv6
   check_imds_dhcp_hostname
   check_imds_ordering
 }

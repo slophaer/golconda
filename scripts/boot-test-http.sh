@@ -7,7 +7,7 @@
 
 # --- the release HTTP server (--next) ---
 # The image's url-file source is http://10.0.2.2:$HTTP_PORT/ (8074 in the test image), and --imds
-# points systemd-imdsd at http://10.0.2.2:$IMDS_PORT/ (8075). The harness opens no host port for
+# serves Hetzner's metadata at http://169.254.169.254/. The harness opens no host port for
 # either: QEMU's user network forwards the guest's connections to such an address to a command
 # (start_qemu: guestfwd=tcp:10.0.2.2:$HTTP_PORT-cmd:$WORKDIR/serve-http), which QEMU starts once
 # per connection with the connection on its stdin and stdout. Two runs on one host both serve
@@ -87,21 +87,41 @@ start_http_server() {
 }
 
 # --- the fake IMDS endpoint (--imds) ---
-# start_imds_server: what a cloud's metadata service answers at the guest's 10.0.2.2:$IMDS_PORT
-# (QEMU guestfwd, like the update server, so no host port): a host name, a public key made here
-# (its private half logs in), and user data that lists two credentials: imds-canary, and
-# login.motd, which tmpfiles writes to /etc/motd.d. The server's log shows every GET.
+# start_imds_server: what Hetzner Cloud's metadata service answers, at its own address and paths:
+# QEMU's user network is $IMDS_NET for an --imds run, so http://$IMDS_ADDR/ is on the guest's link
+# (a guestfwd, like the update server's: no host port), and the guest finds the endpoint by hwdb
+# alone, as on Hetzner: base URL http://$IMDS_ADDR/hetzner/v1, the host name and the other keys under
+# /metadata/, the user data at /userdata. /metadata/public-keys is Hetzner's JSON array of the
+# project's keys (a key nothing logs in with: systemd-imds cannot read the array). The user data
+# lists four credentials: imds-canary; login.motd, which tmpfiles writes to /etc/motd.d;
+# ssh.authorized_keys.root, a key made here (its private half logs in); and network.network.$IMDS_NET_CRED,
+# a static global IPv6 address, as Hetzner gives one (no router advertisement, no DHCPv6). The
+# server's log shows every GET and its status.
 start_imds_server() {
   IMDS_ROOT="$WORKDIR/imds"
   IMDS_LOG="$WORKDIR/imds.log"
-  mkdir -p "$IMDS_ROOT/public-keys"
-  printf 'imds-test' > "$IMDS_ROOT/hostname"
+  M="$IMDS_ROOT/hetzner/v1/metadata"
+  mkdir -p "$M"
+  # Hetzner answers without a newline
+  printf 'imds-test' > "$M/hostname"
+  printf '4711' > "$M/instance-id"
+  printf 'eu-central' > "$M/region"
+  printf 'fsn1-dc14' > "$M/availability-zone"
+  printf '198.51.100.7' > "$M/public-ipv4"
   ssh-keygen -q -t ed25519 -N "" -C boot-test-imds -f "$WORKDIR/ssh/imds"
-  # Hetzner serves the key without a newline
-  printf '%s' "$(cat "$WORKDIR/ssh/imds.pub")" > "$IMDS_ROOT/public-keys/0"
-  printf '%s' '{"systemd.credentials":[{"name":"imds-canary","text":"canary"},{"name":"login.motd","text":"imds motd"}]}' > "$IMDS_ROOT/userdata"
+  ssh-keygen -q -t ed25519 -N "" -C boot-test-imds-project -f "$WORKDIR/ssh/imds-project"
+  printf '["%s\\n"]' "$(cat "$WORKDIR/ssh/imds-project.pub")" > "$M/public-keys"
+  NET='[Match]\nType=ether\nKind=!*\n\n[Network]\nDHCP=ipv4\nIPv6AcceptRA=no\nAddress='"$IMDS_IPV6"'/64\n\n[DHCPv4]\nUseHostname=no\n'
+  printf '{"systemd.credentials":[%s,%s,%s,%s]}' \
+    '{"name":"imds-canary","text":"canary"}' \
+    '{"name":"login.motd","text":"imds motd"}' \
+    '{"name":"ssh.authorized_keys.root","text":"'"$(cat "$WORKDIR/ssh/imds.pub")"'\n"}' \
+    '{"name":"network.network.'"$IMDS_NET_CRED"'","text":"'"$NET"'"}' \
+    > "$IMDS_ROOT/hetzner/v1/userdata"
   write_http_server imds
-  probe_http_server imds /hostname || return 1
+  probe_http_server imds /hetzner/v1/userdata || return 1
+  python3 -c 'import json, sys; json.load(open(sys.argv[1])); json.load(open(sys.argv[2]))' \
+    "$IMDS_ROOT/hetzner/v1/userdata" "$M/public-keys" || return 1
   : > "$IMDS_LOG"
-  echo "Serving the fake IMDS endpoint to the guest as http://10.0.2.2:$IMDS_PORT/ (QEMU guestfwd, no host port; log $IMDS_LOG)"
+  echo "Serving the fake IMDS endpoint to the guest as http://$IMDS_ADDR/hetzner/v1/ (QEMU network $IMDS_NET, guestfwd, no host port; log $IMDS_LOG)"
 }

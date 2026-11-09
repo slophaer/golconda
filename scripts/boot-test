@@ -53,22 +53,29 @@
 #   Without --imds, the ssh checks also check imds-import-inactive: the test image has /imds, and
 #   QEMU's DMI names no cloud, so neither systemd-imds-early-network.service (only the generator
 #   pulls it) nor systemd-imds-import.service ever starts.
-# With --imds (needs --ssh-test; not with --esp-creds): fakes a cloud for /imds (docs/features/
-#   provisioning.md). SMBIOS type 0 says the BIOS vendor is Hetzner (40-imds.hwdb matches
-#   dmi:bvnHetzner:*), type 11 credentials point systemd-imdsd at an HTTP server of
-#   the run (imds.data_url=http://10.0.2.2:$BOOT_TEST_IMDS_PORT, default 8075, a QEMU guestfwd
-#   like the update server's, no host port; and the keys /hostname,
-#   /public-keys/0 and /userdata; no imds.address_ipv4, whose prohibit route would cut 10.0.2.2
-#   off, the update server's host), and no system.hostname credential is given. The server
-#   answers imds-test, a key pair made in the work directory, and user data that lists the
-#   credentials imds-canary and login.motd. QEMU's DHCP server offers the host name dhcp-test.
+# With --imds (needs --ssh-test; not with --esp-creds or --next): fakes Hetzner Cloud for /imds
+#   (docs/features/provisioning.md), and the guest finds the endpoint as on Hetzner: by hwdb and
+#   the image's own data, with no imds.* credential. SMBIOS type 0 says the BIOS vendor is Hetzner
+#   (40-imds.hwdb matches dmi:bvnHetzner:*). QEMU's user network is 169.254.169.0/24 (not
+#   10.0.2.0/24, so --next, whose update source is 10.0.2.2, cannot run with it), and a QEMU
+#   guestfwd serves http://169.254.169.254/ on the guest's link from a stdio HTTP server in the work
+#   directory, in Hetzner's layout: /hetzner/v1/metadata/hostname and the other keys,
+#   /hetzner/v1/metadata/public-keys (a JSON array), /hetzner/v1/userdata. No system.hostname
+#   credential is given. The server answers imds-test, and user data that lists the credentials
+#   imds-canary, login.motd, ssh.authorized_keys.root (a key pair made in the work directory) and
+#   network.network.60-imds-ipv6 (the static address 2001:db8:5eed::1/64, as Hetzner gives one:
+#   QEMU's router advertisements name only fec0::/64). QEMU's DHCP server offers the host name
+#   dhcp-test.
 #   Checks: imds-hostname (systemd's import ran, pulled in by the generator, and the host name and
-#   /etc/hostname are imds-test), imds-ssh-key (the new key logs in; /root/.ssh/authorized_keys
-#   is 0600), imds-userdata-credential (the server saw GET /userdata, /run/credstore/imds-canary
-#   holds the value, and tmpfiles wrote login.motd to /etc/motd.d), imds-dhcp-hostname (the lease
-#   holds dhcp-test, /imds's UseHostname=no drop-in is in effect, and after a renewal the host
-#   name is still imds-test) and
-#   imds-no-ordering-cycle (the import before sysinit.target made no ordering cycle).
+#   /etc/hostname are imds-test), imds-hetzner-layout (the guest has no imds.* credential, asked
+#   for the host name and the user data at Hetzner's paths, and got no 404),
+#   imds-ssh-key (the user data's key logs in; /root/.ssh/authorized_keys is 0600),
+#   imds-userdata-credential (/run/credstore/imds-canary holds the value, and tmpfiles wrote
+#   login.motd to /etc/motd.d), imds-ipv6 (the user data's .network file configures the link: it
+#   has the global address 2001:db8:5eed::1), imds-dhcp-hostname (the lease holds dhcp-test,
+#   /imds's UseHostname=no drop-in reaches 85-imds-early.network, and after a renewal the host
+#   name is still imds-test) and imds-no-ordering-cycle (the import before sysinit.target made no
+#   ordering cycle).
 # With --secure-boot: boots OVMFFull and checks that the firmware enforces Secure Boot.
 # With --ssh-test: also checks the boot loader (docs/design/bootloader.md): the ESP's two
 #   copies of systemd-boot are the signed file in /usr, loader/loader.conf is the one
@@ -183,8 +190,12 @@ TAMPER_INDEX=0
 FACTORY_RESET=0
 ESP_CREDS=0
 IMDS=0
-# the guest's port for the fake IMDS endpoint (--imds); no host port is opened
-IMDS_PORT=${BOOT_TEST_IMDS_PORT:-8075}
+# --imds: QEMU's user network, Hetzner's metadata address on it, and the user data's IPv6 address
+# and .network credential (boot-test-http.sh serves them; no host port is opened)
+IMDS_NET=169.254.169.0/24
+IMDS_ADDR=169.254.169.254
+IMDS_IPV6=2001:db8:5eed::1
+IMDS_NET_CRED=60-imds-ipv6
 
 # the parts: functions and constants, no processes start when they are sourced; boot-test-guest.sh
 # reads SSH_PORT above
@@ -264,8 +275,8 @@ if [ "$ESP_CREDS" = 1 ] && [ "$SSH_TEST" = 0 ]; then
   echo "Error: --esp-creds needs --ssh-test: the checks log in with the generated key" >&2
   exit 1
 fi
-if [ "$IMDS" = 1 ] && { [ "$SSH_TEST" = 0 ] || [ "$ESP_CREDS" = 1 ]; }; then
-  echo "Error: --imds needs --ssh-test (the checks run over ssh) and excludes --esp-creds (both set the host name and the root key)" >&2
+if [ "$IMDS" = 1 ] && { [ "$SSH_TEST" = 0 ] || [ "$ESP_CREDS" = 1 ] || [ -n "$NEXT" ]; }; then
+  echo "Error: --imds needs --ssh-test (the checks run over ssh), excludes --esp-creds (both set the host name and the root key) and --next (its network has no 10.0.2.2, the update source)" >&2
   exit 1
 fi
 if [ "$IMDS" = 1 ]; then
