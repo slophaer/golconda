@@ -116,6 +116,27 @@ check_no_failed() {
   verdict "$1" $RC
 }
 
+# check_clock NAME: the clock the kernel read from the RTC was kept. PID 1 resets a clock more than
+# 15 years past systemd's built-in epoch (`time-epoch`, the pin date of packages/systemd): with the
+# build's SOURCE_DATE_EPOCH, 1980, that was every boot, and until timesyncd synced, DNSSEC
+# validation and TLS certificate times failed. QEMU's RTC is the host's clock, so it shows here. The
+# journal of this boot has no "further ahead than" reset message, and its oldest entry is not
+# before the epoch's year (the entries after a reset would be 1980).
+check_clock() {
+  echo ""
+  echo "=== the clock ($1) ==="
+  RC=0
+  EPOCH_YEAR=$(sed -n 's/^date = "\([0-9]*\)-.*/\1/p' "$REPO_DIR/packages/systemd/sources.toml")
+  J=$(guest journalctl -b -o short-unix --no-pager -q 2>&1) || RC=1
+  RESET=$(echo "$J" | grep -F "further ahead than" || true)
+  FIRST=$(echo "$J" | sed -n 's/^\([0-9][0-9]*\)\..*/\1/p' | sort -n | head -1)
+  YEAR=$(date -u -d "@${FIRST:-0}" +%Y 2>/dev/null) || YEAR=0
+  echo "epoch year: ${EPOCH_YEAR:-unknown}; oldest journal entry of this boot: year $YEAR"
+  [ -z "$RESET" ] || { echo "reset: $RESET"; RC=1; }
+  [ -n "$EPOCH_YEAR" ] && [ "$YEAR" -ge "$EPOCH_YEAR" ] || RC=1
+  verdict "$1 (no clock reset in the journal; no entry before $EPOCH_YEAR)" $RC
+}
+
 # The sealed sshd host key: a local var's credential (modules/lib/var.nix)
 HOSTKEY_CRED=/etc/credstore.encrypted/sshd-hostkey.key
 
