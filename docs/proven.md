@@ -30,19 +30,18 @@ of it. The image for a host without Secure Boot (`/system.secureBoot = false`,
 | a failed health check costs one try, and the old release boots after the third                                                                      | `health-check-broken`, `attempt-[1-3]-unblessed`, `fallback-to-old-slot`, `counter-exhausted`               | `--next --fail-health`                          |
 | the guest fetches the release from the update server, with its own definition                                                                       | `http-source`, `http-fetch`                                                                                 | `--next`                                        |
 | the image's keyring is the release key; the guest checks the signed index                                                                           | `index-keyring` (`--ssh-test`), `index-signed`, `sysupdate-installed`                                       | `--next`                                        |
-| a changed index installs nothing                                                                                                                    | `sysupdate-installed` fails with `BOOT_TEST_TAMPER_INDEX=1`                                                 | `--next`                                        |
+| a changed index installs nothing                                                                                                                    | `sysupdate-refused`, `boots-old`, `index-signed` and `no-failed-units-after-refused-update`                 | `--next --tamper-index`                         |
 | `factory-reset.target` deletes the state and keeps the slots and the ESP                                                                            | `state-gone`, `machine-id-new`, `first-boot-rerun`, `multi-user-after-reset`, `slots-kept`                  | `--factory-reset --ssh-test`                    |
 | the host name and root's ssh key come from null-key credentials on the ESP                                                                          | `hostname`, `esp-authorized-keys`, `ssh-login` with a key only the ESP holds                                | `--ssh-test --esp-creds`                        |
 | with `/imds` on a (faked) cloud, systemd's import sets the host name, root's ssh key and user data credentials, and DHCP does not set the host name | `imds-hostname`, `imds-ssh-key`, `imds-userdata-credential`, `imds-dhcp-hostname`, `imds-no-ordering-cycle` | `--ssh-test --tpm --imds`                       |
 | with `/imds` and no cloud in DMI, no IMDS import runs                                                                                               | `imds-import-inactive`                                                                                      | `--ssh-test`                                    |
 | without Secure Boot, the kernel's built-in key accepts the verity signature                                                                         | no marker of its own: `image-smoke-test-nosb` reaches `multi-user.target` with `ipe.enforce=1`              | no `--secure-boot`                              |
 
-Runs at the same time: the default boot, `--next`, `--next --fail-health`, `--imds` and the tamper
-run (`BOOT_TEST_TAMPER_INDEX=1`) booted one image together with `scripts/verify --boot-set`. Each
-used its own ssh port and its own update or metadata server on the guest's `10.0.2.2:8074` or
-`:8075`, and the four runs without the tamper control passed. The PASS lists of the default boot and
-of `--next` are those of a run alone, plus `imds-import-inactive`. The tamper run failed as it must:
-`sysupdate-installed` and the checks after the update fail, and `index-signed` passes
+Runs at the same time: the default boot, `--next`, `--next --fail-health`, `--imds` and
+`--next --tamper-index` booted one image together with `scripts/verify --boot-set`. Each used its
+own ssh port and its own update or metadata server on the guest's `10.0.2.2:8074` or `:8075`, all
+five passed, and the run exited 0. The PASS lists of the default boot and of `--next` are those of a
+run alone, plus `imds-import-inactive`
 ([Image artifacts: the boot test](reference/image.md#boot-test-scriptsboot-test)).
 
 Not proven:

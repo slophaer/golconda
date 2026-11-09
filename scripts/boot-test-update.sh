@@ -57,6 +57,40 @@ test_fail_health() {
   verdict "old-slot-selected ($OLD_VERSION is the entry systemd-boot picked)" $RC
 }
 
+# refusal_evidence JOURNAL: true when sysupdate's journal shows the index check failing (a bad
+# signature of SHA256SUMS) and no install
+refusal_evidence() {
+  printf '%s\n' "$1" | grep -qiE 'BAD signature|Signature verification failed|DOWNLOAD INVALID' || return 1
+  ! printf '%s\n' "$1" | grep -q 'Successfully installed'
+}
+
+# test_update_refused RC JOURNAL: --tamper-index. The update must fail on the index, install nothing
+# and leave the old release running after a reboot. RC is the service's result.
+test_update_refused() {
+  echo ""
+  echo "=== the tampered index: the update must be refused ==="
+  echo "sysupdate journal (gpg lines):"
+  echo "$2" | grep -i "gpg\|signature\|verif" | tail -10 || true
+  R=0
+  [ "$1" != 0 ] || R=1
+  refusal_evidence "$2" || R=1
+  PARTS=$(guest ls /dev/disk/by-partlabel 2>&1) || true
+  ENTRIES=$(guest "ls /boot/EFI/Linux; bootctl list --no-pager" 2>&1) || true
+  echo "partitions: $(echo "$PARTS" | tr '\n' ' ')"
+  echo "$ENTRIES" | grep -E "\.efi|id:" || true
+  [ -n "$PARTS" ] || R=1
+  ! echo "$PARTS" | grep -q "usr_$NEXT_VERSION" || R=1
+  ! echo "$ENTRIES" | grep -q "_$NEXT_VERSION" || R=1
+  verdict "sysupdate-refused (the service failed on the index signature; nothing installed or staged for $NEXT_VERSION)" $R
+  echo "Rebooting; the old release must still run..."
+  reboot_guest || return 1
+  V=$(guest_version)
+  R=0; [ "$V" = "$OLD_VERSION" ] || R=1
+  verdict "boots-old ($OLD_VERSION -> $V: still the old release)" $R
+  check_unsealed "after the refused update"
+  check_no_failed no-failed-units-after-refused-update
+}
+
 # --- --next: install the next release, boot it, check its loader, then recovery ---
 test_next() {
   echo ""
@@ -89,11 +123,17 @@ test_next() {
   # source the source is the http URL, not a local path
   RC_FETCH=0
   echo "$JOURNAL" | grep -q "Successfully installed 'http://10.0.2.2:$HTTP_PORT/" || RC_FETCH=1
-  verdict "http-fetch (the journal names the release over http, not a local file)" $RC_FETCH
+  if [ "$TAMPER_INDEX" != 1 ]; then
+    verdict "http-fetch (the journal names the release over http, not a local file)" $RC_FETCH
+  fi
   # Verify=yes: systemd-pull fetches the index's signature and gpg checks it before any payload
   RC_SIG=0
   grep -q '"GET /SHA256SUMS.gpg HTTP/1.[01]" 200' "$HTTP_LOG" || RC_SIG=1
   verdict "index-signed (the guest fetched SHA256SUMS.gpg)" $RC_SIG
+  if [ "$TAMPER_INDEX" = 1 ]; then
+    test_update_refused "$RC" "$JOURNAL"
+    return
+  fi
   verdict "sysupdate-installed ($NEXT_VERSION)" $RC
   if [ "$RC" != 0 ]; then
     echo "HTTP server log (last 20 lines):"

@@ -2,8 +2,8 @@
 # scripts/boot-test: VM boot test for Golconda images.
 #
 # Usage: boot-test <disk.raw> --keys DIR [--secure-boot] [--tpm] [--timeout SECONDS]
-#                  [--ssh-test [--esp-creds | --imds]] [--next DIR [--rotate | --fail-health]]
-#                  [--factory-reset]
+#                  [--ssh-test [--esp-creds | --imds]]
+#                  [--next DIR [--rotate | --fail-health | --tamper-index]] [--factory-reset]
 #
 # The script boots the image in QEMU with:
 #   - a 40 GiB qcow2 overlay (room for root partition)
@@ -108,8 +108,14 @@
 #   (slots-kept). The reset rewrites the root partition only; the ESP and the /usr slots stay.
 #   It prints the serial log of the reset boot. The mode is two boots (the first boot and the
 #   reset boot), so give a --timeout large enough, such as 480, and do not combine it with --next.
-# BOOT_TEST_TAMPER_INDEX=1 (with --next): serve SHA256SUMS with one byte added, so its signature
-#   (SHA256SUMS.gpg) no longer matches; the update must fail (the signed index's negative control).
+# With --next DIR --tamper-index: the signed index's negative control. The server sends SHA256SUMS
+#   with one byte added, so its signature (SHA256SUMS.gpg) no longer matches, and the run passes
+#   when the update is refused: index-signed (the guest fetched the signature), sysupdate-refused
+#   (the service failed, its journal names the signature check and no install, and the next
+#   release is on neither a partition nor the ESP), boots-old (after a reboot the old release
+#   still runs), hostkey-unchanged with --tpm and no-failed-units-after-refused-update. It skips
+#   http-fetch, sysupdate-installed and every check that needs the installed release. An update
+#   that installs, or any other failure, fails the run.
 # BOOT_TEST_HTTP_PORT: the port the guest uses for the release server (default 8074): the test
 #   image's updateSource is http://10.0.2.2:8074/, so another port needs an image built for it.
 #   It is a guest-side address only; runs at the same time all use 8074.
@@ -173,6 +179,7 @@ SSH_TEST=0
 NEXT=""
 ROTATE=0
 FAIL_HEALTH=0
+TAMPER_INDEX=0
 FACTORY_RESET=0
 ESP_CREDS=0
 IMDS=0
@@ -197,7 +204,7 @@ IMDS_PORT=${BOOT_TEST_IMDS_PORT:-8075}
 . "$SCRIPT_DIR/boot-test-update.sh"
 
 usage() {
-  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot] [--tpm] [--timeout SECONDS] [--ssh-test [--esp-creds | --imds]] [--next DIR [--rotate | --fail-health]] [--factory-reset]"
+  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot] [--tpm] [--timeout SECONDS] [--ssh-test [--esp-creds | --imds]] [--next DIR [--rotate | --fail-health | --tamper-index]] [--factory-reset]"
   exit 1
 }
 
@@ -211,6 +218,7 @@ while [ $# -gt 0 ]; do
     --next) NEXT="$2"; SSH_TEST=1; shift 2 ;;
     --rotate) ROTATE=1; shift ;;
     --fail-health) FAIL_HEALTH=1; shift ;;
+    --tamper-index) TAMPER_INDEX=1; shift ;;
     --factory-reset) FACTORY_RESET=1; shift ;;
     --esp-creds) ESP_CREDS=1; shift ;;
     --imds) IMDS=1; shift ;;
@@ -277,6 +285,10 @@ fi
 
 if [ "$FAIL_HEALTH" = 1 ] && [ -z "$NEXT" ]; then
   echo "Error: --fail-health needs --next" >&2
+  exit 1
+fi
+if [ "$TAMPER_INDEX" = 1 ] && { [ -z "$NEXT" ] || [ "$FAIL_HEALTH" = 1 ] || [ "$ROTATE" = 1 ]; }; then
+  echo "Error: --tamper-index needs --next, and the update never installs: not with --fail-health or --rotate" >&2
   exit 1
 fi
 if [ "$ROTATE" = 1 ] && { [ -z "$NEXT" ] || [ "$SECURE_BOOT" = 0 ]; }; then

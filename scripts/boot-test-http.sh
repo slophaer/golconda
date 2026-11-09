@@ -73,10 +73,10 @@ start_http_server() {
   done
 
   # the negative control of the signed index: one byte more in SHA256SUMS, the signature unchanged
-  if [ "${BOOT_TEST_TAMPER_INDEX:-0}" = 1 ]; then
+  if [ "$TAMPER_INDEX" = 1 ]; then
     chmod u+w "$HTTP_ROOT/SHA256SUMS"
     printf '\n' >> "$HTTP_ROOT/SHA256SUMS"
-    echo "BOOT_TEST_TAMPER_INDEX=1: served SHA256SUMS has one byte more than its signature covers"
+    echo "--tamper-index: served SHA256SUMS has one byte more than its signature covers"
   fi
 
   write_http_server http

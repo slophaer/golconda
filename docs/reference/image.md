@@ -409,6 +409,9 @@ With `--next DIR` ([The update test](#the-update-test)):
 | `http-source`                                                          | the guest's own `10-usr.transfer` has `Type=url-file` and `Path=http://10.0.2.2:<port>/`                                                                    |
 | `http-fetch`                                                           | the sysupdate journal names the release over `http`, so the guest fetched it, not a local file                                                              |
 | `sysupdate-installed`                                                  | `systemd-sysupdate-update.service` installed the release                                                                                                    |
+| `sysupdate-refused`                                                    | with `--tamper-index`: the service failed, its journal names the index signature and no install, and the next release is on no partition or ESP entry       |
+| `boots-old`                                                            | with `--tamper-index`, after the reboot `IMAGE_VERSION` is still the old version                                                                            |
+| `no-failed-units-after-refused-update`                                 | with `--tamper-index`, the system has no failed unit after the refused update                                                                               |
 | `admin-vars-pushed`                                                    | before the update, `golconda vars` stored and pushed the host certificate (the guest's host key signed by `snakeoil-host-ca`) and a KRL, and restarted sshd |
 | `admin-vars-sealed`                                                    | `golconda vars list` says both are stored and sealed                                                                                                        |
 | `host-cert-presented`                                                  | the next release presents the host certificate to a strict `@cert-authority` known_hosts                                                                    |
@@ -484,6 +487,14 @@ nothing under `/run`. `BOOT_TEST_HTTP_PORT` changes the port the guest connects 
 `updateSource` must then name the same port. There is no server process to stop: QEMU starts the
 command for each connection and it ends with the connection. The requests are logged in
 `$WORKDIR/http.log`.
+
+`--next DIR --tamper-index` is the negative control of the signed index, and it passes when the
+update is refused. The server sends `SHA256SUMS` with one byte more than its signature
+(`SHA256SUMS.gpg`) covers. The run checks `index-signed` (the guest fetched the signature),
+`sysupdate-refused`, and, after a reboot, `boots-old`, `hostkey-unchanged` (with `--tpm`) and
+`no-failed-units-after-refused-update`. It leaves out `http-fetch`, `sysupdate-installed` and every
+check that needs the installed release, and it does not combine with `--rotate` or `--fail-health`.
+An update that installs, or any other failure, fails the run.
 
 The next release comes from `packages.<system>.image-smoke-test-next` (version `20261031.2`, the
 same keys as the first release; [Outputs](outputs.md)), and `--next` takes its path. The firmware

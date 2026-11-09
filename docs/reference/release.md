@@ -140,8 +140,9 @@ credentials, and every file is checked against the signed index anyway.
 Verification: `scripts/boot-test --next` serves `release/` on `127.0.0.1:8074` (`10.0.2.2:8074` in
 the guest) and rewrites no transfer file. The markers `http-source` and `http-fetch` show that the
 guest read its own `Type=url-file` definition and fetched each file over HTTP, and `index-signed`
-that it fetched `SHA256SUMS.gpg`; with `BOOT_TEST_TAMPER_INDEX=1` the index the server sends has one
-byte more than its signature covers, and the update installs nothing.
+that it fetched `SHA256SUMS.gpg`; with `--tamper-index` the index the server sends has one byte more
+than its signature covers, and the run passes only when `sysupdate-refused` shows that the update
+installed nothing.
 
 ## 5. Enrol the certificate in the firmware
 

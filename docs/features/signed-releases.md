@@ -57,7 +57,8 @@ The boot test proves this with `--next` ([What is proven](../proven.md)):
 - `release-index`: the index has four lines in this order, and each digest matches its file.
 - `index-keyring`, `index-signed`, `sysupdate-installed`: the image's keyring is the release key,
   and the guest checks the signed index.
-- `sysupdate-installed` fails with `BOOT_TEST_TAMPER_INDEX=1`: a changed index installs nothing.
+- `sysupdate-refused` with `--tamper-index`: a changed index installs nothing, and the old release
+  still runs after a reboot (`boots-old`).
 
 One release signed with a `scripts/make-keys` set, passed as a path (so copied into the store),
 booted on the same markers as the throwaway set. Its next release installed over HTTP.
