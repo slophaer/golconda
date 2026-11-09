@@ -71,39 +71,38 @@ networkd. The import pulls in `golconda-imds-network.service`, which runs after 
    `networkctl reload`, which configures each link whose file changed. All before `sysinit.target`.
 
 A `.network` file from the user data replaces `85-imds-early.network` on the links it matches, and
-with it the IMDS lock. Copy the lock into the file, and turn the DHCP host name off. On Hetzner
-Cloud, where each server has a static IPv6 `/64` with no router advertisement, the user data for the
-server's address is:
+with it the lock of `imds-network=locked`: the prohibit route to the endpoint and imdsd's route and
+rule by firewall mark. So `/imds` holds the lock on `lo` as well, in
+`10-golconda-imds-lock.network`, where no file for a link replaces it. Policy rules belong to no
+link: imdsd's packets (firewall mark `0x7FFF0815`) look in imdsd's table first (priority 32100),
+then in the main table (32101), and every other packet to `169.254.169.254` is refused (32102). The
+user data needs nothing of the lock; turn the DHCP host name off in it. On Hetzner Cloud, where each
+server has a static IPv6 `/64` with no router advertisement, the user data for the server's address
+is:
 
 ```json
 {"systemd.credentials": [
   {"name": "ssh.authorized_keys.root", "text": "ssh-ed25519 AAAA... me\n"},
-  {"name": "network.network.60-ipv6", "text": "[Match]\nType=ether\nKind=!*\n\n[Network]\nDHCP=ipv4\nIPv6AcceptRA=no\nAddress=2001:db8:1:2::1/64\nGateway=fe80::1\n\n[DHCPv4]\nUseHostname=no\n\n[Route]\nDestination=169.254.169.254\nType=prohibit\n\n[Route]\nDestination=169.254.169.254\nScope=link\nTable=0x7FFF0815\n\n[RoutingPolicyRule]\nFamily=ipv4\nFirewallMark=0x7FFF0815\nTable=0x7FFF0815\n"}
+  {"name": "network.network.60-ipv6", "text": "[Match]\nType=ether\nKind=!*\n\n[Network]\nDHCP=ipv4\nIPv6AcceptRA=no\nAddress=2001:db8:1:2::1/64\nGateway=fe80::1\n\n[DHCPv4]\nUseHostname=no\n"}
 ]}
 ```
 
-with the server's own prefix in `Address=`. The three last sections are the lock that
-`85-imds-early.network` holds: the prohibit route, and imdsd's route and rule by firewall mark.
+with the server's own prefix in `Address=`.
 
 ### Hetzner Cloud
 
 systemd 262's `40-imds.hwdb` has wrong paths for Hetzner: it asks for
 `/hetzner/v1/metadata/public-keys/0` and `/hetzner/v1/metadata/userdata`, and Hetzner answers both
 with 404, so the import fails. Hetzner serves the keys under `/hetzner/v1/metadata/` and the user
-data at `/hetzner/v1/userdata`. `/imds` ships the right paths as data, the udev rule
-`70-golconda-imds.rules`. systemd-imdsd reads its endpoint from the udev properties of the DMI
-device, which `50-udev-default.rules` fills from hwdb. The rule runs after that, on the device whose
-hwdb vendor is `hetzner-cloud` only, and sets the base URL `http://169.254.169.254/hetzner/v1`, the
-keys `/metadata/hostname`, `/metadata/region`, `/metadata/availability-zone`,
-`/metadata/public-ipv4` and `/userdata`, and no ssh key. The address stays hwdb's.
-
-Why a rule: Golconda compiles one `hwdb.bin` at build time (`packages/hwdb`, linked by `/base`), so
-a `hwdb.d` file would need that build and would be in every image. An `imds.*` credential or a
-`systemd.imds.*` option would replace hwdb's entry on every cloud, not only on Hetzner.
+data at `/hetzner/v1/userdata`. `packages/systemd` patches the entry (`hwdb-imds-hetzner.patch`, a
+commit prepared for systemd upstream) to the base URL `http://169.254.169.254/hetzner/v1`, the keys
+`/metadata/hostname`, `/metadata/region`, `/metadata/availability-zone`, `/metadata/public-ipv4` and
+`/userdata`, and no ssh key, and `packages/hwdb` compiles it into every image's `hwdb.bin`. The
+patch goes when systemd ships the fix.
 
 Hetzner lists the ssh keys of the project only as one JSON array (`/metadata/public-keys`), which
 systemd-imds cannot read. Give root's key in the user data, as the credential
-`ssh.authorized_keys.root`. Drop the rule once systemd's hwdb has the right paths.
+`ssh.authorized_keys.root`.
 
 The metadata endpoint is plain HTTP without authentication. Whoever can answer on its address sets
 the host name, root's ssh key and any credential, such as `tmpfiles.extra`. Opt in only where the
@@ -139,14 +138,15 @@ The boot test proves this in QEMU ([What is proven](../proven.md)):
 - `no-firstboot-prompt`: first boot finishes without a prompt.
 - `imds-hostname`, `imds-hetzner-layout`, `imds-ssh-key`, `imds-userdata-credential`, `imds-ipv6`,
   `imds-endpoint-locked` and `imds-dhcp-hostname` on a faked Hetzner Cloud (`--ssh-test --imds`):
-  SMBIOS names Hetzner, and nothing else. The guest finds the endpoint by hwdb and `/imds`'s rule,
-  and the harness serves it at `169.254.169.254` in Hetzner's layout.
+  SMBIOS names Hetzner, and nothing else. The guest finds the endpoint by hwdb alone, and the
+  harness serves it at `169.254.169.254` in Hetzner's layout.
 - `imds-import-inactive`: without a cloud in DMI, the test image's `/imds` runs no import.
 
 On a Hetzner Cloud server (2026-11-09, [What is proven](../proven.md#imds-on-hetzner-cloud)), with
 `/imds` and no ESP credential: the import passed, the host name came from the metadata, the user
 data's key logged in, the user data's `.network` file gave the IPv6 address in the first boot, and
-the endpoint stayed locked.
+the endpoint stayed locked. That run had the earlier form of the fix: a udev rule for the paths, and
+the lock copied into the user data. The hwdb patch and the lock on `lo` have run in QEMU only.
 
 ## Limits
 
@@ -158,6 +158,8 @@ the endpoint stayed locked.
   data gives the key.
 - No marker covers a real cloud's endpoint; Hetzner's ran by hand. Other clouds' hwdb entries have
   not run.
+- The lock on `lo` covers `169.254.169.254` only. An endpoint on IPv6 (AWS also has `fd00:ec2::254`)
+  is locked only while its link uses `85-imds-early.network`.
 - v1 names two credentials. `--credential` writes others, but the docs name no reader for them.
 
 ## More

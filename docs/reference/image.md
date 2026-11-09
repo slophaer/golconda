@@ -310,19 +310,20 @@ lists the directory. It finds the ESP in the GPT and refuses a path in `/nix/sto
 `BOOT_TEST_ESP_NO_KEY=1` leaves the key out of the ESP: the login must then fail.
 
 `--imds` (with `--ssh-test`, not with `--esp-creds` or `--next`) fakes Hetzner Cloud for `/imds`,
-which the test image has, and the guest finds the endpoint as it does on Hetzner: by hwdb and
-`/imds`'s udev rule, with no `imds.*` credential. QEMU gets `-smbios type=0,vendor=Hetzner`, so
-`40-imds.hwdb` matches. Its user network is `169.254.169.0/24` (`-netdev user,net=`), so
-`169.254.169.254` is on the guest's link, as imdsd's route to it (`Scope=link`) needs; the image's
-update source, `10.0.2.2`, is then not on it, hence no `--next`. A QEMU `guestfwd` serves port 80 of
-`169.254.169.254` from a stdio HTTP server in the work directory, in Hetzner's layout:
-`/hetzner/v1/metadata/hostname` (`imds-test`), `region`, `availability-zone`, `public-ipv4`,
-`public-keys` (a JSON array with a key nothing logs in with) and `/hetzner/v1/userdata`. It passes
-no SMBIOS host name. The user data lists the credentials `imds-canary`, `login.motd`,
-`ssh.authorized_keys.root` (a key pair the harness makes) and `network.network.60-imds-ipv6`: the
-static address `2001:db8:5eed::1/64`, `IPv6AcceptRA=no`, `UseHostname=no` and the IMDS lock of
-`85-imds-early.network`. QEMU's router advertisements name only `fec0::/64`, so no other route gives
-that address. QEMU's DHCP server offers the host name `dhcp-test` (`-netdev user,hostname=`).
+which the test image has, and the guest finds the endpoint as it does on Hetzner: by hwdb alone
+(systemd's entry with `packages/systemd`'s patch), with no `imds.*` credential. QEMU gets
+`-smbios type=0,vendor=Hetzner`, so `40-imds.hwdb` matches. Its user network is `169.254.169.0/24`
+(`-netdev user,net=`), so `169.254.169.254` is on the guest's link, as imdsd's route to it
+(`Scope=link`) needs; the image's update source, `10.0.2.2`, is then not on it, hence no `--next`. A
+QEMU `guestfwd` serves port 80 of `169.254.169.254` from a stdio HTTP server in the work directory,
+in Hetzner's layout: `/hetzner/v1/metadata/hostname` (`imds-test`), `region`, `availability-zone`,
+`public-ipv4`, `public-keys` (a JSON array with a key nothing logs in with) and
+`/hetzner/v1/userdata`. It passes no SMBIOS host name. The user data lists the credentials
+`imds-canary`, `login.motd`, `ssh.authorized_keys.root` (a key pair the harness makes) and
+`network.network.60-imds-ipv6`: the static address `2001:db8:5eed::1/64`, `IPv6AcceptRA=no` and
+`UseHostname=no`, and nothing of the IMDS lock of `85-imds-early.network`, which the file replaces.
+QEMU's router advertisements name only `fec0::/64`, so no other route gives that address. QEMU's
+DHCP server offers the host name `dhcp-test` (`-netdev user,hostname=`).
 
 `--secure-boot` enrolls the throwaway db key with `virt-fw-vars` (one fixed owner GUID) and boots
 `OVMFFull.fd` with `-machine smm=on`: plain `OVMF.fd` has no Secure Boot support. The guest must
@@ -379,16 +380,16 @@ With `--ssh-test` (the harness logs in as root with `tests/fixtures/snakeoil-ssh
 
 With `--imds` (instead of `hostname`):
 
-| marker                     | what it proves                                                                                                                                             |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `imds-hostname`            | the generator pulled `systemd-imds-import.service` in, it succeeded, and `hostname` and `/etc/hostname` are `imds-test` (`firstboot.hostname`)             |
-| `imds-hetzner-layout`      | the guest has no `imds.*` credential; the server answered `GET /hetzner/v1/metadata/hostname` and `GET /hetzner/v1/userdata` with 200, and nothing 404     |
-| `imds-ssh-key`             | the user data's `ssh.authorized_keys.root` logs in as root; `/root/.ssh/authorized_keys` is 0600                                                           |
-| `imds-userdata-credential` | `/run/credstore/imds-canary` holds its value, and tmpfiles wrote `login.motd` to `/etc/motd.d`                                                             |
-| `imds-ipv6`                | the link uses `/run/systemd/network/60-imds-ipv6.network` from the user data, and has `2001:db8:5eed::1`                                                   |
-| `imds-endpoint-locked`     | with that file, `systemd-pull` gets no answer from `169.254.169.254` and the server sees no request; `systemd-imds --cache=no` (through imdsd) gets one    |
-| `imds-dhcp-hostname`       | the lease holds `dhcp-test`, `/imds`'s `UseHostname=no` drop-in reaches `85-imds-early.network`, and after `networkctl renew` the host name is `imds-test` |
-| `imds-no-ordering-cycle`   | the journal has no ordering cycle: the import runs after `network-online.target` and before `sysinit.target`                                               |
+| marker                     | what it proves                                                                                                                                                          |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `imds-hostname`            | the generator pulled `systemd-imds-import.service` in, it succeeded, and `hostname` and `/etc/hostname` are `imds-test` (`firstboot.hostname`)                          |
+| `imds-hetzner-layout`      | the guest has no `imds.*` credential; the server answered `GET /hetzner/v1/metadata/hostname` and `GET /hetzner/v1/userdata` with 200, and nothing 404                  |
+| `imds-ssh-key`             | the user data's `ssh.authorized_keys.root` logs in as root; `/root/.ssh/authorized_keys` is 0600                                                                        |
+| `imds-userdata-credential` | `/run/credstore/imds-canary` holds its value, and tmpfiles wrote `login.motd` to `/etc/motd.d`                                                                          |
+| `imds-ipv6`                | the link uses `/run/systemd/network/60-imds-ipv6.network` from the user data, and has `2001:db8:5eed::1`                                                                |
+| `imds-endpoint-locked`     | with that file (no lock in it), `systemd-pull` gets no answer from `169.254.169.254` and the server sees no request; `systemd-imds --cache=no` (through imdsd) gets one |
+| `imds-dhcp-hostname`       | the lease holds `dhcp-test`, `/imds`'s `UseHostname=no` drop-in reaches `85-imds-early.network`, and after `networkctl renew` the host name is `imds-test`              |
+| `imds-no-ordering-cycle`   | the journal has no ordering cycle: the import runs after `network-online.target` and before `sysinit.target`                                                            |
 
 The loader checks ([Boot loader](../design/bootloader.md)) run on the first boot, again after an
 update, and after a rotation:
