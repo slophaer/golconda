@@ -148,11 +148,13 @@ The boot test proves this in QEMU ([What is proven](../proven.md)):
   the endpoint by hwdb alone, and the harness serves it at `169.254.169.254` in Hetzner's layout.
 - `imds-import-inactive`: without a cloud in DMI, the test image's `/imds` runs no import.
 
-On a Hetzner Cloud server (2026-11-09, [What is proven](../proven.md#imds-on-hetzner-cloud)), with
-`/imds` and no ESP credential, the current form ran: the hwdb patch, the lock on `lo` and the ssh
-keys from the JSON array. The import passed, the host name came from the metadata, both project keys
-logged in, the user data's `ssh.authorized_keys.root` was skipped, the user data's `.network` file
-(with no lock in it) gave the IPv6 address in the first boot, and the endpoint stayed locked.
+On Hetzner Cloud (2026-11-09, [What is proven](../proven.md#on-hetzner-cloud)), the guide's run gave
+the host name and the key by the ESP route, and without `/imds` no IMDS unit ran. With `/imds` and
+no ESP credential, the current form ran: the hwdb patch, the lock on `lo` and the ssh keys from the
+JSON array. The import passed, the host name came from the metadata, both project keys logged in,
+the user data's `ssh.authorized_keys.root` was skipped, the user data's `.network` file (with no
+lock in it) gave the IPv6 address in the first boot, and the endpoint stayed locked
+([What is proven: `/imds` on Hetzner Cloud](../proven.md#imds-on-hetzner-cloud)).
 
 ## Limits
 
@@ -172,8 +174,8 @@ logged in, the user data's `ssh.authorized_keys.root` was skipped, the user data
 
 - [Boot: Bootstrap credentials](../design/boot.md#bootstrap-credentials) and
   [First boot](../design/boot.md#first-boot).
-- [Hetzner Cloud](../reference/hetzner-cloud.md#4-the-machines-credentials) *(planned)*: the ESP
-  route end to end.
+- [Hetzner Cloud](../reference/hetzner-cloud.md#4-the-machines-credentials): the ESP route end to
+  end.
 - [Image artifacts](../reference/image.md): the `--esp-creds` test.
 - [Trust: Secrets and vars](../design/trust.md#secrets-and-vars).
 - [Login by ssh](ssh-login.md).

@@ -65,7 +65,8 @@ boots and updates. See [What is proven](../proven.md).
 ## Limits
 
 - Enrolment is manual (`virt-fw-vars`, `sbctl` or firmware setup). Automatic enrolment is
-  *(planned)*. The harness enrols offline, so real firmware has not run. Hetzner has not run.
+  *(planned)*. The harness enrols offline, so real firmware has not run. Hetzner Cloud ran without
+  Secure Boot and without a TPM ([What is proven](../proven.md#on-hetzner-cloud)).
 - Only the sshd host key is sealed. The state partition is not (LUKS2 is *(after v1)*).
 - Without Secure Boot, nothing checks the UKI before it runs. Whoever can write the ESP can boot a
   kernel that trusts another key. IPE and the `/usr` signature still hold.

@@ -28,7 +28,7 @@
 - [Walkthrough](reference/walkthrough.md)
 - [Build host](reference/build-host.md)
 - [Making a release](reference/release.md)
-- [Deploying to Hetzner Cloud (planned)](reference/hetzner-cloud.md)
+- [Deploying to Hetzner Cloud](reference/hetzner-cloud.md)
 
 # Design
 

@@ -53,6 +53,36 @@ the same network: `imds-endpoint-locked` (only the endpoint `169.254.169.254` is
 `http-fetch`, `sysupdate-installed`, `boots-next` and `no-failed-units-after-update` pass in one
 run.
 
+## On Hetzner Cloud
+
+On 2026-11-09 the [Hetzner guide](reference/hetzner-cloud.md) ran step by step on one `cpx12` in
+`fsn1` (UEFI 2.70, EDK II; no Secure Boot, no TPM), with a key set from `scripts/make-keys`, a new
+user CA and releases served over HTTPS from a Cloudflare R2 bucket. The image was the guide's
+document with `trustedUserCAKeys` and `principals.root`, and no `authorizedKeys`. These are runs by
+hand, not boot-test markers:
+
+| claim                                                                                                                  | evidence                                                                                                                         |
+| ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| the rescue system boots by UEFI; `dd` of the 22.3 GB disk works                                                        | `/sys/firmware/efi` exists; 22281241088 bytes in 83 s                                                                            |
+| the disk boots; the host name and root's key come from the ESP; nothing failed; the entry is blessed                   | `hostname`; a login with the key only the ESP held; `systemctl --failed` empty; `boot-complete.target` active                    |
+| a user certificate for the allowed principal logs in; another principal is refused                                     | sshd: `Accepted certificate ID "hcloud-ok"`; `Certificate does not contain an authorized principal`                              |
+| the next release installs over HTTPS with the signed index, and boots blessed                                          | `Good signature`, `Successfully installed 'https://…/hcloud-test_20261109.2.efi'`; `IMAGE_VERSION=20261109.2`; the same host key |
+| a third release, failed by a masked health unit, loses one try per boot; the fourth boot returns to the release before | `tries: 2 left; 1 done` … `0 left; 3 done`; then `20261109.2 (selected)`, no failed unit                                         |
+| without `/imds`, no IMDS unit runs, though DMI names Hetzner                                                           | the four IMDS units `inactive`                                                                                                   |
+| with `/imds`, the host name comes from the metadata                                                                    | `firstboot.hostname` imported; `hostname` is the server's name, and the ESP had no credential                                    |
+
+Found there, and fixed since in this branch line (details in
+[Hetzner Cloud: What the guide's run found](reference/hetzner-cloud.md#what-the-first-run-found)):
+
+- with `/imds`, the ssh key and the user data did not arrive: `40-imds.hwdb` named `/public-keys/0`
+  and `/userdata` under `/hetzner/v1/metadata`, which answer 404. Now systemd's hwdb is patched for
+  Hetzner's paths and reads the keys from the JSON array (`ssh-key-json`); see
+  [`/imds` on Hetzner Cloud](#imds-on-hetzner-cloud);
+- IPv6 had only the link-local address: the user data's `network.network.*` credential arrived after
+  `systemd-network-generator` ran. Now `/imds` runs the generator again after the import;
+- the clock: each first boot started at 1980-01-01, the build epoch, until timesyncd synced. Now
+  systemd's `time-epoch` is the pin's date (`clock-not-reset`).
+
 ## `/imds` on Hetzner Cloud
 
 Two runs by hand on a `cpx12` in `fsn1` (UEFI, no Secure Boot, no TPM), each with an image written
@@ -88,11 +118,12 @@ Hetzner's paths, the lock only in the user data's `.network` file, no ssh key fr
 | with the lock in that file, only imdsd reaches the endpoint; a file without it lets any process in | `systemd-pull` of the endpoint: `Could not connect to server`; `systemd-imds -K hostname` answers; with a lock-less file, `systemd-pull` got the host name          |
 | the same on the next boot                                                                          | the import, the second network generator run and the IPv6 address again; no failed unit                                                                             |
 
-Not proven:
+## Not proven
 
-- **Enrolment on real firmware.** The harness enrols keys offline in the variable store.
-- **Hardware.** Only QEMU with OVMF on x86_64 has run. aarch64 is postponed after v1
-  ([Scope](design/scope.md)), because no aarch64 package can be built here.
+- **Enrolment on real firmware.** The harness enrols keys offline in the variable store. Hetzner
+  Cloud has no Secure Boot.
+- **Hardware.** Only QEMU with OVMF on x86_64 has run, and Hetzner Cloud's QEMU with EDK II. aarch64
+  is postponed after v1 ([Scope](design/scope.md)), because no aarch64 package can be built here.
 - **Loader recovery by hand.** A loader that no longer starts, a lost ESP and a lost `db` key
   ([Boot loader: Recovery](design/bootloader.md#recovery)) have no marker. The rotation run has two
   releases, so it leaves out step 4 of the rotation.
