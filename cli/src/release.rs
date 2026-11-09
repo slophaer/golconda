@@ -579,12 +579,16 @@ impl Destination<'_> {
         }
     }
 
-    /// A file at the destination, or None when it is not there.
+    /// A file at the destination, or None when `lsf` does not list it (on S3 or R2, `rclone
+    /// cat` of a missing object exits 0 with no output).
     ///
     /// # Errors
     ///
     /// When rclone fails for another reason (no such remote, no access).
     pub fn read(&self, name: &str) -> Result<Option<Vec<u8>>> {
+        if !self.files()?.iter().any(|f| f == name) {
+            return Ok(None);
+        }
         let out = self
             .rclone
             .output(&["cat", &self.path(name)], None)
@@ -1776,6 +1780,34 @@ mod tests {
         let mut want: Vec<&str> = r.index.files.iter().map(|f| f.name.as_str()).collect();
         want.extend(["SHA256SUMS.gpg", "SHA256SUMS"]);
         assert_eq!(copied, want);
+    }
+
+    #[test]
+    fn a_bucket_remote_that_cats_a_missing_file_as_empty_serves_nothing() {
+        // an S3 remote (R2, B2's S3 API) takes a missing object for an empty directory:
+        // `rclone cat` exits 0 with no output, and `lsf` lists only what is there
+        let s = scene();
+        let fake = s.tmp.path().join("rclone");
+        let listed = s.tmp.path().join("listed");
+        fs::write(&listed, "").unwrap();
+        fs::write(
+            &fake,
+            format!(
+                "#!/bin/sh\ncase $1 in\nlsf) cat {l} ;;\ncat) grep -qx \"$(basename \"$2\")\" {l} && echo served ;;\nesac\nexit 0\n",
+                l = listed.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();
+        let rclone = Program::from_env("GOLCONDA_TEST_UNSET_RCLONE", fake.to_str().unwrap());
+        let dest = Destination {
+            rclone: &rclone,
+            to: "remote:bucket/web",
+        };
+        assert_eq!(dest.read("SHA256SUMS").unwrap(), None);
+        assert!(dest.index().unwrap().is_none());
+        fs::write(&listed, "SHA256SUMS\n").unwrap();
+        assert_eq!(dest.read("SHA256SUMS").unwrap(), Some(b"served\n".to_vec()));
     }
 
     #[test]
