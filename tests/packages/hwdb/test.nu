@@ -12,6 +12,11 @@ assert "the file is a compiled hwdb" (($bytes | bytes at 0..<8 | decode utf-8) =
 
 let text = ($bytes | decode latin1)
 assert "IMDS: Hetzner is matched by DMI (40-imds.hwdb)" ($text | str contains "hetzner-cloud")
+# packages/systemd's hwdb-imds-hetzner.patch (systemd's own fix): Hetzner's real paths, no ssh key
+assert "IMDS: Hetzner's base URL is /hetzner/v1" ($text | str contains "http://169.254.169.254/hetzner/v1\u{0}")
+assert "IMDS: Hetzner's keys are under /metadata/" ($text | str contains "/metadata/availability-zone")
+assert "IMDS: no Hetzner key path that answers 404" (not ($text | str contains "/public-keys/0\u{0}"))
+assert "IMDS: no data URL /hetzner/v1/metadata" (not ($text | str contains "/hetzner/v1/metadata\u{0}"))
 assert "TPM2 properties (60-tpm2.hwdb)" ($text | str contains "TPM2_BROKEN_NVPCR")
 assert "PCI vendor names (20-pci-vendor-model.hwdb)" ($text | str contains "Intel Corporation")
 assert "no keyboard remapping (60-keyboard.hwdb is left out)" (not ($text | str contains "KEYBOARD_KEY_"))

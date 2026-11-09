@@ -33,6 +33,13 @@ package {
   uses = [ "meson" ];
   prefix = "/usr";
 
+  # hwdb: Hetzner Cloud's IMDS paths. 40-imds.hwdb names /hetzner/v1/metadata/public-keys/0 and
+  # /hetzner/v1/metadata/userdata, which Hetzner answers with 404, so the import fails. The patch
+  # is the commit prepared for systemd upstream (branch hwdb-imds-hetzner, `git format-patch -U1`,
+  # as main's next entry differs from 262.1's); packages/hwdb compiles the fixed entry. Drop it
+  # when systemd ships the fix.
+  patches = [ ./hwdb-imds-hetzner.patch ];
+
   # Hardening disabled: the EFI stub/boot code cannot use hardened flags (no libc, no stack
   # protector runtime). cc.hardening = false applies to the whole build. Trade-off documented:
   # EFI code is signed later by the image builder.

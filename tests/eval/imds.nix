@@ -52,8 +52,7 @@ let
   lan = {
     "/network".networks.lan.match.Name = "eth1";
   };
-  # Hetzner's endpoint layout over 40-imds.hwdb's: a udev rule after 50-udev-default.rules (which
-  # imports the hwdb properties) sets the DMI device's IMDS_* properties systemd-imdsd reads
+  # the udev rule that carried Hetzner's paths before packages/systemd patched 40-imds.hwdb
   hetznerRule = "/usr/lib/udev/rules.d/70-golconda-imds.rules";
   # the second run of systemd-network-generator, for the user data's network.* credentials
   netUnit = "golconda-imds-network.service";
@@ -126,24 +125,13 @@ in
     in
     dhcpNameOff r "99-default-dhcp" && dhcpNameOff r "50-lan" && dhcpNameOff r "85-imds-early"
   ))
-  (check "imds: Hetzner's endpoint layout as a udev rule, only with /imds" (
+  (check "imds: Hetzner's paths come from systemd's own hwdb, patched, not from a rule of /imds" (
     let
-      t = withImds.files.${hetznerRule}.text or "";
-      has = x: hasInfix x t;
+      patches = map toString (fixturePkgs.systemd.drvAttrs.patches or [ ]);
     in
-    !((composeWith lan).files ? ${hetznerRule})
-    # it changes only the DMI device that hwdb named Hetzner
-    && has ''SUBSYSTEM=="dmi", KERNEL=="id", ENV{IMDS_VENDOR}=="hetzner-cloud"''
-    && has ''ENV{IMDS_DATA_URL}="http://169.254.169.254/hetzner/v1"''
-    && has ''ENV{IMDS_KEY_HOSTNAME}="/metadata/hostname"''
-    && has ''ENV{IMDS_KEY_REGION}="/metadata/region"''
-    && has ''ENV{IMDS_KEY_ZONE}="/metadata/availability-zone"''
-    && has ''ENV{IMDS_KEY_IPV4_PUBLIC}="/metadata/public-ipv4"''
-    && has ''ENV{IMDS_KEY_USERDATA}="/userdata"''
-    # Hetzner has the keys only as a JSON array, which systemd-imds cannot read: no key
-    && has ''ENV{IMDS_KEY_SSH_KEY}=""''
-    # the address stays hwdb's
-    && !(has "IMDS_ADDRESS_IPV4")
+    any (hasSuffix "hwdb-imds-hetzner.patch") patches
+    && !(withImds.files ? ${hetznerRule})
+    && all (p: !(hasInfix "/udev/rules.d/" p)) (attrNames withImds.files)
   ))
   (check "imds: user data network.* credentials take effect in the boot that imports them" (
     let

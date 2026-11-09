@@ -1,0 +1,42 @@
+From e7ee336c1c0c6f7d00c2102bf77d6647c85b9531 Mon Sep 17 00:00:00 2001
+From: phaer <hello@phaer.org>
+Date: Mon, 9 Nov 2026 16:53:23 +0000
+Subject: [PATCH] hwdb: fix the IMDS paths for Hetzner Cloud
+
+The Hetzner Cloud metadata service serves the user data at
+/hetzner/v1/userdata, next to /hetzner/v1/metadata rather than below
+it, and it has no /public-keys/0: the SSH keys are only available as a
+JSON array at /hetzner/v1/metadata/public-keys. Both paths return 404,
+and systemd-imds-import.service fails.
+
+Move the data URL one level up, prefix the metadata keys with
+/metadata, and drop IMDS_KEY_SSH_KEY, as there is no key that returns a
+single plain SSH key.
+
+Assisted-by: Claude Code (claude-opus-5-5)
+---
+ hwdb.d/40-imds.hwdb | 11 +++++------
+ 1 file changed, 5 insertions(+), 6 deletions(-)
+
+diff --git a/hwdb.d/40-imds.hwdb b/hwdb.d/40-imds.hwdb
+index 2cd08bddb6..d31e12a436 100644
+--- a/hwdb.d/40-imds.hwdb
++++ b/hwdb.d/40-imds.hwdb
+@@ -76,9 +76,8 @@ dmi:bvnHetzner:*
+  IMDS_VENDOR=hetzner-cloud
+- IMDS_DATA_URL=http://169.254.169.254/hetzner/v1/metadata
++ IMDS_DATA_URL=http://169.254.169.254/hetzner/v1
+  IMDS_ADDRESS_IPV4=169.254.169.254
+- IMDS_KEY_HOSTNAME=/hostname
+- IMDS_KEY_REGION=/region
+- IMDS_KEY_ZONE=/availability-zone
+- IMDS_KEY_IPV4_PUBLIC=/public-ipv4
+- IMDS_KEY_SSH_KEY=/public-keys/0
++ IMDS_KEY_HOSTNAME=/metadata/hostname
++ IMDS_KEY_REGION=/metadata/region
++ IMDS_KEY_ZONE=/metadata/availability-zone
++ IMDS_KEY_IPV4_PUBLIC=/metadata/public-ipv4
+  IMDS_KEY_USERDATA=/userdata
+-- 
+2.55.0
+
