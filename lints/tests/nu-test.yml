@@ -58,6 +58,9 @@ id: quoted-glob
 valid:
   - 'ls ($"($d)/*.rules" | into glob)'
   - "ls *.rules"
+  - "ls `*.txt`"
 invalid:
   - 'ls $"($d)/*.rules"'
   - 'rm "*.o"'
+  - "rm '*.o'"
+  - "rm r#'*.o'#"

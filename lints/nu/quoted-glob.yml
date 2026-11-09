@@ -3,10 +3,12 @@ language: nu
 severity: error
 message: "a quoted string is a literal file name to ls/rm/cp/mv/du even with * in it, and whether an interpolated one globs changed between nu releases: use a bare word, `glob`, or `| into glob`"
 rule:
-  # a bare word is a val_string too (field arg_str): only a quoted one is literal
+  # a bare word is a val_string too (field arg_str), and it globs, as a `backtick` string
+  # does: only "...", '...' and r#'...'# are literal
+  regex: '\*'
   any:
-    - {kind: val_string, regex: '^["\x27`].*\*'}
-    - {kind: val_interpolated, regex: '\*'}
+    - kind: val_interpolated
+    - {kind: val_string, regex: '^(["'']|r#)'}
   inside:
     kind: command
     regex: '^(ls|rm|cp|mv|du)\s'
