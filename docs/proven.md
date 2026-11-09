@@ -44,8 +44,9 @@ Runs at the same time: the default boot, `--next`, `--next --fail-health`, `--ne
 guest's `169.254.169.2:8074` on QEMU's network `169.254.169.0/24`; for `--imds`,
 `169.254.169.254:80`), all six passed, and the run exited with status 0 (2026-11-09, branch
 `imds-line`). With `--image image-smoke-test-nosb`, `--ssh-test --esp-creds` and `--ssh-test --next`
-passed together. The PASS lists of the default boot and of `--next` are those of a run alone, plus
-`imds-import-inactive`
+passed together. On the line with `time-epoch` (`a3b5f1c`), all eight sets passed again, and each
+passed `clock-not-reset`. The PASS lists of the default boot and of `--next` are those of a run
+alone, plus `imds-import-inactive`
 ([Image artifacts: the boot test](reference/image.md#boot-test-scriptsboot-test)).
 
 `--imds --next` boots the faked Hetzner Cloud and then updates the image from the update server on
@@ -85,8 +86,26 @@ Found there, and fixed since in this branch line (details in
 
 ## `/imds` on Hetzner Cloud
 
-Two runs by hand on a `cpx12` in `fsn1` (UEFI, no Secure Boot, no TPM), each with an image written
+Three runs by hand on a `cpx12` in `fsn1` (UEFI, no Secure Boot, no TPM), each with an image written
 from the rescue system, `["/imds"]`, and no credential on the ESP. They are not boot-test markers.
+
+**The final form with reboots (2026-11-09, branch `imds-line` at `a3b5f1c`).** The form below, plus
+`time-epoch` and the quoted `os-release`; the same server setup and user data. Three boots: the
+first after the write, the second after `systemctl reboot`, the third after a power cycle through
+the Hetzner API (`hcloud server poweroff`, then `poweron`). Every check held in every boot:
+
+| claim                                                                           | evidence                                                                                                                                       |
+| ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| the host name comes from the metadata                                           | `hostname` is the server's name                                                                                                                |
+| both project keys log in; `authorized_keys` is neither doubled nor lost         | a login with each; the file is 0600, has two lines, and has the same SHA-256 in all three boots                                                |
+| the user data's `ssh.authorized_keys.root` is skipped                           | `Skipping importing of credential 'ssh.authorized_keys.root'` in each boot's import; `Permission denied (publickey)` for its key               |
+| the global IPv6 address comes from the user data's `.network` file in each boot | the link uses `/run/systemd/network/60-hetzner-ipv6.network` and has `<prefix>::1`; `systemd-pull` fetched `http://[2a01:4ff:ff00::3:3]/`      |
+| the lock on `lo` holds                                                          | `systemd-pull` of the endpoint: `Could not connect to server`; `systemd-imds --cache=no -K hostname` answers                                   |
+| the clock is right from the start; PID 1 does not reset it                      | the journal's first entry has the day's date, no entry of 1980, no reset message; in the third boot the time was right before timesyncd synced |
+| `PRETTY_NAME` can be sourced by `sh`                                            | `sh -c '. /usr/lib/os-release && echo "$PRETTY_NAME"'` prints `Golconda 20261109.7`                                                            |
+| no unit failed; the boot entry stays blessed                                    | `systemctl --failed` empty; the entry's file is `hcloud-test_20261109.7.efi`, with no boot counter, in all three boots                         |
+
+The array had no bad entry (the QEMU test covers that).
 
 **The final form (2026-11-09, branch `imds-line` at `24ed89b`).** systemd's hwdb patched for
 Hetzner's paths (`hwdb-imds-hetzner.patch`), the IMDS lock on `lo`, and the ssh keys from Hetzner's
@@ -104,7 +123,7 @@ third key, and `network.network.60-hetzner-ipv6`: `<prefix>::1/64`, `Gateway=fe8
 | the user data's `.network` file gives the global IPv6 address in the first boot         | the link uses `/run/systemd/network/60-hetzner-ipv6.network` and has `<prefix>::1` and `fe80::1`; `systemd-pull` fetched `http://[2a01:4ff:ff00::3:3]/` and `https://ipv6.google.com/` |
 | with that file (no lock in it), only imdsd reaches the endpoint: the lock on `lo` holds | `systemd-pull` of `http://169.254.169.254/hetzner/v1/metadata/hostname`: `Could not connect to server`; `systemd-imds --cache=no -K hostname` answers                                  |
 
-The run did not reboot the server, and its array had no bad entry (the QEMU test covers that).
+This run did not reboot the server (the run above did), and its array had no bad entry.
 
 **The first form (2026-11-09, branch `imds-hetzner` before the hwdb patch).** A udev rule for
 Hetzner's paths, the lock only in the user data's `.network` file, no ssh key from the metadata.

@@ -153,7 +153,8 @@ the host name and the key by the ESP route, and without `/imds` no IMDS unit ran
 no ESP credential, the current form ran: the hwdb patch, the lock on `lo` and the ssh keys from the
 JSON array. The import passed, the host name came from the metadata, both project keys logged in,
 the user data's `ssh.authorized_keys.root` was skipped, the user data's `.network` file (with no
-lock in it) gave the IPv6 address in the first boot, and the endpoint stayed locked
+lock in it) gave the IPv6 address in the first boot, and the endpoint stayed locked. All of it held
+again after `systemctl reboot` and after a power cycle, with the clock right from the start
 ([What is proven: `/imds` on Hetzner Cloud](../proven.md#imds-on-hetzner-cloud)).
 
 ## Limits
