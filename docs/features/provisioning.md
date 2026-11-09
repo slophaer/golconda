@@ -48,7 +48,7 @@ take them:
 | IMDS gives                      | credential                 | read by                                                                                |
 | ------------------------------- | -------------------------- | -------------------------------------------------------------------------------------- |
 | the host name                   | `firstboot.hostname`       | systemd-firstboot, on the first boot: it writes `/etc/hostname`                        |
-| the first ssh key (not Hetzner) | `ssh.authorized_keys.root` | systemd-tmpfiles-setup: `/root/.ssh/authorized_keys`, when the file is missing         |
+| the ssh keys                    | `ssh.authorized_keys.root` | systemd-tmpfiles-setup: `/root/.ssh/authorized_keys`, when the file is missing         |
 | the public addresses            | none                       | resolved: local records for `_public`                                                  |
 | user data `systemd.credentials` | each name it lists         | any unit that imports that name (`tmpfiles.*`, `login.*`, `firstboot.*`, `network.*`…) |
 
@@ -100,9 +100,14 @@ commit prepared for systemd upstream) to the base URL `http://169.254.169.254/he
 `/userdata`, and no ssh key, and `packages/hwdb` compiles it into every image's `hwdb.bin`. The
 patch goes when systemd ships the fix.
 
-Hetzner lists the ssh keys of the project only as one JSON array (`/metadata/public-keys`), which
-systemd-imds cannot read. Give root's key in the user data, as the credential
-`ssh.authorized_keys.root`.
+Hetzner lists the server's ssh keys only as one JSON array (`/metadata/public-keys`), and systemd
+262 reads one plain key only. `packages/systemd` carries two more patches, also drafted for systemd
+upstream: `imds-ssh-key-json.patch` adds the well-known key `ssh-key-json`, which the import writes
+as one line per key, after the plain `ssh-key`, to `ssh.authorized_keys.root`;
+`hwdb-imds-hetzner-ssh-keys.patch` names `/metadata/public-keys` for it in the Hetzner entry. Most
+clouds' hwdb entries name only their first key. The import writes this credential before the user
+data's credentials, so where the metadata has a key, a user data `ssh.authorized_keys.root` is
+skipped.
 
 The metadata endpoint is plain HTTP without authentication. Whoever can answer on its address sets
 the host name, root's ssh key and any credential, such as `tmpfiles.extra`. Opt in only where the
@@ -136,10 +141,10 @@ The boot test proves this in QEMU ([What is proven](../proven.md)):
 - `hostname`, `esp-authorized-keys` and `ssh-login` with a key only the ESP holds
   (`--ssh-test --esp-creds`).
 - `no-firstboot-prompt`: first boot finishes without a prompt.
-- `imds-hostname`, `imds-hetzner-layout`, `imds-ssh-key`, `imds-userdata-credential`, `imds-ipv6`,
-  `imds-endpoint-locked` and `imds-dhcp-hostname` on a faked Hetzner Cloud (`--ssh-test --imds`):
-  SMBIOS names Hetzner, and nothing else. The guest finds the endpoint by hwdb alone, and the
-  harness serves it at `169.254.169.254` in Hetzner's layout.
+- `imds-hostname`, `imds-hetzner-layout`, `imds-ssh-keys-json`, `imds-ssh-key-precedence`,
+  `imds-userdata-credential`, `imds-ipv6`, `imds-endpoint-locked` and `imds-dhcp-hostname` on a
+  faked Hetzner Cloud (`--ssh-test --imds`): SMBIOS names Hetzner, and nothing else. The guest finds
+  the endpoint by hwdb alone, and the harness serves it at `169.254.169.254` in Hetzner's layout.
 - `imds-import-inactive`: without a cloud in DMI, the test image's `/imds` runs no import.
 
 On a Hetzner Cloud server (2026-11-09, [What is proven](../proven.md#imds-on-hetzner-cloud)), with
@@ -154,8 +159,8 @@ the lock copied into the user data. The hwdb patch and the lock on `lo` have run
   Secrets are [vars](vars.md).
 - With Secure Boot on and a TPM2, the guest refuses ESP credentials. That run fails.
 - No marker covers a cloud's own OEM strings, or fw_cfg on real hardware.
-- `/imds` takes no ssh key from Hetzner's metadata: it lists them only as a JSON array. The user
-  data gives the key.
+- The ssh keys from Hetzner's JSON array have run in QEMU only, not on Hetzner. A user data
+  `ssh.authorized_keys.root` is skipped where the metadata has a key.
 - No marker covers a real cloud's endpoint; Hetzner's ran by hand. Other clouds' hwdb entries have
   not run.
 - The lock on `lo` covers `169.254.169.254` only. An endpoint on IPv6 (AWS also has `fd00:ec2::254`)
