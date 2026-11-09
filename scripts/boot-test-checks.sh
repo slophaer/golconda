@@ -363,8 +363,8 @@ check_imds_ipv6() {
   verdict "imds-ipv6 (the link uses /run/systemd/network/$IMDS_NET_CRED.network from the user data, and has $IMDS_IPV6)" $RC
 }
 
-# check_imds_locked: with the user data's .network file on the link, only imdsd reaches the
-# endpoint: systemd-pull, a root process without imdsd's firewall mark, gets no answer (the
+# check_imds_locked: with the user data's .network file on the link, which replaces
+# 85-imds-early.network and its lock, only imdsd reaches the endpoint: systemd-pull, a root process without imdsd's firewall mark, gets no answer (the
 # prohibit route) and the server sees no request from it, while `systemd-imds --cache=no` (through
 # imdsd) makes the server answer again
 check_imds_locked() {

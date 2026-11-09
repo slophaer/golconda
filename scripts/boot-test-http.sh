@@ -95,8 +95,8 @@ start_http_server() {
 # project's keys (a key nothing logs in with: systemd-imds cannot read the array). The user data
 # lists four credentials: imds-canary; login.motd, which tmpfiles writes to /etc/motd.d;
 # ssh.authorized_keys.root, a key made here (its private half logs in); and network.network.$IMDS_NET_CRED,
-# a static global IPv6 address, as Hetzner gives one (no router advertisement, no DHCPv6), and
-# the IMDS lock of 85-imds-early.network. The server's log shows every GET and its status.
+# a static global IPv6 address, as Hetzner gives one (no router advertisement, no DHCPv6), with
+# nothing of the IMDS lock. The server's log shows every GET and its status.
 start_imds_server() {
   IMDS_ROOT="$WORKDIR/imds"
   IMDS_LOG="$WORKDIR/imds.log"
@@ -111,10 +111,9 @@ start_imds_server() {
   ssh-keygen -q -t ed25519 -N "" -C boot-test-imds -f "$WORKDIR/ssh/imds"
   ssh-keygen -q -t ed25519 -N "" -C boot-test-imds-project -f "$WORKDIR/ssh/imds-project"
   printf '["%s\\n"]' "$(cat "$WORKDIR/ssh/imds-project.pub")" > "$M/public-keys"
-  # the file replaces 85-imds-early.network for the link: it repeats that file's prohibit route,
-  # the route in imdsd's table and the fwmark rule, so only imdsd still reaches the endpoint
-  LOCK='[Route]\nDestination='"$IMDS_ADDR"'\nType=prohibit\n\n[Route]\nDestination='"$IMDS_ADDR"'\nScope=link\nTable=0x7FFF0815\n\n[RoutingPolicyRule]\nFamily=ipv4\nFirewallMark=0x7FFF0815\nTable=0x7FFF0815\n'
-  NET='[Match]\nType=ether\nKind=!*\n\n[Network]\nDHCP=ipv4\nIPv6AcceptRA=no\nAddress='"$IMDS_IPV6"'/64\n\n[DHCPv4]\nUseHostname=no\n\n'"$LOCK"
+  # the file replaces 85-imds-early.network for the link, and with it that file's prohibit route,
+  # the route in imdsd's table and the fwmark rule: the lock must hold without them
+  NET='[Match]\nType=ether\nKind=!*\n\n[Network]\nDHCP=ipv4\nIPv6AcceptRA=no\nAddress='"$IMDS_IPV6"'/64\n\n[DHCPv4]\nUseHostname=no\n'
   printf '{"systemd.credentials":[%s,%s,%s,%s]}' \
     '{"name":"imds-canary","text":"canary"}' \
     '{"name":"login.motd","text":"imds motd"}' \

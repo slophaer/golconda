@@ -64,8 +64,9 @@
 #   credential is given. The server answers imds-test, and user data that lists the credentials
 #   imds-canary, login.motd, ssh.authorized_keys.root (a key pair made in the work directory) and
 #   network.network.60-imds-ipv6 (the static address 2001:db8:5eed::1/64, as Hetzner gives one:
-#   QEMU's router advertisements name only fec0::/64; and the IMDS lock of 85-imds-early.network,
-#   which the file replaces). QEMU's DHCP server offers the host name dhcp-test.
+#   QEMU's router advertisements name only fec0::/64; nothing of the IMDS lock of
+#   85-imds-early.network, which the file replaces). QEMU's DHCP server offers the host name
+#   dhcp-test.
 #   Checks: imds-hostname (systemd's import ran, pulled in by the generator, and the host name and
 #   /etc/hostname are imds-test), imds-hetzner-layout (the guest has no imds.* credential, asked
 #   for the host name and the user data at Hetzner's paths, and got no 404),
