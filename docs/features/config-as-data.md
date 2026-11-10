@@ -26,12 +26,13 @@ misspelt option is an error that names it, not a silent default.
   | `modules.json`     | each module's role and inputs; whether it is included and why; downstream packages        |
   | `attribution.json` | each file, link, unit and line, with the module that emitted it                           |
   | `packages.json`    | each package with its version, store path and the modules that brought it                 |
-  | `sbom.json`        | a CycloneDX 1.5 bill of materials: `purl`, `cpe`, origin, `pedigree` for a replacement    |
+  | `sbom.json`        | CycloneDX 1.5 bill of materials: `purl`, `cpe`, origin, `pedigree` (replacement, patches) |
   | `vars.d/*.json`    | one manifest per var ([Secrets as vars](vars.md))                                         |
 
 - **The SBOM uses standard identifiers.** Each component has a `purl` (package URL) and, where
   declared, a `cpe` (a vulnerability-database name). `golconda:origin` says `downstream`, `golconda`
-  or `repkgs`. A replaced package names its ancestor in `pedigree`.
+  or `repkgs`. A replaced package names its ancestor in `pedigree`, and a patched package lists each
+  patch, with its text and the reason from its header, in `pedigree.patches`.
 
 ## Using it
 

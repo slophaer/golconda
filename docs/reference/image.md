@@ -99,8 +99,8 @@ applies the timestamp derived from the version (`YYYYMMDD.N` → epoch seconds, 
 `lib/golconda/sbom.json` is a CycloneDX 1.5 document for the runtime package closure. It follows
 standard identifiers, as the NixOS security tracker does (it links CVEs to packages by name and by
 nixpkgs' `meta.identifiers` CPE): a `purl` from each package's `sources.toml`, a `cpe` where the
-package declares one, and CycloneDX `pedigree` for a replacement. One custom property says where a
-component comes from.
+package declares one, and CycloneDX `pedigree` for a replacement and for a patched package. One
+custom property says where a component comes from.
 
 ```json
 {
@@ -122,12 +122,44 @@ component comes from.
   the package's version, modelled on nixpkgs' `meta.identifiers.cpe`; the repkgs SBOM generator
   reads it.
 - `pedigree.ancestors` names the package a downstream package replaced: its name, version, purl and
-  cpe, as the set without the downstream packages describes it. A new package has no `pedigree`.
+  cpe, as the set without the downstream packages describes it. A new package has no `ancestors`.
+- `pedigree.patches` lists each patch the build applies, in order, for every component with
+  `patches` in its `package.nix` (Golconda's, repkgs' and downstream packages alike). An unpatched
+  package with no replacement has no `pedigree`.
+
+A patch, here the third of systemd's:
+
+```json
+{
+  "type": "unofficial",
+  "diff": {
+    "url": "hwdb-imds-hetzner-ssh-keys.patch",
+    "text": { "contentType": "text/x-diff", "content": "From df2a0fea… Subject: [PATCH] hwdb: …" }
+  },
+  "resolves": [ {
+    "type": "enhancement",
+    "name": "hwdb: import the SSH keys on Hetzner Cloud",
+    "references": [ "https://docs.hetzner.cloud/reference/cloud#server-metadata" ]
+  } ]
+}
+```
+
+- `type` is `unofficial`: every patch Golconda and repkgs carry is their own change, not an upstream
+  release (`backport`) or an upstream commit (`cherry-pick`).
+- `diff.url` is the file, relative to the package's directory (`packages/<name>/` in Golconda,
+  `pkgs/<xx>/<name>/` in repkgs; `golconda:origin` says which). `diff.text` is the whole file, so
+  the SBOM alone shows what changed; CycloneDX's patch has no hash field.
+- `resolves` comes from the patch's own header, when it has one: `name` is the `Subject:` of
+  `git format-patch` (without `[PATCH]`), else the first paragraph of the text before the diff;
+  `references` are the URLs in that text (an `Upstream:` or `Link:` line, for example); `type` is
+  `defect` when the subject's summary starts with "fix", else `enhancement`. A bare diff has no
+  `resolves`. To say why a patch exists, write it at the top of the file: `patch` skips that text.
 
 Roots and transitive packages use the same rule. Only target-set package identities are matched, by
 derivation and not by display name; an alias that returns an upstream package keeps its upstream
 origin ([Your own packages](config.md#your-own-packages)). `mkSystem` adds `golconda:origin` through
-the generator's `extraProperties` hook and `pedigree` through its `extraFields` hook.
+the generator's `extraProperties` hook and `pedigree` through its `extraFields` hook
+(`lib/sbom-patches.nix` reads the patches from each package's `patches`).
 
 `mkSystem.sbom` is the generator's derivation, whose output has `sbom.json`; the `/usr` tree
 installs that file. `mkSystem.sbom.bom` is the same document at evaluation time. Neither builds a

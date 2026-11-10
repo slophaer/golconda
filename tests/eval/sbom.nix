@@ -1,6 +1,7 @@
 # The system SBOM: every component says where it comes from (golconda:origin), a downstream
-# replacement names the package it replaced (CycloneDX pedigree.ancestors), and a sources.toml
-# CPE becomes the component's cpe. Identities, not guessed display names.
+# replacement names the package it replaced (CycloneDX pedigree.ancestors), a patched package
+# lists its patches (pedigree.patches), and a sources.toml CPE becomes the component's cpe.
+# Identities, not guessed display names.
 {
   check,
   sources,
@@ -77,6 +78,15 @@ let
     };
   };
   plain = name: builtins.head (builtins.filter (c: c.name == name) ordinary.sbom.bom.components);
+  patchesOf = c: c.pedigree.patches or [ ];
+  # a patch as the SBOM carries it: the file (relative to the package directory) and its text
+  patchFile = pkg: file: {
+    url = file;
+    text = {
+      contentType = "text/x-diff";
+      content = builtins.readFile (pkg.dir + "/${file}");
+    };
+  };
   # Keep the package identity but change its display metadata. Conversely, jq's
   # display name must not make it the downstream hello package.
   identity = mkSystem {
@@ -175,8 +185,71 @@ in
     in
     originOf c == [ "golconda" ]
     && c.cpe == "cpe:2.3:a:systemd_project:systemd:${c.version}:*:*:*:*:*:*:*"
-    && !(c ? pedigree)
+    && !((c.pedigree or { }) ? ancestors)
     && c == plain "systemd"
+  ))
+  (check "sbom: a patched package lists each patch in pedigree.patches, with its header's subject" (
+    let
+      c = component "systemd";
+      file = patchFile fixture.pkgs.systemd;
+    in
+    patchesOf c == [
+      {
+        type = "unofficial";
+        diff = file "hwdb-imds-hetzner.patch";
+        resolves = [
+          {
+            type = "defect";
+            name = "hwdb: fix the IMDS paths for Hetzner Cloud";
+          }
+        ];
+      }
+      {
+        type = "unofficial";
+        diff = file "imds-ssh-key-json.patch";
+        resolves = [
+          {
+            type = "enhancement";
+            name = "imds: import SSH keys provided as a JSON array";
+          }
+        ];
+      }
+      {
+        type = "unofficial";
+        diff = file "hwdb-imds-hetzner-ssh-keys.patch";
+        resolves = [
+          {
+            type = "enhancement";
+            name = "hwdb: import the SSH keys on Hetzner Cloud";
+            references = [ "https://docs.hetzner.cloud/reference/cloud#server-metadata" ];
+          }
+        ];
+      }
+    ]
+  ))
+  (check "sbom: a repkgs patch is listed too; one with no header resolves nothing" (
+    patchesOf (component "attr") == [
+      {
+        type = "unofficial";
+        diff = patchFile fixture.pkgs.attr "relocatable.patch";
+      }
+    ]
+  ))
+  (check "sbom: a patch with free text before the diff resolves its first paragraph" (
+    let
+      resolved = map (p: p.resolves or [ ]) (patchesOf (component "readline"));
+    in
+    resolved != [ ]
+    &&
+      builtins.head resolved == [
+        {
+          type = "enhancement";
+          name = "SIGWINCH does not exist on Windows (msys2 MINGW-packages).";
+        }
+      ]
+  ))
+  (check "sbom: an unpatched package has no pedigree" (
+    fixture.pkgs.zstd.patches == [ ] && !((component "zstd") ? pedigree)
   ))
   (check "sbom: a repkgs package has origin repkgs" (
     originOf (component "glibc") == [ "repkgs" ] && !((component "glibc") ? cpe)
