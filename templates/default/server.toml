@@ -1,0 +1,12 @@
+# The whole configuration of the system (Golconda's docs/reference/config.md).
+# Your own modules go in modules/ beside this file, your own packages in packages/.
+
+["/system"]
+name = "server"
+version = "20261110.1"
+
+["/services/sshd"]
+port = 22
+authorizedKeys = [
+  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample admin@example.com",
+]

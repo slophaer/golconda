@@ -1,8 +1,10 @@
 # Checks of the pin reader (lib/pins.nix): uptrack's sources.toml → fetchTarball arguments, read
-# from the fixtures as data. What fetches the real pins is in tests/real-packages/pins.nix.
+# from the fixtures as data, and the flake template. What fetches the real pins is in
+# tests/real-packages/pins.nix.
 # A function of the harness (./harness.nix); it returns a list of checks.
 {
   check,
+  f,
   ...
 }:
 let
@@ -20,5 +22,13 @@ in
         sha256 = "sha256-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=";
       };
     }
+  ))
+  # the flake template (templates/default), its golconda input this tree on the stand-in
+  # packages: no lock, no fetch
+  (check "pins: the flake template's usr tree is the one of its server.toml" (
+    let
+      outputs = (import (f.templates.default.path + "/flake.nix")).outputs { golconda = f; };
+    in
+    outputs.packages.x86_64-linux.default.name == "golconda-usr-20261110.1"
   ))
 ]

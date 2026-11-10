@@ -316,6 +316,13 @@ in
   #   (import ./default.nix).lib.mkSystem { config = ./server.toml; }
   #   (import ./default.nix).lib.mkImage { config = ./server.toml; keys = "/srv/golconda-keys"; }
   #   (import ./default.nix).lib.readPins ./pins   # { <name> = tree; } from uptrack pins (lib/pins.nix)
+  # nix flake init -t <golconda>: a repository with server.toml and a flake.nix that takes
+  # Golconda as its input (docs/reference/pinning.md)
+  templates.default = {
+    path = ../templates/default;
+    description = "A Golconda system: server.toml, and a flake with Golconda as its input";
+  };
+
   lib = {
     inherit mkSystem mkImage;
     readPins = (import ../lib/pins.nix).read;
