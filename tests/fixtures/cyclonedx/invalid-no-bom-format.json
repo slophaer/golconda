@@ -1,0 +1,23 @@
+{
+  "specVersion": "1.5",
+  "version": 1,
+  "components": [
+    {
+      "type": "library",
+      "name": "systemd",
+      "version": "260",
+      "pedigree": {
+        "patches": [
+          {
+            "type": "unofficial",
+            "diff": {
+              "url": "patches/example.patch",
+              "text": { "contentType": "text/plain", "content": "diff --git a/x b/x\n" }
+            },
+            "resolves": [ { "type": "enhancement", "name": "an example" } ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -23,6 +23,23 @@ let
   on = import ../modules/lib/on.nix;
   rp = set.pkgs;
 
+  # python's jsonschema and the libraries it imports: PYTHONPATH holds their site-packages, for
+  # repkgs' cpython (which has no python environment)
+  jsonschemaPath =
+    let
+      libs = [
+        rp.python-jsonschema
+        rp.python-jsonschema-specifications
+        rp.python-referencing
+        rp.python-attrs
+        rp.rpds-py
+      ];
+    in
+    ''
+      PYTHONPATH=$(printf '%s:' ${concatStringsSep " " (map (l: "${l}/lib/python3*/site-packages") libs)})
+      export PYTHONPATH
+    '';
+
   # run NAME TOOLS SCRIPT: a check, built on the seed's shell (nix/run.nix)
   run = name: import ./run.nix set "check-${name}";
 
@@ -223,17 +240,9 @@ in
           }
         )
       );
-      libs = [
-        rp.python-jsonschema
-        rp.python-jsonschema-specifications
-        rp.python-referencing
-        rp.python-attrs
-        rp.rpds-py
-      ];
     in
     run "schema-parity" [ rp.cpython ] ''
-      PYTHONPATH=$(printf '%s:' ${concatStringsSep " " (map (l: "${l}/lib/python3*/site-packages") libs)})
-      export PYTHONPATH
+      ${jsonschemaPath}
       python3 ${src}/tests/schema/validate.py ${schemaFile} ${fixtures}
       touch $out
     '';
@@ -246,4 +255,45 @@ in
     assert import ../tests/real-packages { inherit sources; };
     "touch $out"
   );
+
+  # The test image's SBOM is valid CycloneDX 1.5 (the vendored schema, tests/fixtures/cyclonedx),
+  # and the validator has teeth: it refuses the negative fixtures and the same SBOM with one
+  # patch type broken. The SBOM is the evaluated document (builtins.toJSON), so no image is built.
+  sbom-schema =
+    let
+      bom =
+        (import ../lib/system.nix {
+          inherit sources;
+          platform = double;
+          system = double;
+          config = import ./test-config.nix { version = "20261031.1"; };
+        }).sbom.bom;
+      patched = c: c.pedigree.patches or [ ] != [ ];
+      # a vacuous pass would prove nothing: the SBOM must carry patches, and the broken copy a
+      # patch of a type CycloneDX does not know
+      broken = bom // {
+        components = map (
+          c:
+          if patched c then
+            c
+            // {
+              pedigree = c.pedigree // {
+                patches = map (p: p // { type = "bogus"; }) c.pedigree.patches;
+              };
+            }
+          else
+            c
+        ) bom.components;
+      };
+      fixtures = "${src}/tests/fixtures/cyclonedx";
+    in
+    assert builtins.any patched bom.components;
+    run "sbom-schema" [ rp.cpython ] ''
+      ${jsonschemaPath}
+      python3 ${src}/tests/sbom-schema/validate.py ${fixtures} \
+        --valid ${toFile "sbom.json" (builtins.toJSON bom)} ${fixtures}/valid-patch.json \
+        --invalid ${toFile "sbom-broken.json" (builtins.toJSON broken)} \
+          ${fixtures}/invalid-patch-type.json ${fixtures}/invalid-no-bom-format.json
+      touch $out
+    '';
 }
