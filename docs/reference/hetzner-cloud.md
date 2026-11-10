@@ -52,16 +52,12 @@ nothing else would stop a UKI served by someone else. HTTPS still hides what the
 ## 3. Build
 
 ```sh
-nix-build -E '((import ./default.nix).lib.mkImage {
-  config = ./web.toml;
-  keys = "/srv/golconda-keys";
-}).disk'
+golconda release build -f web.toml --keys /srv/golconda-keys
 ```
 
-Use `nix-build`: iets 0.2 builds the content-addressed disk but finds no output path for it
-([Making a release: Build](release.md#3-build)). The string form needs `extra-sandbox-paths` on the
-daemon; without it, give the key directory as a path, which copies it into the store
-([Making a release](release.md#2-keep-the-private-keys-out-of-the-store)).
+Nix builds the image unsigned, with the key set's public halves only, and the signer signs it on
+this host with the private keys where they lie
+([Making a release: Build and sign](release.md#2-build-and-sign)).
 
 The kernel is built again for this image: its built-in keyring holds `db.crt`. Its config is the
 same for every key set, so with jig's compile cache (`jigd`) after one such build, only the
@@ -149,7 +145,7 @@ pin, so PID 1 keeps the firmware's time, and `systemd-timesyncd` then syncs it.
 
 Change `version` in the document, build again, and publish the new `release/` directory at
 `updateSource`
-([Making a release: Publish the release directory](release.md#4-publish-the-release-directory)).
+([Making a release: Publish the release directory](release.md#3-publish-the-release-directory)).
 `systemd-sysupdate-update.timer` on the machine installs it into the B slots and the ESP; the next
 boot runs it, and three failed boots return to the old slot ([Updates](../design/updates.md)). To
 update at once: `ssh root@$IP systemctl start --wait systemd-sysupdate-update.service`, then reboot.

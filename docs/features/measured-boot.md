@@ -33,11 +33,8 @@ policy with keys you make, so a swapped kernel opens nothing.
 scripts/make-keys /srv/golconda-keys
 ```
 
-```nix
-(import ./default.nix).lib.mkImage {
-  config = ./server.toml;
-  keys = "/srv/golconda-keys";   # a string: the keys stay out of the store
-}
+```sh
+golconda release build -f server.toml --keys /srv/golconda-keys
 ```
 
 Then enrol `secureboot/db.crt` in the firmware. For a host with no Secure Boot, such as Hetzner
@@ -48,8 +45,9 @@ Cloud:
 secureBoot = false
 ```
 
-`lib.mkImage` is required for that mode. The procedure is in
-[Making a release](../reference/release.md) and the [Hetzner page](../reference/hetzner-cloud.md).
+A signed release (`golconda release build`, or `lib.mkImage` and its signer) is required for that
+mode. The procedure is in [Making a release](../reference/release.md) and the
+[Hetzner page](../reference/hetzner-cloud.md).
 
 ## Status
 

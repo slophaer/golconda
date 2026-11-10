@@ -164,7 +164,8 @@ exposed as the output `lib.mkSystem`. `examples/golconda.nix` is the template: c
 fetches Golconda from that pin, a pin in uptrack's format; a flake and a plain `fetchTarball` work
 too ([Pinning Golconda](pinning.md)). Inside this repository, pass the tree itself:
 `import ./examples/golconda.nix { golconda = import ./default.nix; }`. `lib.mkImage` takes the same
-`config` and signs it into an image ([Outputs](outputs.md#libmkimage)).
+`config` and builds it into an unsigned image, which its signer signs outside Nix
+([Outputs](outputs.md#libmkimage)).
 
 ```nix
 {
@@ -177,17 +178,16 @@ golconda.lib.mkSystem {
 }
 ```
 
-| argument         | meaning                                                                                                                                 |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `config`         | a path to a TOML file, or an attribute set of options already loaded                                                                    |
-| `platform`       | the target platform, default `system`                                                                                                   |
-| `system`         | the build host, default `builtins.currentSystem`, which `iets eval` refuses unless `--impure`: pass it explicitly                       |
-| `sources`        | the pins, default `pins/` (`import ./pins`)                                                                                             |
-| `extraFragments` | the build's own fragments, each with a `name` (`lib/image`: the loader, the update index, the initrd's tools); listed in `modules.json` |
+| argument         | meaning                                                                                                                     |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `config`         | a path to a TOML file, or an attribute set of options already loaded                                                        |
+| `platform`       | the target platform, default `system`                                                                                       |
+| `system`         | the build host, default `builtins.currentSystem`, which `iets eval` refuses unless `--impure`: pass it explicitly           |
+| `sources`        | the pins, default `pins/` (`import ./pins`)                                                                                 |
+| `extraFragments` | the build's own fragments, each with a `name` (`lib/image`: the update index, the initrd's tools); listed in `modules.json` |
 
-`extraFragments` adds the image's own fragments (`mkImage`'s loader and keyring) beside the
-components; a duplicate claim still fails rather than overrides. It is not configuration: the
-document is.
+`extraFragments` adds the image's own fragments (`mkImage`'s keyring) beside the components; a
+duplicate claim still fails rather than overrides. It is not configuration: the document is.
 
 `mkSystem` binds `/pkgs.target` to the platform's set, selects the components (the built-ins, then
 every optional component the document has a table for; an empty table selects one with its defaults;

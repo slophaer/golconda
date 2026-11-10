@@ -19,8 +19,8 @@ There are two classes of var.
   release unseals without re-sealing, as long as it is signed with the same PCR key, and so does the
   previous release after a fallback. The same property lets an attacker boot an older signed image
   and unseal ([Limits](#limits)). A release signed with a new PCR key cannot unseal what the old key
-  sealed, which is why a `db` rotation keeps the PCR key (`pcrKeys`). The boot test shows the unseal
-  after an update and after a fallback (`hostkey-unchanged`, below).
+  sealed, which is why a `db` rotation keeps the PCR key (`--pcr-keys`). The boot test shows the
+  unseal after an update and after a fallback (`hostkey-unchanged`, below).
 
 - **admin**: the deploy host keeps the value encrypted with age (a file-encryption tool), pushes it
   over ssh, and the machine seals it with its own `systemd-creds`. The image carries only the

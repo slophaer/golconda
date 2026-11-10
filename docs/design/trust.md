@@ -5,9 +5,9 @@ own copy of any of them:
 
 1. **Secure Boot and measured boot keys** decide *what runs*: the Secure Boot `db` key signs
    systemd-boot and every UKI; the PCR policy key signs the expected PCR 11 values and is what
-   TPM2-sealed credentials are bound to. Signed in the image chain today (the smoke uses throwaway
-   keys) and proven in a boot test with `--secure-boot`, where firmware enforces Secure Boot
-   (`secure-boot-enabled`) and refuses a loader whose key is in `dbx` (`old-loader-refused`);
+   TPM2-sealed credentials are bound to. Signed by the signer outside Nix (the test images use
+   throwaway keys) and proven in a boot test with `--secure-boot`, where firmware enforces Secure
+   Boot (`secure-boot-enabled`) and refuses a loader whose key is in `dbx` (`old-loader-refused`);
    enrolment is manual and automatic enrolment is *(later)* ([Deployment keys](#deployment-keys)).
 1. **The verity signing key** decides *what is read*: it signs the root hash of every `/usr` image.
    Today it is the Secure Boot `db` key, and the kernel checks the signature against the firmware
@@ -105,16 +105,16 @@ UKI's own signing certificate at build time and fails on a mismatch. On the mach
 
 **Without Secure Boot** (`/system.secureBoot = false`, for a host whose firmware has none, such as
 Hetzner Cloud): no firmware fills the platform keyring, so the kernel carries the certificate
-itself. `lib.mkImage` passes the `db` certificate of its keys to `mkSystem`. The kernel build copies
-it to a fixed path in the kernel tree, `certs/golconda-verity.pem`, and `CONFIG_SYSTEM_TRUSTED_KEYS`
-names that path (`packages/kernel/kbuild.nu`, `GOLCONDA_KERNEL_FILES`); the kernel loads it into
-`.builtin_trusted_keys`, which the secondary keyring that dm-verity checks first includes. The
-kernel of the set changes, so `/usr` and the UKI carry the same one, and each key set builds its own
-kernel. What is lost is the check before the kernel: no firmware verifies the loader or the UKI, so
-whoever can write the ESP can boot a kernel that trusts another key. IPE and the `/usr` signature
-still hold against a changed `/usr`, and the vars still seal (to the host key alone, without a TPM).
-The bootstrap credentials on the ESP are accepted there because Secure Boot is off
-([Boot: Bootstrap credentials](boot.md#bootstrap-credentials)).
+itself. `lib.mkImage` passes the `db` certificate of its `publicKeys` to `mkSystem`. The kernel
+build copies it to a fixed path in the kernel tree, `certs/golconda-verity.pem`, and
+`CONFIG_SYSTEM_TRUSTED_KEYS` names that path (`packages/kernel/kbuild.nu`, `GOLCONDA_KERNEL_FILES`);
+the kernel loads it into `.builtin_trusted_keys`, which the secondary keyring that dm-verity checks
+first includes. The kernel of the set changes, so `/usr` and the UKI carry the same one, and each
+key set builds its own kernel. What is lost is the check before the kernel: no firmware verifies the
+loader or the UKI, so whoever can write the ESP can boot a kernel that trusts another key. IPE and
+the `/usr` signature still hold against a changed `/usr`, and the vars still seal (to the host key
+alone, without a TPM). The bootstrap credentials on the ESP are accepted there because Secure Boot
+is off ([Boot: Bootstrap credentials](boot.md#bootstrap-credentials)).
 
 The certificate is an input of the kernel derivation, but not of its config: every key set has the
 same config, so a new certificate compiles only the certificate object and the compressed kernel's
@@ -185,43 +185,36 @@ uses short-lived certificates instead.
 
 ## Deployment keys
 
-A release is signed with the deployment's keys, not the store's throwaways. The procedure, from
-making the set to enrolling the certificate, is in [Making a release](../reference/release.md). The
-operator builds the image with `lib.mkImage`:
+A release is signed with the deployment's keys, not the store's throwaways, and the signing happens
+outside Nix ([Signing outside Nix](#signing-outside-nix)). The procedure, from making the set to
+enrolling the certificate, is in [Making a release](../reference/release.md). A key set is a
+directory of six files (`scripts/make-keys`):
 
-```nix
-(import ./default.nix).lib.mkImage {
-  config = ./server.toml;
-  keys = "/srv/golconda-keys";
-}
-```
+| file                | used for                                                         | read by       |
+| ------------------- | ---------------------------------------------------------------- | ------------- |
+| `secureboot/db.key` | signs the loader, the UKI and the verity root hash               | the signer    |
+| `secureboot/db.crt` | the certificate for those signatures; firmware `db` must hold it | `lib.mkImage` |
+| `pcr/pcr.key`       | signs the PCR 11 policy of each boot phase (`.pcrsig`)           | the signer    |
+| `pcr/pcr.pub`       | the public half, embedded in the UKI as `.pcrpkey`               | `lib.mkImage` |
+| `release/index.key` | signs each release's `SHA256SUMS` (OpenPGP Ed25519)              | the signer    |
+| `release/index.pgp` | the public half, the image's keyring for `Verify=yes`            | `lib.mkImage` |
 
-It returns the steps `erofs`, `verity`, `initrd`, `uki`, `loader` and `disk`, and `release`, the
-directory sysupdate fetches ([Releases](releases.md#the-release-directory)). The chain reads six
-files under `keys`, and nothing else:
-
-| file                | used for                                                         |
-| ------------------- | ---------------------------------------------------------------- |
-| `secureboot/db.key` | signs the loader, the UKI and the verity root hash               |
-| `secureboot/db.crt` | the certificate for those signatures; firmware `db` must hold it |
-| `pcr/pcr.key`       | signs the PCR 11 policy of each boot phase (`.pcrsig`)           |
-| `pcr/pcr.pub`       | the public half, embedded in the UKI as `.pcrpkey`               |
-| `release/index.key` | signs each release's `SHA256SUMS` (OpenPGP Ed25519)              |
-| `release/index.pgp` | the public half, the image's keyring for `Verify=yes`            |
-
-The chain needs no `PK` or `KEK`: they are enrolled in firmware and sign nothing the build makes.
-The optional `pcrKeys` and `indexKeys` name other directories in the same layout, read for `pcr/`
-and `release/` only; a `db` rotation uses them to keep the PCR key and the release key
-([Boot loader: Key rotation](bootloader.md#key-rotation),
+`lib.mkImage` takes the directory as `publicKeys` and copies the three public files into the store,
+each alone; it reads nothing else of the set. The signer reads the three private files where they
+lie. Nothing needs a `PK` or `KEK`: they are enrolled in firmware and sign nothing a release holds.
+A `db` rotation keeps the PCR key and the release key from the old set (`pcrPublicKeys` and
+`indexPublicKeys` for `lib.mkImage`, `--pcr-keys` and `--index-keys` for the signer;
+[Boot loader: Key rotation](bootloader.md#key-rotation),
 [Releases: The signed index](releases.md#the-signed-index)).
 
 The `db` key signs both the UKI (`ukify --secureboot-private-key`, `lib/image/uki.nu`) and the
-verity root hash (`lib/image/verity.nu`), and the same key signs the loader
-(`lib/image/loader.nix`). The kernel checks the root hash signature against the platform keyring,
-which holds the firmware `db` ([Verity key](#2-verity-key)). The build checks the signature against
-the UKI's own certificate before the disk is written (`lib/image/uki.nu`, `openssl cms -verify`), so
-a mismatched key pair fails the build rather than the boot. A rotated `db` key needs new images: the
-UKI, the root hash signature and the loader are all signed with it.
+verity root hash (`lib/image/verity.nu`), and the same key signs the loader (`lib/image/loader.nu`).
+The kernel checks the root hash signature against the platform keyring, which holds the firmware
+`db` ([Verity key](#2-verity-key)). The signer checks each private key against the public half the
+image carries before it signs, and the root hash signature against the `db` certificate before it
+writes the disk (`lib/image/sign.nu`, `lib/image/uki.nu`), so a mismatched key fails the release
+rather than the boot. A rotated `db` key needs new images: the UKI, the root hash signature and the
+loader are all signed with it.
 
 ### Signing outside Nix
 
@@ -262,33 +255,16 @@ a derivation, with throwaway keys that are test fixtures, so every boot test tes
 release uses. The signer reads a key directory; a PKCS#11 URI is refused, and the place where a
 token would plug in is named in the code *(later)*.
 
-The unsigned outputs depend on the public halves only: the release keyring is in `/usr`, and an
-image without Secure Boot has the `db` certificate in its kernel. A new private key with the same
-public half is impossible, so the proof is the other way round: a new `db` and PCR key pair changes
-no unsigned path of a Secure Boot image.
+The unsigned outputs depend on the public halves only: the release keyring is in `/usr`, an image
+without Secure Boot has the `db` certificate in its kernel, and the manifest carries copies of all
+three. A new private key with the same public half is impossible, so the proof is the other way
+round: a new `db` and PCR key pair leaves the `/usr` tree, the initrd, the kernel and the signer of
+a Secure Boot image at their store paths; only the manifest, which holds the new public halves,
+changes.
 
-### How the private keys reach the build
-
-The builders run in the Nix sandbox, which sees only the store and the paths the daemon adds. So the
-private keys either enter the store or the daemon shows them to the sandbox. The type of `keys`
-picks one:
-
-- **A path** (`keys = ./keys;` or `/srv/golconda-keys` without quotes): Nix copies the directory
-  into the store. The private keys are then in the build host's `/nix/store`, which every local user
-  can read, and they stay there until a garbage collection removes them. With a remote builder, iets
-  uploads them to it. Use this only on a build host that you alone use.
-- **A string** (`keys = "/srv/golconda-keys";`): nothing is copied. The derivations name the path,
-  and the builder reads the files there. The daemon must make the directory visible in the sandbox
-  with `extra-sandbox-paths` in its own `nix.conf`, and the build users must be able to read it
-  ([Build host](../reference/build-host.md#keys-in-the-sandbox)). This keeps the keys out of the
-  store. It is *(being built)*: no test builds an image this way yet. The derivations do not change
-  when the files change, so a new key under the same path rebuilds nothing; put new keys under a new
-  path.
-
-Either way the private keys never enter the image or the machine; only the certificates are enrolled
-in firmware. The smoke outputs (`packages.<system>.image-smoke*`) sign with throwaway keys made in
-the store (`throwawayKeys`) and link them as `keys/`; `lib.mkImage` has no smoke output, so it never
-links a deployment's keys anywhere.
+No private key enters the image or the machine either; only the certificates are enrolled in
+firmware. The test outputs (`packages.<system>.image-smoke*`) sign with throwaway keys made in the
+store (`throwawayKeys`) and link only their public halves as `keys/`.
 
 Rotation and recovery:
 

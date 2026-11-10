@@ -106,24 +106,18 @@ iets build --builder ssh-ng://buildhost -A packages.x86_64-linux.image-smoke ./d
 With `ssh-ng://`, iets runs `ssh host nix-daemon --stdio`, so the `nix-daemon` on that host's `PATH`
 must be the one described above.
 
-## Keys in the sandbox
+## Keys
 
-`lib.mkImage` reads the deployment's private keys during the build
-([Trust: How the private keys reach the build](../design/trust.md#how-the-private-keys-reach-the-build)).
-Given as a path value, the keys are copied into the store and need nothing here. Given as a string,
-they stay where they are, and the daemon must show them to the sandbox:
+No build reads a private key, so the daemon needs no setting for the deployment's keys, and a remote
+builder never sees them. Nix builds the image unsigned with the key set's public halves; the signer
+signs it on the release host, where `golconda release build` runs
+([Trust: Signing outside Nix](../design/trust.md#signing-outside-nix)).
 
-```ini
-extra-sandbox-paths = /srv/golconda-keys
-```
+## The compile cache in the sandbox
 
-The build users (`nixbld*`) must be able to read the files. This setting belongs in the daemon's
-`nix.conf` too: iets does not send it, and a daemon takes it from a client only if the client is a
-trusted user. An image built this way is *(being built)*: no test builds one.
-
-repkgs' compile cache uses the same mechanism: when `/nix/var/nix/jigd/socket` is in
-`extra-sandbox-paths`, jig asks jigd before it compiles (repkgs `docs/design.md`). It is optional
-and does not change any output.
+repkgs' compile cache reaches the sandbox through `extra-sandbox-paths` in the daemon's `nix.conf`:
+when `/nix/var/nix/jigd/socket` is in it, jig asks jigd before it compiles (repkgs
+`docs/design.md`). It is optional and does not change any output.
 
 ## Keeping rebuilds down
 

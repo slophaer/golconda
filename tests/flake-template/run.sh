@@ -6,9 +6,11 @@
 #   - the lock holds the older commit (HEAD~1) while the input says no commit,
 #   - `nix flake update golconda` moves the lock to HEAD, with HEAD's narHash,
 #   - the flake evaluates the /usr tree at HEAD.
-# With --build it also builds the signed image from the flake (`nix build .#image`, with a
-# throwaway key set from scripts/make-keys, path value): it takes the time of an image build, so
-# queue it (qbuild flake-template -- tests/flake-template/run.sh --build). Run from anywhere with
+# With --build it also builds the image's unsigned output from the flake (`nix build .#image`),
+# with the public halves of a test key set (tests/fixtures/public-keys, copied as test-keys/; no
+# private key exists for the build to read), and checks that the output holds the manifest and
+# the signer and no private key: it takes the time of an image build, so queue it
+# (qbuild flake-template -- tests/flake-template/run.sh --build). Run from anywhere with
 # flakes on the client's nix and a Nix daemon with the fork's features; scripts/lint runs it
 # without --build.
 set -eu
@@ -47,12 +49,14 @@ grep -q 'inputs.golconda.url = "github:slophaer/golconda";' flake.nix \
   || fail "flake.nix: the golconda input is not github:slophaer/golconda"
 sed -i "s|github:slophaer/golconda\";|git+file://$tmp/golconda.git\";|" flake.nix
 if $build; then
-  "$repo/scripts/make-keys" "$tmp/sys/keys" >/dev/null
-  # the template's commented image, with the key directory as a path value (a string needs
-  # the daemon's extra-sandbox-paths)
+  # the public halves of a test key set, the three files mkImage reads; never a private key
+  cp -r "$repo/tests/fixtures/public-keys" test-keys
+  chmod -R u+w test-keys
+  # the template's commented image, its publicKeys the test keys
   sed -i -e 's|^\( *\)# image =|\1image =|' \
-    -e '/^ *image =$/,/}).disk;/ s|^\( *\)# |\1|' \
-    -e 's|keys = "/srv/golconda-keys";|keys = ./keys;|' flake.nix
+    -e '/^ *image =$/,/}).unsigned;/ s|^\( *\)# |\1|' \
+    -e 's|publicKeys = ./keys;|publicKeys = ./test-keys;|' flake.nix
+  grep -q 'publicKeys = ./test-keys;' flake.nix || fail "flake.nix: no commented image with publicKeys = ./keys"
 fi
 
 # lock at the older commit: the input stays unpinned, the lock has the rev
@@ -71,7 +75,11 @@ nix flake update golconda >/dev/null 2>&1 || fail "nix flake update golconda fai
 nix eval --raw ".#packages.x86_64-linux.default.drvPath" >/dev/null 2>"$tmp/err" \
   || { cat "$tmp/err" >&2; fail "the flake does not evaluate its usr tree at $new"; }
 if $build; then
-  nix build ".#image" --no-link >/dev/null 2>"$tmp/err" \
+  out=$(nix build ".#image" --no-link --print-out-paths 2>"$tmp/err") \
     || { cat "$tmp/err" >&2; fail "nix build .#image failed"; }
+  for f in manifest.json sign; do
+    [ -e "$out/$f" ] || fail "the image's unsigned output has no $f: $out"
+  done
+  ! grep -rlq 'PRIVATE KEY' "$out/" || fail "the image's unsigned output holds a private key"
 fi
-echo "flake-template: lock moved $old -> $new$($build && echo ", image built")"
+echo "flake-template: lock moved $old -> $new$($build && echo ", unsigned image built")"

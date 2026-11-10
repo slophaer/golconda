@@ -30,14 +30,16 @@ The timestamp has two uses:
 - `mkfs.erofs -T`: every file in the `/usr` image and the filesystem itself carry it. systemd's
   `ConditionNeedsUpdate=` compares `/usr`'s mtime with `/etc/.updated`, so first-boot units run once
   per version.
-- The verity salt and filesystem UUID are seeded from the version string (`lib/image/erofs.nix`), so
-  the same version rebuilds to the same image.
+- The verity salt and filesystem UUID are seeded from the version string (`lib/image/erofs.nix`,
+  `lib/image/verity.nix`), so the same version rebuilds to the same image.
 
 ## Stable across builds, per release
 
 "Stable" means the same inputs (image id, version, `/usr` tree, keys) give the same value. Nix store
 paths are content-addressed and Nix sets every file's mtime to 1, so an unchanged build lands on the
-same path.
+same path. The signer takes every time, salt and seed from the version too, so the same unsigned
+output signed again with the same keys gives the same release, byte for byte
+([Image artifacts](../reference/image.md#built-today-libimage)).
 
 | value                               | stable across builds    | per release                    |
 | ----------------------------------- | ----------------------- | ------------------------------ |
@@ -87,8 +89,8 @@ release file without a boot counter.
 
 ## The signed index
 
-`SHA256SUMS.gpg` is a detached binary OpenPGP signature of `SHA256SUMS`, made by the disk step with
-the key set's release key (`release/index.key`, Ed25519). Every transfer has `Verify=yes`, so
+`SHA256SUMS.gpg` is a detached binary OpenPGP signature of `SHA256SUMS`, made by the signer with the
+key set's release key (`release/index.key`, Ed25519). Every transfer has `Verify=yes`, so
 `systemd-pull` fetches the signature with the index and runs `gpg --verify` against
 `/usr/lib/systemd/import-pubring.pgp`, the key's public half in the running image. A payload whose
 digest the signed index does not list is never written. The signature time is the version's epoch
@@ -108,10 +110,10 @@ signed index is what stops a UKI from someone else.
 
 The running image trusts only the release key it carries, so a release signed with another key
 installs nothing (`gpg: Can't check signature: No public key`). A `db` rotation therefore keeps the
-release key (`indexKeys`, as it keeps `pcrKeys`). To change the release key itself, take two
-releases: one signed with the old key whose image carries the new public key, then the next signed
-with the new key. The signature does not stop a replay of an older signed index: sysupdate installs
-only versions newer than the running one, and the A/B slots keep the newest two.
+release key (`--index-keys`, as it keeps the PCR key with `--pcr-keys`). To change the release key
+itself, take two releases: one signed with the old key whose image carries the new public key, then
+the next signed with the new key. The signature does not stop a replay of an older signed index:
+sysupdate installs only versions newer than the running one, and the A/B slots keep the newest two.
 
 `golconda release check` checks a release directory against this page before it is published: the
 four lines in this order, every digest against its file, one image id and version in the names, the

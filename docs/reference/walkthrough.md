@@ -161,23 +161,25 @@ named `golconda-usr-20261031.1` *(eval of `usrTree.name`)* and is a directory th
 nix-build -A packages.x86_64-linux.image-smoke
 ```
 
-builds the chain over `examples/server.toml`, with throwaway keys. From the `/usr` tree,
-`lib/image/` makes, one derivation each:
+builds the chain over `examples/server.toml`, with throwaway keys. Nix builds the `/usr` tree, the
+initrd and the manifest unsigned; then the signer (`lib/image/sign.nu`), run in a derivation with
+the throwaway keys, makes:
 
+- the signed systemd-boot loader, which it puts into a copy of the `/usr` tree;
 - the erofs image with every mtime set to the epoch of `20261031.1` (`mkfs.erofs -T`);
 - the verity hash tree, the root hash and the signed `usr-verity-sig`;
-- the initrd (a second, smaller `/usr` tree: systemd, udev with the device-mapper rules,
-  veritysetup, repart);
 - the UKI: kernel, initrd and the cmdline of
   [The kernel command line](image.md#the-kernel-command-line), signed for Secure Boot, with a signed
   PCR 11 policy;
-- the signed systemd-boot loader;
 - the GPT disk with the ESP, the A slot filled, the B slot empty and no `root` partition (the disk
   has no room for one; the harness gives it room, see step 6).
 
 The release names are `server_20261031.1.usr.<uuid>.raw`, `server_20261031.1.usr-verity.<uuid>.raw`,
 `server_20261031.1.usr-verity-sig.raw` and `server_20261031.1.efi`, plus `SHA256SUMS`
-([Image artifacts](image.md#a-release)). The output also holds `keys/`, the throwaway keys.
+([Image artifacts](image.md#a-release)). The initrd (a second, smaller `/usr` tree: systemd, udev
+with the device-mapper rules, veritysetup, repart) is a Nix output. The output also holds `keys/`,
+the public halves of the throwaway keys. A release signs the same way, outside Nix, with your keys
+([Making a release](release.md)).
 
 ## 6. First boot
 

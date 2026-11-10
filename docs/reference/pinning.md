@@ -12,21 +12,20 @@ All three give the same tree, so they give the same image.
 tarball of one commit. The flake output is the same set: `flake.nix` is
 `outputs = _: import ./default.nix;`.
 
-| function                                  | gives                                                                                                                      |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `lib.mkSystem { config; system; … }`      | the composed system: `usrTree`, `config`, `sbom`, … ([The entry point](config.md#the-entry-point))                         |
-| `lib.mkImage { config; keys; system; … }` | the signed chain: `erofs`, `verity`, `initrd`, `uki`, `loader`, `disk`, `release` ([`lib.mkImage`](outputs.md#libmkimage)) |
-| `lib.readPins ./pins`                     | `{ <name> = the unpacked tree; }` for a directory of pins in uptrack's format                                              |
+| function                                        | gives                                                                                                                 |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `lib.mkSystem { config; system; … }`            | the composed system: `usrTree`, `config`, `sbom`, … ([The entry point](config.md#the-entry-point))                    |
+| `lib.mkImage { config; publicKeys; system; … }` | the unsigned chain and its signer: `unsigned`, `usrTree`, `initrd`, `signer` ([`lib.mkImage`](outputs.md#libmkimage)) |
+| `lib.readPins ./pins`                           | `{ <name> = the unpacked tree; }` for a directory of pins in uptrack's format                                         |
 
 Two arguments matter for every recipe:
 
 - **`system`**: always pass it (`"x86_64-linux"`). Left out, it is `builtins.currentSystem`. A flake
   and `iets eval` evaluate purely and refuse that.
-- **`keys`**: name the key directory as a string (`"/srv/golconda-keys"`). Evaluation does not read
-  a string, and the keys stay out of the store. The daemon then needs the directory in
-  `extra-sandbox-paths` ([`lib.mkImage`](outputs.md#libmkimage)). A path value (`./keys`) copies the
-  private keys into the store. The string form is *(being built)*: no test builds an image with a
-  string key directory ([Release](release.md#2-keep-the-private-keys-out-of-the-store)).
+- **`publicKeys`**: the key set's public halves. `lib.mkImage` copies `secureboot/db.crt`,
+  `pcr/pcr.pub` and `release/index.pgp` into the store and nothing else; the private keys never
+  reach Nix ([`lib.mkImage`](outputs.md#libmkimage)). A flake evaluates purely and reads no absolute
+  path outside the store, so commit the three public files and name them as a path (`./keys`).
 
 Golconda's own inputs (repkgs, adios and the rest) come with the tree: `pins/` fetches each one by
 its hash. You do not pin them. No recipe needs nixpkgs.
@@ -116,13 +115,14 @@ nix flake update golconda       # move to Golconda's newest commit
 ```
 
 A run on 2026-11-10 locked the template's input at `ee07323` and built its `image` output (the
-`/usr` tree and the signed chain) on this host's Nix fork. `nix flake update golconda` then moved
-the lock to `2393f72`, the newest `main`, and the flake evaluated again.
-`tests/flake-template/run.sh` repeats the lock and the update without the build
-([How this is tested](#how-this-is-tested)).
+`/usr` tree and the chain, signed in the build with the `keys` argument of that commit, which is now
+gone) on this host's Nix fork. `nix flake update golconda` then moved the lock to `2393f72`, the
+newest `main`, and the flake evaluated again. `tests/flake-template/run.sh` repeats the lock and the
+update without the build ([How this is tested](#how-this-is-tested)). The `image` output is now the
+unsigned output, and `golconda release build` signs it outside Nix ([Making a release](release.md)).
 
 The client needs `flakes` beside the features above. The template passes `system` and has a
-commented `lib.mkImage` call with `keys` as a string. After the first release, pin a tag:
+commented `lib.mkImage` call with `publicKeys` as a path. After the first release, pin a tag:
 `github:slophaer/golconda/v0.1` *(planned)*.
 
 ## Plain `fetchTarball`
@@ -165,11 +165,14 @@ nix-prefetch-url --unpack https://github.com/slophaer/golconda/archive/<rev>.tar
 - `tests/flake-template/run.sh` (run by `scripts/lint`) makes a flake with `nix flake init -t` from
   this repository's template, locks the input at `HEAD~1`, runs `nix flake update golconda`, and
   checks that the lock is at `HEAD` with a new `narHash` and that the flake evaluates its `/usr`
-  tree. With `--build` it also builds the signed image from the flake, with a throwaway key set.
-  That build is not in the lint: it takes the time of an image build.
+  tree. With `--build` it also builds the image's unsigned output from the flake, with the public
+  halves of a test key set (`tests/fixtures/public-keys`), and checks that the output holds the
+  manifest and the signer and no private key. That build is not in the lint: it takes the time of an
+  image build.
 - By hand, 2026-11-10 (`~/spikes/pinning-proofs`): the uptrack template in an empty directory
   evaluated `usrTree` from the pin (iets and `nix-instantiate`), and `uptrack check` and `apply`
   moved a copy of the pin to `b58a62f`. No image was built from either. `nix flake init -t` gave a
   flake with the input at the example pin's `ee07323` on the GitHub mirror (the lock held `ee07323`,
-  with the pin's `narHash`), and `nix build .#image` built the signed image (task #534, 4 min with
-  the toolchain in the store). `nix flake update golconda` moved the lock to `2393f72`.
+  with the pin's `narHash`), and `nix build .#image` built the image, signed in the build with the
+  `keys` argument of that commit (task #534, 4 min with the toolchain in the store).
+  `nix flake update golconda` moved the lock to `2393f72`.

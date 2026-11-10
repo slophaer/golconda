@@ -8,16 +8,17 @@ or a key goes wrong. The boot chain itself is in [Boot](boot.md), the keys in [T
 
 ## The loader in the image
 
-`lib/image/loader.nix` signs systemd's `systemd-boot<arch>.efi` with `systemd-sbsign`, with the same
-`db` key and certificate as the UKI and the verity root hash. The result is used twice:
+The signer (`lib/image/loader.nu`, [Trust: Signing outside Nix](trust.md#signing-outside-nix)) signs
+systemd's `systemd-boot<arch>.efi` with `systemd-sbsign`, with the same `db` key and certificate as
+the UKI and the verity root hash. The result is used twice:
 
 - **in `/usr`**, at `/usr/lib/systemd/boot/efi/systemd-boot<arch>.efi.signed`, beside the unsigned
-  file the systemd farm links. `loaderFragment` adds it to the system as a closure root and an
-  explicit link (`extraFragments` of `mkSystem`, a named fragment beside the components). The name
-  is the one bootctl prefers to the unsigned file.
-- **on the ESP**, written by the disk step (`lib/image/disk.nix`). The step fails unless the `/usr`
-  tree carries the same bytes at that path, and unless its `/usr/lib/golconda/loader.conf` is the
-  disk's `loader.conf`. A fresh disk is therefore already in the state the machine keeps.
+  file the systemd farm links. The signer puts the file into its copy of the `/usr` tree before it
+  makes the erofs image; the tree Nix builds has nothing at that path. The name is the one bootctl
+  prefers to the unsigned file.
+- **on the ESP**, the same file, written by the signer's disk step (`lib/image/disk.nu`). The signer
+  fails unless the tree's `/usr/lib/golconda/loader.conf` is the disk's `loader.conf`. A fresh disk
+  is therefore already in the state the machine keeps.
 
 The ESP has the layout `bootctl install` makes:
 
@@ -98,20 +99,17 @@ key ([Trust](trust.md#2-verity-key)). The PCR policy key is a separate key and d
 
 1. Build the next release with the new key and install it as usual:
 
-   ```nix
-   (import ./default.nix).lib.mkImage {
-     config = ./server.toml;
-     keys = "/srv/golconda-keys-2"; # the new db key, in a new directory
-     pcrKeys = "/srv/golconda-keys"; # the old directory: the PCR key stays
-     indexKeys = "/srv/golconda-keys"; # and the release key, which the running image trusts
-   }
+   ```sh
+   golconda release build -f server.toml --keys /srv/golconda-keys-2 \
+     --pcr-keys /srv/golconda-keys --index-keys /srv/golconda-keys
    ```
 
-   `keys` is a string, so the private keys stay out of the store; the layout and the sandbox setup
-   are in [Trust: Deployment keys](trust.md#deployment-keys). The old loader starts the new UKI,
-   because both certificates are in `db`. At the first good boot `golconda-loader-update.service`
-   installs the new loader: the systemd-boot version is the same and the bytes are not. The old
-   loader stays as the fallback copy.
+   `--keys` is the new `db` key, in a new directory; the old directory keeps the PCR key and the
+   release key, which the running image trusts. The layout is in
+   [Trust: Deployment keys](trust.md#deployment-keys). The old loader starts the new UKI, because
+   both certificates are in `db`. At the first good boot `golconda-loader-update.service` installs
+   the new loader: the systemd-boot version is the same and the bytes are not. The old loader stays
+   as the fallback copy.
 
 1. Install one more release signed with the new key, so the other slot holds no UKI signed with the
    old key. Clear any loader variable that names an old entry: `bootctl set-default ''`.

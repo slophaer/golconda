@@ -20,16 +20,17 @@
       packages.${system} = {
         # the /usr tree of server.toml: nix build
         default = sys.usrTree;
-        # The signed image: make the keys with Golconda's scripts/make-keys, keep them outside
-        # this repository, and name them as a string. A string is not read at evaluation and does
-        # not copy the keys into the store; the daemon needs the directory in
-        # extra-sandbox-paths (Golconda's docs/reference/outputs.md, lib.mkImage).
+        # The image, unsigned: make the keys with Golconda's scripts/make-keys and keep them
+        # outside this repository. Commit only their public halves here (keys/secureboot/db.crt,
+        # keys/pcr/pcr.pub, keys/release/index.pgp): mkImage reads nothing else. Its `sign` signs
+        # the image outside Nix with the private keys (`golconda release build`, Golconda's
+        # docs/reference/release.md).
         # image =
         #   (golconda.lib.mkImage {
         #     config = ./server.toml;
-        #     keys = "/srv/golconda-keys";
+        #     publicKeys = ./keys;
         #     inherit system;
-        #   }).disk;
+        #   }).unsigned;
       };
     };
 }

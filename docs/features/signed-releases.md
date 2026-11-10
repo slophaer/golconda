@@ -35,22 +35,18 @@ matters most without Secure Boot, where nothing else checks a UKI before it runs
 
 ## Using it
 
-`scripts/make-keys` makes a key set once. `lib.mkImage` signs the release with it.
+`scripts/make-keys` makes a key set once. `golconda release build` signs each release with it: Nix
+builds the image unsigned, and the signer signs it on the release host, outside Nix.
 
 ```sh
 scripts/make-keys /srv/golconda-keys
-```
-
-```nix
-(import ./default.nix).lib.mkImage {
-  config = ./server.toml;
-  keys = "/srv/golconda-keys"; # a string: the private keys stay out of the store
-}
+golconda release build -f server.toml --keys /srv/golconda-keys
 ```
 
 The set holds `secureboot/db.key` and `db.crt`, `pcr/pcr.key` and `pcr.pub`, and `release/index.key`
-(OpenPGP Ed25519) and `index.pgp`. `mkImage` returns `erofs`, `verity`, `initrd`, `uki`, `loader`,
-`disk` and `release`. Serve `release/` at `/system.updateSource`.
+(OpenPGP Ed25519) and `index.pgp`. Nix reads only the three public halves; no private key enters the
+store or a build ([Trust: Signing outside Nix](../design/trust.md#signing-outside-nix)). The release
+is in `result-release/release/`; serve it at `/system.updateSource`.
 
 ## Status
 

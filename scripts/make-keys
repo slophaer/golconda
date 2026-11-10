@@ -1,13 +1,15 @@
 #!/bin/sh
-# make-keys DIR: make a deployment key set for lib.mkImage.
+# make-keys DIR: make a deployment key set for a release (golconda release build).
 #
-# The layout is the one lib.mkImage reads (nix/default.nix, docs/design/trust.md):
+# The layout is the one the signer reads (lib/image/sign.nu) and whose public halves lib.mkImage
+# reads (lib/image/chain.nix, docs/design/trust.md):
 #   secureboot/db.key, secureboot/db.crt   systemd-boot, the UKI and the verity root hash
 #   pcr/pcr.key, pcr/pcr.pub               the PCR 11 policy and its public half
 #   release/index.key, release/index.pgp   SHA256SUMS (OpenPGP: armored secret, binary public)
 #
 # DIR must be absolute: lib.mkImage takes the key directory as a string path and
-# refuses a relative one. DIR must not exist with anything in it, and is made
+# refuses a relative one. No private key enters the store: Nix copies the public halves
+# alone, and the signer reads the private keys here. DIR must not exist with anything in it, and is made
 # 0700. Every file is 0600. The script prints the paths, what each key signs and
 # the certificate's fingerprint; it never prints key material.
 #

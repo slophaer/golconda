@@ -11,7 +11,7 @@ Names carry the image id and the version; the version sorts with `strverscmp`
 revision inside the day (0-86399); the whole contract is in [Releases](../design/releases.md). The
 data and hash files also carry the partition UUID systemd derives from the verity root hash (usr:
 its first 128 bits, usr-verity: its last); the source pattern reads it with `@u`, and sysupdate
-gives the slot it writes that UUID, so the new UKI's `usrhash=` finds the new slot. The disk step
+gives the slot it writes that UUID, so the new UKI's `usrhash=` finds the new slot. The signer
 writes the release under these names (`release/`, `releaseNames` in `lib/image/disk.nix`).
 
 | artifact         | file name                                                     | sysupdate transfer                                                   |
@@ -25,13 +25,13 @@ writes the release under these names (`release/`, `releaseNames` in `lib/image/d
 
 Each partition transfer finds its slots by GPT label (`image/sysupdate.nix` `slots`, the target
 `MatchPattern=`): an installed slot is `usr_<version>`, `usr-verity_<version>` or
-`usr-verity-sig_<version>`, a free slot is `_empty`. The disk builder labels slot A from the same
-patterns (`slotLabel`, `lib/image/disk.nix`) and the B slots `_empty` (`image/repart.nix`);
-sysupdate writes the formatted pattern as the label of the slot it fills, and keeps the slot's
-flags: the free usr slot is read-only without growfs, as slot A is (systemd 262.1 ignores the
-target's `ReadOnly=` for partitions). The partition type tells the three transfers apart, so the
-label carries no image id: GPT allows 36 characters, the longest prefix (`usr-verity-sig_`) leaves
-21 for the version, and a longer label fails the build.
+`usr-verity-sig_<version>`, a free slot is `_empty`. The signer labels slot A from the same patterns
+(`slotLabel`, `lib/image/disk.nix`) and the B slots `_empty` (`image/repart.nix`); sysupdate writes
+the formatted pattern as the label of the slot it fills, and keeps the slot's flags: the free usr
+slot is read-only without growfs, as slot A is (systemd 262.1 ignores the target's `ReadOnly=` for
+partitions). The partition type tells the three transfers apart, so the label carries no image id:
+GPT allows 36 characters, the longest prefix (`usr-verity-sig_`) leaves 21 for the version, and a
+longer label fails the build.
 
 All transfers use `InstancesMax=2` and `ProtectVersion=%A`. The installed UKI name carries the boot
 counter (`+3-0`: three tries left, none done); `systemd-bless-boot` removes the suffix after
@@ -172,19 +172,23 @@ package.
 
 ## Built today (`lib/image/`)
 
-Each step is a content-addressed derivation with a nushell builder (`common.nix`), repkgs packages
-only; `packages.<system>.image-smoke` runs the chain over the system of `examples/server.toml` and
-writes `proof.txt` (sizes, `veritysetup verify`, the cpio listing, `ukify inspect`, repart's table).
-`image-smoke-<step>` exposes each step.
+Nix builds the parts that need no key, each a content-addressed derivation with a nushell builder
+(`common.nix`) and repkgs packages only. The signer (`golconda-sign`, `lib/image/sign.nu`) signs and
+assembles the rest outside Nix, with the deployment's keys where they lie
+([Trust: Signing outside Nix](../design/trust.md#signing-outside-nix)). A test image runs the same
+signer in a derivation with throwaway keys; `packages.<system>.image-smoke` does so for the system
+of `examples/server.toml` and writes `proof.txt` (sizes, `veritysetup verify`, the cpio listing,
+`ukify inspect`, repart's table).
 
-| step   | function (`lib/image/default.nix`)        | output                                                                                                                                          |
-| ------ | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| erofs  | `erofs { usrTree; … }`                    | `<id>_<version>.usr.raw`: `mkfs.erofs -zlz4hc -T <epoch> -U <uuid> --all-root`; epoch and UUID from the version, so a rebuild is byte-identical |
-| verity | `verity { erofs; key; cert; … }`          | `<id>_<version>.usr-verity.raw`, `roothash`, `<id>_<version>.usr-verity-sig.raw`                                                                |
-| initrd | `initrdTree { … }`, `initrd { usrTree; }` | `initrd.cpio.zst`, `rdinit` ([Boot: the initrd](../design/boot.md#the-initrd))                                                                  |
-| uki    | `uki { initrd; verity; usrTree; keys… }`  | `<id>_<version>+3-0.efi` (`ukiName`), `cmdline`                                                                                                 |
-| loader | `loader { keys… }`, `loaderFragment`      | `systemd-boot<arch>.efi.signed`, and the fragment that puts it in `/usr` ([Boot loader](../design/bootloader.md))                               |
-| disk   | `disk { erofs; verity; uki; loader; … }`  | `disk.raw` (sparse, fully allotted: ESP with the signed loader and `loader.conf`, A and B slots, no room for `root`), `disk.json`, `release/`   |
+| step     | where                                          | output                                                                                                                                                                             |
+| -------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| initrd   | Nix: `initrdTree { … }`, `initrd { usrTree; }` | `initrd.cpio.zst`, `rdinit` ([Boot: the initrd](../design/boot.md#the-initrd))                                                                                                     |
+| unsigned | Nix: `manifest { usrTree; initrd; signer; … }` | `manifest.json` (the inputs and every step's parameters), `keys/` (`db.crt`, `pcr.pub`, `index.pgp`), `sign` (`image-smoke-unsigned`)                                              |
+| loader   | signer: `lib/image/loader.nu`                  | `systemd-boot<arch>.efi.signed`, put into the copy of the `/usr` tree and on the ESP ([Boot loader](../design/bootloader.md))                                                      |
+| erofs    | signer: `lib/image/erofs.nu`                   | `<id>_<version>.usr.raw`: `mkfs.erofs -zlz4hc -T <epoch> -U <uuid> --all-root --hard-dereference`; epoch and UUID from the version (`erofsParams`)                                 |
+| verity   | signer: `lib/image/verity.nu`                  | `<id>_<version>.usr-verity.raw`, the root hash, `<id>_<version>.usr-verity-sig.raw` (`verityParams`)                                                                               |
+| uki      | signer: `lib/image/uki.nu`                     | `<id>_<version>+3-0.efi` (`ukiName`, `ukiParams`)                                                                                                                                  |
+| disk     | signer: `lib/image/disk.nu`                    | `disk.raw` (sparse, fully allotted: ESP with the signed loader and `loader.conf`, A and B slots, no room for `root`), `disk.json`, `release/` with `SHA256SUMS.gpg` (`diskParams`) |
 
 The verity step: `veritysetup format` with a salt and superblock UUID from the version; the
 signature is `openssl smime -sign -nocerts -noattr -binary` over the hex root hash, as
@@ -198,22 +202,22 @@ Boot signing by `systemd-sbsign` and the PCR 11 policy by `systemd-measure`. The
 builder's fields added: the ESP's `CopyFiles=` (systemd-boot as `EFI/systemd/systemd-boot<arch>.efi`
 and `EFI/BOOT/BOOT<ARCH>.EFI`, the UKI in `EFI/Linux/`), slot A's labels (`slotLabel`),
 `CopyBlocks=` and the two UUIDs systemd derives from the root hash (usr: its first 128 bits, verity:
-its last). The loader is the loader step's output: `systemd-sbsign` signs systemd-boot with the same
-db key and certificate as the UKI, and the `/usr` tree carries the same file (`loaderFragment`); the
-disk step fails unless the two are equal. `loader/loader.conf` is written from `image/loader.nix`
-(`timeout 0`, `editor no`), the text `/base` installs as `/usr/lib/golconda/loader.conf`. The B
-slots are empty, root is made on the machine (`/usr/lib/repart.d/30-root.conf`, written by `/base`).
-`release/` holds symlinks to the step outputs under their release names (the UKI as
-`<id>_<version>.efi`) and `SHA256SUMS`: a directory an HTTP server can publish as the update source.
-`SHA256SUMS` has four lines in a fixed order (usr, verity, signature, UKI) and names the release
-files exactly; it does not list itself. The files in `release/` are store paths: Nix sets their
-mtimes to 1, so a file mtime is not the release date. The version epoch lives in the `/usr` erofs
+its last). The loader on the ESP is the file the signer put into `/usr`. `loader/loader.conf` is
+written from `image/loader.nix` (`timeout 0`, `editor no`), the text `/base` installs as
+`/usr/lib/golconda/loader.conf`; the signer fails unless the tree's copy is the same. The B slots
+are empty, root is made on the machine (`/usr/lib/repart.d/30-root.conf`, written by `/base`).
+`release/` holds the four files under their release names (the UKI as `<id>_<version>.efi`) and
+`SHA256SUMS`: a directory an HTTP server can publish as the update source. `SHA256SUMS` has four
+lines in a fixed order (usr, verity, signature, UKI) and names the release files exactly; it does
+not list itself. A file mtime is not the release date: the version epoch lives in the `/usr` erofs
 image (and in `disk.raw`'s internal files), not in the release directory's metadata. The ESP is
-filled offline with mtools (`packages/mtools`). Keys are paths: the smoke makes throwaway ones in
-the store (`throwawayKeys`); a release signs with the deployment's keys, which reach the build as
-[Trust: How the private keys reach the build](../design/trust.md#how-the-private-keys-reach-the-build)
-describes. The boot test covers the verity certificate in the kernel keyring and TPM sealing
-([What is proven](../proven.md)).
+filled offline with mtools (`packages/mtools`).
+
+The signer is deterministic for the same unsigned output and keys: times, salts, UUIDs and seeds
+come from the version, `systemd-sbsign` takes its signing time from `SOURCE_DATE_EPOCH`, and the
+signatures (RSA PKCS#1 v1.5, Ed25519) draw no random numbers. The one exception is `disk.raw`:
+`mkfs.fat` 4.2 stamps the ESP's volume label with the clock. The boot test covers the verity
+certificate in the kernel keyring and TPM sealing ([What is proven](../proven.md)).
 
 The smoke, the test image and the production image boot the same command line
 ([The kernel command line](#the-kernel-command-line)).

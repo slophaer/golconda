@@ -5,14 +5,13 @@ certificate in the firmware. The key layout and the reason for each key are in
 [Trust: Deployment keys](../design/trust.md#deployment-keys); the files a release holds are in
 [Releases](../design/releases.md).
 
-| step                        | needs                                                                                  |
-| --------------------------- | -------------------------------------------------------------------------------------- |
-| 1. make the key set         | a build daemon: the script builds its own `openssl` and `gnupg` (`scripts/tools.sh`)   |
-| 2. keep it out of the store | `extra-sandbox-paths` on the build daemon, and build users that can read the directory |
-| 3. build                    | a build host with the daemon of [Build host](build-host.md), `golconda`, git           |
-| 4. publish `release/`       | an update source rclone reaches, and `/system.updateSource` on the machine             |
-| 5. enrol the certificate    | firmware setup, or the `KEK` private key for an authenticated `db` append              |
-| 6. rotate                   | the old key set, and the same firmware access                                          |
+| step                     | needs                                                                                |
+| ------------------------ | ------------------------------------------------------------------------------------ |
+| 1. make the key set      | a build daemon: the script builds its own `openssl` and `gnupg` (`scripts/tools.sh`) |
+| 2. build and sign        | the release host: the daemon of [Build host](build-host.md), `golconda`, git         |
+| 3. publish `release/`    | an update source rclone reaches, and `/system.updateSource` on the machine           |
+| 4. enrol the certificate | firmware setup, or the `KEK` private key for an authenticated `db` append            |
+| 5. rotate                | the old key set, and the same firmware access                                        |
 
 ## 1. Make the key set
 
@@ -20,10 +19,11 @@ certificate in the firmware. The key layout and the reason for each key are in
 scripts/make-keys /srv/golconda-keys
 ```
 
-The directory must be absolute, because `lib.mkImage` takes it as a string path and refuses a
-relative one. The script refuses a directory that exists and is not empty, creates the directory
-with mode `0700` and every file with mode `0600`, and prints the paths, what each key signs and the
-certificate's SHA-256 fingerprint. It never prints key material.
+The script refuses a relative directory and a directory that exists and is not empty, creates the
+directory with mode `0700` and every file with mode `0600`, and prints the paths, what each key
+signs and the certificate's SHA-256 fingerprint. It never prints key material. Keep the directory on
+the release host: no build reads the private keys, and no step copies them
+([Trust: Signing outside Nix](../design/trust.md#signing-outside-nix)).
 
 | file                | what it does                                                         |
 | ------------------- | -------------------------------------------------------------------- |
@@ -36,46 +36,18 @@ certificate's SHA-256 fingerprint. It never prints key material.
 
 `db.crt` is a self-signed PEM X.509 certificate, valid for 3650 days, with `CA:TRUE`,
 `digitalSignature`, `keyCertSign`, `cRLSign` and `codeSigning`. `systemd-sbsign` takes a PEM
-certificate (systemd 262, `systemd-sbsign(1)`), and `lib/image/uki.nu` checks each verity root hash
-signature against the certificate alone, so a key and certificate that do not match fail the build
-and not the boot. Keep the set: a rotation uses the old `pcr/` key and the old certificate (step 6).
+certificate (systemd 262, `systemd-sbsign(1)`). The signer checks each private key against its
+public half and each verity root hash signature against the certificate, so a key and certificate
+that do not match fail the release and not the boot. Keep the set: a rotation uses the old `pcr/`
+key and the old release key (step 5).
 
 `tests/make-keys/run.sh` (run by `scripts/lint`) runs the script into a temporary directory and
 checks the layout, the modes, the certificate's extensions and that each key matches its public
-half. It does not sign an image with the set.
+half.
 
-## 2. Keep the private keys out of the store
+## 2. Build and sign
 
-Pass the directory as a string:
-
-```nix
-keys = "/srv/golconda-keys";
-```
-
-A string is not copied: the derivation names the path, and the builder reads the files where they
-are. The daemon must show the directory to the sandbox with `extra-sandbox-paths` in its own
-`nix.conf`, and the build users must be able to read it
-([Build host: Keys in the sandbox](build-host.md#keys-in-the-sandbox)). A path value
-(`keys = ./golconda-keys;`, or an unquoted absolute path) copies the whole directory into the store,
-private keys included, until a garbage collection removes it; a remote builder gets a copy too
-([Trust: How the private keys reach the build](../design/trust.md#how-the-private-keys-reach-the-build)).
-
-The directory must be on the machine whose daemon builds the image: with a remote builder, that is
-the builder, not the client. The derivation names only the path, not the file contents, so new keys
-under the same path rebuild nothing. Put a new set under a new path (step 6).
-
-A daemon that builds in a chroot store (`--store local?root=DIR`) copies only the derivation's
-inputs into a fresh root directory. A string is not an input, so the builder sees nothing at that
-path and signing stops with `Failed to load X.509 certificate from … No such file or directory`. On
-such a daemon use the path form, and accept the store copy.
-
-The string form is *(being built)*: no test builds an image with a string key directory. A build on
-a daemon with the `extra-sandbox-paths` line, then a boot test of the result, would test it. The
-path form was used to build the two releases of the real-key boot test ([`image.md`](image.md)).
-
-## 3. Build
-
-Run this in the configuration repository on the build host, with a clean working tree:
+Run this in the configuration repository on the release host, with a clean working tree:
 
 ```sh
 golconda release build -f server.toml --keys /srv/golconda-keys
@@ -83,37 +55,46 @@ golconda release build -f server.toml --keys /srv/golconda-keys
 
 `golconda release build` ([Commands](cli.md#golconda-release)) picks the version (`--version auto`:
 today's date and the revision after the document's `/system.version`, and after what `--to DEST`
-serves), writes it into `server.toml`, builds the image, checks the release directory (step 4) and
-commits the version line as `release: <id> <version>`. The commit's trailers record the document's
-digest, the four files' digests and the store path, so `git log` finds the source of each release; a
-failed build puts the line back and commits nothing. It refuses a version that is not newer than the
-last one: sysupdate would install nothing and say nothing. The output is linked at `result-release`.
+serves) and writes it into `server.toml`. Then it builds and signs in two steps:
 
-By hand, the same build is:
+1. `nix-build` builds `lib.mkImage`'s `unsigned` output: the `/usr` tree, the initrd, the kernel and
+   a manifest, all unsigned. Nix gets the key directory as a string and copies its three public
+   halves into the store, each file alone ([Outputs: `lib.mkImage`](outputs.md#libmkimage)).
+1. The signer of that output (`unsigned/sign`) runs on this host with the key directory. It makes
+   the erofs image with the signed loader in it, the verity tree and its signature, the UKI, the
+   disk and the release directory, and signs `SHA256SUMS`
+   ([Trust: Signing outside Nix](../design/trust.md#signing-outside-nix)).
+
+The release goes to `--out`, a new directory (default `result-release`): `disk.raw`, `disk.json`,
+`release/`, and `unsigned`, the link to the unsigned outputs. Then the command checks the release
+directory (step 3) and commits the version line as `release: <id> <version>`. The commit's trailers
+record the document's digest, the four files' digests and the unsigned outputs' store path, so
+`git log` finds the source of each release. A failed build or signature removes the directory and
+puts the line back, and commits nothing. The command refuses an existing `--out`, and a version that
+is not newer than the last one: sysupdate would install nothing and say nothing.
+
+By hand, the same two steps are:
 
 ```sh
-iets build -E '((import ./default.nix).lib.mkImage {
+nix-build -o unsigned -E '((import ./default.nix).lib.mkImage {
   config = ./server.toml;
-  keys = "/srv/golconda-keys";
-}).disk'
+  publicKeys = "/srv/golconda-keys";
+}).unsigned'
+unsigned/sign unsigned --keys /srv/golconda-keys --out release-dir
 ```
 
-`config` is what `lib.mkSystem` takes: a TOML path or an option set. `pcrKeys` (default: `keys`)
-names a second directory, read for `pcr/` only, and `indexKeys` (default: `keys`) one read for
-`release/` only: a key set made before it had a release key gets one from a second `make-keys` run.
-`system` (default: `builtins.currentSystem`) is the build host. The expression returns seven
-attributes, `erofs` to `disk` plus `release`, listed in
-[Outputs: `lib.mkImage`](outputs.md#libmkimage). `disk` needs every other step; its output holds
-`disk.raw`, `disk.json` and `release/`. `nix-build -E` with the same expression prints the output
-path; iets 0.2 builds the content-addressed disk but finds no output path for it ("built, but the
-builder has no output path"), which is why `golconda release build` uses `nix-build`.
+`config` is what `lib.mkSystem` takes: a TOML path or an option set. `publicKeys` is a string or a
+path; either way only `secureboot/db.crt`, `pcr/pcr.pub` and `release/index.pgp` are copied. A
+repository can also commit the three public files and name them as a path, which a flake needs: pure
+evaluation reads no absolute path outside the store. `system` (default: `builtins.currentSystem`) is
+the build host. `nix-build` prints the output path; iets 0.2 builds the content-addressed output but
+finds no path for it ("built, but the builder has no output path"), which is why
+`golconda release build` uses `nix-build`.
 
-Verification: two releases were built from the path form (`keys = /srv/keys;`) and both booted with
-`--secure-boot --keys` and the whole update test ([What is proven](../proven.md)). The string form
-is *(being built)*: no build uses it. It is the one that keeps the private keys out of the store, so
-a build with `keys = "/srv/golconda-keys";` and a boot of its disk would test it.
+Verification: a release built and signed this way with a fresh key set booted with `--secure-boot`,
+and so did its next release over HTTP *(being built)*.
 
-## 4. Publish the release directory
+## 3. Publish the release directory
 
 `release/` holds the four release files, `SHA256SUMS` and `SHA256SUMS.gpg`. The names, the fixed
 line order and what a version means are in
@@ -144,7 +125,7 @@ the guest read its own `Type=url-file` definition and fetched each file over HTT
 has one byte more than its signature covers, and the run passes only when `sysupdate-refused` shows
 that the update installed nothing.
 
-## 5. Enrol the certificate in the firmware
+## 4. Enrol the certificate in the firmware
 
 Firmware must hold `secureboot/db.crt` in `db`. It verifies the signed loader and UKI with that
 certificate, and the kernel checks each verity root hash signature against the `db` in the platform
@@ -161,22 +142,19 @@ store offline with `virt-fw-vars --add-db` (`scripts/boot-test`).
 **Unverified:** this repository has no procedure for a machine's own firmware. A boot of the
 release's `disk.raw` after an enrolment in firmware setup would test it.
 
-## 6. Rotate a key
+## 5. Rotate a key
 
 A `db` rotation signs the next loader, UKIs and verity root hashes with a new key. The PCR key and
 the release key do not change, so make a second set with `scripts/make-keys` and keep the first:
 
-```nix
-let
-  f = import ./default.nix;
-in
-(f.lib.mkImage {
-  config = ./server.toml;
-  keys = "/srv/golconda-keys-2"; # the new db key
-  pcrKeys = "/srv/golconda-keys"; # the old set: the PCR key stays
-  indexKeys = "/srv/golconda-keys"; # and the release key: the running image trusts only it
-}).disk
+```sh
+golconda release build -f server.toml --keys /srv/golconda-keys-2 \
+  --pcr-keys /srv/golconda-keys --index-keys /srv/golconda-keys
 ```
+
+`--keys` gives the new `db` key; `--pcr-keys` and `--index-keys` name the old set, whose PCR key and
+release key stay: the running image trusts only its own release key. Nix copies the public halves
+from the same three places (`publicKeys`, `pcrPublicKeys`, `indexPublicKeys` of `lib.mkImage`).
 
 Both certificates must be in `db` while a slot still holds a release signed with the old key, and
 the old certificate goes to `dbx` only after both slots hold a release signed with the new one. The
