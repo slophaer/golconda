@@ -19,6 +19,9 @@ let
     all
     any
     attrNames
+    elemAt
+    genList
+    length
     ;
   # the file only /imds ships: /base's drop-ins turn the IMDS units on by its path
   marker = "/usr/lib/golconda/imds";
@@ -62,6 +65,24 @@ let
   withImds = composeWith { "/imds" = { }; };
   # the IMDS lock on lo: a user data .network file for the link replaces 85-imds-early.network
   lockFile = "${netDir}/10-golconda-imds-lock.network";
+  # every IMDS_ADDRESS_IPV4 and IMDS_ADDRESS_IPV6 of systemd 262.1's 40-imds.hwdb (the pinned
+  # version; tests/packages/hwdb/test.nu reads the IPv6 ones from the compiled database)
+  endpointsV4 = [
+    "169.254.169.254" # AWS, Azure, GCP, Hetzner, OpenStack, Oracle, Vultr
+    "169.254.42.42" # Scaleway
+    "100.100.100.200" # Alibaba
+  ];
+  endpointsV6 = [
+    "fd00:ec2::254" # AWS
+    "fd00:c1::a9fe:a9fe" # Oracle
+    "fd00:42::42" # Scaleway
+  ];
+  # one prohibit rule each: /32 and /128, priorities 32102 on, IPv4 first
+  prohibitTo = map (a: "${a}/32") endpointsV4 ++ map (a: "${a}/128") endpointsV6;
+  prohibits = genList (i: {
+    to = elemAt prohibitTo i;
+    prio = 32102 + i;
+  }) (length prohibitTo);
 in
 [
   (check "imds: systemd builds the IMDS stack, its network mode locked" (
@@ -173,11 +194,14 @@ in
     && has "[Match]\nName=lo\n"
     # imdsd's own rule, before the next one: its table has the route while 85-imds-early.network
     # is in use, and the main table then has a prohibit route to the endpoint
-    && has "[RoutingPolicyRule]\nFirewallMark=0x7FFF0815\nTable=0x7FFF0815\nPriority=32100\n"
+    && has "[RoutingPolicyRule]\nFamily=both\nFirewallMark=0x7FFF0815\nTable=0x7FFF0815\nPriority=32100\n"
     # once the link has another file, imdsd's table is empty: marked packets take the main table
-    && has "[RoutingPolicyRule]\nFirewallMark=0x7FFF0815\nTable=main\nPriority=32101\n"
+    && has "[RoutingPolicyRule]\nFamily=both\nFirewallMark=0x7FFF0815\nTable=main\nPriority=32101\n"
     # every other packet to the endpoint is refused, whatever file the link has
-    && has "[RoutingPolicyRule]\nTo=169.254.169.254/32\nType=prohibit\nPriority=32102\n"
+    # both families: the IPv6 endpoints have rules too, as Family=both on the two marks needs
+    && all (
+      r: has "[RoutingPolicyRule]\nTo=${r.to}\nType=prohibit\nPriority=${toString r.prio}\n"
+    ) prohibits
     # no DHCP host name drop-in: lo has no DHCP
     && !(withImds.files ? "${netDir}/10-golconda-imds-lock.network.d/golconda-imds.conf")
   ))

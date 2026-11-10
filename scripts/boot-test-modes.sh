@@ -35,6 +35,7 @@ test_ssh() {
     RC=0; [ "$HN" = "$EXPECT_HN" ] || RC=1
     verdict "hostname (system.hostname credential applied)" $RC
     check_imds_off
+    check_imds_lock_endpoints
   fi
 
   if [ "$ESP_CREDS" = 1 ]; then
@@ -147,6 +148,7 @@ test_imds() {
   check_imds_userdata_credential
   check_imds_ipv6
   check_imds_locked
+  check_imds_lock_endpoints
   check_imds_dhcp_hostname
   check_imds_ordering
 }

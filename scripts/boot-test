@@ -56,6 +56,9 @@
 #   /root/.ssh/authorized_keys in the guest holds the new key. With --secure-boot and --tpm the
 #   null-key credentials are refused (creds-util.c, relaxed policy): the run is expected to fail.
 #   BOOT_TEST_ESP_NO_KEY=1 leaves the key out of the ESP (a negative control: the login must fail).
+#   Both with and without --imds, the ssh checks also check imds-lock-endpoints: ssh, a process that
+#   is not imdsd, is refused with EACCES at every endpoint 40-imds.hwdb lists, IPv6 ones too (QEMU
+#   serves none of them, but the lock is a routing decision).
 #   Without --imds, the ssh checks also check imds-import-inactive: the test image has /imds, and
 #   QEMU's DMI names no cloud, so neither systemd-imds-early-network.service (only the generator
 #   pulls it) nor systemd-imds-import.service ever starts.

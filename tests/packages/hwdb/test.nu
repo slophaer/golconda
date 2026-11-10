@@ -20,6 +20,15 @@ assert "IMDS: no data URL /hetzner/v1/metadata" (not ($text | str contains "/het
 # packages/systemd's hwdb-imds-hetzner-ssh-keys.patch: Hetzner's keys as the JSON array (ssh-key-json)
 assert "IMDS: Hetzner's ssh keys as a JSON array" ($text | str contains "IMDS_KEY_SSH_KEY_JSON")
 assert "IMDS: Hetzner's ssh keys at /metadata/public-keys" ($text | str contains "/metadata/public-keys\u{0}")
+# modules/imds/default.nix locks these endpoints (IMDS_ADDRESS_IPV4 and IMDS_ADDRESS_IPV6). A systemd
+# update that adds an IPv6 endpoint to 40-imds.hwdb fails here until the lock names it. The
+# database stores each value string between NULs; IPv6 ones are the only values with "::" that
+# start with a hex digit.
+let v6 = ($text | parse --regex '\x00([0-9a-f]+:[0-9a-f:]*::[0-9a-f:]*)\x00' | get capture0 | uniq | sort)
+assert $"IMDS: the IPv6 endpoints are the ones /imds locks: ($v6)" ($v6 == ["fd00:42::42" "fd00:c1::a9fe:a9fe" "fd00:ec2::254"])
+for a in ["169.254.169.254" "169.254.42.42" "100.100.100.200"] {
+  assert $"IMDS: the IPv4 endpoint ($a) is in the database" ($text | str contains $a)
+}
 assert "TPM2 properties (60-tpm2.hwdb)" ($text | str contains "TPM2_BROKEN_NVPCR")
 assert "PCI vendor names (20-pci-vendor-model.hwdb)" ($text | str contains "Intel Corporation")
 assert "no keyboard remapping (60-keyboard.hwdb is left out)" (not ($text | str contains "KEYBOARD_KEY_"))

@@ -435,17 +435,18 @@ With `--ssh-test` (the harness logs in as root with `tests/fixtures/snakeoil-ssh
 
 With `--imds` (instead of `hostname`):
 
-| marker                     | what it proves                                                                                                                                                          |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `imds-hostname`            | the generator pulled `systemd-imds-import.service` in, it succeeded, and `hostname` and `/etc/hostname` are `imds-test` (`firstboot.hostname`)                          |
-| `imds-hetzner-layout`      | the guest has no `imds.*` credential; the server answered `GET /hetzner/v1/metadata/hostname` and `GET /hetzner/v1/userdata` with 200, and nothing 404                  |
-| `imds-ssh-keys-json`       | both keys of the JSON array `/metadata/public-keys` log in as root; a bad entry between them is skipped with a warning; `authorized_keys` is 0600                       |
-| `imds-ssh-key-precedence`  | the import skips the user data's `ssh.authorized_keys.root` (the metadata's keys came first); its key does not log in                                                   |
-| `imds-userdata-credential` | `/run/credstore/imds-canary` holds its value, and tmpfiles wrote `login.motd` to `/etc/motd.d`                                                                          |
-| `imds-ipv6`                | the link uses `/run/systemd/network/60-imds-ipv6.network` from the user data, and has `2001:db8:5eed::1`                                                                |
-| `imds-endpoint-locked`     | with that file (no lock in it), `systemd-pull` gets no answer from `169.254.169.254` and the server sees no request; `systemd-imds --cache=no` (through imdsd) gets one |
-| `imds-dhcp-hostname`       | the lease holds `dhcp-test`, `/imds`'s `UseHostname=no` drop-in reaches `85-imds-early.network`, and after `networkctl renew` the host name is `imds-test`              |
-| `imds-no-ordering-cycle`   | the journal has no ordering cycle: the import runs after `network-online.target` and before `sysinit.target`                                                            |
+| marker                     | what it proves                                                                                                                                                                                 |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `imds-hostname`            | the generator pulled `systemd-imds-import.service` in, it succeeded, and `hostname` and `/etc/hostname` are `imds-test` (`firstboot.hostname`)                                                 |
+| `imds-hetzner-layout`      | the guest has no `imds.*` credential; the server answered `GET /hetzner/v1/metadata/hostname` and `GET /hetzner/v1/userdata` with 200, and nothing 404                                         |
+| `imds-ssh-keys-json`       | both keys of the JSON array `/metadata/public-keys` log in as root; a bad entry between them is skipped with a warning; `authorized_keys` is 0600                                              |
+| `imds-ssh-key-precedence`  | the import skips the user data's `ssh.authorized_keys.root` (the metadata's keys came first); its key does not log in                                                                          |
+| `imds-userdata-credential` | `/run/credstore/imds-canary` holds its value, and tmpfiles wrote `login.motd` to `/etc/motd.d`                                                                                                 |
+| `imds-ipv6`                | the link uses `/run/systemd/network/60-imds-ipv6.network` from the user data, and has `2001:db8:5eed::1`                                                                                       |
+| `imds-endpoint-locked`     | with that file (no lock in it), `systemd-pull` gets no answer from `169.254.169.254` and the server sees no request; `systemd-imds --cache=no` (through imdsd) gets one                        |
+| `imds-lock-endpoints`      | with and without a cloud in DMI, `ssh` (a root process that is not imdsd) gets "Permission denied" (`EACCES` from the prohibit rule on `lo`) at every IPv4 and IPv6 endpoint of `40-imds.hwdb` |
+| `imds-dhcp-hostname`       | the lease holds `dhcp-test`, `/imds`'s `UseHostname=no` drop-in reaches `85-imds-early.network`, and after `networkctl renew` the host name is `imds-test`                                     |
+| `imds-no-ordering-cycle`   | the journal has no ordering cycle: the import runs after `network-online.target` and before `sysinit.target`                                                                                   |
 
 The loader checks ([Boot loader](../design/bootloader.md)) run on the first boot, again after an
 update, and after a rotation:

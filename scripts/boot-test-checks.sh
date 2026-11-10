@@ -432,6 +432,32 @@ check_imds_locked() {
   verdict "imds-endpoint-locked (with the user data's .network file, systemd-pull cannot reach $IMDS_ADDR; imdsd can)" $RC
 }
 
+# IMDS_LOCKED: every IMDS_ADDRESS_IPV4 and IMDS_ADDRESS_IPV6 of systemd 262.1's 40-imds.hwdb. QEMU's
+# user network serves none of the IPv6 ones, and only 169.254.169.254 here, but the lock is a
+# routing decision, taken before any server answers.
+IMDS_LOCKED="169.254.169.254 169.254.42.42 100.100.100.200 fd00:ec2::254 fd00:c1::a9fe:a9fe fd00:42::42"
+
+# check_imds_lock_endpoints: a root process that is not imdsd (ssh, the image's client) gets EACCES
+# from the prohibit rule on lo (10-golconda-imds-lock.network) at connect(), for every endpoint
+# hwdb names, IPv6 ones too. Without a rule for the address the error differs: the network is
+# unreachable, the connection is refused, or it times out. The link's .network file does not
+# matter (the rule is on lo), so this also holds without a cloud in DMI.
+check_imds_lock_endpoints() {
+  echo ""
+  echo "=== /imds: the lock covers every endpoint of 40-imds.hwdb, IPv6 too ==="
+  RC=0
+  for a in $IMDS_LOCKED; do
+    E=$(guest "/usr/bin/ssh -F /dev/null -o BatchMode=yes -o ConnectTimeout=3 -p 22 $a true 2>&1") || true
+    echo "$a: $E"
+    echo "$E" | grep -q "port 22: Permission denied" || RC=1
+  done
+  # networkd took the file without a warning or an error about lo
+  NL=$(guest journalctl -b -p warning -u systemd-networkd.service -o cat --no-pager 2>&1 | grep "lo:") || NL=""
+  echo "networkd warnings about lo: ${NL:-none}"
+  [ -z "$NL" ] || RC=1
+  verdict "imds-lock-endpoints (a process that is not imdsd is refused with EACCES at every address of IMDS_LOCKED, IPv4 and IPv6)" $RC
+}
+
 # check_imds_ordering: the import is ordered after network-online.target and before sysinit.target
 # and tmpfiles; systemd breaks an ordering cycle by dropping a job, so the journal must have none
 check_imds_ordering() {
