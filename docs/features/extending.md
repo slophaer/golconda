@@ -31,11 +31,16 @@ name collision.
 ```text
 my-servers/
 ├── server.toml
+├── golconda.nix             # examples/golconda.nix: fetches Golconda, calls lib.mkSystem
+├── pins/golconda/           # the Golconda pin, in uptrack's format
 ├── modules/
 │   └── motd/default.nix     # /local/motd
 └── packages/
     └── openssh/             # package.nix, sources.toml
 ```
+
+How to pin Golconda (uptrack, a flake or `fetchTarball`) is in
+[Pinning Golconda](../reference/pinning.md).
 
 ```toml
 ["/local/motd"]

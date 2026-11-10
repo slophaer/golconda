@@ -119,6 +119,11 @@ nix-build -A packages.x86_64-linux.image-smoke-test
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-test
 ```
 
+For your own servers, keep `server.toml` in your own repository and pin Golconda there: with uptrack
+(copy `examples/golconda.nix` and `examples/pins/`), or as a flake input
+(`nix flake init -t github:slophaer/golconda`). [Pinning Golconda](docs/reference/pinning.md) has
+both and a plain `fetchTarball`.
+
 ## Where to read next
 
 1. [Features](docs/features/one-image.md): one page each, short.

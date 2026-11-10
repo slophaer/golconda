@@ -26,6 +26,7 @@
 # Guides
 
 - [Walkthrough](reference/walkthrough.md)
+- [Pinning Golconda in your repository](reference/pinning.md)
 - [Build host](reference/build-host.md)
 - [Making a release](reference/release.md)
 - [Deploying to Hetzner Cloud](reference/hetzner-cloud.md)

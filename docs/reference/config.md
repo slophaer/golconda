@@ -161,9 +161,10 @@ for editors and external tools.
 `mkSystem { config; platform?; system?; sources?; extraFragments?; }` (or `mkSystem ./server.toml`),
 exposed as the output `lib.mkSystem`. `examples/golconda.nix` is the template: copy it next to your
 `server.toml`, with `examples/pins/golconda/sources.toml` as `pins/golconda/sources.toml`. It
-fetches Golconda from that pin, a pin in uptrack's format. Inside this repository, pass the tree
-itself: `import ./examples/golconda.nix { golconda = import ./default.nix; }`. `lib.mkImage` takes
-the same `config` and signs it into an image ([Outputs](outputs.md#libmkimage)).
+fetches Golconda from that pin, a pin in uptrack's format; a flake and a plain `fetchTarball` work
+too ([Pinning Golconda](pinning.md)). Inside this repository, pass the tree itself:
+`import ./examples/golconda.nix { golconda = import ./default.nix; }`. `lib.mkImage` takes the same
+`config` and signs it into an image ([Outputs](outputs.md#libmkimage)).
 
 ```nix
 {
