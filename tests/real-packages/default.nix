@@ -34,6 +34,7 @@ let
     ./packages.nix
     ./image-config.nix
     ./sbom.nix
+    ./pins.nix
   ];
 in
 assert builtins.all (t: t) (builtins.concatLists areas);

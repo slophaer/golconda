@@ -315,5 +315,9 @@ in
   # lib: Nix library functions for building Golconda systems.
   #   (import ./default.nix).lib.mkSystem { config = ./server.toml; }
   #   (import ./default.nix).lib.mkImage { config = ./server.toml; keys = "/srv/golconda-keys"; }
-  lib = { inherit mkSystem mkImage; };
+  #   (import ./default.nix).lib.readPins ./pins   # { <name> = tree; } from uptrack pins (lib/pins.nix)
+  lib = {
+    inherit mkSystem mkImage;
+    readPins = (import ../lib/pins.nix).read;
+  };
 }

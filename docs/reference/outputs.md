@@ -32,6 +32,7 @@ schema is the flake one, produced by flake-incompat.
 | `platforms`                                                               | no          | the platforms table (repkgs `nix/platforms.nix`)                                                                                                |
 | `lib.mkSystem`                                                            | no          | the entry point: a TOML document → the composed system and its `/usr` tree ([Configuration](config.md#the-entry-point))                         |
 | `lib.mkImage`                                                             | no          | a TOML document and a key directory → the signed image chain ([`lib.mkImage`](#libmkimage))                                                     |
+| `lib.readPins`                                                            | no          | a directory of pins in uptrack's format → `{ <name> = the unpacked tree; }`, the reader of `pins/`                                              |
 
 OS outputs require the local x86_64 kernel. Golconda exposes no aarch64 images or cross-compiled OS
 trees until the kernel supports that architecture ([Scope](../design/scope.md)). Package tests, Nix
@@ -39,7 +40,8 @@ and developer tools still have per-system outputs.
 
 ## Inputs
 
-Pinned in `pins/<name>/sources.toml` (uptrack's format, `scripts/pins`), read by `pins/default.nix`:
+Pinned in `pins/<name>/sources.toml` (uptrack's format, `scripts/pins`), read by `pins/default.nix`
+with `lib/pins.nix`, the reader `lib.readPins` exports:
 
 - `repkgs`: the package set (Golconda's fork, branch `golconda`, the one the pin follows)
 - `adios`: the module system (korora types vendored inside)

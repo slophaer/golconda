@@ -1,0 +1,17 @@
+# A pin in uptrack's format, for tests/eval/pins.nix: a url with [pin] placeholders.
+[upstream]
+purl = "pkg:github/example/alpha?branch=main"
+
+[[source]]
+key = "default"
+url = "https://example.org/alpha/{version}/{rev}.tar.gz"
+hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+
+[[source]]
+key = "second"
+url = "https://example.org/never-read.tar.gz"
+hash = "sha256-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB="
+
+[pin]
+version = "1.2"
+rev = "abc123"

@@ -1,0 +1,8 @@
+# A frozen pin, for tests/eval/pins.nix: no [pin], a literal url.
+[upstream]
+frozen = "a test fixture"
+
+[[source]]
+key = "default"
+url = "https://example.org/beta.tar.xz"
+hash = "sha256-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC="
