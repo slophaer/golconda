@@ -117,6 +117,7 @@ let
         // {
           packagesDir = project.packages;
           inherit (project) replaces;
+          inherit sources;
         }
       );
     }

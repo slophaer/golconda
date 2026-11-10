@@ -1,10 +1,11 @@
 # lib/image/initrd.nix: the initrd, a zstd cpio around a minimal /usr tree.
 #
 # initrdSystem { imageId; version; platform; buildSystem; pkgs; packagesDir ? null;
-#   replaces ? [ ]; } → the mkSystem of the initrd: /base (systemd, dash, uutils-coreutils,
-#   dbus-broker) as lib/system.nix composes it, plus lvm2 and cryptsetup. `packagesDir` and
-#   `replaces` are the configuration's downstream package directory and its [golconda]
-#   replaces, so a replacement reaches the initrd too, under the same opt-in.
+#   replaces ? [ ]; sources ? the pins; } → the mkSystem of the initrd: /base (systemd, dash,
+#   uutils-coreutils, dbus-broker) as lib/system.nix composes it, plus lvm2 and cryptsetup.
+#   `packagesDir` and `replaces` are the configuration's downstream package directory and its
+#   [golconda] replaces, so a replacement reaches the initrd too, under the same opt-in;
+#   `sources` are the image's pins, so the initrd's set is the system's.
 # initrdTree (the same arguments) → the initrd's /usr tree: that system without the kernel (the
 #   UKI carries it); lib/usr-tree.nix builds it as for the system.
 #
@@ -38,9 +39,12 @@ let
       pkgs,
       packagesDir ? null,
       replaces ? [ ],
+      # the pins the image's own system has (chain.nix passes them)
+      sources ? import ../../pins,
       ...
     }:
     import ../system.nix {
+      inherit sources;
       system = buildSystem;
       platform = platform.name;
       config = {

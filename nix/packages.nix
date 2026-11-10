@@ -24,6 +24,10 @@
 # opt-in, never an accident (lib/config.nix replacementError). mkSystem records each one in
 # modules.json.
 #
+# `sources.repkgs` is the repkgs tree: the pin, or the eval tests' stand-in tests/fixtures/repkgs,
+# which reads packages as data. Its files are named with `+`, not interpolated, so a local tree is
+# read in place rather than copied to the store.
+#
 # Cross-compilation: `system` is the build host (builtins.currentSystem by default),
 # `platform` is the target (defaults to the build host). When they differ, repkgs
 # builds packages that run on the target, using the build host's toolchain.
@@ -69,15 +73,17 @@ let
   # set lists them
   repkgsNames =
     let
-      root = "${sources.repkgs}/pkgs";
+      root = sources.repkgs + "/pkgs";
     in
     concatMap (
       shard:
-      filter (n: pathExists "${root}/${shard}/${n}/package.nix") (attrNames (readDir "${root}/${shard}"))
+      filter (n: pathExists (root + "/${shard}/${n}/package.nix")) (
+        attrNames (readDir (root + "/${shard}"))
+      )
     ) (filter (s: (readDir root).${s} == "directory") (attrNames (readDir root)));
   # repkgs merges its aliases (pkgs/aliases.toml: cpython -> cpython314) after every package,
   # so a downstream package with an alias's name would be silently ignored: refuse it
-  aliases = builtins.fromTOML (builtins.readFile "${sources.repkgs}/pkgs/aliases.toml");
+  aliases = builtins.fromTOML (builtins.readFile (sources.repkgs + "/pkgs/aliases.toml"));
   aliasTaken = filter (n: aliases ? ${n}) (attrNames downstreamPackages);
   downstreamInfo = mapAttrs (n: _: {
     replaces =
@@ -96,7 +102,7 @@ let
   # every use of the downstream packages, or the record of them, sees the refusal
   checked = v: if replacementError != null then throw replacementError else v;
 
-  platforms = import "${sources.repkgs}/nix/platforms.nix";
+  platforms = import (sources.repkgs + "/nix/platforms.nix");
 
   # Kernel config: the base config plus IPE boot policy path substitution.
   # builtins.toFile embeds the policy's store path so the kernel build can read it.
@@ -112,7 +118,7 @@ let
   '';
   kernelConfigFragment = builtins.toFile "golconda.config" fullKernelConfig;
 
-  set = import "${sources.repkgs}/nix/set.nix" {
+  set = import (sources.repkgs + "/nix/set.nix") {
     inherit system platform;
     packages =
       if aliasTaken != [ ] then

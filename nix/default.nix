@@ -310,7 +310,7 @@ in
 
   # The platforms table (repkgs nix/platforms.nix), for callers that need all target names.
   # Not per-system: the same table on every build host.
-  platforms = import "${sources.repkgs}/nix/platforms.nix";
+  platforms = import (sources.repkgs + "/nix/platforms.nix");
 
   # lib: Nix library functions for building Golconda systems.
   #   (import ./default.nix).lib.mkSystem { config = ./server.toml; }
