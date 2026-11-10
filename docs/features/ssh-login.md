@@ -69,7 +69,7 @@ pushes the host certificate and a revocation list, and the next release, which t
   only channel, start with `authorizedKeys`, push the credentials with `golconda vars push`, then
   enable both options in the next release.
 - The host certificate needs the host key first: the machine makes its key, then the CA signs it. An
-  enrolment service that does both at first boot is not built.
+  enrolment service that does both at first boot is *(after v1)*.
 - A password-less root is the only account. Per-operator records with `run0` and polkit are *(after
   v1)*.
 - A hardware second factor (FIDO2) is client policy: the CA signs a FIDO2 key.

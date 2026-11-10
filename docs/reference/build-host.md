@@ -119,7 +119,7 @@ extra-sandbox-paths = /srv/golconda-keys
 
 The build users (`nixbld*`) must be able to read the files. This setting belongs in the daemon's
 `nix.conf` too: iets does not send it, and a daemon takes it from a client only if the client is a
-trusted user. An image built this way is **unverified**.
+trusted user. An image built this way is *(being built)*: no test builds one.
 
 repkgs' compile cache uses the same mechanism: when `/nix/var/nix/jigd/socket` is in
 `extra-sandbox-paths`, jig asks jigd before it compiles (repkgs `docs/design.md`). It is optional

@@ -69,9 +69,9 @@ inputs into a fresh root directory. A string is not an input, so the builder see
 path and signing stops with `Failed to load X.509 certificate from … No such file or directory`. On
 such a daemon use the path form, and accept the store copy.
 
-**Unverified:** no test builds an image with a string key directory. A build on a daemon with the
-`extra-sandbox-paths` line, then a boot test of the result, would test it. The path form was used to
-build the two releases of the real-key boot test ([`image.md`](image.md)).
+The string form is *(being built)*: no test builds an image with a string key directory. A build on
+a daemon with the `extra-sandbox-paths` line, then a boot test of the result, would test it. The
+path form was used to build the two releases of the real-key boot test ([`image.md`](image.md)).
 
 ## 3. Build
 
@@ -109,9 +109,9 @@ path; iets 0.2 builds the content-addressed disk but finds no output path for it
 builder has no output path"), which is why `golconda release build` uses `nix-build`.
 
 Verification: two releases were built from the path form (`keys = /srv/keys;`) and both booted with
-`--secure-boot --keys` and the whole update test ([What is proven](../proven.md)). **Unverified:**
-no build uses the string form. It is the one that keeps the private keys out of the store, so a
-build with `keys = "/srv/golconda-keys";` and a boot of its disk would test it.
+`--secure-boot --keys` and the whole update test ([What is proven](../proven.md)). The string form
+is *(being built)*: no build uses it. It is the one that keeps the private keys out of the store, so
+a build with `keys = "/srv/golconda-keys";` and a boot of its disk would test it.
 
 ## 4. Publish the release directory
 

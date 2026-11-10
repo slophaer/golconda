@@ -8,7 +8,8 @@ own copy of any of them:
    TPM2-sealed credentials are bound to. Signed in the image chain today (the smoke uses throwaway
    keys) and proven in a boot test with `--secure-boot`, where firmware enforces Secure Boot
    (`secure-boot-enabled`) and refuses a loader whose key is in `dbx` (`old-loader-refused`);
-   enrolment is manual and automatic enrolment is *(planned)* ([Deployment keys](#deployment-keys)).
+   enrolment is manual and automatic enrolment is *(after v1)*
+   ([Deployment keys](#deployment-keys)).
 1. **The verity signing key** decides *what is read*: it signs the root hash of every `/usr` image.
    In v1 it is the Secure Boot `db` key, and the kernel checks the signature against the firmware
    `db` at every boot ([status](#2-verity-key)).
@@ -168,7 +169,7 @@ failed with error 20 ("unable to get local issuer certificate"), so the success 
 paths and not from a file the test named. The image installs no TLS client binary; the check used
 the store's `openssl` on the held machine.
 
-The p11-kit design is the next step, not the current store: a factory `anchors`/`blocklist` pair, a
+The p11-kit design is *(after v1)*, not the current store: a factory `anchors`/`blocklist` pair, a
 `trust extract` unit that rewrites a hashed `/etc/ssl/certs` directory, and root-level distrust that
 works across TLS stacks. The factory today seeds only the empty directories (`ssl/anchors/.keep`,
 `ssl/blocklist/.keep`, [reference: /factory](../reference/modules/README.md)), and no unit runs
@@ -232,8 +233,8 @@ picks one:
   and the builder reads the files there. The daemon must make the directory visible in the sandbox
   with `extra-sandbox-paths` in its own `nix.conf`, and the build users must be able to read it
   ([Build host](../reference/build-host.md#keys-in-the-sandbox)). This keeps the keys out of the
-  store. It is unverified: no test builds an image this way yet. The derivations do not change when
-  the files change, so a new key under the same path rebuilds nothing; put new keys under a new
+  store. It is *(being built)*: no test builds an image this way yet. The derivations do not change
+  when the files change, so a new key under the same path rebuilds nothing; put new keys under a new
   path.
 
 Either way the private keys never enter the image or the machine; only the certificates are enrolled
@@ -300,12 +301,12 @@ The ESP helper can supply named credentials before boot, but uses null-key encry
 unavailable with Secure Boot and TPM2 together
 ([Bootstrap credentials](boot.md#bootstrap-credentials)). An enrollment service ordered before sshd
 could instead generate the host key, obtain its certificate and install the revocation list in one
-first-boot flow. That service is not implemented. Do not make revocation checking optional to bypass
+first-boot flow. That service is *(after v1)*. Do not make revocation checking optional to bypass
 the delivery constraint.
 
 After v1: operators as `/usr/lib/userdb/*.user` records with `run0` gated by polkit on a few action
 ids (a root-less image), and one CA for SSH and X.509 with TPM device attestation (workload
-identity). Both are designed, not built.
+identity). Both are designed, not built *(after v1)*.
 
 ## TPM2 credential decryption
 

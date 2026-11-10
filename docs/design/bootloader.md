@@ -146,6 +146,12 @@ not fall back from it by itself.
 
 The firmware path needs the console.
 
+The boot test runs the one-shot and default entries, the loader reinstall and the firmware reboot
+(`set-oneshot-other-slot`, `set-default-other-slot`, `loader-reinstall`, `reboot-to-firmware`), and
+a rotation with the old certificate in `dbx` (`--rotate`). The rows for a loader that does not
+start, a lost ESP and a lost `db` private key are *(being built)*: they use what is on `main`, but
+no test runs them ([What is proven](../proven.md#not-proven)).
+
 ## What is not possible
 
 - **No second loader.** Both slots share one ESP and one `BOOTX64.EFI`. A loader that firmware

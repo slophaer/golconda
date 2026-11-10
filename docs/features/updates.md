@@ -81,8 +81,9 @@ The boot test proves this in QEMU with OVMF ([What is proven](../proven.md)):
   version that does not increase before it is built or published.
 - Nothing stops an older image signed by the same key from booting. Rollback protection is *(after
   v1)*.
-- The tests use plain HTTP in QEMU. HTTPS, a real update server, the timer and real hardware have no
-  marker.
+- The tests use plain HTTP in QEMU. HTTPS from a real update server ran by hand on Hetzner Cloud
+  ([What is proven](../proven.md#on-hetzner-cloud)); it has no marker. The timer and real hardware
+  have none either.
 
 ## More
 

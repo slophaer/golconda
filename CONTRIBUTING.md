@@ -50,14 +50,32 @@ directories to a booted machine.
   line is fixed in the rule, not silenced at the line. An optional list or set is `on cond value`
   (`modules/lib/on.nix`), not `if … else [ ]`. The clippy levels of `cli/` are pedantic
   (`cli/Cargo.toml`, `checks.cli-clippy`).
-- **Docs split.** `docs/design/` says why, `docs/reference/` says what exists in code today. Mark
-  what is designed and not started as *(planned)*, and what is deferred past v1 as *(after v1)*. No
-  planning or history pages.
+- **Docs split.** `docs/design/` says why, `docs/reference/` says what exists in code today. No
+  planning or history pages. A claim that is not proven carries one of three markers (see
+  [Markers](#markers)).
 - **Pins.** `pins/<name>/sources.toml`, one per input, in uptrack's format; `pins/default.nix` reads
   them. `scripts/pins check` shows what moved, `scripts/pins apply repkgs` moves the repkgs pin (see
   [The repkgs fork](#the-repkgs-fork)).
 - **Fork patches.** A change to repkgs' build system goes to the fork (see
   [The repkgs fork](#the-repkgs-fork)). A new package goes to `packages/` instead.
+
+## Markers
+
+The docs say what a feature does. A claim that no test proves carries exactly one marker:
+
+| marker          | means                                                                     |
+| --------------- | ------------------------------------------------------------------------- |
+| *(planned)*     | designed, no code yet                                                     |
+| *(being built)* | code exists on `main`, but no test proves it, or the code is not complete |
+| *(after v1)*    | deliberately not in v1; [Scope](docs/design/scope.md#after-v1) lists it   |
+
+A claim without a marker is proven: [What is proven](docs/proven.md) names the boot-test marker or
+the run that shows it. Anyone may remove a marker, but only in the commit that adds the test that
+proves the claim, and that commit names the test in `docs/proven.md`. An *(after v1)* item moves
+into v1 only when the owner changes [Scope](docs/design/scope.md).
+
+**Unverified** in bold marks a fact about something outside this repository, such as a build host's
+daemon or a machine's own firmware, that no test here has shown. It is not a feature marker.
 
 ## The repkgs fork
 

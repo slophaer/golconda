@@ -31,8 +31,8 @@ limits.
 - **[Only signed code runs](docs/features/execution-policy.md).** The kernel's IPE policy lets a
   program run only from the verified `/usr`, so a binary copied to `/var` does not run.
 - **[Secure Boot and measured boot](docs/features/measured-boot.md).** systemd-boot and each UKI are
-  signed; the UKI is measured into the TPM. Hosts without Secure Boot, such as Hetzner Cloud
-  *(planned)*, still check `/usr`.
+  signed; the UKI is measured into the TPM. Hosts without Secure Boot, such as Hetzner Cloud, still
+  check `/usr`.
 - **[A/B updates with health-checked rollback](docs/features/updates.md).** systemd-sysupdate writes
   the next release to the other slot. The new entry is blessed only when the network is routable and
   sshd is up; after three failed boots the previous slot boots again.
@@ -42,7 +42,7 @@ limits.
 - **[Secrets as vars](docs/features/vars.md).** A secret never enters the image or the store. A
   *local* var, such as the ssh host key, is made on the machine at first boot and sealed with
   `systemd-creds` to the TPM. An *admin* var, such as a host certificate, is pushed by the
-  administrator; the tool that pushes and seals it is *(planned)*. Services read vars as systemd
+  administrator with `golconda vars`, and the machine seals it. Services read vars as systemd
   credentials.
 - **[Provisioning without cloud-init](docs/features/provisioning.md).** The host name and root's
   first ssh key arrive as systemd credentials, through SMBIOS, qemu fw_cfg or a file on the ESP.
@@ -92,13 +92,17 @@ flowchart TD
 The module tree, the composer, the `/usr` tree builder, the schema, the TOML loader, the image chain
 and the update path exist and are tested. `scripts/boot-test` boots the image in QEMU with OVMF and
 checks markers: Secure Boot, TPM sealing, ssh login, an A/B update over HTTP, the three-boot
-fallback, a key rotation and a factory reset. [What is proven](docs/proven.md) is the one table of
-what has run and what has not.
+fallback, a key rotation and a factory reset. One run outside QEMU passed on Hetzner Cloud: a
+certificate login, two updates over HTTPS and one fallback. [What is proven](docs/proven.md) is the
+one table of what has run and what has not.
 
-Not there yet: real hardware (only QEMU has run), aarch64, an encrypted state partition (LUKS2 with
-TPM2 is after v1), and protection against booting an older signed image. The docs mark each designed
-thing *(planned)* and each deferred one *(after v1)*; [Scope](docs/design/scope.md) says what is v1,
-after v1, and out of scope.
+Not there yet: real hardware with Secure Boot and a TPM (only QEMU and Hetzner Cloud have run),
+aarch64, an encrypted state partition (LUKS2 with TPM2 is after v1), and protection against booting
+an older signed image. The management console was removed from v1 (git tag
+`archive/console-2026-11-08`); the `golconda` command keeps `vars` and `release`. The docs mark each
+claim that no test proves ([CONTRIBUTING: Markers](CONTRIBUTING.md#markers)): *(planned)* has no
+code, *(being built)* has code but no test, and *(after v1)* is deliberately not in v1.
+[Scope](docs/design/scope.md) says what is v1, after v1, and out of scope.
 
 ## Quick start
 
@@ -121,8 +125,7 @@ scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-te
 1. [Walkthrough](docs/reference/walkthrough.md): from `examples/server.toml` to a booted machine.
 1. [Principles](docs/design/principles.md), then the design pages in order: they say why.
 1. The reference pages: they say what exists. [Making a release](docs/reference/release.md) and
-   [Deploying to Hetzner Cloud](docs/reference/hetzner-cloud.md) *(planned: not yet run on Hetzner)*
-   are step-by-step guides.
+   [Deploying to Hetzner Cloud](docs/reference/hetzner-cloud.md) are step-by-step guides.
 
 Contributing: [CONTRIBUTING](CONTRIBUTING.md).
 

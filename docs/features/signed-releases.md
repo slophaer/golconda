@@ -68,7 +68,8 @@ booted on the same markers as the throwaway set. Its next release installed over
 - The signature does not stop a replay of an older signed index. sysupdate installs only newer
   versions, and rollback protection is *(after v1)*.
 - The image trusts only the release key it carries. Changing that key takes two releases.
-- No automated check runs `scripts/make-keys`, and none builds with a string key directory.
+- No automated check runs `scripts/make-keys`. The string key directory is *(being built)*: no build
+  uses it.
 - The `release/` file mtimes are 1 in the store. Do not read them as a release date.
 - GnuPG stays in the image until systemd can check an x509 signature on the index.
 
