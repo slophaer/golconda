@@ -21,8 +21,9 @@ directories to a booted machine.
 ## Commits and branches
 
 1. Use kernel commit style: `area: summary` (lower case, imperative, 50 characters or fewer, no
-   period), a blank line, then a body that explains what and why, wrapped at 72 columns. Sign off
-   with `git commit -s`.
+   period), a blank line, then a body that explains what and why, wrapped at 72 columns. No
+   `Signed-off-by:` line. A commit that an agent wrote ends with an `Assisted-By:` trailer that
+   names the model (`Assisted-By: Claude Opus 5.5`).
 1. One commit per feature. Each commit must leave the tree evaluating and the lint passing.
 1. Work on a feature branch in a git worktree
    (`git worktree add ../golconda-<branch> -b <branch> origin/main`). Do not commit to `main`; merge
