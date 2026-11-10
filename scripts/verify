@@ -32,6 +32,9 @@
 #                       result-verify-ATTR, step image:ATTR), and @next in the set is the next
 #                       image of the set's own image (ATTR-next, result-verify-ATTR-next, step
 #                       image-next:ATTR). So one run boots the Secure Boot sets and the nosb sets.
+#                       @next=ATTR instead names the next image, packages.<system>.ATTR (out-link
+#                       result-verify-ATTR, step image-next:ATTR), for a next release that is no
+#                       <image>-next, as in "--next @next=image-smoke-test-rotated --rotate"
 #   --no-boot           build the image, do not boot it
 #   --lint-only         lint only
 #   --each-commit BASE  every commit in BASE..HEAD, in a scratch worktree: lint each, and build and
@@ -171,17 +174,25 @@ label() { if [ "$2" = "$image" ]; then echo "$1"; else echo "$1:$2"; fi; }
 # add LIST WORD: LIST with WORD at its end, once
 add() { case " $1 " in *" $2 "*) echo "$1" ;; *) echo "$1${1:+ }$2" ;; esac; }
 
-# the images to build, each once, and those whose next image a set's @next needs
+# next_of ATTR FLAGS: the next image FLAGS name, "ATTR_NEXT:OUTLINK:STEP_LABEL": ATTR_NEXT for
+# @next=ATTR_NEXT, else ATTR-next
+next_of() {
+  case $2 in
+  *@next=*) w=${2#*@next=}; w=${w%% *}; echo "$w:result-verify-$w:image-next:$w" ;;
+  *) echo "$1-next:$(link "$1")-next:$(label image-next "$1")" ;;
+  esac
+}
+# the images to build, each once, and the next images a set's @next needs
 images=
 nexts=
 if [ -z "$boot_sets" ]; then
   images=$image
-  case $boot_args in *@next*) nexts=$image ;; esac
+  case $boot_args in *@next*) nexts=$(next_of "$image" "$boot_args") ;; esac
 else
   while IFS= read -r bs; do
     a=$(set_image "$bs")
     images=$(add "$images" "$a")
-    case $(set_flags "$bs") in *@next*) nexts=$(add "$nexts" "$a") ;; esac
+    case $(set_flags "$bs") in *@next*) nexts=$(add "$nexts" "$(next_of "$a" "$(set_flags "$bs")")") ;; esac
   done <<EOF
 $boot_sets
 EOF
@@ -215,8 +226,9 @@ PY
 }
 # @next in the boot flags is the next release's image (<image>-next, the one boot-test --next
 # installs, of the set's own image): build it too and put its path there
-for a in $nexts; do
-  step "$(label image-next "$a")" nix-build -A "packages.$system.$a-next" -o "$(link "$a")-next" || finish 1
+for nx in $nexts; do
+  attr=${nx%%:*}; rest=${nx#*:}
+  step "${rest#*:}" nix-build -A "packages.$system.$attr" -o "${rest%%:*}" || finish 1
 done
 if [ -n "$nexts" ]; then
   # --next pushes admin vars with golconda, age and age-keygen
@@ -233,8 +245,9 @@ boot_cmd() {
   flags=$2
   case $flags in
   *@next*)
-    next=$(resolve "$(link "$1")-next") || return 1
-    flags=$(printf '%s\n' "$flags" | sed "s|@next|$next|g")
+    nx=$(next_of "$1" "$flags"); rest=${nx#*:}
+    next=$(resolve "${rest%%:*}") || return 1
+    flags=$(printf '%s\n' "$flags" | sed "s|@next=[^ ]*|$next|g; s|@next|$next|g")
     ;;
   esac
   resolve "$img/disk/disk.raw" && resolve "$img/keys" && printf '%s\n' "$flags"

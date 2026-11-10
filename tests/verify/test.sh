@@ -306,4 +306,17 @@ run scripts/verify --each-commit "$(git rev-list --max-parents=0 HEAD)" --boot-s
 [ $rc = 0 ] || fail "--each-commit with @image exited $rc: $out"
 grep -q "boot-test $I/image-nosb/disk/disk.raw " "$CALLS" || fail "--each-commit lost @image: $(cat "$CALLS")"
 
+# 14 @next=ATTR stands for the image packages.<system>.ATTR as the next release (out-link
+#    result-verify-ATTR, step image-next:ATTR), for a next image that is no <image>-next, as
+#    image-smoke-test-rotated is for --rotate. Built once, with golconda-cli and age.
+run scripts/verify --boot-set '--secure-boot --next @next=image-smoke-test-rotated --rotate --timeout 1'
+[ $rc = 0 ] || fail "@next=ATTR run exited $rc: $out"
+grep -q 'nix-build -A packages\.[a-z0-9_]*-linux\.image-smoke-test-rotated -o result-verify-image-smoke-test-rotated$' "$CALLS" ||
+  fail "the named next image was not built: $(cat "$CALLS")"
+grep -q 'image-smoke-test-next' "$CALLS" && fail "built <image>-next despite @next=ATTR: $(cat "$CALLS")"
+grep -qxF "boot-test $WORK/images/image-smoke-test/disk/disk.raw --keys $WORK/images/image-smoke-test/keys --secure-boot --next $WORK/images/image-smoke-test-rotated --rotate --timeout 1" "$CALLS" ||
+  fail "@next=ATTR not replaced by the named image's path: $(grep boot-test "$CALLS")"
+echo "$out" | grep -qE '^PASS image-next:image-smoke-test-rotated [0-9]+s$' || fail "no PASS line for the named next image: $out"
+grep -q 'golconda-cli' "$CALLS" || fail "golconda-cli not built for @next=ATTR"
+
 echo "verify tests passed"
