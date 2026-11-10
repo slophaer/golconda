@@ -223,6 +223,50 @@ the UKI's own certificate before the disk is written (`lib/image/uki.nu`, `opens
 a mismatched key pair fails the build rather than the boot. A rotated `db` key needs new images: the
 UKI, the root hash signature and the loader are all signed with it.
 
+### Signing outside Nix
+
+This is the design that replaces the two forms below *(planned)*. Private keys never enter the Nix
+store or a Nix build. Nix builds every part of the image unsigned; one program, the signer, signs
+the parts and assembles the release outside Nix, on the release host.
+
+Nix builds, as `lib.mkImage`'s `unsigned` output:
+
+- the `/usr` tree without the signed loader, the initrd, the kernel, systemd's stub and the unsigned
+  systemd-boot;
+- `manifest.json`, which names these and every parameter of each step (times, salts, UUIDs and
+  seeds, all from the version), the repart definitions and the release file names;
+- copies of the three public halves, `db.crt`, `pcr.pub` and `index.pgp`;
+- `sign`, the signer, built from the image's own package set.
+
+The signer takes the unsigned output and a key directory. It checks that each private key is the
+half of the public key the image carries, then:
+
+1. signs systemd-boot with the `db` key (`systemd-sbsign`);
+1. copies the `/usr` tree, puts the signed loader into it and runs `mkfs.erofs`;
+1. writes the verity hash tree and signs the root hash with the `db` key (PKCS#7);
+1. builds the UKI with `ukify`: the cmdline with `usrhash=` and that signature, the Secure Boot
+   signature (`db` key) and `.pcrsig` (PCR key);
+1. writes the ESP and `disk.raw` with `systemd-repart --offline`;
+1. writes `release/` with `SHA256SUMS` and signs the index with the release key.
+
+The erofs image is a signer step, not a Nix output, because `/usr` carries the signed loader that
+`golconda-loader-update` installs on the ESP
+([Boot loader: Key rotation](bootloader.md#key-rotation)). Its bytes depend on a signature, and so
+do the root hash, the UKI's cmdline and the disk. A loader outside `/usr` would let Nix build the
+erofs image, but it would change how a machine updates its loader. The copy and `mkfs.erofs` take a
+few seconds.
+
+`golconda release build` builds the unsigned output with `nix-build` and runs its `sign` with the
+release host's key directory. The keys stay where they are. The test images run the same program in
+a derivation, with throwaway keys that are test fixtures, so every boot test tests the signer a
+release uses. The signer reads a key directory; a PKCS#11 URI is refused, and the place where a
+token would plug in is named in the code *(later)*.
+
+The unsigned outputs depend on the public halves only: the release keyring is in `/usr`, and an
+image without Secure Boot has the `db` certificate in its kernel. A new private key with the same
+public half is impossible, so the proof is the other way round: a new `db` and PCR key pair changes
+no unsigned path of a Secure Boot image.
+
 ### How the private keys reach the build
 
 The builders run in the Nix sandbox, which sees only the store and the paths the daemon adds. So the
