@@ -213,6 +213,14 @@ not list itself. A file mtime is not the release date: the version epoch lives i
 image (and in `disk.raw`'s internal files), not in the release directory's metadata. The ESP is
 filled offline with mtools (`packages/mtools`).
 
+The initrd is the same bytes in every build of the same inputs. `lib/image/initrd.nu` lists the tree
+in sorted order and gives bsdtar one owner (root) and one mtime. bsdtar still copies each file's
+inode number, device and link count from the build directory into its newc header, and libarchive
+has no option to set them, so the seed's `python3` then rewrites them in place: inode numbers 1, 2,
+… in the archive's order (hard links keep one number), device 0, and for a directory 2 plus its
+subdirectories as the link count. `packages.<system>.initrd-reproducible` builds the test image's
+initrd a second time and compares the bytes; `scripts/verify` builds it after the image.
+
 The signer is deterministic for the same unsigned output and keys: times, salts, UUIDs and seeds
 come from the version, `systemd-sbsign` takes its signing time from `SOURCE_DATE_EPOCH`, and the
 signatures (RSA PKCS#1 v1.5, Ed25519) draw no random numbers. `disk.raw` too: `mkfs.fat` 4.2 writes

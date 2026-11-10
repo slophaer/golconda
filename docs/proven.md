@@ -195,6 +195,17 @@ and 53 PASS (#660). No line of a private key of that set and not the release key
 in the closures of both unsigned outputs, in their derivations or in the 83 store paths registered
 since the keys were made (#662).
 
+## Reproducible builds
+
+| claim                                                                    | evidence                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| two builds of the initrd from the same inputs give the same bytes        | `packages.x86_64-linux.initrd-reproducible`, which `scripts/verify` builds: the test image's initrd and a second build of its derivation (one unread variable more) are compared byte for byte. Red first: the inode number differed in all 19095 cpio entries (queue #670, 2026-11-10, branch `initrd-repro`); green after `lib/image/initrd.nu` renumbers them (#671) |
+| the signer gives the same release and `disk.raw` for one unsigned output | two runs of `sign`, in the [Signing outside Nix](#signing-outside-nix) table above                                                                                                                                                                                                                                                                                      |
+
+Not proven: two builds on hosts with different build file systems. The device numbers and the
+directory link counts that vary with the file system are set to fixed values, but no test builds on
+a second file system. A whole release built twice from the same inputs is not compared either.
+
 ## Not proven
 
 - **Enrolment on real firmware.** The harness enrols keys offline in the variable store. Hetzner

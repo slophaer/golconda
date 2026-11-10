@@ -58,6 +58,10 @@ The boot test proves this with `--next` ([What is proven](../proven.md)):
 - `sysupdate-refused` with `--tamper-index`: a changed index installs nothing, and the old release
   still runs after a reboot (`boots-old`).
 
+For reproducibility, two builds of the initrd give the same bytes (`initrd-reproducible`, which
+`scripts/verify` builds), and two runs of the signer on one unsigned output give the same release
+and `disk.raw` ([What is proven: Reproducible builds](../proven.md#reproducible-builds)).
+
 One release signed with a `scripts/make-keys` set, passed as a path (so copied into the store),
 booted on the same markers as the throwaway set. Its next release installed over HTTP.
 
@@ -68,6 +72,8 @@ booted on the same markers as the throwaway set. Its next release installed over
 - The image trusts only the release key it carries. Changing that key takes two releases.
 - No automated check runs `scripts/make-keys`. The string key directory is *(being built)*: no build
   uses it.
+- No test builds a whole release twice from the same inputs, or on a second build file system, and
+  compares the two.
 - The `release/` file mtimes are 1 in the store. Do not read them as a release date.
 - GnuPG stays in the image until systemd can check an x509 signature on the index.
 
