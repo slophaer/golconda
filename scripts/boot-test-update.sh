@@ -49,6 +49,7 @@ test_fail_health() {
   RC=0; [ "$V" = "$OLD_VERSION" ] || RC=1
   verdict "fallback-to-old-slot ($NEXT_VERSION failed 3 times, $V boots)" $RC
   check_unsealed "after the fallback to $V"
+  check_clock clock-not-reset-after-fallback
   L=$(guest bootctl list --no-pager 2>&1) || true
   echo "$L" | grep -E " (title|version|tries):" || true
   RC=0; echo "$L" | grep -q "tries: 0 left; 3 done" || RC=1
@@ -89,6 +90,7 @@ test_update_refused() {
   verdict "boots-old ($OLD_VERSION -> $V: still the old release)" $R
   check_unsealed "after the refused update"
   check_no_failed no-failed-units-after-refused-update
+  check_clock clock-not-reset-after-refused-update
 }
 
 # --- --next: install the next release, boot it, check its loader, then recovery ---
@@ -157,6 +159,7 @@ test_next() {
   check_unsealed "after the update to $V"
   test_etc_links
   check_no_failed no-failed-units-after-update
+  check_clock clock-not-reset-after-update
   check_hwdb hwdb-after-update
   test_certs_after_update
   test_loader "$NEXT_VERSION, its first good boot" 1

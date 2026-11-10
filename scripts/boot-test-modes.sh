@@ -167,6 +167,7 @@ test_reboot() {
 
   check_unsealed "after a reboot"
   check_no_failed no-failed-units-after-reboot
+  check_clock clock-not-reset-after-reboot
   return 0
 }
 

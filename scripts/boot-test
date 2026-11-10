@@ -33,7 +33,11 @@
 # With --ssh-test: logs in with tests/fixtures/snakeoil-ssh and checks
 #   ssh-login, hostname (must be "boot-test", the SMBIOS credential),
 #   systemctl --failed (no failed units), varlinkctl list-interfaces, the loader, hwdb,
-#   ipe-denies-copy (a copy of /usr/bin/sh in /var/tmp is refused, and IPE logs it), index-keyring.
+#   ipe-denies-copy (a copy of /usr/bin/sh in /var/tmp is refused, and IPE logs it), index-keyring,
+#   and clock-not-reset (this boot's journal, journalctl -b, has no clock reset by PID 1 and no
+#   entry before the year of systemd's time-epoch). Each later boot checks the clock again under
+#   its own name: clock-not-reset-after-reboot (--tpm), -after-update (--next), -after-fallback
+#   (--fail-health) and -after-refused-update (--tamper-index).
 #   With the test image it also logs in with certificates from tests/fixtures/snakeoil-user-ca
 #   (cert-login, cert-wrong-principal-refused).
 # With --next: before the update it pushes the host certificate (the guest's host key signed by
