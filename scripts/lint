@@ -41,4 +41,22 @@ tests/errors/run.sh
 tests/make-keys/run.sh
 # The pinned iets cannot resolve outputs of dynamic package-test derivations.
 # Keep its strict evaluation above; the patched Nix client builds native checks.
-nix-build --no-out-link --expr '(import ./default.nix).checks.${builtins.currentSystem}'
+# --keep-going: every check runs. Without it nix stops at the first failing check, cancels the
+# others, and its last error names them all as failed (a cancelled check-boot-log looked flaky).
+# The output is kept, so a failure ends with the names of the checks whose builder failed.
+log=$(mktemp)
+trap 'rm -f "$log" "$log.rc"' EXIT
+{
+  rc=0
+  nix-build --keep-going --no-out-link --expr '(import ./default.nix).checks.${builtins.currentSystem}' 2>&1 || rc=$?
+  echo "$rc" >"$log.rc"
+} | tee "$log"
+rc=$(cat "$log.rc")
+if [ "$rc" != 0 ]; then
+  # nix: "error: Cannot build '/nix/store/<hash>-check-NAME.drv'.", then "Reason: builder failed"
+  failed=$(awk '/Cannot build .*\.drv/ { d = $0; next } d != "" && /Reason: builder failed/ { print d } { d = "" }' "$log" |
+    sed "s|.*/nix/store/[a-z0-9]*-\([^']*\)\.drv.*|\1|" | sort -u)
+  echo "lint: the checks whose builder failed (their logs are above):" >&2
+  printf '%s\n' "${failed:-(none found; read the nix errors above)}" | sed 's/^/  /' >&2
+  exit "$rc"
+fi
