@@ -215,9 +215,14 @@ filled offline with mtools (`packages/mtools`).
 
 The signer is deterministic for the same unsigned output and keys: times, salts, UUIDs and seeds
 come from the version, `systemd-sbsign` takes its signing time from `SOURCE_DATE_EPOCH`, and the
-signatures (RSA PKCS#1 v1.5, Ed25519) draw no random numbers. The one exception is `disk.raw`:
-`mkfs.fat` 4.2 stamps the ESP's volume label with the clock. The boot test covers the verity
-certificate in the kernel keyring and TPM sealing ([What is proven](../proven.md)).
+signatures (RSA PKCS#1 v1.5, Ed25519) draw no random numbers. `disk.raw` too: `mkfs.fat` 4.2 writes
+the clock into the ESP's volume label entry and reads no `SOURCE_DATE_EPOCH` (systemd-repart passes
+it on), so the signer gives it `--invariant` through repart's `SYSTEMD_REPART_MKFS_OPTIONS_VFAT`.
+That option also sets a fixed volume ID, and repart puts the variable's options after its own `-i`,
+so the variable gives `-i` again with the ID repart derives from the ESP's partition UUID (a dry run
+reports the UUID); the signer fails unless the ESP carries that ID (`lib/image/disk.nu`). The boot
+test covers the verity certificate in the kernel keyring and TPM sealing
+([What is proven](../proven.md)).
 
 The smoke, the test image and the production image boot the same command line
 ([The kernel command line](#the-kernel-command-line)).

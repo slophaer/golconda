@@ -33,10 +33,31 @@ export def esp [dir: string, loader: string, uki: string, l: record, epoch: int]
   log $"ESP: ($l.espPaths | str join ', '), ($l.confPath): (($l.conf | lines | where {|x| not ($x | str starts-with '#') and ($x | str trim) != ''}) | str join ', ')"
 }
 
+# fat-volume-id UUID: the FAT volume ID systemd-repart gives the file system of the partition
+# UUID (8-4-4-4-12): the file system UUID is HMAC-SHA256 of "file-system-uuid" keyed with the
+# partition UUID, and the volume ID its first 32 bits, as 8 hex digits (systemd's repart.c
+# derive_uuid, mkfs-util.c make_filesystem)
+export def fat-volume-id [uuid: string]: nothing -> string {
+  "file-system-uuid" | ^openssl mac -digest SHA256 -macopt $"hexkey:($uuid | str replace -a '-' '')" HMAC | str trim | str lowercase | str substring 0..<8
+}
+
+# fat-volume-id-at FILE OFFSET: the volume ID in the FAT32 boot sector at OFFSET of FILE
+# (BS_VolID, 4 bytes little-endian at 0x43), as 8 hex digits
+export def fat-volume-id-at [file: string, offset: int]: nothing -> string {
+  ^od -An -tx1 -j ($offset + 0x43) -N 4 $file | split row ' ' | where {|x| $x != '' } | reverse | str join ''
+}
+
 # make OUT P FILES UUIDS: OUT/disk.raw and repart's own listing OUT/disk.json, from the
 # definitions with the ESP directory and the slot A images of FILES (esp usr verity sig) and the
 # UUIDS. --offline: no loop device, no root; the usr slots are 10 GiB each (image/repart.nix), so
 # the file is sparse.
+#
+# The ESP: mkfs.fat 4.2 writes the clock into the volume label's directory entry and takes no
+# SOURCE_DATE_EPOCH, so two signings would differ there. Its --invariant puts a fixed time there,
+# but also a fixed volume ID. repart appends SYSTEMD_REPART_MKFS_OPTIONS_VFAT after its own `-i
+# <volume ID>` and mkfs.fat takes the last one, so the options give `-i` again with the ID repart
+# derives (fat-volume-id), from the ESP's partition UUID, which a dry run of the same definitions
+# reports. After the run the ESP must carry that ID.
 export def make [out: string, p: record, files: record, uuids: record] {
   let defs = (mktemp -d -t "golconda-repart-XXXXXX")
   for e in ($p.definitions | transpose name text) {
@@ -50,11 +71,29 @@ export def make [out: string, p: record, files: record, uuids: record] {
       | save -f $"($defs)/($e.name)"
   }
   let disk = $"($out)/disk.raw"
-  with-env {SOURCE_DATE_EPOCH: ($p.epoch | into string)} {
-    ^systemd-repart --empty=create --size=auto --offline=yes --dry-run=no --architecture $p.architecture --sector-size 512 --seed $p.seed --definitions $defs --json=pretty $disk
+  let args = [--size=auto --offline=yes --architecture $p.architecture --sector-size 512 --seed $p.seed --definitions $defs]
+  # the dry run: --empty=create implies --dry-run=no, so an empty file of its own with --empty=force
+  let plan = (mktemp -t "golconda-repart-plan-XXXXXX")
+  let esp = (^systemd-repart --empty=force --dry-run=yes ...$args --json=short $plan | from json | where type == "esp")
+  rm -f $plan
+  if ($esp | length) != 1 {
+    error make {msg: $"systemd-repart's dry run lists ($esp | length) ESPs, expected one"}
+  }
+  let volid = (fat-volume-id ($esp | first | get uuid))
+  with-env {SOURCE_DATE_EPOCH: ($p.epoch | into string) SYSTEMD_REPART_MKFS_OPTIONS_VFAT: $"--invariant -i ($volid)"} {
+    ^systemd-repart --empty=create --dry-run=no ...$args --json=pretty $disk
       | save -f $"($out)/disk.json"
   }
   rm -rf $defs
+  let made = (open $"($out)/disk.json" | where type == "esp" | first)
+  if $made.uuid != ($esp | first | get uuid) {
+    error make {msg: $"the ESP's partition UUID is ($made.uuid), the dry run said ($esp | first | get uuid)"}
+  }
+  let have = (fat-volume-id-at $disk $made.offset)
+  if $have != $volid {
+    error make {msg: $"the ESP's volume ID is ($have), not ($volid), the one systemd-repart derives"}
+  }
+  log $"ESP: volume ID ($volid), mkfs.fat --invariant"
   log $"disk.raw: (ls $disk | get size.0) \((^du -k $disk | split row "\t" | first) KiB allocated\)"
 }
 
