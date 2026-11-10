@@ -303,6 +303,7 @@ test_rotate() {
   verdict "kernel-db-rotated (the kernel keeps the new certificate only)" $RC
   test_loader "after the rotation" 0
   check_no_failed no-failed-units-after-rotation
+  check_clock clock-not-reset-after-rotate
   stop_qemu
 
   echo ""

@@ -161,4 +161,22 @@ expect_clock clock-not-reset-after-update test_next
 expect_clock clock-not-reset-after-fallback test_fail_health
 expect_clock clock-not-reset-after-refused-update test_update_refused 1 "$BAD_SIG"
 
+# --rotate: test_rotate boots the rotated release once, and checks the clock of that boot. Stubs
+# for QEMU and the variable store; the serial logs hold no db certificates, so its other
+# verdicts fail, which expect_clock does not read.
+stop_qemu() { :; }
+start_qemu() { : > "$SERIAL_LOG"; }
+QEMU_PID=
+mkdir -p "$WORK/bin"
+printf '#!/bin/sh\n: > "$VARS.new"\n' > "$WORK/bin/virt-fw-vars"
+chmod +x "$WORK/bin/virt-fw-vars"
+PATH=$WORK/bin:$PATH
+export VARS
+VARS=$WORK/vars.fd
+NEXT_KEYS=$WORK/nkeys KEYS_DIR=$WORK/keys GUID=0
+TIMEOUT=1
+FIRST_SERIAL_LOG=$WORK/first.log
+: > "$FIRST_SERIAL_LOG"
+expect_clock clock-not-reset-after-rotate test_rotate
+
 [ "$ERRORS" -eq 0 ]

@@ -501,6 +501,7 @@ With `--rotate`:
 | `boots-after-rotation`, `secure-boot-enabled-after-rotation` | the guest boots the new chain with db = the new certificate alone                |
 | `kernel-db-rotated`                                          | the kernel loaded only the new db certificate                                    |
 | `no-failed-units-after-rotation`                             | no failed unit after the rotation                                                |
+| `clock-not-reset-after-rotate`                               | `clock-not-reset` on the journal of the boot after the rotation                  |
 | `old-loader-refused`                                         | the original disk under the rotated store gets "Access Denied"; no kernel starts |
 
 With `--factory-reset --ssh-test` ([The factory reset test](#the-factory-reset-test)):
