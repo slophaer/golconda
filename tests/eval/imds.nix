@@ -158,6 +158,12 @@ in
     && has "\nExecStart=/usr/lib/systemd/systemd-network-generator\n"
     && has "\nExecStart=/usr/bin/networkctl reload\n"
   ))
+  (check "imds: the kernel has IPv6 policy routing, which the lock's IPv6 rules and imdsd's need" (
+    # without it networkd cannot set an IPv6 rule, and the file's IPv4 rules are lost with it
+    hasInfix "\nCONFIG_IPV6_MULTIPLE_TABLES=y\n" (
+      builtins.readFile ../../packages/kernel/golconda.config
+    )
+  ))
   (check "imds: the endpoint lock is on lo, where a .network file for the link does not replace it" (
     let
       t = withImds.files.${lockFile}.text or "";
