@@ -85,6 +85,7 @@ in
         imageId = "test";
         version = "20261031.1";
         inherit (sys) pkgs;
+        inherit sources;
         platform.name = platform;
         buildSystem = platform;
       };
@@ -92,6 +93,6 @@ in
     !(builtins.any (p: (p.pname or "") == "linux-kernel") tree.drvAttrs.roots)
   ))
   (check "secureBoot: false without the image's keys is an error" (
-    !(tryEval (deepSeq (trusted (sysWith { secureBoot = false; } null)) true)).success
+    !(tryEval (deepSeq (kernelOf (sysWith { secureBoot = false; } null)).spec.env true)).success
   ))
 ]

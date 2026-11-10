@@ -1,0 +1,2 @@
+# A stand-in for repkgs' pkgs/aliases.toml: an alias name -> the package it means
+cpython = "cpython314"

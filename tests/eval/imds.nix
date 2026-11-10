@@ -11,6 +11,7 @@
   fixturePkgs,
   hasInfix,
   hasSuffix,
+  sources,
   ...
 }:
 let
@@ -36,7 +37,8 @@ let
   ];
   dropIn = u: "/usr/lib/systemd/system/${u}.d/golconda.conf";
   importDropIn = "/usr/lib/systemd/system/${importUnit}.d/golconda-imds.conf";
-  defs = fixturePkgs.systemd.drvAttrs.spec.meson.defs;
+  # systemd's meson options as packages/systemd/package.nix writes them
+  defs = fixturePkgs.systemd.args.meson.defs;
   # networkd's .network files: /network's, and the one systemd-imdsd writes at run time on a
   # cloud (/run/systemd/network/85-imds-early.network, DHCP with UseHostname=yes)
   netDir = "/usr/lib/systemd/network";
@@ -87,6 +89,7 @@ in
         imageId = "t";
         version = "20261031.1";
         pkgs = fixturePkgs;
+        inherit sources;
         platform.name = "x86_64-linux";
         buildSystem = "x86_64-linux";
       };
@@ -129,7 +132,7 @@ in
   ))
   (check "imds: Hetzner's paths come from systemd's own hwdb, patched, not from a rule of /imds" (
     let
-      patches = map toString (fixturePkgs.systemd.drvAttrs.patches or [ ]);
+      patches = map toString fixturePkgs.systemd.patches;
     in
     any (hasSuffix "hwdb-imds-hetzner.patch") patches
     # the ssh keys as Hetzner's JSON array: the well-known key ssh-key-json, and hwdb naming it

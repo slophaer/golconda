@@ -51,9 +51,9 @@ A module looks like the one on [Typed modules](typed-modules.md#using-it). The f
 ## Status
 
 Eval tests cover this path (`tests/eval/components.nix`, `tests/eval/provenance.nix` and
-`tests/eval/sbom.nix`). The boot-test image carries one downstream module, `/local/test-workload`
-(`tests/fixtures/image-workload/modules`, `nix/default.nix`); no boot test has a downstream package.
-See [What is proven](../proven.md).
+`tests/real-packages/sbom.nix`). The boot-test image carries one downstream module,
+`/local/test-workload` (`tests/fixtures/image-workload/modules`, `nix/default.nix`); no boot test
+has a downstream package. See [What is proven](../proven.md).
 
 ## Limits
 

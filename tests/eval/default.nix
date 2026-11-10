@@ -1,6 +1,9 @@
 # Pure-Nix tests of the module model: types, renderers and the composer.
 # scripts/lint evaluates this file with iets (through nix/tests.nix); it is `true`
-# or throws with the failing check's name. No derivation is built.
+# or throws with the failing check's name. No derivation is instantiated: packages are read as
+# data (harness.nix, tests/fixtures/repkgs), and scripts/lint evaluates the file again in
+# restricted mode, where the real repkgs cannot be fetched. Checks that need the real package
+# set are in tests/real-packages (checks.real-packages).
 #   iets eval --expr 'import ./nix/tests.nix { }'
 #
 # harness.nix holds the shared fixtures and `check`; each other file is one area:
@@ -44,7 +47,7 @@ let
     ./hwdb.nix
     ./imds.nix
     ./components.nix
-    ./sbom.nix
+    ./sbom-patches.nix
   ];
   tests = builtins.concatLists areas;
 in

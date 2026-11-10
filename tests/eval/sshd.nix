@@ -4,6 +4,7 @@
 {
   check,
   composeWith,
+  f,
   fixturePkgs,
   hasInfix,
   hasPrefix,
@@ -107,7 +108,7 @@ in
   # a TCP port to listen on: 1 to 65535 (0 would be any port, and -1 none)
   (check "sshd: port is a TCP port, in the module and in the schema" (
     let
-      port = (import ../../default.nix).schema.properties."/services/sshd".properties.port;
+      port = f.schema.properties."/services/sshd".properties.port;
     in
     !(sshdThrows { port = 1; })
     && !(sshdThrows { port = 65535; })

@@ -3,7 +3,6 @@
 {
   check,
   compose,
-  f,
   hasInfix,
   hasPrefix,
   pkgs,
@@ -44,7 +43,7 @@ in
   (check "kernel: vmlinux carries full DWARF 5 (Linux 6.18 \"Debug information\" choice)" (
     let
       base = builtins.fromJSON (
-        builtins.unsafeDiscardStringContext pkgs.linux-kernel.drvAttrs.spec.env.GOLCONDA_KERNEL_CONFIG
+        builtins.unsafeDiscardStringContext pkgs.linux-kernel.args.env.GOLCONDA_KERNEL_CONFIG
       );
       conf = readFile ../../packages/kernel/golconda.config;
       names = [
@@ -66,21 +65,6 @@ in
   ))
   (check "kernel: the ORC config only advertises x86_64" (
     pkgs.linux-kernel.args.platforms.cpu == [ "x86_64" ]
-  ))
-  (check "outputs: aarch64 exposes no unsupported kernel, image or OS tree" (
-    let
-      names = attrNames f.packages.aarch64-linux;
-    in
-    !(elem "kernel" names) && all (n: !(hasPrefix "image-smoke" n) && !(hasPrefix "usr-tree" n)) names
-  ))
-  (check "outputs: x86_64 keeps the native kernel and images, not an unsupported cross OS tree" (
-    let
-      native = f.packages.x86_64-linux;
-    in
-    native ? kernel
-    && native ? image-smoke-test
-    && native ? usr-tree-smoke
-    && !(native ? usr-tree-smoke-aarch64)
   ))
   # 12. The kernel config fragment (packages/kernel/golconda.config)
   (check "kernel: the fragment is KEY=VALUE lines, comments and 'is not set' lines, no name twice" (
@@ -120,33 +104,17 @@ in
     hasInfix "\nCONFIG_DMI_SYSFS=y\n" conf && hasInfix "\nCONFIG_FW_CFG_SYSFS=y\n" conf
   ))
   (check "linux-pam: pam_unix reads shadow itself (the set has no unix_chkpwd helper)" (
-    pkgs.linux-pam.drvAttrs.spec.meson.defs."pam_unix-try-getspnam" == true
+    pkgs.linux-pam.args.meson.defs."pam_unix-try-getspnam" == true
   ))
   (check "openssh: /usr through `prefix`, not a raw --prefix flag (repkgs rejects those)" (
     let
-      spec = pkgs.openssh.drvAttrs.spec;
+      inherit (pkgs.openssh) args;
     in
-    (spec.prefix or null) == "/usr"
-    && !(builtins.any (f: match "--prefix(=.*)?" f != null) spec.autotools.flags)
+    (args.prefix or null) == "/usr"
+    && !(builtins.any (f: match "--prefix(=.*)?" f != null) (args.autotools.flags or [ ]))
   ))
   (check "tpm2-tss: the device TCTI exports Tss2_Tcti_Info for systemd (no --enable-nodl)" (
-    !(elem "--enable-nodl" pkgs.tpm2-tss.drvAttrs.spec.autotools.flags)
-  ))
-  (check "kernel: the package owns the base; env.merge adds the extra config and fragment only" (
-    let
-      own = pkgs.linux-kernel.args.env;
-      final = pkgs.linux-kernel.drvAttrs.spec.env;
-    in
-    attrNames final == attrNames own
-    && final.GOLCONDA_KERNEL_CONFIG == own.GOLCONDA_KERNEL_CONFIG
-    && final.GOLCONDA_KERNEL_EXTRA_CONFIG == "{}"
-    && final.GOLCONDA_KERNEL_FRAGMENTS != own.GOLCONDA_KERNEL_FRAGMENTS
-  ))
-  (check "kernel: GOLCONDA_KERNEL_MAKE survives env.merge" (
-    let
-      make = pkgs.linux-kernel.drvAttrs.spec.env.GOLCONDA_KERNEL_MAKE;
-    in
-    make == pkgs.linux-kernel.args.env.GOLCONDA_KERNEL_MAKE
+    !(elem "--enable-nodl" pkgs.tpm2-tss.args.autotools.flags)
   ))
   # kernel code through jig in passthrough: no jig policy flags (hardening, sysroot, RUNPATH),
   # but the compile cache; host tools through jig's normal policy (they need the sysroot)
@@ -163,10 +131,11 @@ in
       && elem "HOSTCXX=c++" make
     )
   )
-  (check "kernel: the policy fragment reaches the package-local builder" (
+  # the override nix/packages.nix gives the set (env.merge); checks.real-packages has repkgs' merge
+  (check "kernel: nix/packages.nix passes the policy fragment to the kernel's env" (
     let
       fragments = builtins.fromJSON (
-        builtins.unsafeDiscardStringContext pkgs.linux-kernel.drvAttrs.spec.env.GOLCONDA_KERNEL_FRAGMENTS
+        builtins.unsafeDiscardStringContext pkgs.linux-kernel.spec.env.GOLCONDA_KERNEL_FRAGMENTS
       );
     in
     # builtins.toFile creates /nix/store/xxx-golconda.config (dash, not slash)

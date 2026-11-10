@@ -60,9 +60,9 @@ ajv validate -s schema.json -d config.json
 
 ## Status
 
-The artifacts are built and checked by eval tests (`tests/eval/sbom.nix`, `tests/eval/schema.nix`
-and others). The boot-test images carry them. No boot marker reads these files. See
-[What is proven](../proven.md).
+The artifacts are built and checked by eval tests (`tests/real-packages/sbom.nix`,
+`tests/eval/schema.nix` and others). The boot-test images carry them. No boot marker reads these
+files. See [What is proven](../proven.md).
 
 ## Limits
 

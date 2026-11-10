@@ -39,7 +39,7 @@ in
         else
           false;
     in
-    !(opaqueIn (import ../../default.nix).schema)
+    !(opaqueIn f.schema)
   ))
   # 5. JSON Schema export
   (check "schema: exports JSON Schema 2020-12" (

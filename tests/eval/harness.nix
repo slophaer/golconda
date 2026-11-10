@@ -1,8 +1,19 @@
 # The shared fixtures and helpers of the pure-Nix tests: the stand-in package set, the composer
 # entry points (compose, composeWith, withPkgs), `check`, `throws` and the string helpers, and the
 # sshd system that mkSystem makes. tests/eval/default.nix passes it to every area file.
+#
+# No derivation is instantiated, and no real package is read: `sources.repkgs` is the stand-in
+# tree tests/fixtures/repkgs, whose set.nix reads each package.nix and sources.toml as data and
+# gives it a fixed fake store path. So mkSystem runs on Golconda's own nix/packages.nix and
+# packages/ without the store or repkgs' build graph. What needs the real set (the SBOM, the
+# images, the packages' resolved build specs) is in checks.real-packages. scripts/lint runs these
+# tests in restricted mode as well, where the real repkgs cannot be fetched.
 { sources, platform }:
 let
+  # the pins, with the stand-in repkgs tree: what every area gets as `sources`
+  stubbedSources = sources // {
+    repkgs = ../fixtures/repkgs;
+  };
   inherit (builtins)
     any
     deepSeq
@@ -12,7 +23,12 @@ let
     tryEval
     ;
 
-  f = import ../../default.nix;
+  # Golconda's outputs without the per-system part (default.nix runs nix/packages.nix on the real
+  # repkgs for that): modules, configLib, lib, on the stand-in sources
+  f = import ../../nix/default.nix {
+    sources = stubbedSources;
+    self = ../..;
+  };
   adios = import sources.adios;
   types = adios.adios.types;
   a = import ../../modules/lib/app.nix { inherit types; };
@@ -33,29 +49,24 @@ let
   configLib = import ../../lib/config.nix { tree = f.modules { }; };
   usrTreeLib = import ../../lib/usr-tree.nix { };
   imageLib = import ../../lib/image { };
-  inherit
-    (import ../../nix/packages.nix {
-      inherit sources;
-      system = platform;
-      inherit platform;
-    })
-    pkgs
-    ;
-
-  # repkgs needs ca-derivations to instantiate, so no package is built here;
-  # jq stands in for the type check (the unit then says /usr/bin/jq).
-  standIn = pkgs.jq;
+  # a package as the modules see it, with no derivation behind it: a name and a fixed path
+  stub = name: {
+    type = "derivation";
+    inherit name;
+    outPath = "/nix/store/00000000000000000000000000000000-${name}";
+  };
+  # jq stands in for the type check (the unit then says /usr/bin/jq)
+  standIn = stub "jq-1.8.1" // {
+    pname = "jq";
+  };
 
   # stand-ins for repkgs packages that declare `bin` in their package.nix (`args.bin`); no
   # eval-time `pkg.bin` (repkgs drops it): what a build installs is in its exports.json
   withBin =
     name: bin:
-    builtins.removeAttrs pkgs.jq [ "bin" ]
+    stub name
     // {
-      inherit name;
-      args = (pkgs.jq.args or { }) // {
-        inherit bin;
-      };
+      args.bin = bin;
       outPath = "/nix/store/${name}";
     };
   # openssh as repkgs declares it: `bin` lists the client tools first
@@ -241,7 +252,8 @@ let
   # the sshd system as mkSystem makes it: the pinned package set, /vars and /factory
   # added by mkSystem itself
   mkSystemFixture = import ../../lib/system.nix {
-    inherit sources platform;
+    inherit platform;
+    sources = stubbedSources;
     system = platform;
     config = {
       "/system" = {
@@ -256,6 +268,7 @@ let
   system = mkSystemFixture.composed;
   # the pinned packages the fixture holds
   fixturePkgs = mkSystemFixture.pkgs;
+  inherit (mkSystemFixture) pkgs;
   unit = system.units."sshd.service";
   sshdDir = "/usr/lib/sshd";
   sshdConfig = system.files."${sshdDir}/sshd_config".text;
@@ -277,6 +290,7 @@ let
   pamSshd = factory.files."${factoryDir}/pam.d/sshd";
 in
 {
+  sources = stubbedSources;
   inherit
     a
     adios
@@ -312,7 +326,6 @@ in
     platform
     s
     schemaLib
-    sources
     sshd
     sshdConfig
     sshdDir

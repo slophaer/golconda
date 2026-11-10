@@ -35,6 +35,12 @@ if failed=$(printf '%s\n' "$jobs" | grep '"error":'); then
   exit 1
 fi
 iets eval --expr 'import ./nix/tests.nix { }' > /dev/null
+# The eval tests read packages as data only (tests/eval/harness.nix): again in restricted
+# read-only mode, where only this tree and the adios pin can be read, so a test that brings a
+# real package (the repkgs pin, a store path) back fails here. tests/real-packages has those.
+adios=$(sed -n 's|^url = "\(.*/\)archive/.*|\1|p' pins/adios/sources.toml)
+nix-instantiate --readonly-mode --option restrict-eval true --option allowed-uris "$adios" \
+  -I golconda="$PWD" --eval --strict -E 'import <golconda/nix/tests.nix> { }' > /dev/null
 # configuration errors must carry their message (tests/errors/run.sh)
 tests/errors/run.sh
 # scripts/make-keys: layout, modes, certificate extensions (builds its tools through the daemon)

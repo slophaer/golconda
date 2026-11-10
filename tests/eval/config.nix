@@ -198,9 +198,6 @@ in
     in
     sys.platform.name == "aarch64-linux"
   ))
-  (check "examples/golconda.nix evaluates without --impure" (
-    (import ../../examples/golconda.nix).platform.name == "x86_64-linux"
-  ))
   # An option name no module declares is an error, not a silent
   # default; every route into the tree is checked
   (check "config: a misspelt option is refused, and a declared one accepted" (

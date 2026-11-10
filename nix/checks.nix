@@ -20,6 +20,7 @@ let
     toFile
     ;
   dev = import ./dev { inherit sources; } set;
+  on = import ../modules/lib/on.nix;
   rp = set.pkgs;
 
   # run NAME TOOLS SCRIPT: a check, built on the seed's shell (nix/run.nix)
@@ -233,4 +234,13 @@ in
       python3 ${src}/tests/schema/validate.py ${schemaFile} ${fixtures}
       touch $out
     '';
+}
+# The eval tests that need the real package set (tests/real-packages: the SBOM, the image chain,
+# the packages' build specs as repkgs resolves them). Evaluating this check runs them; they are
+# about the x86_64 set, so the other platform's checks leave them out.
+// on (double == "x86_64-linux") {
+  real-packages = run "real-packages" [ ] (
+    assert import ../tests/real-packages { inherit sources; };
+    "touch $out"
+  );
 }

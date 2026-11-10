@@ -1,4 +1,4 @@
-#! A marker file for the image tests (tests/eval/image-config.nix).
+#! A marker file for the image tests (tests/real-packages/image-config.nix).
 _: {
   name = "marker";
   impl = _: {

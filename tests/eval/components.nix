@@ -340,51 +340,6 @@ in
   (check "downstream: no packages/ beside the document, no downstream packages" (
     (mkSystem ../fixtures/downstream-none/server.toml).packages == { }
   ))
-  (check "catalogue: every target package with version, identifiers, origin and replacement" (
-    let
-      sys = mkSystem ../fixtures/downstream/server.toml;
-      c = sys.catalogue;
-      # the purl as the SBOM generator writes it for the same package
-      inherit
-        (import ../../nix/packages.nix {
-          inherit sources;
-          system = platform;
-          downstream = ../fixtures/downstream/packages;
-          replaces = [
-            "openssh"
-            "ripgrep"
-          ];
-        })
-        set
-        ;
-      sbomPurl =
-        n:
-        (builtins.head (
-          builtins.filter (x: x.type == "application")
-            (set.sbom {
-              roots = [ sys.pkgs.${n} ];
-              name = "probe";
-            }).bom.components
-        )).purl;
-    in
-    c.hello == {
-      version = "0.0.1";
-      purl = sbomPurl "hello";
-      origin = "downstream";
-      replaces = null;
-    }
-    && c.openssh.origin == "downstream"
-    && c.openssh.replaces == "golconda"
-    && c.openssh.cpe == "cpe:2.3:a:example:openssh:0.0.3:*:*:*:*:*:*:*"
-    && c.systemd.origin == "golconda"
-    && c.systemd.cpe == "cpe:2.3:a:systemd_project:systemd:${c.systemd.version}:*:*:*:*:*:*:*"
-    && c.jq.origin == "repkgs"
-    && c.jq.purl == sbomPurl "jq"
-    # names, not aliases: the alias cpython is not an entry, its target is
-    && !(c ? cpython)
-    && c ? cpython314
-    && builtins.length (attrNames c) > 100
-  ))
   (check "schema: mkSystem's schema has the downstream modules and is the one the image ships" (
     let
       sys = mkSystem ../fixtures/downstream/server.toml;

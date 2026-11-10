@@ -7,7 +7,6 @@
   fixturePkgs,
   hasInfix,
   openssh,
-  sources,
   sshdTree,
   standIn,
   stubSet,
@@ -45,15 +44,6 @@ let
       { };
 in
 [
-  (check "checks: native package tests are required outputs" (
-    builtins.all
-      (name: f.checks.x86_64-linux.${name}.drvPath == f.packages.x86_64-linux.${name}.drvPath)
-      [
-        "tests-gnupg"
-        "tests-btrfs-progs"
-        "tests-uutils-coreutils"
-      ]
-  ))
   (check "pkgs: /pkgs returns the set and its pkgs, nothing else" (
     pkgsResult.target.pkgs == stubSet.pkgs
     && pkgsResult.pkgs.openssh == openssh
@@ -110,29 +100,6 @@ in
     && hasInfix "ARCHITECTURE=\"aarch64\"" osArm
     && hasInfix "VERSION_ID=\"20261031.1\"" osX86
     && hasInfix "IMAGE_VERSION=\"20261031.1\"" osArm
-  ))
-  (check "cross: package sets expose target CPU and UEFI names" (
-    let
-      x86Set = import ../../nix/packages.nix {
-        inherit sources;
-        system = "x86_64-linux";
-        platform = "x86_64-linux";
-      };
-      armSet = import ../../nix/packages.nix {
-        inherit sources;
-        system = "x86_64-linux";
-        platform = "aarch64-linux";
-      };
-    in
-    # Platform names differ
-    x86Set.platform.name == "x86_64-linux"
-    && armSet.platform.name == "aarch64-linux"
-    # CPU differs
-    && x86Set.platform.cpu == "x86_64"
-    && armSet.platform.cpu == "aarch64"
-    # Pure platform metadata; derivation identity is not checked here.
-    && x86Set.platform.names.uefi == "x64"
-    && armSet.platform.names.uefi == "aa64"
   ))
 
   # 10. Boundary tests: config-in-store boundary enforcement

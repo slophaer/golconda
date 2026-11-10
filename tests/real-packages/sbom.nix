@@ -1,4 +1,5 @@
-# The system SBOM: every component says where it comes from (golconda:origin), a downstream
+# The system SBOM, as repkgs' generator writes it (moved from tests/eval; tests/eval/sbom-patches.nix
+# checks the patch entries on the packages as data): every component says where it comes from (golconda:origin), a downstream
 # replacement names the package it replaced (CycloneDX pedigree.ancestors), a patched package
 # lists its patches (pedigree.patches), and a sources.toml CPE becomes the component's cpe.
 # Identities, not guessed display names.
@@ -189,44 +190,11 @@ in
     && !((c.pedigree or { }) ? ancestors)
     && c == plain "systemd"
   ))
-  (check "sbom: a patched package lists each patch in pedigree.patches, with its header's subject" (
+  (check "sbom: a patched package lists its patches in pedigree.patches (lib/sbom-patches.nix)" (
     let
       c = component "systemd";
-      file = patchFile fixture.pkgs.systemd;
     in
-    patchesOf c == [
-      {
-        type = "unofficial";
-        diff = file "hwdb-imds-hetzner.patch";
-        resolves = [
-          {
-            type = "defect";
-            name = "hwdb: fix the IMDS paths for Hetzner Cloud";
-          }
-        ];
-      }
-      {
-        type = "unofficial";
-        diff = file "imds-ssh-key-json.patch";
-        resolves = [
-          {
-            type = "enhancement";
-            name = "imds: import SSH keys provided as a JSON array";
-          }
-        ];
-      }
-      {
-        type = "unofficial";
-        diff = file "hwdb-imds-hetzner-ssh-keys.patch";
-        resolves = [
-          {
-            type = "enhancement";
-            name = "hwdb: import the SSH keys on Hetzner Cloud";
-            references = [ "https://docs.hetzner.cloud/reference/cloud#server-metadata" ];
-          }
-        ];
-      }
-    ]
+    builtins.length (patchesOf c) == 3 && patchesOf c == sbomPatches.of fixture.pkgs.systemd
   ))
   (check "sbom: a repkgs patch is listed too; one with no header resolves nothing" (
     patchesOf (component "attr") == [
@@ -246,28 +214,6 @@ in
         {
           type = "enhancement";
           name = "SIGWINCH does not exist on Windows (msys2 MINGW-packages).";
-        }
-      ]
-  ))
-  (check "sbom: each Golconda patch says why in its header, and an upstream link is a reference" (
-    let
-      golcondaPatched = [
-        "gnupg"
-        "libgpg-error"
-        "p11-kit"
-        "systemd"
-        "uptrack"
-      ];
-      patches = builtins.concatMap (n: sbomPatches.of fixture.pkgs.${n}) golcondaPatched;
-    in
-    builtins.length patches == 7
-    && builtins.all (p: p ? resolves) patches
-    &&
-      (builtins.head (sbomPatches.of fixture.pkgs.uptrack)).resolves == [
-        {
-          type = "enhancement";
-          name = "uptrack: support unstable versions (branch heads, ?branch=), from the open upstream pull request.";
-          references = [ "https://github.com/Mic92/repkgs/pull/204" ];
         }
       ]
   ))

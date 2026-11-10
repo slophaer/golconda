@@ -1,4 +1,4 @@
-#! Claims the update index keyring's path, which the image owns (tests/eval/image-config.nix).
+#! Claims the update index keyring's path, which the image owns (tests/real-packages/image-config.nix).
 _: {
   name = "collision";
   impl = _: {
