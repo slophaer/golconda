@@ -218,9 +218,8 @@ loader are all signed with it.
 
 ### Signing outside Nix
 
-Private keys never enter the Nix store or a Nix build *(being built)*. Nix builds every part of the
-image unsigned; one program, the signer, signs the parts and assembles the release outside Nix, on
-the release host.
+Private keys never enter the Nix store or a Nix build. Nix builds every part of the image unsigned;
+one program, the signer, signs the parts and assembles the release outside Nix, on the release host.
 
 Nix builds, as `lib.mkImage`'s `unsigned` output:
 

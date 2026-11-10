@@ -166,18 +166,48 @@ These are eval tests and runs, not boots ([Pinning](reference/pinning.md)).
 | `nix flake init -t` gives a flake whose lock `nix flake update golconda` moves to the newest commit, and which evaluates its `/usr` tree there | `tests/flake-template/run.sh`, in `scripts/lint`: the lock at `HEAD~1`, then at `HEAD` with a new `narHash`; `nix eval .#packages.x86_64-linux.default.drvPath`                                                                                                                                                                                                                                                 |
 | that flake builds the image's unsigned output, and no private key enters the store                                                             | `tests/flake-template/run.sh --build`: `nix build .#image` of the template with the public halves of a test key set (`tests/fixtures/public-keys`), an output with `manifest.json` and `sign` and no private key (queue #656, 2026-11-10). By hand, 2026-11-10: the template at `ee07323` built `disk.raw` and the release directory, signed in the build with that commit's `keys` argument, which is now gone |
 
+## Signing outside Nix
+
+No private key enters the store or a build
+([Trust: Signing outside Nix](design/trust.md#signing-outside-nix)). Every test image above is
+signed by the program a release host runs (`unsigned/sign`, in a derivation with throwaway keys), so
+each marker above tests the signer too. On 2026-11-10 (branch `sign-outside-nix`):
+
+| claim                                                                                                 | evidence                                                                                                                                                                                                                                      |
+| ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| the signer checks the keys and its signatures verify with the public halves only                      | `checks.image-signer` (`tests/sign/test.nu`): the right key verifies, another key does not, a key set that is not the image's is refused, a PKCS#11 URI is refused, the root hash and index signatures are deterministic                      |
+| `lib.mkImage` takes no private key                                                                    | `tests/real-packages/image-config.nix`: `keys`, `pcrKeys` and a relative `publicKeys` are refused; the manifest names three store paths `db.crt`, `pcr.pub`, `index.pgp`                                                                      |
+| the boot matrix passes with the signer                                                                | one `scripts/verify` run, the eight sets of [the release checklist](release-checklist.md#how-to-test-it), all PASS; `--next --rotate` (without `--tpm`) PASS with `boots-after-rotation`, `kernel-db-rotated`, `old-loader-refused`           |
+| a release built and signed by `golconda release build` with a fresh `scripts/make-keys` set boots     | `--secure-boot --tpm --ssh-test`: 5 and 21 SSH checks PASS; a second release signed the same way installs over HTTP with `--next`: 5 and 52 PASS (`index-signed`, `sysupdate-installed`, `boots-next`)                                        |
+| none of that set's private keys is in the store                                                       | by hand: a line of each private key, grepped in the closure of both releases' unsigned outputs, in their derivations' closure and in all 85 store paths registered since the keys were made: 0 files; no path in either closure is a key file |
+| the unsigned outputs do not depend on the private keys                                                | by hand: two throwaway sets with different `db` and PCR keys gave the same `/usr` tree, initrd, kernel, stub, unsigned loader and signer store paths; only the manifest, which holds the public halves, differed                              |
+| a release signed in the sandbox and one signed on the host from the same unsigned output are the same | by hand: the four release files, `SHA256SUMS`, `SHA256SUMS.gpg` and the cmdline byte for byte; `disk.raw` differs in 4 bytes, the ESP's volume label time (`mkfs.fat` 4.2)                                                                    |
+
+With the `--rotate` clock check and the TPM restart of `--rotate` (`scripts/boot-test-update.sh`),
+on 2026-11-10 (branch `stack-sign`): one `scripts/verify` run booted the eight sets and
+`--secure-boot --ssh-test --tpm --next @next=image-smoke-test-rotated --rotate`, and all nine passed
+(queue #657). Every set passed `clock-not-reset` and `imds-lock-endpoints`, every `--tpm` set
+`clock-not-reset-after-reboot`, and the rotation set `boots-after-rotation`, `kernel-db-rotated`,
+`old-loader-refused` and `clock-not-reset-after-rotate`. Two releases built and signed by
+`golconda release build` with a fresh `scripts/make-keys` set (#658) booted with
+`--secure-boot --tpm --ssh-test` (5 and 22 checks PASS, #659) and, with `--next` to the second, 5
+and 53 PASS (#660). No line of a private key of that set and not the release key's fingerprint was
+in the closures of both unsigned outputs, in their derivations or in the 83 store paths registered
+since the keys were made (#662).
+
 ## Not proven
 
 - **Enrolment on real firmware.** The harness enrols keys offline in the variable store. Hetzner
   Cloud has no Secure Boot.
+
 - **Hardware.** Only QEMU with OVMF on x86_64 has run, and Hetzner Cloud's QEMU with EDK II. aarch64
   is postponed ([Scope: Later](design/scope.md#later)), because no aarch64 package can be built
   here.
+
 - **Loader recovery by hand.** A loader that no longer starts, a lost ESP and a lost `db` key
   ([Boot loader: Recovery](design/bootloader.md#recovery)) have no marker. The rotation run has two
   releases, so it leaves out step 4 of the rotation.
+
 - **A boot without the `db` enrolled.** It stops at switch-root; the harness has no marker for it.
 
-One release was signed with a deployment key set that `scripts/make-keys` wrote outside the store.
-It booted on the same markers as the throwaway set, and its next release installed over HTTP
-([Release](reference/release.md)).
+- **A key on a token.** The signer reads a key directory and refuses a PKCS#11 URI *(later)*.

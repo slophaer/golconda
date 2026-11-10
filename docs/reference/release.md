@@ -91,8 +91,9 @@ the build host. `nix-build` prints the output path; iets 0.2 builds the content-
 finds no path for it ("built, but the builder has no output path"), which is why
 `golconda release build` uses `nix-build`.
 
-Verification: a release built and signed this way with a fresh key set booted with `--secure-boot`,
-and so did its next release over HTTP *(being built)*.
+Verification: two releases built and signed by `golconda release build` with a fresh key set booted
+with `--secure-boot --tpm --ssh-test`, the second as an update over HTTP (`--next`), and none of the
+set's private keys was in the store afterwards ([What is proven](../proven.md#signing-outside-nix)).
 
 ## 3. Publish the release directory
 
