@@ -88,8 +88,9 @@ in
     && x86Set.platform.names.uefi == "x64"
     && armSet.platform.names.uefi == "aa64"
   ))
+  # the template fetches Golconda from its pin; here it takes this tree, so the check needs no network
   (check "examples/golconda.nix evaluates without --impure" (
-    (import ../../examples/golconda.nix).platform.name == "x86_64-linux"
+    (import ../../examples/golconda.nix { golconda = f; }).platform.name == "x86_64-linux"
   ))
   (check "catalogue: every target package with version, identifiers, origin and replacement" (
     let

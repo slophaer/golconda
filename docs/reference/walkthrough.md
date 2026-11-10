@@ -47,10 +47,11 @@ iets eval --json -E '(import ./default.nix).schema' > schema.json
 ## 2. Evaluation
 
 `examples/golconda.nix` (the template to copy into your own repository) calls
-`mkSystem { config = ./server.toml; }`. iets evaluates it:
+`mkSystem { config = ./server.toml; }` on the Golconda tree it gets: in your repository the pinned
+one, here this repository. iets evaluates it:
 
 ```sh
-iets eval --json -E '(import ./examples/golconda.nix).config'
+iets eval --json -E '(import ./examples/golconda.nix { golconda = import ./default.nix; }).config'
 ```
 
 This prints the normalized options after type-checking. A wrong value stops here with the module's
@@ -65,7 +66,7 @@ lists the valid paths: `/base`, `/factory`, `/network`, `/services/sshd`, `/syst
 list to `/system`, which unions them. The result is one attribute set:
 
 ```sh
-iets eval --json -E 'builtins.attrNames (import ./examples/golconda.nix).composed'
+iets eval --json -E 'builtins.attrNames (import ./examples/golconda.nix { golconda = import ./default.nix; }).composed'
 ```
 
 ```json
@@ -111,8 +112,8 @@ iets eval --json -E 'builtins.attrNames (import ./examples/golconda.nix).compose
   systemd's directories as `farm` links, one link per dlopen soname, and the `.wants` links.
 
 The service unit, as
-`iets eval --raw -E '(import ./examples/golconda.nix).composed.units."sshd.service"'` prints it
-*(eval)*:
+`iets eval --raw -E '(import ./examples/golconda.nix { golconda = import ./default.nix; }).composed.units."sshd.service"'`
+prints it *(eval)*:
 
 ```ini
 [Unit]
@@ -143,7 +144,7 @@ one line in `/usr/lib/sshd/authorized_keys/root`.
 ## 4. The `/usr` tree
 
 ```sh
-nix-build -E '(import ./examples/golconda.nix).usrTree'     # or: iets build … (a patched Nix daemon builds it)
+nix-build -E '(import ./examples/golconda.nix { golconda = import ./default.nix; }).usrTree'     # or: iets build … (a patched Nix daemon builds it)
 ```
 
 `lib/usr-tree.nix` copies the closure of the packages into `nix/store/`, makes the symlinks

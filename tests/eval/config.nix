@@ -198,6 +198,14 @@ in
     in
     sys.platform.name == "aarch64-linux"
   ))
+  (check "examples/pins/golconda is a pin lib.readPins reads: the mirror's tarball at a full rev" (
+    let
+      s = (import ../../lib/pins.nix).specs ../../examples/pins;
+      prefix = "https://github.com/slophaer/golconda/archive/";
+    in
+    builtins.attrNames s == [ "golconda" ]
+    && builtins.match "${prefix}[0-9a-f]{40}\\.tar\\.gz" s.golconda.url != null
+  ))
   # An option name no module declares is an error, not a silent
   # default; every route into the tree is checked
   (check "config: a misspelt option is refused, and a declared one accepted" (

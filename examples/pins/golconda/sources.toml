@@ -1,0 +1,12 @@
+[upstream]
+purl = "pkg:github/slophaer/golconda?branch=main"
+
+[[source]]
+key = "default"
+url = "https://github.com/slophaer/golconda/archive/{rev}.tar.gz"
+hash = "sha256-lTtrJcwSxSLM2/BJkHHSbbmXyU0KFW2IoWYKSQnb95E="
+
+[pin]
+version = "0-unstable-2026-11-09"
+date = "2026-11-09"
+rev = "b58a62f7e0d71403981d320d426c4ee37ce6339c"

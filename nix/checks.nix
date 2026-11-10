@@ -172,6 +172,9 @@ in
     uptrack list > list.txt
     # it read them all: Golconda's own systemd is among them
     grep -q 'systemd' list.txt || { cat list.txt; exit 1; }
+    # and the template's pin of Golconda, which a downstream repository updates with uptrack
+    UPTRACK_ROOT=${src}/examples/pins uptrack list > example.txt
+    grep -q ' golconda ' example.txt || { cat example.txt; exit 1; }
     touch $out
   '';
 
