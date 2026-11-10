@@ -115,8 +115,11 @@ nix build                       # the /usr tree of server.toml
 nix flake update golconda       # move to Golconda's newest commit
 ```
 
-`nix build` and `nix flake update` through the template are *(being built)*: a run by hand evaluated
-the template's usr tree, but no run built it or updated the lock.
+A run on 2026-11-10 locked the template's input at `ee07323` and built its `image` output (the
+`/usr` tree and the signed chain) on this host's Nix fork. `nix flake update golconda` then moved
+the lock to `2393f72`, the newest `main`, and the flake evaluated again.
+`tests/flake-template/run.sh` repeats the lock and the update without the build
+([How this is tested](#how-this-is-tested)).
 
 The client needs `flakes` beside the features above. The template passes `system` and has a
 commented `lib.mkImage` call with `keys` as a string. After the first release, pin a tag:
@@ -159,7 +162,14 @@ nix-prefetch-url --unpack https://github.com/slophaer/golconda/archive/<rev>.tar
 - `tests/real-packages/pins.nix` also evaluates `examples/fetch-tarball.nix`, the file this page
   includes for the plain `fetchTarball` recipe, with the example pin's rev and hash in place of the
   two placeholders. Its `usrTree` is the one `examples/golconda.nix` gives from the same pin.
-- By hand, 2026-11-10: the uptrack template in an empty directory evaluated `usrTree` from the pin
-  (iets and `nix-instantiate`), and `uptrack check` and `apply` moved a copy of the pin to
-  `b58a62f`. `nix flake init -t` from a local path gave a flake that `nix flake check --no-build`
-  passed. No image was built from either.
+- `tests/flake-template/run.sh` (run by `scripts/lint`) makes a flake with `nix flake init -t` from
+  this repository's template, locks the input at `HEAD~1`, runs `nix flake update golconda`, and
+  checks that the lock is at `HEAD` with a new `narHash` and that the flake evaluates its `/usr`
+  tree. With `--build` it also builds the signed image from the flake, with a throwaway key set.
+  That build is not in the lint: it takes the time of an image build.
+- By hand, 2026-11-10 (`~/spikes/pinning-proofs`): the uptrack template in an empty directory
+  evaluated `usrTree` from the pin (iets and `nix-instantiate`), and `uptrack check` and `apply`
+  moved a copy of the pin to `b58a62f`. No image was built from either. `nix flake init -t` gave a
+  flake with the input at the example pin's `ee07323` on the GitHub mirror (the lock held `ee07323`,
+  with the pin's `narHash`), and `nix build .#image` built the signed image (task #534, 4 min with
+  the toolchain in the store). `nix flake update golconda` moved the lock to `2393f72`.

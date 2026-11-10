@@ -45,6 +45,8 @@ nix-instantiate --readonly-mode --option restrict-eval true --option allowed-uri
 tests/errors/run.sh
 # scripts/make-keys: layout, modes, certificate extensions (builds its tools through the daemon)
 tests/make-keys/run.sh
+# the flake template: `nix flake update golconda` moves the lock, and the flake evaluates (no build)
+tests/flake-template/run.sh
 # The pinned iets cannot resolve outputs of dynamic package-test derivations.
 # Keep its strict evaluation above; the patched Nix client builds native checks.
 # --keep-going: every check runs. Without it nix stops at the first failing check, cancels the
