@@ -156,6 +156,14 @@ Hetzner's paths, the lock only in the user data's `.network` file, no ssh key fr
 | with the lock in that file, only imdsd reaches the endpoint; a file without it lets any process in | `systemd-pull` of the endpoint: `Could not connect to server`; `systemd-imds -K hostname` answers; with a lock-less file, `systemd-pull` got the host name          |
 | the same on the next boot                                                                          | the import, the second network generator run and the IPv6 address again; no failed unit                                                                             |
 
+## Pinning Golconda
+
+These are eval tests and runs, not boots ([Pinning](reference/pinning.md)).
+
+| claim                                                                                                           | evidence                                                                                                                                                                                            |
+| --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| the plain `fetchTarball` recipe evaluates at the example pin, and gives the same `/usr` tree as the uptrack one | `checks.real-packages`: "pinning: the fetchTarball recipe of the docs evaluates, and gives the uptrack recipe's tree" (`tests/real-packages/pins.nix`); the snippet is `examples/fetch-tarball.nix` |
+
 ## Not proven
 
 - **Enrolment on real firmware.** The harness enrols keys offline in the variable store. Hetzner

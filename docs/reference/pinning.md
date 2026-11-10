@@ -126,22 +126,12 @@ commented `lib.mkImage` call with `keys` as a string. After the first release, p
 
 No tool and no lock file: the commit and its hash are in the Nix file.
 
-The recipe is *(being built)*: no test or run evaluates it. It is the uptrack template's
-`fetchTarball` without the TOML file.
+It is the uptrack template's `fetchTarball` without the TOML file. The snippet is
+`examples/fetch-tarball.nix`, included here as it is; a test evaluates that file
+([How this is tested](#how-this-is-tested)).
 
 ```nix
-let
-  golconda = import (
-    builtins.fetchTarball {
-      url = "https://github.com/slophaer/golconda/archive/<rev>.tar.gz";
-      sha256 = "<the NAR hash of the unpacked tree>";
-    }
-  );
-in
-golconda.lib.mkSystem {
-  config = ./server.toml;
-  system = "x86_64-linux";
-}
+{{#include ../../examples/fetch-tarball.nix}}
 ```
 
 To update, put in the new rev and print its hash:
@@ -166,6 +156,9 @@ nix-prefetch-url --unpack https://github.com/slophaer/golconda/archive/<rev>.tar
 - `tests/real-packages/pins.nix` checks `lib.readPins` against `pins/default.nix`.
   `tests/eval/pins.nix` checks the reader on `tests/fixtures/pins`, and calls the flake template's
   outputs on this tree with the stand-in packages.
+- `tests/real-packages/pins.nix` also evaluates `examples/fetch-tarball.nix`, the file this page
+  includes for the plain `fetchTarball` recipe, with the example pin's rev and hash in place of the
+  two placeholders. Its `usrTree` is the one `examples/golconda.nix` gives from the same pin.
 - By hand, 2026-11-10: the uptrack template in an empty directory evaluated `usrTree` from the pin
   (iets and `nix-instantiate`), and `uptrack check` and `apply` moved a copy of the pin to
   `b58a62f`. `nix flake init -t` from a local path gave a flake that `nix flake check --no-build`

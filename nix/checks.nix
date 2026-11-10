@@ -106,8 +106,9 @@ in
 
   # the docs build; a broken include or diagram fails here
   docs = run "docs" [ rp.mdbook rp.mdbook-pele ] ''
-    # the book's first page includes ../README.md
-    cp -r ${src}/docs docs && cp ${src}/README.md README.md && chmod -R u+w docs && cd docs
+    # the book's first page includes ../README.md, pinning.md includes an example from ../examples
+    cp -r ${src}/docs docs && cp ${src}/README.md README.md && cp -r ${src}/examples examples
+    chmod -R u+w docs && cd docs
     # the reference pages that are generated, not committed
     mkdir -p reference/modules/generated
     cp -L ${moduleDocs}/*.md reference/modules/generated/
