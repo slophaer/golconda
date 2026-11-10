@@ -2,7 +2,8 @@
 
 A machine is described by one TOML document. The document sets options of modules; a JSON Schema
 exported from the module tree validates it without Nix; the image carries the resolved document
-beside the schema so two images can be diffed as data. The diff tool is *(planned)*.
+beside the schema so two images can be diffed as data. The diff tool is *(after v1)*
+([Diffing](#diffing-after-v1)).
 
 ## The model
 
@@ -84,10 +85,10 @@ The sysupdate transfers from `/system.updateSource` are beside them in `/usr/lib
 There is no `etc.manifest`: `/etc` is symlinks into the factory and `find /etc -type f` lists the
 administrator's changes ([Layout: State](layout.md#state)).
 
-## Diffing *(planned)*
+## Diffing *(after v1)*
 
-`golconda diff <a> <b>` compares two images by their `config.json`. Output is a path-based
-set/delete list:
+`golconda diff <a> <b>` would compare two images by their `config.json`. Output would be a
+path-based set/delete list:
 
 ```json
 [
@@ -96,4 +97,7 @@ set/delete list:
 ]
 ```
 
-This doubles as the edit log and the patch format.
+No such tool exists, and no code for it was written. The console had a different `golconda diff`: it
+compared the effective configuration of a document against a git revision or another document,
+through iets, and its operations were the console's edit log. It left `main` with the console in
+`478fc79`; the code is at git tag `archive/console-2026-11-08` ([Scope](scope.md#after-v1)).
