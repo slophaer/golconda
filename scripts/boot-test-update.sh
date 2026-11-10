@@ -262,6 +262,13 @@ db_certs() {
     | sed "s/.*Loaded X.509 cert '\(.*\)'.*/\1/" | tr ' ' '_' | sort -u
 }
 
+# rotate_tpm: swtpm ends when QEMU disconnects; a QEMU run after the first needs one again, on the
+# same state (a power cycle)
+rotate_tpm() {
+  [ "$TPM" = 1 ] || return 0
+  [ -S "$TPM_DIR/swtpm-sock" ] || start_tpm
+}
+
 # --- --rotate: db holds the new key only, dbx the old; boot the new chain, refuse the old ---
 test_rotate() {
   echo ""
@@ -275,6 +282,7 @@ test_rotate() {
   SERIAL_LOG=$WORKDIR/serial-rotated.log
   SAVED_TIMEOUT=$TIMEOUT
   TIMEOUT=240
+  rotate_tpm
   start_qemu
   TIMEOUT=$SAVED_TIMEOUT
   if ! wait_for_ssh ""; then
@@ -311,6 +319,7 @@ test_rotate() {
   OVERLAY=$WORKDIR/disk-original.qcow2
   SERIAL_LOG=$WORKDIR/serial-original.log
   TIMEOUT=45
+  rotate_tpm
   start_qemu
   TIMEOUT=$SAVED_TIMEOUT
   wait "$QEMU_PID" 2>/dev/null || true

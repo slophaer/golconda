@@ -177,6 +177,21 @@ NEXT_KEYS=$WORK/nkeys KEYS_DIR=$WORK/keys GUID=0
 TIMEOUT=1
 FIRST_SERIAL_LOG=$WORK/first.log
 : > "$FIRST_SERIAL_LOG"
+TPM_DIR=$WORK/tpm
+TPM_STARTS=0
+start_tpm() { TPM_STARTS=$((TPM_STARTS + 1)); }
 expect_clock clock-not-reset-after-rotate test_rotate
+
+# swtpm ends when QEMU disconnects: each QEMU run of --rotate (the rotated boot and the negative
+# control) needs a TPM of its own, on the same state, when --tpm is set
+TPM_STARTS=0
+FAKE_JOURNAL=$GOOD
+test_rotate > /dev/null 2>&1 || true
+if [ "$TPM_STARTS" = 2 ]; then
+  echo "PASS: rotate starts a TPM for each of its two QEMU runs"
+else
+  echo "FAIL: rotate started $TPM_STARTS TPMs, want 2"
+  ERRORS=$((ERRORS + 1))
+fi
 
 [ "$ERRORS" -eq 0 ]
