@@ -4,9 +4,9 @@ purl = "pkg:github/slophaer/golconda?branch=main"
 [[source]]
 key = "default"
 url = "https://github.com/slophaer/golconda/archive/{rev}.tar.gz"
-hash = "sha256-lTtrJcwSxSLM2/BJkHHSbbmXyU0KFW2IoWYKSQnb95E="
+hash = "sha256-kBCMcO38to1mZMWYx+vj16sr4P3fkR4Pr5Oowpn58Xc="
 
 [pin]
-version = "0-unstable-2026-11-09"
-date = "2026-11-09"
-rev = "b58a62f7e0d71403981d320d426c4ee37ce6339c"
+version = "0-unstable-2026-11-10"
+date = "2026-11-10"
+rev = "ee07323eaac9c379e45f418fed017934436c3d62"
