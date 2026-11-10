@@ -284,11 +284,16 @@ the same time, each with its own log. `@next` in the flags stands for the next r
 `--next @next` makes verify build `<image>-next` as well (`image-smoke-test-next` for
 `image-smoke-test`, `image-smoke-test-nosb-next` for `--image image-smoke-test-nosb`; out-link
 `result-verify-next`), and `golconda-cli` and `age` for `--next`'s admin vars, and put their paths
-in the flags, in `BOOT_TEST_GOLCONDA` and on `PATH`. Its summary has one line per set,
-`PASS boot[N] 59s FLAGS` or `FAIL(CODE) boot[N] 59s FLAGS (log PATH)`, followed by the checks that
-passed, `  passed boot[N] (COUNT): NAME …`, so a check that stops running shows without a log. The
-exit status is non-zero when any set fails. A set that passes removes its log, as
-`scripts/boot-test` removes the work directory of a run that passes; a set that fails keeps both.
+in the flags, in `BOOT_TEST_GOLCONDA` and on `PATH`. A set that starts with the word `@image=ATTR`
+boots `packages.<system>.ATTR` instead of `--image`'s image, and its `@next` is `ATTR-next`: verify
+builds each image the sets name once (out-link `result-verify-ATTR`, step `image:ATTR`; the next
+image `result-verify-ATTR-next`, step `image-next:ATTR`), so one run boots the Secure Boot sets and
+`@image=image-smoke-test-nosb` sets together. Its summary has one line per set, with the image,
+`PASS boot[N] 59s @image=ATTR FLAGS` or `FAIL(CODE) boot[N] 59s @image=ATTR FLAGS (log PATH)`,
+followed by the checks that passed, `  passed boot[N] (COUNT): NAME …`, so a check that stops
+running shows without a log. The exit status is non-zero when any set fails. A set that passes
+removes its log, as `scripts/boot-test` removes the work directory of a run that passes; a set that
+fails keeps both.
 
 The work directory of every run is `run.XXXXXX` under `$BOOT_TEST_CACHE` (default
 `${XDG_CACHE_HOME:-$HOME/.cache}/golconda-boot-test`), not under `/tmp`, which a queue task or a
@@ -385,7 +390,7 @@ With `--ssh-test` (the harness logs in as root with `tests/fixtures/snakeoil-ssh
 | `varlinkctl-list-interfaces`   | `io.systemd.Manager` answers on its varlink socket                                                                                                                         |
 | `secure-boot-enabled`          | `bootctl status` says `Secure Boot: enabled` (with `--secure-boot`)                                                                                                        |
 | `hwdb`                         | `/usr/lib/udev/hwdb.bin` answers for DMI, PCI and USB; none in `/etc`                                                                                                      |
-| `clock-not-reset`              | the journal of the boot has no "further ahead than" reset message from PID 1, and no entry is older than the year of systemd's built-in epoch (`time-epoch`, the pin date) |
+| `clock-not-reset`              | this boot's journal (`journalctl -b`) has no "further ahead than" reset message from PID 1, and no entry is older than the year of systemd's built-in epoch (`time-epoch`) |
 | `ipe-denies-copy`              | a copy of `/usr/bin/sh` in `/var/tmp` gets EACCES, and IPE logs the denial                                                                                                 |
 | `cert-login`                   | a certificate from the test user CA (`tests/fixtures/snakeoil-user-ca`) logs in as root for the principal `boot-test-admin`                                                |
 | `cert-wrong-principal-refused` | a certificate for another principal is refused                                                                                                                             |
@@ -424,6 +429,7 @@ With `--tpm` (and `--ssh-test`):
 | `ssh-after-reboot`             | the guest came back with a new boot id                                                                                                                                                                      |
 | `hostkey-unchanged`            | sshd presents the first boot's host key, the credential has the first boot's bytes (not re-sealed), sshd runs; after the reboot, after an update (`--next`) and after the fallback (`--next --fail-health`) |
 | `no-failed-units-after-reboot` | no failed unit on the second boot                                                                                                                                                                           |
+| `clock-not-reset-after-reboot` | `clock-not-reset` on the second boot's journal                                                                                                                                                              |
 
 With `--next DIR` ([The update test](#the-update-test)):
 
@@ -436,6 +442,7 @@ With `--next DIR` ([The update test](#the-update-test)):
 | `sysupdate-refused`                                                    | with `--tamper-index`: the service failed, its journal names the index signature and no install, and the next release is on no partition or ESP entry       |
 | `boots-old`                                                            | with `--tamper-index`, after the reboot `IMAGE_VERSION` is still the old version                                                                            |
 | `no-failed-units-after-refused-update`                                 | with `--tamper-index`, the system has no failed unit after the refused update                                                                               |
+| `clock-not-reset-after-refused-update`                                 | with `--tamper-index`, `clock-not-reset` on the journal of the boot after the refused update                                                                |
 | `admin-vars-pushed`                                                    | before the update, `golconda vars` stored and pushed the host certificate (the guest's host key signed by `snakeoil-host-ca`) and a KRL, and restarted sshd |
 | `admin-vars-sealed`                                                    | `golconda vars list` says both are stored and sealed                                                                                                        |
 | `host-cert-presented`                                                  | the next release presents the host certificate to a strict `@cert-authority` known_hosts                                                                    |
@@ -444,6 +451,8 @@ With `--next DIR` ([The update test](#the-update-test)):
 | `boots-next`                                                           | after the reboot `IMAGE_VERSION` is the new version                                                                                                         |
 | `etc-links-stable`                                                     | links under `/etc/systemd/system` exist, none names a store path, none dangles                                                                              |
 | `no-failed-units-after-update`                                         | the updated system has no failed unit                                                                                                                       |
+| `clock-not-reset-after-update`                                         | `clock-not-reset` on the updated release's first boot                                                                                                       |
+| `clock-not-reset-after-fallback`                                       | with `--fail-health`, `clock-not-reset` on the fallback boot of the old release                                                                             |
 | `hwdb-after-update`                                                    | the updated release's `/usr/lib/udev/hwdb.bin` answers for DMI, PCI and USB; none in `/etc`                                                                 |
 | `loader-replaced`                                                      | when the loader bytes differ, the new loader is on the ESP and the old one is `systemd-boot-fallbackx64.efi`                                                |
 | `bootctl-list-both-slots`                                              | `bootctl list` shows the entries of both versions                                                                                                           |
@@ -498,8 +507,9 @@ be held. `DIR` is a built release (`DIR/disk/release`, `DIR/keys`). The harness:
    `sysupdate-installed`. sysupdate fetches `SHA256SUMS` and the four artifacts over HTTP, then
    writes the B slots and `EFI/Linux/<id>_<version>+3-0.efi`;
 1. reboots and checks `boots-next`, `etc-links-stable`, `no-failed-units-after-update`,
-   `hwdb-after-update` and the loader markers (the new release installed its loader on its first
-   good boot and kept the previous one as `systemd-boot-fallbackx64.efi`);
+   `clock-not-reset-after-update`, `hwdb-after-update` and the loader markers (the new release
+   installed its loader on its first good boot and kept the previous one as
+   `systemd-boot-fallbackx64.efi`);
 1. runs the recovery paths: `bootctl list` shows both slots, a damaged `BOOTX64.EFI` is reinstalled
    by `golconda-loader-update`, `bootctl set-oneshot` and `bootctl set-default` boot the other slot
    and back, and `bootctl reboot-to-firmware` reaches OVMF's boot menu.
@@ -515,10 +525,11 @@ logged in `$WORKDIR/http.log`.
 `--next DIR --tamper-index` is the negative control of the signed index, and it passes when the
 update is refused. The server sends `SHA256SUMS` with one byte more than its signature
 (`SHA256SUMS.gpg`) covers. The run checks `index-signed` (the guest fetched the signature),
-`sysupdate-refused`, and, after a reboot, `boots-old`, `hostkey-unchanged` (with `--tpm`) and
-`no-failed-units-after-refused-update`. It leaves out `http-fetch`, `sysupdate-installed` and every
-check that needs the installed release, and it does not combine with `--rotate` or `--fail-health`.
-An update that installs, or any other failure, fails the run.
+`sysupdate-refused`, and, after a reboot, `boots-old`, `hostkey-unchanged` (with `--tpm`),
+`no-failed-units-after-refused-update` and `clock-not-reset-after-refused-update`. It leaves out
+`http-fetch`, `sysupdate-installed` and every check that needs the installed release, and it does
+not combine with `--rotate` or `--fail-health`. An update that installs, or any other failure, fails
+the run.
 
 The next release comes from `packages.<system>.image-smoke-test-next` (version `20261031.2`, the
 same keys as the first release; [Outputs](outputs.md)), and `--next` takes its path. The firmware
@@ -536,11 +547,11 @@ unit (`/etc/systemd/system/golconda-health-network.service` → `/dev/null`), so
 times and checks after each one that the counter fell (`tries: 2 left; 1 done`, then
 `1 left; 2 done`, then `0 left; 3 done`), that `boot-complete.target` is inactive and that the
 loader update did not run. It lifts the mask and checks the fourth boot: the previous release runs,
-the candidate is at `tries: 0 left; 3 done`, and the old entry is the one systemd-boot selected. A
-mask keeps every boot clean and ssh reachable, so the counter can be read after each one; cutting
-the link would need a QMP `set_link` call and a hard reset. `--fail-health` and `--rotate` are
-alternatives, and `--fail-health` skips the loader and recovery checks, because no boot of the
-candidate is blessed.
+the candidate is at `tries: 0 left; 3 done`, the old entry is the one systemd-boot selected, and PID
+1 kept the clock (`clock-not-reset-after-fallback`). A mask keeps every boot clean and ssh
+reachable, so the counter can be read after each one; cutting the link would need a QMP `set_link`
+call and a hard reset. `--fail-health` and `--rotate` are alternatives, and `--fail-health` skips
+the loader and recovery checks, because no boot of the candidate is blessed.
 
 What this test does not prove:
 
