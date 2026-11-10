@@ -1,40 +1,27 @@
-# lib/image/erofs.nix: the /usr tree as an erofs image.
+# lib/image/erofs.nix: how the signer makes the /usr tree into an erofs image.
 #
-# erofs { usrTree; imageId; version; buildSystem; pkgs; } → derivation with
-#   <imageId>_<version>.usr.raw
+# erofsParams { imageId; version; } → the manifest's `erofs` (lib/image/manifest.nix):
+#   fileName     <imageId>_<version>.usr.raw
+#   epoch        mkfs.erofs -T, from the version (common.nix versionToEpoch): every file and the
+#                filesystem itself carry the version's timestamp, so ConditionNeedsUpdate= fires
+#                once per version (image/erofs.nix)
+#   uuid         -U, from the version too, the only other value mkfs.erofs would draw at random
+#   compression, extraArgs   image/erofs.nix
 #
-# mkfs.erofs -T <epoch> with the epoch from the version (common.nix versionToEpoch), so every
-# file and the filesystem itself carry the version's timestamp: ConditionNeedsUpdate= fires once
-# per version (image/erofs.nix). --all-root: the sandbox's user is nobody's. -U fixes the
-# filesystem UUID from the version too, the only other value mkfs.erofs would draw at random.
-# The result is reproducible: the derivation is content-addressed, so a second build of the
-# same tree lands on the same store path (proven in packages.image-smoke).
+# The signer (lib/image/erofs.nu) runs mkfs.erofs, not Nix: /usr carries the signed loader
+# (lib/image/sign.nu), so the image's bytes depend on a signature (docs/design/trust.md).
 _:
 let
   common = import ./common.nix { };
   erofsConfig = import ../../image/erofs.nix;
 in
 {
-  erofs =
+  erofsParams =
+    { imageId, version }:
     {
-      usrTree,
-      imageId,
-      version,
-      buildSystem,
-      pkgs,
-      ... # platform and the rest of the shared argument set
-    }:
-    common.nuDerivation {
-      name = "${imageId}_${version}.usr.raw";
-      inherit buildSystem;
-      module = "erofs";
-      tools = [ pkgs.erofs-utils ];
-      attrs = {
-        inherit usrTree;
-        epoch = common.versionToEpoch version;
-        fileName = "${imageId}_${version}.usr.raw";
-        uuid = common.uuidOfHex (common.hexOf "${imageId}_${version}.usr.raw");
-        inherit (erofsConfig) compression extraArgs;
-      };
+      fileName = "${imageId}_${version}.usr.raw";
+      epoch = common.versionToEpoch version;
+      uuid = common.uuidOfHex (common.hexOf "${imageId}_${version}.usr.raw");
+      inherit (erofsConfig) compression extraArgs;
     };
 }

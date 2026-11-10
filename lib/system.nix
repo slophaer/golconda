@@ -24,7 +24,7 @@
 # `platform` defaults to the build host's (builtins.currentSystem).
 # `sources` defaults to ../pins (pins/default.nix).
 # `verityCert` is the certificate that signs /usr (lib.mkImage passes the db certificate of
-# its keys). With `/system.secureBoot = false` the kernel carries it in its built-in keyring;
+# its publicKeys). With `/system.secureBoot = false` the kernel carries it in its built-in keyring;
 # without Secure Boot nothing else would put it in a keyring (docs/design/trust.md).
 #
 # Usage:

@@ -33,15 +33,17 @@ let
     };
   imageLib = import ../lib/image { };
 
-  # The image chain over one system, as a release builds it (lib/image/chain.nix).
+  # The image chain over one system, unsigned, as a release builds it (lib/image/chain.nix).
   imageChain = import ../lib/image/chain.nix { inherit sources mkSystem imageLib; };
 
-  # mkImage { config; keys; pcrKeys ? keys; indexKeys ? keys; system ? builtins.currentSystem; } →
-  #   { erofs; verity; initrd; uki; loader; disk; release; }
-  # `config` is what lib.mkSystem takes (a TOML path or options); `keys` is the directory
-  # in the layout lib/image/chain.nix describes. `indexKeys` names a second directory, read for release/ only (the
-  # release key that signs SHA256SUMS), for a key set made before it had one. No smoke: it would link the private keys into its output.
-  mkImage = args: builtins.removeAttrs (imageChain args) [ "smoke" ];
+  # mkImage { config; publicKeys; pcrPublicKeys ? publicKeys; indexPublicKeys ? publicKeys;
+  #   system ? builtins.currentSystem; } →
+  #   { unsigned; usrTree; initrd; signer; pkgs; signWithTestKeys; }
+  # `config` is what lib.mkSystem takes (a TOML path or options); `publicKeys` is the key set's
+  # directory, of which the chain reads the public halves only (lib/image/chain.nix). Nothing is
+  # signed: `golconda release build` runs `unsigned`'s signer with the private keys, outside the
+  # store. `signWithTestKeys` signs in the store, for throwaway keys only.
+  mkImage = imageChain;
 in
 {
   packages =
@@ -57,12 +59,43 @@ in
         buildSystem = system;
       };
 
+      # A test image: the chain over `config` with the public halves of throwaway keys, signed
+      # in the store by the signer a release host runs (lib/image/signer.nix), with its proofs
+      # (lib/image/smoke.nix). `pcrKeys` and `indexKeys` default to `keys`.
+      testImage =
+        {
+          config,
+          keys ? throwawayKeys,
+          pcrKeys ? keys,
+          indexKeys ? keys,
+        }:
+        let
+          chain = imageChain {
+            inherit system config;
+            publicKeys = keys.public;
+            pcrPublicKeys = pcrKeys.public;
+            indexPublicKeys = indexKeys.public;
+          };
+          signed = chain.signWithTestKeys { inherit keys pcrKeys indexKeys; };
+        in
+        chain
+        // {
+          inherit signed;
+          smoke = imageLib.smoke {
+            inherit (chain)
+              unsigned
+              pkgs
+              imageId
+              version
+              ;
+            inherit signed;
+            keys = keys.public;
+            buildSystem = system;
+          };
+        };
+
       # the base system of examples/server.toml, as lib.mkSystem makes it
-      imageSmoke = imageChain {
-        inherit system;
-        config = ../examples/server.toml;
-        keys = throwawayKeys;
-      };
+      imageSmoke = testImage { config = ../examples/server.toml; };
 
       # Boot test image: see nix/test-config.nix.
       testConfig = import ./test-config.nix;
@@ -124,51 +157,42 @@ in
       # nix/packages.nix applies the policy fragment to every `pkgs.linux-kernel`.
       kernel = pkgs.linux-kernel;
 
-      # The image chain (lib/image) over the /base system: erofs, verity, initrd, UKI, disk, and
-      # the proofs in proof.txt. Keys are throwaways made in the store; a release signs with the
-      # deployment's keys (lib.mkImage). image-smoke-<step> exposes each step on its own.
+      # The image chain (lib/image) over the /base system, signed in the store with throwaway
+      # keys, and the proofs in proof.txt. A release signs with the deployment's keys outside the
+      # store (lib.mkImage, `golconda release build`). The parts: the unsigned outputs, the
+      # initrd, the signer, and the signed disk and release directory.
       image-smoke = imageSmoke.smoke;
-      image-smoke-erofs = imageSmoke.erofs;
-      image-smoke-verity = imageSmoke.verity;
+      image-smoke-unsigned = imageSmoke.unsigned;
       image-smoke-initrd = imageSmoke.initrd;
-      image-smoke-uki = imageSmoke.uki;
-      image-smoke-disk = imageSmoke.disk;
-      image-smoke-loader = imageSmoke.loader;
+      image-smoke-signer = imageSmoke.signer;
+      image-smoke-signed = imageSmoke.signed;
 
       image-smoke-test =
-        (imageChain {
-          inherit system;
+        (testImage {
           config = testConfig { version = "20261031.1"; };
-          keys = throwawayKeys;
         }).smoke;
 
       # The test image without Secure Boot, and its next release for --next
       image-smoke-test-nosb =
-        (imageChain {
-          inherit system;
+        (testImage {
           config = noSecureBootConfig { version = "20261031.1"; };
-          keys = throwawayKeys;
         }).smoke;
       image-smoke-test-nosb-next =
-        (imageChain {
-          inherit system;
+        (testImage {
           config = noSecureBootConfig {
             version = "20261031.2";
             adminVars = true;
           };
-          keys = throwawayKeys;
         }).smoke;
 
       # The next release of the test image with the same throwaway keys: what
       # scripts/boot-test --next installs and boots, without --rotate.
       image-smoke-test-next =
-        (imageChain {
-          inherit system;
+        (testImage {
           config = testConfig {
             version = "20261031.2";
             adminVars = true;
           };
-          keys = throwawayKeys;
         }).smoke;
 
       # The next release of the test image, signed with a new db key: the loader, the UKI and
@@ -176,8 +200,7 @@ in
       # by 20261031.1 still unseals. scripts/boot-test --next <this> --rotate installs it and
       # rotates the firmware's db (docs/design/bootloader.md).
       image-smoke-test-rotated =
-        (imageChain {
-          inherit system;
+        (testImage {
           config = testConfig {
             version = "20261031.2";
             adminVars = true;
@@ -273,7 +296,7 @@ in
 
   # lib: Nix library functions for building Golconda systems.
   #   (import ./default.nix).lib.mkSystem { config = ./server.toml; }
-  #   (import ./default.nix).lib.mkImage { config = ./server.toml; keys = "/srv/golconda-keys"; }
+  #   (import ./default.nix).lib.mkImage { config = ./server.toml; publicKeys = ./keys; }
   #   (import ./default.nix).lib.readPins ./pins   # { <name> = tree; } from uptrack pins (lib/pins.nix)
   # nix flake init -t <golconda>: a repository with server.toml and a flake.nix that takes
   # Golconda as its input (docs/reference/pinning.md)

@@ -8,7 +8,7 @@
 #   systemd-pull runs `gpg --verify` on SHA256SUMS.gpg for every transfer with Verify=yes
 #   (image/sysupdate.nix). Give it to mkSystem through extraFragments.
 #
-# The disk step (lib/image/disk.nu) signs the release's SHA256SUMS with the secret half.
+# The signer (lib/image/disk.nu sign-index) signs the release's SHA256SUMS with the secret half.
 _:
 let
   common = import ./common.nix { };

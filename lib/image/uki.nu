@@ -1,48 +1,41 @@
-# uki.nu: ukify build (lib/image/uki.nix).
-#
-# Structured attrs: fileName, kernel, systemd, stub, initrd, roothash, roothashSig, osRelease,
-# cmdlineTemplate, phases (the phase paths to sign, a list), sbKey, sbCert, pcrKey,
-# pcrPublicKey.
+# uki.nu: ukify build, a step of the signer (lib/image/sign.nu). The parameters come from the
+# manifest's `uki` (lib/image/uki.nix ukiParams): fileName, kernel, systemd, stub, initrd,
+# osRelease, cmdlineTemplate, phases (the phase paths to sign, a list).
 
 use common.nu *
 use initrd.nu [rdinit]
 
-export def build [] {
-  let a = (attrs)
-  let out = $a.outputs.out
-  $env.PATH = $a.PATH
-  $env.LD_LIBRARY_PATH = $a.LD_LIBRARY_PATH
-  $env.OPENSSL_CONF = "/dev/null" # no /etc/ssl/openssl.cnf in the sandbox
-  mkdir $out
-
+# make P ROOTHASH SIGPART KEYS OUT: the UKI at OUT, its cmdline with ROOTHASH and the signature
+# from the usr-verity-sig partition SIGPART, Secure Boot signed with KEYS.dbKey/dbCert
+# (systemd-sbsign) and with one PCR 11 signature per phase path by KEYS.pcrKey, KEYS.pcrPublic
+# embedded as .pcrpkey. Returns the cmdline.
+export def make [p: record, roothash: string, sigpart: string, keys: record, out: string]: nothing -> string {
   # the kernel package: lib/modules/<uname>/vmlinuz
-  let moddir = (ls $"($a.kernel)/lib/modules" | get name | first)
+  let moddir = (ls $"($p.kernel)/lib/modules" | get name | first)
   let uname = ($moddir | path basename)
   let linux = $"($moddir)/vmlinuz"
-  let roothash = (open --raw $a.roothash | str trim)
-  let usrhash_sig = (roothash-signature $a.roothashSig $roothash $a.sbCert)
-  let cmdline = ($"($a.cmdlineTemplate) rdinit=(rdinit)"
+  let usrhash_sig = (roothash-signature $sigpart $roothash $keys.dbCert)
+  let cmdline = ($"($p.cmdlineTemplate) rdinit=(rdinit)"
     | str replace "{usrhash}" $roothash | str replace "{usrhashSig}" $usrhash_sig
-    | str replace -ra ' +' ' ')
+    | str replace -ra ' +' ' ' | str trim)
   # the EFI stub cuts a longer cmdline at COMMAND_LINE_SIZE (2048 on x86-64 and arm64) without a
   # word, and the cut lands on the parameters after the signature
   let cmdline_bytes = ($cmdline | encode utf-8 | bytes length)
   if $cmdline_bytes >= 2048 {
     error make { msg: $"cmdline is ($cmdline_bytes) bytes; the kernel keeps 2047" }
   }
-  $cmdline | save -f $"($out)/cmdline"
   log $"kernel ($uname), cmdline: ($cmdline)"
 
-  let uki = $"($out)/($a.fileName)"
   # --phases takes a comma-separated list of phase paths. Each is one colon chain; a
   # signature for a chain permits only that chain's last state.
-  let phases = ($a.phases | str join ",")
+  let phases = ($p.phases | str join ",")
 
   # --sign-kernel: the kernel is unsigned; said so because systemd-sbsign cannot check (ukify)
-  ^ukify build --linux $linux --initrd $a.initrd --cmdline $cmdline --os-release $"@($a.osRelease)" --uname $uname --stub $a.stub --tools $"($a.systemd)/lib/systemd" --signtool systemd-sbsign --sign-kernel --secureboot-private-key $a.sbKey --secureboot-certificate $a.sbCert --pcr-private-key $a.pcrKey --pcr-public-key $a.pcrPublicKey --phases $phases --pcr-banks sha256 --measure --output $uki
-  log $"($a.fileName): (ls $uki | get size.0)"
+  ^ukify build --linux $linux --initrd $p.initrd --cmdline $cmdline --os-release $"@($p.osRelease)" --uname $uname --stub $p.stub --tools $"($p.systemd)/lib/systemd" --signtool systemd-sbsign --sign-kernel --secureboot-private-key $keys.dbKey --secureboot-certificate $keys.dbCert --pcr-private-key $keys.pcrKey --pcr-public-key $keys.pcrPublic --phases $phases --pcr-banks sha256 --measure --output $out
+  log $"($out | path basename): (ls $out | get size.0)"
 
-  check-pcrsig $uki $a.phases
+  check-pcrsig $out $p.phases
+  $cmdline
 }
 
 # roothash-signature PARTITION ROOTHASH CERT: the base64 signature from the usr-verity-sig

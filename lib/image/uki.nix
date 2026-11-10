@@ -1,24 +1,20 @@
 # lib/image/uki.nix: the unified kernel image.
 #
-# uki { initrd; verity; usrTree; imageId; version; platform; buildSystem; pkgs; sbKey; sbCert;
-#       pcrKey; pcrPublicKey; } → derivation with
-#   <imageId>_<version>+3-0.efi    the UKI under its boot-counting name (image/default.nix
-#                                   bootCounting; systemd-boot decrements, bless-boot renames)
-#   cmdline                          what went in, for the record
+# ukiName { imageId; version; } → <imageId>_<version>+3-0.efi, the UKI under its boot-counting
+#   name (image/default.nix bootCounting; systemd-boot decrements, bless-boot renames)
 #
-# ukify build (packages/ukify) joins systemd's stub, the kernel from the linux-kernel package,
-# the initrd, the cmdline (image/uki.nix's template with usrhash= and the root hash signature
-# from the verity step, plus rdinit= as lib/image/initrd.nix explains), the system's os-release
-# and the kernel's uname. The kernel trusts the signature only if the firmware db holds its
-# signer, so the build checks it against sbCert: the verity step must sign with the db key.
-# Secure Boot: systemd-sbsign with sbKey/sbCert. Measured boot: one PCR 11 signature per
-# phase path in image/uki.nix's list (ukify --phases), signed with pcrKey, and the built
-# .pcrsig section is checked against the list (docs/design/trust.md). Keys are paths; the
-# production ones live outside the store (lib.mkImage keys); the smoke uses throwaways.
+# ukiParams { initrd; usrTree; imageId; version; platform; pkgs; cmdlineExtra ? ""; } → the
+#   manifest's `uki` (lib/image/manifest.nix): the kernel from the linux-kernel package, systemd's
+#   stub and tools, the initrd, the system's os-release, image/uki.nix's cmdline template and
+#   phase list. The signer (lib/image/uki.nu) runs ukify build: the cmdline gets usrhash= and the
+#   root hash signature, which exist only after the signer made the erofs image, plus rdinit= as
+#   lib/image/initrd.nix explains. Secure Boot: systemd-sbsign with the db key. Measured boot: one
+#   PCR 11 signature per phase path (ukify --phases), with the PCR key; the built .pcrsig section
+#   is checked against the list (docs/design/trust.md). The kernel trusts the root hash signature
+#   only if the firmware db holds its signer, so the signer checks it against the db certificate.
 _:
 let
   inherit (builtins) toString;
-  common = import ./common.nix { };
   image = import ../../image;
 in
 rec {
@@ -27,57 +23,25 @@ rec {
     { imageId, version }:
     "${imageId}_${version}+${toString image.bootCounting.triesLeft}-${toString image.bootCounting.triesDone}.efi";
 
-  uki =
+  ukiParams =
     {
       initrd,
-      verity,
       usrTree,
       imageId,
       version,
       platform,
-      buildSystem,
       pkgs,
-      sbKey,
-      sbCert,
-      pcrKey,
-      pcrPublicKey,
-      cmdlineExtra ? "", # appended to the template: the smoke's debug flags go here, not in image/
+      cmdlineExtra ? "", # appended to the template: debug flags go here, not in image/
       ...
     }:
-    let
-      ukiConfig = image.uki;
-      uefi = platform.names.uefi;
-    in
-    common.nuDerivation {
-      name = ukiName { inherit imageId version; };
-      inherit buildSystem;
-      module = "uki";
-      tools = [
-        pkgs.ukify
-        pkgs.systemd # systemd-measure, systemd-sbsign (lib/systemd, on PATH too)
-        pkgs.openssl # the root hash signature against sbCert
-      ];
-      libs = [
-        pkgs.openssl # systemd-sbsign, systemd-measure: libcrypto
-        pkgs.tpm2-tss # systemd-measure: libtss2-mu for the PCR policy
-      ];
-      attrs = {
-        fileName = ukiName { inherit imageId version; };
-        kernel = pkgs.linux-kernel;
-        inherit (pkgs) systemd;
-        stub = "${pkgs.systemd}/lib/systemd/boot/efi/linux${uefi}.efi.stub";
-        initrd = "${initrd}/initrd.cpio.zst";
-        roothash = "${verity}/roothash";
-        roothashSig = "${verity}/${imageId}_${version}.usr-verity-sig.raw";
-        osRelease = "${usrTree}/lib/os-release";
-        cmdlineTemplate = "${ukiConfig.cmdlineTemplate} ${cmdlineExtra}";
-        phases = ukiConfig.pcrPhases;
-        inherit
-          sbKey
-          sbCert
-          pcrKey
-          pcrPublicKey
-          ;
-      };
+    {
+      fileName = ukiName { inherit imageId version; };
+      kernel = "${pkgs.linux-kernel}";
+      systemd = "${pkgs.systemd}";
+      stub = "${pkgs.systemd}/lib/systemd/boot/efi/linux${platform.names.uefi}.efi.stub";
+      initrd = "${initrd}/initrd.cpio.zst";
+      osRelease = "${usrTree}/lib/os-release";
+      cmdlineTemplate = "${image.uki.cmdlineTemplate} ${cmdlineExtra}";
+      phases = image.uki.pcrPhases;
     };
 }

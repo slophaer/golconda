@@ -1,9 +1,13 @@
-# keys.nu: throwaway key pairs for the smoke (lib/image/default.nix throwawayKeys).
+# keys.nu: throwaway key pairs for the test images (lib/image/default.nix throwawayKeys).
 #
 # Output: secureboot/db.{key,crt} (it signs the UKI, the verity root hash and the loader),
 # pcr/pcr.key with pcr/pcr.pub (the public key ukify embeds as .pcrpkey), and
 # release/index.key with release/index.pgp: the OpenPGP key that signs the release's SHA256SUMS
 # (armored secret key; binary public key, the image's keyring).
+#
+# Output `public`: the three public halves alone, in the same layout (secureboot/db.crt,
+# pcr/pcr.pub, release/index.pgp). The unsigned chain reads only these (lib/image/chain.nix
+# publicKeys), so its closure holds no private key; the signer reads `out`.
 
 use common.nu *
 
@@ -26,6 +30,12 @@ export def build [] {
   ^openssl pkey -in $"($out)/pcr/pcr.key" -pubout -out $"($out)/pcr/pcr.pub"
   log "pcr/pcr.key, .pub"
   index-key $"($out)/release" $"Golconda smoke release index($suffix)"
+  let public = $a.outputs.public
+  for f in [secureboot/db.crt pcr/pcr.pub release/index.pgp] {
+    mkdir ($"($public)/($f)" | path dirname)
+    ^cp $"($out)/($f)" $"($public)/($f)"
+  }
+  log "public: secureboot/db.crt, pcr/pcr.pub, release/index.pgp"
 }
 
 # An Ed25519 OpenPGP signing key without a passphrase, made in a scratch home that is removed

@@ -45,7 +45,7 @@ let
   transfer = {
     ProtectVersion = "%A";
     # systemd-pull fetches SHA256SUMS.gpg beside SHA256SUMS and runs gpg on it against
-    # /usr/lib/systemd/import-pubring.pgp (lib/image/index.nix); the disk step signs the index
+    # /usr/lib/systemd/import-pubring.pgp (lib/image/index.nix); the signer signs the index
     # with the release key (docs/design/releases.md). OpenPGP is the only signature systemd 262
     # verifies here, so the image carries GnuPG and libgcrypt beside OpenSSL. Replace it with the
     # PKCS#7 manifest of systemd PR #44292 (https://github.com/systemd/systemd/pull/44292,

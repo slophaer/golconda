@@ -1,59 +1,85 @@
-# The image chain over one system, the code behind `lib.mkImage` and the smoke outputs of
-# nix/default.nix: signed loader, system, erofs, verity, initrd, UKI, disk and smoke
-# (the steps are lib/image/*.nix).
+# The image chain over one system, the code behind `lib.mkImage` and the test images of
+# nix/default.nix: Nix builds every artifact unsigned, and the signer (lib/image/sign.nu) signs
+# and assembles the release outside the store (docs/design/trust.md, "Signing outside Nix").
 #
 # `import ./chain.nix { inherit sources mkSystem imageLib; }` is the function of
-# { config; keys; pcrKeys ? keys; indexKeys ? keys; system ? builtins.currentSystem; }
-# below. mkImage in nix/default.nix drops its `smoke`.
+# { config; publicKeys; pcrPublicKeys ? publicKeys; indexPublicKeys ? publicKeys;
+#   system ? builtins.currentSystem; } below. It returns
+#   unsigned            what the signer takes (lib/image/manifest.nix): manifest.json, the public
+#                       halves, and `sign`, the signer of this image's package set
+#   usrTree, initrd     the /usr tree (without the signed loader) and the initrd, as `unsigned`
+#                       names them
+#   signer              the signer program (lib/image/signer.nix)
+#   pkgs                the image's package set
+#   imageId, version    the system's /system name and version
+#   signWithTestKeys    { keys; pcrKeys ? keys; indexKeys ? keys; } → the release signed in the
+#                       store with throwaway keys, for tests and examples only
 #
-# The signed loader comes first: the /usr tree carries it (lib/image/loader.nix
-# loaderFragment), and the disk step checks that the ESP gets the same file.
-#
-# The key layout, the only one the chain reads, relative to `keys`:
-#   secureboot/db.key, secureboot/db.crt  sign the loader, the UKI and the verity root hash
-#                                         (the kernel checks that signature against the
-#                                         firmware db, docs/design/trust.md)
-#   pcr/pcr.key, pcr/pcr.pub              sign the PCR 11 policy; pcr.pub is the UKI's .pcrpkey
-#   release/index.key, release/index.pgp  sign SHA256SUMS (OpenPGP, armored secret); the binary
-#                                         public key is the image's keyring for Verify=yes
-# `pcrKeys` (default `keys`) is a second directory in the same layout, read for pcr/ only: a
-# db key rotation keeps the PCR key (image-smoke-test-rotated).
-#
-# How the private keys reach the sandboxed builder depends on the type of `keys`:
-#   - a path (./keys, /srv/keys): Nix copies the whole directory into the store, so the
-#     private keys sit in the build host's store, readable by every local user, until a
-#     garbage collection removes them. A remote builder gets a copy too.
-#   - a string ("/srv/golconda-keys"): nothing is copied; the builder reads the files where
-#     they are, so the daemon must let the sandbox see them (extra-sandbox-paths in the
-#     daemon's nix.conf, docs/reference/build-host.md). The derivations name only the path,
-#     so new keys under the same path do not rebuild anything: give new keys a new path.
-#   - a derivation (throwawayKeys): keys made in the store, for the smoke outputs only.
-# `smoke` (lib/image/smoke.nix) links its `keys`; only the image-smoke outputs use it.
+# The public halves, in scripts/make-keys' layout, are all the chain reads of a key set:
+#   secureboot/db.crt   the db certificate: the signer signs with its key; without Secure Boot
+#                       the kernel carries it (lib/system.nix verityCert)
+#   pcr/pcr.pub         the PCR policy key, the UKI's .pcrpkey
+#   release/index.pgp   the release key (binary OpenPGP), the image's keyring for Verify=yes
+# `publicKeys` names the directory: a path (./keys) or an absolute string ("/srv/keys"); each of
+# the three files is copied into the store alone, so a directory that holds the private keys too
+# copies none of them. Or a derivation of public halves (throwawayKeys …).public. `pcrPublicKeys`
+# and `indexPublicKeys` name other directories, read for pcr/ and release/ only: a db rotation
+# keeps the PCR key and the release key (image-smoke-test-rotated).
 {
   sources,
   mkSystem,
   imageLib,
 }:
-{
-  config,
-  keys,
-  pcrKeys ? keys,
-  indexKeys ? keys,
-  system ? builtins.currentSystem,
-}:
+args:
 let
-  # a relative string would name a path inside the build sandbox
-  absolute =
-    k:
-    if builtins.isString k && builtins.substring 0 1 k != "/" then
-      throw "golconda: mkImage: a key directory must be an absolute path, not '${k}'"
+  inherit (builtins)
+    baseNameOf
+    hasContext
+    isAttrs
+    isPath
+    isString
+    substring
+    ;
+  # the private-key forms of before: the keys never reach Nix now
+  refused =
+    if args ? keys || args ? pcrKeys || args ? indexKeys then
+      throw "golconda: mkImage reads no private key: give the public halves as publicKeys (and pcrPublicKeys, indexPublicKeys), and sign with `golconda release build` (docs/reference/release.md)"
     else
-      k;
-  checkedKeys = absolute keys;
-  # the configuration's downstream directories ([golconda]): its packages replace for the loader,
-  # the keyring and the initrd as for the system
+      args;
+  inherit (refused) config;
+  system = args.system or builtins.currentSystem;
+  publicKeys =
+    args.publicKeys
+      or (throw "golconda: mkImage needs publicKeys, the directory of the key set's public halves (docs/reference/outputs.md)");
+  pcrPublicKeys = args.pcrPublicKeys or publicKeys;
+  indexPublicKeys = args.indexPublicKeys or publicKeys;
+
+  # one public file of a key set: a path or an absolute string is copied alone; a derivation (of
+  # public halves) is named
+  publicFile =
+    dir: rel:
+    if isPath dir then
+      builtins.path {
+        path = dir + "/${rel}";
+        name = baseNameOf rel;
+      }
+    else if isAttrs dir || (isString dir && hasContext dir) then
+      "${dir}/${rel}"
+    else if isString dir && substring 0 1 dir == "/" then
+      builtins.path {
+        path = "${dir}/${rel}";
+        name = baseNameOf rel;
+      }
+    else
+      throw "golconda: mkImage: a key directory must be a path or an absolute string, not '${toString dir}'";
+  dbCert = publicFile publicKeys "secureboot/db.crt";
+  pcrPublicKey = publicFile pcrPublicKeys "pcr/pcr.pub";
+  indexPublicKey = publicFile indexPublicKeys "release/index.pgp";
+
+  # the configuration's downstream directories ([golconda]): its packages replace for the
+  # signer, the keyring and the initrd as for the system
   project = (import ../config.nix { tree = null; }).readProject config;
-  # the same set default.nix argsFun hands to `packages`: the loader is built before the system
+  # the same set default.nix argsFun hands to `packages`
   inherit
     (import ../../nix/packages.nix {
       inherit sources system;
@@ -64,56 +90,33 @@ let
     pkgs
     platform
     ;
-  sbKey = "${checkedKeys}/secureboot/db.key";
-  sbCert = "${checkedKeys}/secureboot/db.crt";
-  loader = imageLib.loader {
-    inherit
-      pkgs
-      platform
-      sbKey
-      sbCert
-      ;
-    buildSystem = system;
-  };
-  # the release key: its public half is the image's keyring, its secret half signs SHA256SUMS
-  indexDir = absolute indexKeys;
   indexKeyring = imageLib.indexKeyring {
     inherit pkgs;
     buildSystem = system;
-    publicKey = "${indexDir}/release/index.pgp";
+    publicKey = indexPublicKey;
   };
   sys = mkSystem {
     inherit system config;
     platform = system;
-    verityCert = sbCert;
+    verityCert = dbCert;
     extraFragments = [
-      (imageLib.loaderFragment { inherit loader platform; })
       (imageLib.indexFragment {
         keyring = indexKeyring;
         inherit pkgs;
       })
     ];
   };
-  args = {
+  stepArgs = {
     imageId = sys.name;
     inherit (sys) version platform pkgs;
     buildSystem = system;
   };
-  erofs = imageLib.erofs (args // { inherit (sys) usrTree; });
-  verity = imageLib.verity (
-    args
-    // {
-      inherit erofs;
-      key = sbKey;
-      cert = sbCert;
-    }
-  );
   initrd = imageLib.initrd (
-    args
+    stepArgs
     // {
       # not sys.usrTree
       usrTree = imageLib.initrdTree (
-        args
+        stepArgs
         // {
           packagesDir = project.packages;
           inherit (project) replaces;
@@ -122,61 +125,49 @@ let
       );
     }
   );
-  uki = imageLib.uki (
-    args
+  signer = imageLib.signer {
+    inherit pkgs;
+    buildSystem = system;
+  };
+  unsigned = imageLib.manifest (
+    stepArgs
     // {
-      inherit
-        initrd
-        verity
-        sbKey
-        sbCert
-        ;
       inherit (sys) usrTree;
-      pcrKey = "${absolute pcrKeys}/pcr/pcr.key";
-      pcrPublicKey = "${absolute pcrKeys}/pcr/pcr.pub";
-      # No cmdlineExtra: every image boots the production cmdline (image/uki.nix carries
-      # `rw`, so the root is writable before the ssh host key var runs). To watch a boot:
+      inherit initrd signer;
+      publicKeys = {
+        inherit dbCert pcrPublicKey;
+        indexKeyring = indexPublicKey;
+      };
+      # No cmdlineExtra: every image boots the production cmdline (image/uki.nix carries `rw`,
+      # so the root is writable before the ssh host key var runs). To watch a boot:
       # cmdlineExtra = "systemd.log_level=debug systemd.log_target=console
       # systemd.journald.forward_to_console=1";
-    }
-  );
-  disk = imageLib.disk (
-    args
-    // {
-      inherit
-        erofs
-        verity
-        uki
-        loader
-        ;
-      inherit (sys) usrTree;
-      indexKey = "${indexDir}/release/index.key";
     }
   );
 in
 {
   inherit
-    erofs
-    verity
+    unsigned
     initrd
-    uki
-    loader
-    disk
+    signer
     pkgs
     ;
-  # what sysupdate fetches: the four files and SHA256SUMS (docs/design/releases.md)
-  release = "${disk}/release";
-  smoke = imageLib.smoke (
-    args
-    // {
+  inherit (sys) usrTree version;
+  imageId = sys.name;
+  signWithTestKeys =
+    {
+      keys,
+      pcrKeys ? keys,
+      indexKeys ? keys,
+    }:
+    imageLib.signedWithTestKeys {
+      name = "${sys.name}_${sys.version}.test-signed";
       inherit
-        erofs
-        verity
-        initrd
-        uki
-        disk
+        unsigned
+        keys
+        pcrKeys
+        indexKeys
         ;
-      keys = checkedKeys;
-    }
-  );
+      buildSystem = system;
+    };
 }

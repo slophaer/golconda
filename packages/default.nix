@@ -38,9 +38,9 @@
   # build-time: the /usr image, the ESP and the UKI
   erofs-utils = ./erofs-utils;
   dosfstools = ./dosfstools;
-  # build-time: `ukify build` for the UKI (lib/image/uki.nix); off in the image's systemd
+  # build-time: `ukify build` for the UKI (the signer, lib/image/uki.nu); off in the image's systemd
   ukify = ./ukify;
-  # build-time: systemd-repart fills the ESP with mcopy/mmd (lib/image/disk.nix)
+  # build-time: systemd-repart fills the ESP with mcopy/mmd (the signer, lib/image/disk.nu)
   mtools = ./mtools;
   # build-time: systemd's and ukify's Python modules
   python-jinja2 = ./python-jinja2;

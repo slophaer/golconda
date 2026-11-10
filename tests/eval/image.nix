@@ -169,28 +169,43 @@ in
     # one text: the disk step's and the one /base installs in /usr
     && conf == (import ../../image).loader.conf
   ))
-  (check "image: the loader fragment puts the signed loader where bootctl looks" (
+  (check "image: the signer puts the signed loader where bootctl looks, and on the ESP" (
     let
       platform = {
         names.uefi = "x64";
       };
-      loader = {
-        type = "derivation";
-        outPath = "/loader-out";
-      };
-      frag = imageLib.loaderFragment { inherit loader platform; };
+      pkgs.systemd = "/systemd";
+      l = imageLib.loaderParams { inherit platform pkgs; };
       p = "/usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed";
     in
     # bootctl prefers <name>.efi.signed to the unsigned <name>.efi beside it
-    # (bootctl-install.c install_binaries); the store path enters the /usr closure
-    attrNames frag.links == [ p ]
+    # (bootctl-install.c install_binaries); the signer signs systemd's loader and puts it at
+    # usrPath in its copy of the /usr tree (lib/image/sign.nu)
+    imageLib.loaderUsrPath platform == p
+    && l.usrPath == "lib/systemd/boot/efi/systemd-bootx64.efi.signed"
+    && l.unsigned == "/systemd/lib/systemd/boot/efi/systemd-bootx64.efi"
     &&
-      frag.links.${p} == {
-        target = "/loader-out/systemd-bootx64.efi.signed";
-        kind = "explicit";
-      }
-    && frag.packages == [ loader ]
-    && imageLib.loaderUsrPath platform == p
+      l.espPaths == [
+        "EFI/systemd/systemd-bootx64.efi"
+        "EFI/BOOT/BOOTX64.EFI"
+      ]
+    && l.conf == imageLib.loaderConf
+  ))
+  (check "image: the signer's parameters come from the version, not from a key" (
+    let
+      a = {
+        imageId = "t";
+        version = "20261031.1";
+      };
+      e = imageLib.erofsParams a;
+      v = imageLib.verityParams a;
+    in
+    e.fileName == "t_20261031.1.usr.raw"
+    && e.epoch == imageLib.versionToEpoch "20261031.1"
+    && e.uuid == imageLib.uuidOfHex (imageLib.hexOf "t_20261031.1.usr.raw")
+    && v.hashFile == "t_20261031.1.usr-verity.raw"
+    && v.sigFile == "t_20261031.1.usr-verity-sig.raw"
+    && v.salt == imageLib.hexOf "t_20261031.1.usr-verity.raw"
   ))
   (check "image: the cmdline template has usrhash and rw, and no ro or volatile" (
     let

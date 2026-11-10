@@ -19,18 +19,19 @@ let
     };
     "/local/marker" = { };
   };
+  # the public halves of a key set, committed: the chain reads nothing else of a key set
+  publicKeys = ../fixtures/public-keys;
   image =
     config:
     f.lib.mkImage {
-      inherit config;
-      keys = "/tmp/golconda-test-keys";
+      inherit config publicKeys;
       system = "x86_64-linux";
     };
   keepsMarker =
     config:
     let
       i = image config;
-      tree = i.erofs.usrTree;
+      tree = i.usrTree;
       linkAt = path: builtins.head (builtins.filter (link: link.path == path) tree.links);
       keyring = linkAt "/usr/lib/systemd/import-pubring.pgp";
       expectedKeyring = (import ../../lib/image { }).indexKeyring {
@@ -42,13 +43,15 @@ let
           })
           pkgs
           ;
-        publicKey = "/tmp/golconda-test-keys/release/index.pgp";
+        publicKey = builtins.path {
+          path = publicKeys + "/release/index.pgp";
+          name = "index.pgp";
+        };
       };
     in
     tree.files.${marker}.text == "custom workload\n"
-    &&
-      (linkAt "/usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed").target
-      == "${i.loader}/systemd-bootx64.efi.signed"
+    # the signed loader is not in the tree Nix builds: the signer puts it there
+    && !(builtins.any (l: l.path == "/usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed") tree.links)
     && keyring.target == "${expectedKeyring}/import-pubring.pgp";
   duplicateConfig = config // {
     "/local/collision" = { };
@@ -60,7 +63,7 @@ in
       (
         name:
         let
-          tree = f.packages.x86_64-linux.${name}.erofs.usrTree;
+          tree = f.packages.x86_64-linux.${name}.unsigned.manifest.usrTree;
         in
         tree.files."/usr/lib/golconda/test-workload".text == "configured-workload\n"
         && tree.units ? "custom-workload.service"
@@ -88,11 +91,11 @@ in
   (check "mkImage: retains configured modules and image links from TOML" (
     keepsMarker ../fixtures/image-workload/server.toml
   ))
-  (check "mkImage: the loader, keyring and initrd use the downstream packages too" (
+  (check "mkImage: the signer, keyring and initrd use the downstream packages too" (
     let
       i = f.lib.mkImage {
         config = ../fixtures/downstream/server.toml;
-        keys = "/tmp/golconda-test-keys";
+        inherit publicKeys;
         system = "x86_64-linux";
       };
       initrdSys =
@@ -121,7 +124,7 @@ in
     && !(builtins.tryEval
       (f.lib.mkImage {
         config = ../fixtures/downstream-unlisted/server.toml;
-        keys = "/tmp/golconda-test-keys";
+        inherit publicKeys;
         system = "x86_64-linux";
       }).pkgs.openssh.version
     ).success
@@ -131,8 +134,7 @@ in
       image =
         config:
         f.lib.mkImage {
-          inherit config;
-          keys = "/tmp/golconda-test-keys";
+          inherit config publicKeys;
           system = "x86_64-linux";
         };
       replaced = image ../fixtures/downstream-initrd/server.toml;
@@ -149,6 +151,38 @@ in
     replaced.pkgs.tzdata.version == "0.0.4" && tree replaced != tree plain
   ))
   (check "mkImage: rejects a user claim on its keyring destination" (
-    !(builtins.tryEval (builtins.deepSeq (image duplicateConfig).erofs.usrTree.links true)).success
+    !(builtins.tryEval (builtins.deepSeq (image duplicateConfig).usrTree.links true)).success
+  ))
+  (check "mkImage: takes no private key; the unsigned outputs name only the public halves" (
+    let
+      i = image config;
+      m = i.unsigned.manifest;
+      refused =
+        args: !(builtins.tryEval (builtins.deepSeq (f.lib.mkImage args).unsigned.drvPath true)).success;
+      inStore = p: builtins.match "/nix/store/[a-z0-9]{32}-(db.crt|pcr.pub|index.pgp)" p != null;
+    in
+    # the private-key forms of before are refused, whatever the type
+    refused {
+      inherit config;
+      keys = "/srv/golconda-keys";
+      system = "x86_64-linux";
+    }
+    && refused {
+      inherit config publicKeys;
+      pcrKeys = ./.;
+      system = "x86_64-linux";
+    }
+    && refused {
+      inherit config;
+      publicKeys = "keys";
+      system = "x86_64-linux";
+    }
+    # each public half is copied alone, by its own name
+    && inStore m.publicKeys.dbCert
+    && inStore m.publicKeys.pcrPublicKey
+    && inStore m.publicKeys.indexKeyring
+    # the signer of this image's set, and the parameters from the version
+    && i.unsigned.signer == "${i.signer}"
+    && m.release.uki == "fragment-test_20261031.1.efi"
   ))
 ]

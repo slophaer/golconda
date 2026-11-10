@@ -26,3 +26,12 @@ half at test time, and signs the machine's host key with `snakeoil-host-ca` befo
 host certificate with `golconda vars`. To regenerate:
 `ssh-keygen -t ed25519 -N '' -C 'golconda-boot-test user CA' -f snakeoil-user-ca`, and the same for
 the host CA.
+
+## Public halves of an image key set
+
+`public-keys/` holds `secureboot/db.crt`, `pcr/pcr.pub` and `release/index.pgp` in the layout of
+`scripts/make-keys`, and nothing else: the private halves were deleted when the set was made. The
+eval tests in `tests/real-packages/image-config.nix` give the directory to `lib.mkImage` as
+`publicKeys`, which reads only these three files. Nothing signs with it; the test images sign with
+throwaway keys made in the store (`lib/image/default.nix` `throwawayKeys`). To regenerate, run
+`scripts/make-keys` into a scratch directory and copy the three files.

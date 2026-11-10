@@ -139,6 +139,15 @@ in
     touch $out
   '';
 
+  # the signer's key checks and signatures (tests/sign): a signature by the right key verifies
+  # with the public half, one by another key does not, a mismatched key set is refused. The Nu
+  # functions the signer runs (lib/image), under the seed's nu, with Golconda's openssl and gpg
+  image-signer = run "image-signer" [ rp.openssl rp.gnupg ] ''
+    export HOME=$TMPDIR
+    nu --no-config-file --include-path ${src}/lib/image ${src}/tests/sign/test.nu
+    touch $out
+  '';
+
   usr-tree-builder = import ../tests/usr-tree {
     inherit run src;
     tools = [

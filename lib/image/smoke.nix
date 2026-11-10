@@ -1,11 +1,12 @@
-# lib/image/smoke.nix: the whole chain in one output, with its proofs.
+# lib/image/smoke.nix: a test image in one output, with its proofs.
 #
-# smoke { erofs; verity; initrd; uki; disk; keys; imageId; version; buildSystem; pkgs; } →
-#   derivation: a symlink to each step's output (usr, verity, initrd, uki, disk, keys) and
-#   proof.txt, what the tools say about them: veritysetup verify, the first cpio entries, ukify
-#   inspect, the sizes, and repart's listing of the disk. The keys/ symlink points at the
-#   throwaway keys (secureboot/db.crt, pcr/pcr.pub) so scripts/boot-test can
-#   enrol them into OVMF vars. packages.image-smoke in nix/default.nix wires it.
+# smoke { unsigned; signed; keys; imageId; version; buildSystem; pkgs; } → derivation: a symlink
+#   to the unsigned outputs (`unsigned`, lib/image/manifest.nix), to the signed release (`disk`:
+#   disk.raw and release/, signedWithTestKeys) and to the public halves of the throwaway keys
+#   (`keys`: secureboot/db.crt and release/index.pgp, which scripts/boot-test enrols and
+#   compares), and proof.txt, what the tools say about them: veritysetup verify, the first cpio
+#   entries, ukify inspect, the sizes, and repart's listing of the disk. The test images in
+#   nix/default.nix wire it.
 _:
 let
   common = import ./common.nix { };
@@ -13,11 +14,8 @@ in
 {
   smoke =
     {
-      erofs,
-      verity,
-      initrd,
-      uki,
-      disk,
+      unsigned,
+      signed,
       keys,
       imageId,
       version,
@@ -39,15 +37,7 @@ in
         pkgs.tpm2-tss
       ];
       attrs = {
-        inherit
-          erofs
-          verity
-          initrd
-          uki
-          disk
-          keys
-          ;
-        stem = "${imageId}_${version}";
+        inherit unsigned signed keys;
       };
     };
 }
