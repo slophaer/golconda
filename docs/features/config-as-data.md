@@ -66,9 +66,9 @@ files. See [What is proven](../proven.md).
 
 ## Limits
 
-- **Diffing is *(after v1)*.** `golconda diff <a> <b>` would compare two `config.json` files. It
-  does not exist. The console's `golconda diff` of a document against git was removed with the
-  console ([Configuration: Diffing](../design/config.md#diffing-after-v1)).
+- **Diffing is *(later)*.** `golconda diff <a> <b>` would compare two `config.json` files. It does
+  not exist. The console's `golconda diff` of a document against git was removed with the console
+  ([Configuration: Diffing](../design/config.md#diffing-later)).
 - Nix stays necessary for a module of your own and a package that is not in the set
   ([Your own modules and packages](extending.md)).
 - korora hides the members of structs and enums, so the schema marks those types

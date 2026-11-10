@@ -151,7 +151,8 @@ Hetzner's paths, the lock only in the user data's `.network` file, no ssh key fr
 - **Enrolment on real firmware.** The harness enrols keys offline in the variable store. Hetzner
   Cloud has no Secure Boot.
 - **Hardware.** Only QEMU with OVMF on x86_64 has run, and Hetzner Cloud's QEMU with EDK II. aarch64
-  is postponed after v1 ([Scope](design/scope.md)), because no aarch64 package can be built here.
+  is postponed ([Scope: Later](design/scope.md#later)), because no aarch64 package can be built
+  here.
 - **Loader recovery by hand.** A loader that no longer starts, a lost ESP and a lost `db` key
   ([Boot loader: Recovery](design/bootloader.md#recovery)) have no marker. The rotation run has two
   releases, so it leaves out step 4 of the rotation.

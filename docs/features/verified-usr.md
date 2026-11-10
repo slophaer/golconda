@@ -56,7 +56,7 @@ cover the factory reset. See [What is proven](../proven.md).
 
 ## Limits
 
-- The state partition is unencrypted in v1. LUKS2 with TPM2 is *(after v1)*.
+- The state partition is unencrypted for now. LUKS2 with TPM2 is *(later)*.
 - A signature that does not verify does not stop `systemd-veritysetup`. It logs at info level and
   activates `/usr` unsigned. IPE then denies PID 1's re-exec and the boot stops at switch-root.
 - Both slots are fixed at 10 GiB, and each must hold any release.

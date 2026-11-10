@@ -169,7 +169,8 @@ again after `systemctl reboot` and after a power cycle, with the clock right fro
   not run.
 - The lock on `lo` covers `169.254.169.254` only. An endpoint on IPv6 (AWS also has `fd00:ec2::254`)
   is locked only while its link uses `85-imds-early.network`.
-- v1 names two credentials. `--credential` writes others, but the docs name no reader for them.
+- Two bootstrap credentials have a named reader (the table above). `--credential` writes others, but
+  the docs name no reader for them.
 
 ## More
 

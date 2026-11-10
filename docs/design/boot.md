@@ -17,7 +17,7 @@ sequenceDiagram
   UKI->>UKI: measure kernel, initrd, cmdline into PCR 11
   UKI->>IRD: start PID 1
   IRD->>IRD: gpt-auto: find usr by usrhash, verity-setup, signature check
-  IRD->>IRD: first boot: repart creates root, ext4, unencrypted in v1
+  IRD->>IRD: first boot: repart creates root, ext4, unencrypted for now
   IRD->>SYS: switch-root
   SYS->>SYS: firstboot, sysusers, tmpfiles (/etc links), vars, units
   SYS->>SYS: health units (network routable, sshd active)
@@ -89,7 +89,7 @@ network, reachability from outside the machine (firewall, NAT, the client side),
 login (authentication, the host key credential, `/etc/pam.d/sshd`, the listening socket).
 `is-active` proves that the sshd process runs, not that a login would succeed.
 
-What happens after a failure: the machine stays up but is not blessed, and nothing in v1 reboots it,
+What happens after a failure: the machine stays up but is not blessed, and nothing reboots it yet,
 so the counter falls only at the next boot. systemd-boot counts down `+3-0` → `+2-1` → `+1-2`; at
 `+0-3` the entry is bad and is no longer preferred. A second deployment entry on the ESP (the other
 `/usr` slot) is selected instead, which is the point of boot counting. Before the first update the
@@ -117,7 +117,7 @@ cmdline) and `timeout 0` (the menu does not wait); see [Boot loader](bootloader.
 change the unsigned configuration ([Trust](trust.md)). The cmdline carries `rw` and neither `ro` nor
 `systemd.volatile=` (`/` is the state partition; the initrd mounts it read-only unless the cmdline
 says `rw`, and gpt-auto's remount-rw drop-in takes effect only when `systemd-remount-fs.service`
-runs, late in boot). A debug image with other parameters is a separate build *(after v1)*.
+runs, late in boot). A debug image with other parameters is a separate build *(later)*.
 
 The ssh host key var unit seals its key in `/etc/credstore.encrypted` before
 `systemd-remount-fs.service` runs, so without `rw` it fails and sshd starts without a host key. `rw`
@@ -132,10 +132,10 @@ firmware `db` ([Kernel: IPE](kernel.md#ipe-integrity-policy-enforcement)).
 ## Serial console
 
 `console=ttyS0` gives output on the serial line, `console=tty0` on the local display. No getty runs
-on either: there is no local login path in v1 ([Trust: Identity](trust.md#identity)). Recovery from
-a machine that no longer answers over ssh is the other slot (boot counting, or a manual choice in
-the systemd-boot menu) or a reflash; [Recovery](recovery.md) states what each path can and cannot
-do, and [Boot loader: Recovery](bootloader.md#recovery) gives the loader steps.
+on either: there is no local login path ([Trust: Identity](trust.md#identity)). Recovery from a
+machine that no longer answers over ssh is the other slot (boot counting, or a manual choice in the
+systemd-boot menu) or a reflash; [Recovery](recovery.md) states what each path can and cannot do,
+and [Boot loader: Recovery](bootloader.md#recovery) gives the loader steps.
 
 ## Bootstrap credentials
 
@@ -199,7 +199,7 @@ no-ops ([Updates: Versions](updates.md#versions)).
 systemd-stub measures the UKI's parts into PCR 11. `systemd-measure` precomputes those values at
 build time and signs them; the signature travels in the UKI (`.pcrsig`). Credentials are sealed to
 the signing key, not to a PCR value, so a new signed image unseals them without re-enrolment.
-Firmware PCRs (0–7) are not part of the policy; locking them with `systemd-pcrlock` is *(after v1)*
+Firmware PCRs (0–7) are not part of the policy; locking them with `systemd-pcrlock` is *(later)*
 ([Trust: Rollback weakness](trust.md#rollback-weakness)).
 
 ## Secure Boot

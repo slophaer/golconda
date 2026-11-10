@@ -68,7 +68,7 @@ booted on the same markers as the throwaway set. Its next release installed over
 ## Limits
 
 - The signature does not stop a replay of an older signed index. sysupdate installs only newer
-  versions, and rollback protection is *(after v1)*.
+  versions, and rollback protection is *(later)*.
 - The image trusts only the release key it carries. Changing that key takes two releases.
 - No automated check runs `scripts/make-keys`. The string key directory is *(being built)*: no build
   uses it.

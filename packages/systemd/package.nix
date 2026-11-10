@@ -86,7 +86,7 @@ package {
     elfutils = "disabled"; # no coredump backtrace symbolization
     bpf-framework = "disabled"; # no BPF
     libidn2 = "disabled"; # no IDN
-    polkit = "disabled"; # run0 not in v1, root over ssh
+    polkit = "disabled"; # no run0 yet, root over ssh
 
     # === Enabled features ===
     pam = "enabled";
@@ -146,7 +146,7 @@ package {
 
     # === SSH drop-in ===
     # Install the 20-systemd-userdb.conf drop-in for sshd: enables nss-systemd for user lookup.
-    # Golconda has no userdb daemon in v1, but the drop-in is harmless and enables future use.
+    # Golconda has no userdb daemon yet, but the drop-in is harmless and enables future use.
     sshdconfdir = "/etc/ssh/sshd_config.d";
 
     # === util-linux libraries ===

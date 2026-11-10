@@ -30,9 +30,9 @@ the health units pass: `golconda-health-network.service` needs a routable link a
 ([Boot: Boot health](boot.md#boot-health)). `systemd-bless-boot-generator` adds the target only when
 the entry has a counter, so a blessed entry boots without them. A candidate that fails one of the
 health units is not blessed: `systemd-bless-boot.service` requires the target and never runs, the
-boot-counting suffix stays, and one of the three tries is used. Nothing in v1 reboots a machine
-whose health check failed, so the counter falls only at the next boot, and that boot is the
-operator's decision, not the system's.
+boot-counting suffix stays, and one of the three tries is used. Nothing reboots a machine whose
+health check failed, so the counter falls only at the next boot, and that boot is the operator's
+decision, not the system's.
 
 systemd-boot decrements `+3-0` → `+2-1` → `+1-2` on each attempt. At `+0-3` the entry has no tries
 left and systemd-boot prefers another entry that has. This is the fallback that boot counting exists
@@ -101,7 +101,7 @@ image is written to the disk directly ([Image artifacts](../reference/image.md))
 | automatic reboot of a candidate | a failed health check leaves the machine up; an operator must reboot it                                                                                   |
 | a remote recovery channel       | no out-of-band agent; if sshd or the network is the failing unit, ssh cannot be used                                                                      |
 | loader repair without a boot    | the loader is updated after a good boot; one that no longer starts needs the firmware menu or a reflash ([Boot loader: Recovery](bootloader.md#recovery)) |
-| LUKS recovery                   | no encrypted state in v1, so no unlock prompt to recover                                                                                                  |
+| LUKS recovery                   | no encrypted state yet, so no unlock prompt to recover                                                                                                    |
 
 Recovery that needs the machine to answer is designed around the one channel that exists, ssh as
 root with a certificate ([Identity](trust.md#identity)). Everything else is local or a reflash.

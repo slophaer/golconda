@@ -56,7 +56,7 @@ build host's toolchain; `/pkgs.build` is the host's set for tools that run on th
 `/usr` tree, os-release and every package output belong to the target; the derivation's `system` is
 the build host where the build runs. The wiring exists, but Golconda exposes OS outputs only where
 its kernel is supported, which today is x86_64: no aarch64 `/usr` tree or image is built
-([Scope](scope.md#after-v1)). aarch64 is *(after v1)*.
+([Scope](scope.md#later)). aarch64 is *(later)*.
 
 ## Set-wide features
 

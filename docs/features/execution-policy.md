@@ -54,7 +54,7 @@ tests check the command line, the kernel options and the policy text.
 ## Limits
 
 - Phase 2, the BPF LSM for `RestrictFileSystems=`, and phase 3, AppArmor profiles from the typed
-  service, are *(after v1)*. `CONFIG_BPF_LSM=y` is on, nothing uses it yet. SELinux is rejected.
+  service, are *(later)*. `CONFIG_BPF_LSM=y` is on, nothing uses it yet. SELinux is rejected.
 - A rotated `db` key needs new images and new firmware enrolment.
 - Without Secure Boot, whoever can write the ESP can replace the kernel and so the key that checks
   `/usr` ([Secure Boot and measured boot](measured-boot.md)).

@@ -71,7 +71,7 @@ counting has markers too (`fallback-to-old-slot`).
   firmware to use it.
 - A loader that no longer starts needs the firmware menu at a console or a reflash. The lost-ESP and
   lost-`db`-key cases have no marker.
-- No LUKS recovery: the state partition is not encrypted in v1.
+- No LUKS recovery: the state partition is not encrypted yet.
 - No installer and no network install. Reflash writes the disk image to the disk.
 
 ## More

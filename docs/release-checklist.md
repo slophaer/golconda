@@ -1,13 +1,15 @@
-# The v1 checklist
+# The release checklist
 
-v1 is done when every item under [Prove](#prove) and [Build](#build) is checked. Each item names the
-test that checks it. [Scope](design/scope.md) says which features v1 has;
+v0.1 is the first release this checklist describes.
+
+A release is done when every item under [Prove](#prove) and [Build](#build) is checked. Each item
+names the test that checks it. [Scope](design/scope.md) says which features the release has;
 [What is proven](proven.md) lists the boot-test markers that pass today. This page is the gap
 between them.
 
-## What v1 means
+## What a release means
 
-A v1 image can run a real server unattended:
+An image of the release can run a real server unattended:
 
 - an operator can log in with a certificate, and nobody can log in without one;
 - an update installs, and a bad one rolls back, with no secret lost on the way;
@@ -99,15 +101,15 @@ together: the endpoint `169.254.169.254` stays locked, the update source `169.25
 reachable. Each boot checks the clock (`clock-not-reset`): the first boot, and each later one under
 its own name (after the reboot, the update, the fallback and the refused update).
 
-## After v1
+## Later
 
-Wanted, but not needed for v1:
+Wanted, but not needed for v0.1:
 
-- a first-boot enrolment unit before sshd (host key, certificate and KRL in one flow): v1 uses the
+- a first-boot enrolment unit before sshd (host key, certificate and KRL in one flow): v0.1 uses the
   two-release bootstrap of [Trust: Identity](design/trust.md#identity), which the boot test runs;
 - `golconda diff` between two built images, by their `config.json`: no diff tool exists; the
   console's diff of a document against git left with the console
-  ([Configuration: Diffing](design/config.md#diffing-after-v1));
+  ([Configuration: Diffing](design/config.md#diffing-later));
 - automatic Secure Boot enrolment (manual enrolment works);
 - the p11-kit CA store with anchors and a distrust list
   ([Trust: CA store](design/trust.md#3-ca-store)): the Mozilla bundle covers a server that talks to
@@ -120,7 +122,7 @@ Wanted, but not needed for v1:
   release no longer ships;
 - loader recovery by hand and a boot without the `db` enrolled
   ([Boot loader: Recovery](design/bootloader.md#recovery)): documented, no marker;
-- everything [Scope](design/scope.md#after-v1) lists after v1.
+- everything [Scope](design/scope.md#later) lists under Later.
 
-Internal work that does not change what v1 is: a build daemon run as a service, and splitting
-`scripts/boot-test`.
+Internal work that does not change what the release is: a build daemon run as a service, and
+splitting `scripts/boot-test`.

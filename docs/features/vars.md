@@ -89,10 +89,10 @@ list (`krl-rotated`).
 ## Limits
 
 - **Rollback.** Any image signed with the same PCR 11 key unseals the credentials. Someone with an
-  older, vulnerable image can boot it and read the secrets. The fixes are *(after v1)*: pcrlock, key
+  older, vulnerable image can boot it and read the secrets. The fixes are *(later)*: pcrlock, key
   rotation, policyref, a TPM counter.
 - **One secret.** The sshd host key is the only sealed secret. The state partition is not encrypted
-  in v1.
+  yet.
 - **TPM loss.** A sealed credential dies with its TPM. That is why admin values live on the deploy
   host.
 - Without a TPM2, a local var seals to the host key only.

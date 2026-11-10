@@ -1,6 +1,6 @@
 # shellcheck shell=sh
 # Part of scripts/boot-test, sourced by it (no processes start when sourced).
-# The checks: each is one function that every mode that needs it calls (docs/v1.md).
+# The checks: each is one function that every mode that needs it calls (docs/release-checklist.md).
 # shellcheck disable=SC2154 # the globals are set by scripts/boot-test and the other parts
 # shellcheck disable=SC2034 # and read there
 

@@ -81,7 +81,7 @@ failed with the default paths off. No boot-test marker covers them. The signed i
 - No check lists every library in the closure. Only the rules above are mechanical, and the rest is
   review.
 - OpenSSL is the TLS stack, but rustls is tolerated in Rust-only tools.
-- The CA store has Mozilla roots only. Administrator anchors and a distrust list are *(after v1)*.
+- The CA store has Mozilla roots only. Administrator anchors and a distrust list are *(later)*.
 - Build-only tools sit outside the rule. Python, Perl and GNU coreutils help build the image and are
   not in it.
 

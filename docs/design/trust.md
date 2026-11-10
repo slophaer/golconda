@@ -8,10 +8,9 @@ own copy of any of them:
    TPM2-sealed credentials are bound to. Signed in the image chain today (the smoke uses throwaway
    keys) and proven in a boot test with `--secure-boot`, where firmware enforces Secure Boot
    (`secure-boot-enabled`) and refuses a loader whose key is in `dbx` (`old-loader-refused`);
-   enrolment is manual and automatic enrolment is *(after v1)*
-   ([Deployment keys](#deployment-keys)).
+   enrolment is manual and automatic enrolment is *(later)* ([Deployment keys](#deployment-keys)).
 1. **The verity signing key** decides *what is read*: it signs the root hash of every `/usr` image.
-   In v1 it is the Secure Boot `db` key, and the kernel checks the signature against the firmware
+   Today it is the Secure Boot `db` key, and the kernel checks the signature against the firmware
    `db` at every boot; without Secure Boot, against the same certificate built into the kernel
    ([status](#2-verity-key)).
 1. **The CA store** decides *whom the machine talks to*: one bundle, cacert's Mozilla roots, for
@@ -174,7 +173,7 @@ failed with error 20 ("unable to get local issuer certificate"), so the success 
 paths and not from a file the test named. The image installs no TLS client binary; the check used
 the store's `openssl` on the held machine.
 
-The p11-kit design is *(after v1)*, not the current store: a factory `anchors`/`blocklist` pair, a
+The p11-kit design is *(later)*, not the current store: a factory `anchors`/`blocklist` pair, a
 `trust extract` unit that rewrites a hashed `/etc/ssl/certs` directory, and root-level distrust that
 works across TLS stacks. The factory today seeds only the empty directories (`ssl/anchors/.keep`,
 `ssl/blocklist/.keep`, [reference: /factory](../reference/modules/README.md)), and no unit runs
@@ -266,14 +265,14 @@ Rotation and recovery:
 
 Who may log in is decided outside the image. People hold short-lived OpenSSH certificates from a CA
 on another host, and the image ships only the CA's public key and the allowed principals per user.
-In v1 the CA is step-ca with an OIDC provisioner, out of the image: the server needs no agent, and
-the CA pushes host certificates and the revocation list as admin vars. The alternative with a
-verifier on the server (`AuthorizedKeysCommand` fetching the identity provider's keys at login) is
-acceptable later for always-online hosts.
+The CA is step-ca with an OIDC provisioner, out of the image: the server needs no agent, and the CA
+pushes host certificates and the revocation list as admin vars. The alternative with a verifier on
+the server (`AuthorizedKeysCommand` fetching the identity provider's keys at login) is acceptable
+later for always-online hosts.
 
-There are no per-human accounts in v1: an operator logs in as root, and the certificate principal
-and key id in sshd's log (`LogLevel VERBOSE`) are the identity for audit. Plain `authorizedKeys`
-exist for bootstrap. A hardware second factor (FIDO2, `sk-ssh-ed25519`) is client-side policy: the
+There are no per-human accounts yet: an operator logs in as root, and the certificate principal and
+key id in sshd's log (`LogLevel VERBOSE`) are the identity for audit. Plain `authorizedKeys` exist
+for bootstrap. A hardware second factor (FIDO2, `sk-ssh-ed25519`) is client-side policy: the
 certificate signs a FIDO2 key and the server needs nothing extra. No local login exists: no getty,
 no password, no rescue shell ([Boot: Serial console](boot.md#serial-console)).
 
@@ -306,12 +305,12 @@ The ESP helper can supply named credentials before boot, but uses null-key encry
 unavailable with Secure Boot and TPM2 together
 ([Bootstrap credentials](boot.md#bootstrap-credentials)). An enrollment service ordered before sshd
 could instead generate the host key, obtain its certificate and install the revocation list in one
-first-boot flow. That service is *(after v1)*. Do not make revocation checking optional to bypass
-the delivery constraint.
+first-boot flow. That service is *(later)*. Do not make revocation checking optional to bypass the
+delivery constraint.
 
-After v1: operators as `/usr/lib/userdb/*.user` records with `run0` gated by polkit on a few action
-ids (a root-less image), and one CA for SSH and X.509 with TPM device attestation (workload
-identity). Both are designed, not built *(after v1)*.
+Later: operators as `/usr/lib/userdb/*.user` records with `run0` gated by polkit on a few action ids
+(a root-less image), and one CA for SSH and X.509 with TPM device attestation (workload identity).
+Both are designed, not built *(later)*.
 
 ## TPM2 credential decryption
 
@@ -319,7 +318,7 @@ Sealed today: the sshd host key, and nothing else. `golconda-var-sshd-hostkey.se
 `/usr/lib/golconda/golconda-var-run`, which calls
 `systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11 --name=sshd-hostkey.key` and writes
 `/etc/credstore.encrypted/sshd-hostkey.key`; sshd loads it with `LoadCredentialEncrypted=`. It is
-the only local var in the image. Not sealed: the state partition (unencrypted in v1, no LUKS), the
+the only local var in the image. Not sealed: the state partition (unencrypted for now, no LUKS), the
 machine-id (a plain file PID 1 writes), the admin vars (the host certificate and the revocation list
 are sealed once `golconda vars push` delivers them, see [Secrets and vars](#secrets-and-vars)), and
 administrator credentials for the machine itself.
@@ -348,7 +347,7 @@ both are signed. `lib/image/uki.nu` recomputes each path's PCR 11 policy digest 
 ### Rollback weakness
 
 Any image signed by the same PCR 11 key unseals credentials sealed for that key. An attacker who
-obtains an older, vulnerable image can boot it and decrypt secrets. Mitigations, all *(after v1)*:
+obtains an older, vulnerable image can boot it and decrypt secrets. Mitigations, all *(later)*:
 
 - **pcrlock** (systemd 256+): binds to the exact PCR values of one image. A rollback fails because
   the old image's PCRs do not match.

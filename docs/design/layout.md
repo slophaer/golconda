@@ -11,7 +11,7 @@ block-beta
   esp["ESP\nsystemd-boot, UKIs"]:1
   ua["usr-a\nerofs"]:2 uav["verity"]:1 uas["sig"]:1
   ub["usr-b\nerofs"]:2 ubv["verity"]:1 ubs["sig"]:1
-  root["root: ext4 · /etc /var /home · created on first boot, grows to the disk (unencrypted in v1, LUKS2+TPM2 later)"]:8
+  root["root: ext4 · /etc /var /home · created on first boot, grows to the disk (unencrypted for now, LUKS2+TPM2 later)"]:8
 ```
 
 ## `/usr`

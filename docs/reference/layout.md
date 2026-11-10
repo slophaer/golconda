@@ -5,14 +5,14 @@ The exact on-disk layout. Type GUIDs are the Discoverable Partitions Specificati
 
 ## Partitions
 
-| label                                       | type             | filesystem | flags                 | size                                                                              |
-| ------------------------------------------- | ---------------- | ---------- | --------------------- | --------------------------------------------------------------------------------- |
-| `esp`                                       | `esp`            | vfat       | —                     | 512 MiB                                                                           |
-| `usr-a`                                     | `usr`            | erofs      | read-only             | 10 GiB; the erofs image inside is much smaller                                    |
-| `usr-a-verity`                              | `usr-verity`     | —          | read-only             | 128 MiB                                                                           |
-| `usr-a-verity-sig`                          | `usr-verity-sig` | —          | read-only             | 16 KiB                                                                            |
-| `usr-b`, `usr-b-verity`, `usr-b-verity-sig` | as above         |            |                       | the same sizes as A, empty until the first update                                 |
-| `root`                                      | `root`           | ext4       | growfs, factory-reset | the rest of the disk, created on first boot (unencrypted in v1, LUKS2+TPM2 later) |
+| label                                       | type             | filesystem | flags                 | size                                                                                |
+| ------------------------------------------- | ---------------- | ---------- | --------------------- | ----------------------------------------------------------------------------------- |
+| `esp`                                       | `esp`            | vfat       | —                     | 512 MiB                                                                             |
+| `usr-a`                                     | `usr`            | erofs      | read-only             | 10 GiB; the erofs image inside is much smaller                                      |
+| `usr-a-verity`                              | `usr-verity`     | —          | read-only             | 128 MiB                                                                             |
+| `usr-a-verity-sig`                          | `usr-verity-sig` | —          | read-only             | 16 KiB                                                                              |
+| `usr-b`, `usr-b-verity`, `usr-b-verity-sig` | as above         |            |                       | the same sizes as A, empty until the first update                                   |
+| `root`                                      | `root`           | ext4       | growfs, factory-reset | the rest of the disk, created on first boot (unencrypted for now, LUKS2+TPM2 later) |
 
 The slots are fixed at 10 GiB so an update of a grown image always fits; both slots must hold any
 release. The image builder sets the verity partitions to one fixed size as well (128 MiB,

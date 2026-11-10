@@ -64,16 +64,16 @@ directories to a booted machine.
 
 The docs say what a feature does. A claim that no test proves carries exactly one marker:
 
-| marker          | means                                                                     |
-| --------------- | ------------------------------------------------------------------------- |
-| *(planned)*     | designed, no code yet                                                     |
-| *(being built)* | code exists on `main`, but no test proves it, or the code is not complete |
-| *(after v1)*    | deliberately not in v1; [Scope](docs/design/scope.md#after-v1) lists it   |
+| marker          | means                                                                                              |
+| --------------- | -------------------------------------------------------------------------------------------------- |
+| *(planned)*     | designed, no code yet                                                                              |
+| *(being built)* | code exists on `main`, but no test proves it, or the code is not complete                          |
+| *(later)*       | deliberately not in the current release; listed in [Scope](docs/design/scope.md#later) under Later |
 
 A claim without a marker is proven: [What is proven](docs/proven.md) names the boot-test marker or
 the run that shows it. Anyone may remove a marker, but only in the commit that adds the test that
-proves the claim, and that commit names the test in `docs/proven.md`. An *(after v1)* item moves
-into v1 only when the owner changes [Scope](docs/design/scope.md).
+proves the claim, and that commit names the test in `docs/proven.md`. A *(later)* item moves into
+the current release only when the owner changes [Scope](docs/design/scope.md).
 
 **Unverified** in bold marks a fact about something outside this repository, such as a build host's
 daemon or a machine's own firmware, that no test here has shown. It is not a feature marker.

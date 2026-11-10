@@ -4,7 +4,7 @@
 
 [What is proven](proven.md)
 
-[The v1 checklist](v1.md)
+[The release checklist](release-checklist.md)
 
 # Features
 

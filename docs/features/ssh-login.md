@@ -7,8 +7,8 @@ the machine and gives a revocation path.
 
 ## How it works
 
-- **The CA is outside the image.** In v1 it is step-ca with an OIDC provisioner (login through an
-  identity provider). The server runs no agent.
+- **The CA is outside the image.** It is step-ca with an OIDC provisioner (login through an identity
+  provider). The server runs no agent.
 - **The image carries two public things.** `TrustedUserCAKeys` points at `/usr/lib/sshd/ca.pub`.
   `AuthorizedPrincipalsFile` points at `/usr/lib/sshd/principals/%u`, the names a certificate may
   carry to log in as that user.
@@ -21,7 +21,7 @@ the machine and gives a revocation path.
 - **PAM does account and session only.** `/etc/pam.d/sshd` has no `auth` line, and
   `/etc/pam.d/other` denies every type. linux-pam ships without `unix_chkpwd`, and the image has no
   setuid binary (the build checks this). A non-root process cannot verify a password at all.
-- **Root only in v1.** There are no per-human accounts. `LogLevel VERBOSE` writes the certificate
+- **Root only, for now.** There are no per-human accounts. `LogLevel VERBOSE` writes the certificate
   principal and key id to the log, and that is the audit trail.
 - **No local login.** No getty, no password, no rescue shell. The serial console (`console=ttyS0`)
   is output only. `golconda-health-sshd.service` fails unless sshd is active, so the machine never
@@ -69,9 +69,9 @@ pushes the host certificate and a revocation list, and the next release, which t
   only channel, start with `authorizedKeys`, push the credentials with `golconda vars push`, then
   enable both options in the next release.
 - The host certificate needs the host key first: the machine makes its key, then the CA signs it. An
-  enrolment service that does both at first boot is *(after v1)*.
-- A password-less root is the only account. Per-operator records with `run0` and polkit are *(after
-  v1)*.
+  enrolment service that does both at first boot is *(later)*.
+- A password-less root is the only account. Per-operator records with `run0` and polkit are
+  *(later)*.
 - A hardware second factor (FIDO2) is client policy: the CA signs a FIDO2 key.
 
 ## More

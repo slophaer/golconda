@@ -80,8 +80,8 @@ The boot test proves this in QEMU with OVMF ([What is proven](../proven.md)):
   up and unblessed until you fill the other slot.
 - The machine supports no downgrade except the boot-counting fallback. `golconda release` refuses a
   version that does not increase before it is built or published.
-- Nothing stops an older image signed by the same key from booting. Rollback protection is *(after
-  v1)*.
+- Nothing stops an older image signed by the same key from booting. Rollback protection is
+  *(later)*.
 - The tests use plain HTTP in QEMU. HTTPS from a real update server ran by hand on Hetzner Cloud
   ([What is proven](../proven.md#on-hetzner-cloud)); it has no marker. The timer and real hardware
   have none either.

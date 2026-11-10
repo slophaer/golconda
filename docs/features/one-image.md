@@ -65,7 +65,7 @@ ESP). `hostkey-sealed-with-tpm2` checks the sealed host key. See [What is proven
   SMBIOS or fw_cfg there.
 - `authorizedKeys` in the document goes into the image for every machine. Leave it out when machines
   must differ.
-- Nix on the machine, for debugging, is *(after v1)* as a separate debug image.
+- Nix on the machine, for debugging, is *(later)* as a separate debug image.
 - Only x86_64 under QEMU has run.
 
 ## More

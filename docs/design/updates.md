@@ -117,7 +117,7 @@ links. The service environment may have no `PATH`, so the script uses `/usr/bin/
 The unit does not remove an enable link for a unit that the new release no longer ships; such a link
 stays and is ignored by PID 1. Cleaning those links is not designed.
 
-## Rollback protection *(after v1)*
+## Rollback protection *(later)*
 
 Nothing stops an attacker with an older image signed by the same key from booting it; see
 [Trust: Rollback weakness](trust.md#rollback-weakness).
