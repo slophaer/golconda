@@ -1,3 +1,6 @@
+Find bin/trust and libexec/p11-kit next to the running executable, not
+under the compiled-in prefix, so the package can move; add --version.
+
 diff -ru a/common/options.c b/common/options.c
 --- a/common/options.c
 +++ b/common/options.c

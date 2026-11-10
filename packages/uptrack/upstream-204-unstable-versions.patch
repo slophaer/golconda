@@ -1,3 +1,8 @@
+uptrack: support unstable versions (branch heads, ?branch=), from the
+open upstream pull request.
+
+Upstream: https://github.com/Mic92/repkgs/pull/204
+
 diff --git a/docs/uptrack.md b/docs/uptrack.md
 index b0b84f5dd..1c8e9dcfd 100644
 --- a/docs/uptrack.md

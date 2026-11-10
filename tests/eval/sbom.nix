@@ -79,6 +79,7 @@ let
   };
   plain = name: builtins.head (builtins.filter (c: c.name == name) ordinary.sbom.bom.components);
   patchesOf = c: c.pedigree.patches or [ ];
+  sbomPatches = import ../../lib/sbom-patches.nix { };
   # a patch as the SBOM carries it: the file (relative to the package directory) and its text
   patchFile = pkg: file: {
     url = file;
@@ -245,6 +246,28 @@ in
         {
           type = "enhancement";
           name = "SIGWINCH does not exist on Windows (msys2 MINGW-packages).";
+        }
+      ]
+  ))
+  (check "sbom: each Golconda patch says why in its header, and an upstream link is a reference" (
+    let
+      golcondaPatched = [
+        "gnupg"
+        "libgpg-error"
+        "p11-kit"
+        "systemd"
+        "uptrack"
+      ];
+      patches = builtins.concatMap (n: sbomPatches.of fixture.pkgs.${n}) golcondaPatched;
+    in
+    builtins.length patches == 7
+    && builtins.all (p: p ? resolves) patches
+    &&
+      (builtins.head (sbomPatches.of fixture.pkgs.uptrack)).resolves == [
+        {
+          type = "enhancement";
+          name = "uptrack: support unstable versions (branch heads, ?branch=), from the open upstream pull request.";
+          references = [ "https://github.com/Mic92/repkgs/pull/204" ];
         }
       ]
   ))

@@ -1,3 +1,7 @@
+Find gpg-agent and the helpers next to the running executable, not by
+compiled-in paths, so the package can move; give a spawned helper its
+full path as argv[0], so a launcher can find itself.
+
 --- a/common/homedir.c
 +++ b/common/homedir.c
 @@ -620,10 +620,27 @@
