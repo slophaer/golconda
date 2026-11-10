@@ -103,15 +103,18 @@ run() {
   set -e
 }
 
-# 1 a clean tree passes lint, image and boot, in that order, and says what it tested
+# 1 a clean tree passes lint, image, the initrd's second build and boot, in that order, and says
+#   what it tested
 run scripts/verify
 [ $rc = 0 ] || fail "clean run exited $rc: $out"
 echo "$out" | grep -q "verify $head, repkgs 245843b" || fail "no commit and pin line: $out"
-for s in lint image boot; do
+for s in lint image initrd-reproducible boot; do
   echo "$out" | grep -qE "^PASS $s [0-9]+s$" || fail "no PASS line for $s: $out"
 done
 order=$(cut -d' ' -f1 "$CALLS" | tr '\n' ' ')
-[ "$order" = "nix-shell nix-build boot-test " ] || fail "steps out of order: $order"
+[ "$order" = "nix-shell nix-build nix-build boot-test " ] || fail "steps out of order: $order"
+grep -q 'nix-build -A packages\.[a-z0-9_]*-linux\.initrd-reproducible -o result-verify-initrd-reproducible$' "$CALLS" ||
+  fail "the initrd's second build did not run: $(cat "$CALLS")"
 grep -q 'nix-build -A packages\.[a-z0-9_]*-linux\.image-smoke-test -o result-verify' "$CALLS" ||
   fail "image not built to result-verify: $(cat "$CALLS")"
 grep -q "boot-test $WORK/images/image-smoke-test/disk/disk.raw --keys $WORK/images/image-smoke-test/keys --secure-boot --ssh-test --tpm --timeout 300" "$CALLS" ||
@@ -237,7 +240,7 @@ grep -q '@next' "$CALLS" && fail "@next left in a boot-test call: $(cat "$CALLS"
 rm -f "$WORK/boot-env"
 run scripts/verify --boot-set '--timeout 1' --boot-set '--timeout 2'
 [ "$(sort -u "$WORK/boot-env")" = "golconda=unset path=$PATH_HEAD" ] || fail "BOOT_TEST_GOLCONDA set without @next: $(cat "$WORK/boot-env")"
-[ "$(grep -c '^nix-build' "$CALLS")" = 1 ] || fail "built the next image without @next: $(cat "$CALLS")"
+[ "$(grep -c '^nix-build' "$CALLS")" = 2 ] || fail "built the next image without @next: $(cat "$CALLS")"
 run scripts/verify --no-boot --boot-set '--next @next'
 grep -q 'result-verify-next' "$CALLS" && fail "built the next image despite --no-boot"
 run scripts/verify --image image-smoke-test-nosb --boot-args '--ssh-test --next @next --timeout 480'
@@ -262,11 +265,12 @@ run scripts/verify --boot-set '@image=image-nosb --ssh-test --timeout 1' --boot-
 [ $rc = 0 ] || fail "@image run exited $rc: $out"
 for a in image-smoke-test:result-verify image-nosb:result-verify-image-nosb \
   image-smoke-test-next:result-verify-next image-nosb-next:result-verify-image-nosb-next \
-  golconda-cli:result-verify-golconda-cli age:result-verify-age; do
+  golconda-cli:result-verify-golconda-cli age:result-verify-age \
+  initrd-reproducible:result-verify-initrd-reproducible; do
   [ "$(grep -c "^nix-build -A packages\\.[a-z0-9_]*-linux\\.${a%%:*} -o ${a#*:}\$" "$CALLS")" = 1 ] ||
     fail "${a%%:*} not built once to ${a#*:}: $(cat "$CALLS")"
 done
-[ "$(grep -c '^nix-build' "$CALLS")" = 6 ] || fail "want 6 builds: $(cat "$CALLS")"
+[ "$(grep -c '^nix-build' "$CALLS")" = 7 ] || fail "want 7 builds: $(cat "$CALLS")"
 for s in image image:image-nosb image-next image-next:image-nosb; do
   echo "$out" | grep -qE "^PASS $s [0-9]+s\$" || fail "no PASS line for $s: $out"
 done
@@ -289,12 +293,12 @@ done
 # sets' images and no next image
 run scripts/verify --boot-set '@image=image-nosb --timeout 1'
 [ $rc = 0 ] || fail "@image-only run exited $rc: $out"
-[ "$(grep '^nix-build' "$CALLS" | sed 's/.*\.\([^ .]*\) -o .*/\1/' | tr '\n' ' ')" = "image-nosb " ] ||
-  fail "want image-nosb built alone: $(cat "$CALLS")"
+[ "$(grep '^nix-build' "$CALLS" | sed 's/.*\.\([^ .]*\) -o .*/\1/' | tr '\n' ' ')" = "image-nosb initrd-reproducible " ] ||
+  fail "want image-nosb built alone, then the initrd's second build: $(cat "$CALLS")"
 run scripts/verify --no-boot --boot-set '@image=image-nosb --next @next' --boot-set '--timeout 1'
 [ $rc = 0 ] || fail "--no-boot with @image exited $rc: $out"
-[ "$(grep '^nix-build' "$CALLS" | sed 's/.*\.\([^ .]*\) -o .*/\1/' | sort | tr '\n' ' ')" = "image-nosb image-smoke-test " ] ||
-  fail "--no-boot: want both images and no next image: $(cat "$CALLS")"
+[ "$(grep '^nix-build' "$CALLS" | sed 's/.*\.\([^ .]*\) -o .*/\1/' | sort | tr '\n' ' ')" = "image-nosb image-smoke-test initrd-reproducible " ] ||
+  fail "--no-boot: want both images, the initrd's second build and no next image: $(cat "$CALLS")"
 grep -q boot-test "$CALLS" && fail "booted despite --no-boot"
 # a failed build of one image stops the run before any boot
 FAKE_IMAGE=image-nosb run scripts/verify --boot-set '--timeout 1' --boot-set '@image=image-nosb --timeout 1'

@@ -1,7 +1,8 @@
 #!/bin/sh
 # scripts/verify: is this commit good? Lint (scripts/lint in the dev shell: iets, the checks, the
-# treefmt check among them), build an image, boot it with scripts/boot-test; stop at the first
-# failure. Run it through the build queue on a shared host (qbuild -g vm verify --
+# treefmt check among them), build an image, build the test image's initrd a second time
+# (packages.<system>.initrd-reproducible: the same bytes), boot it with scripts/boot-test; stop at
+# the first failure. Run it through the build queue on a shared host (qbuild -g vm verify --
 # scripts/verify); a step's output goes to stdout.
 #
 #   scripts/verify [-C DIR] [--image ATTR] [--boot-args ARGS | --boot-set ARGS...] [--no-boot]
@@ -200,6 +201,9 @@ fi
 for a in $images; do
   step "$(label image "$a")" nix-build -A "packages.$system.$a" -o "$(link "$a")" || finish 1
 done
+# the test image's initrd, built again from the same derivation, is the same bytes
+step initrd-reproducible nix-build -A "packages.$system.initrd-reproducible" \
+  -o result-verify-initrd-reproducible || finish 1
 [ $boot = 1 ] || finish 0
 # resolve PATH: PATH with every symlink on the way followed, a target in /nix/store looked up
 # under $BOOT_TEST_STORE_ROOT (boot-test itself follows only a final link)

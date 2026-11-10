@@ -99,6 +99,9 @@ in
 
       # Boot test image: see nix/test-config.nix.
       testConfig = import ./test-config.nix;
+      smokeTest = testImage {
+        config = testConfig { version = "20261031.1"; };
+      };
 
       # The test image for a host without Secure Boot (Hetzner Cloud): the kernel carries
       # the db certificate (/system.secureBoot = false); scripts/boot-test runs it on plain OVMF.
@@ -167,10 +170,32 @@ in
       image-smoke-signer = imageSmoke.signer;
       image-smoke-signed = imageSmoke.signed;
 
-      image-smoke-test =
-        (testImage {
-          config = testConfig { version = "20261031.1"; };
-        }).smoke;
+      image-smoke-test = smokeTest.smoke;
+
+      # The test image's initrd is bit-reproducible: Nix builds its derivation again, with one
+      # variable more that lib/image/initrd.nu does not read, and the two initrd.cpio.zst are the
+      # same bytes. When they differ, tests/initrd/newc-diff.py names the cpio header fields that
+      # do. scripts/verify builds it after the image (an initrd build takes about 90 s, too long
+      # for scripts/lint).
+      initrd-reproducible =
+        let
+          inherit (smokeTest) initrd;
+          again = derivation (initrd.drvAttrs // { reproducibilityRun = "2"; });
+          newcDiff = builtins.path {
+            path = ../tests/initrd/newc-diff.py;
+            name = "newc-diff.py";
+          };
+        in
+        import ./run.nix set "check-initrd-reproducible" [ pkgs.zstd ] ''
+          if cmp ${initrd}/initrd.cpio.zst ${again}/initrd.cpio.zst; then
+            touch $out
+            exit 0
+          fi
+          zstd -q -dc ${initrd}/initrd.cpio.zst > $TMPDIR/a.cpio
+          zstd -q -dc ${again}/initrd.cpio.zst > $TMPDIR/b.cpio
+          python3 ${newcDiff} $TMPDIR/a.cpio $TMPDIR/b.cpio || true
+          exit 1
+        '';
 
       # The test image without Secure Boot, and its next release for --next
       image-smoke-test-nosb =
