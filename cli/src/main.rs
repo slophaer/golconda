@@ -69,28 +69,34 @@ enum Releases {
         unrecorded: bool,
     },
     /// Build a release from a clean tree: the version (auto: today's date, after the document's
-    /// version and DEST's) goes into the document, mkImage builds it, check checks it, and one
+    /// version and DEST's) goes into the document, Nix builds mkImage's unsigned outputs, their
+    /// signer signs them with the key set here, outside Nix, check checks the release, and one
     /// commit holds the version line with the release trailers. A failure puts the line back
     Build {
         /// The system's document, inside a Golconda checkout
         #[command(flatten)]
         doc: Doc,
-        /// The key set (scripts/make-keys)
+        /// The key set (scripts/make-keys): Nix copies its public halves, the signer reads its
+        /// private keys where they are
         #[arg(long, value_name = "DIR")]
         keys: PathBuf,
+        /// The key set whose PCR key signs, when a db rotation keeps it (default: --keys)
+        #[arg(long, value_name = "DIR")]
+        pcr_keys: Option<PathBuf>,
+        /// The key set whose release key signs SHA256SUMS, when a db rotation keeps it
+        /// (default: --keys)
+        #[arg(long, value_name = "DIR")]
+        index_keys: Option<PathBuf>,
         /// YYYYMMDD.N, or auto
         #[arg(long, value_name = "VERSION", default_value = "auto")]
         version: String,
         /// A destination whose versions count too
         #[arg(long, value_name = "DEST")]
         to: Option<String>,
-        /// Pass the key set as a path, copied into the store: for a build daemon with a chroot
-        /// store, which sees no path outside it
-        #[arg(long)]
-        copy_keys: bool,
-        /// Where to link the build's output
-        #[arg(long, value_name = "PATH", default_value = "result-release")]
-        out_link: PathBuf,
+        /// A new directory for the release: disk.raw, release/, and the link to the unsigned
+        /// outputs
+        #[arg(long, value_name = "DIR", default_value = "result-release")]
+        out: PathBuf,
     },
     /// The release commits, newest first; with --to also what DEST holds and serves
     List {
@@ -213,11 +219,10 @@ fn list_releases(
 /// `release build`: the version, the build, the check and the commit (release::build).
 fn build_release(
     doc: &Doc,
-    keys: &Path,
+    (keys, pcr_keys, index_keys): (&Path, Option<&Path>, Option<&Path>),
     version: &str,
     to: Option<&str>,
-    copy_keys: bool,
-    out_link: PathBuf,
+    out: PathBuf,
     (git, gpgv, rclone): (&Program, &Program, &Program),
 ) -> Result<String, Box<dyn error::Error>> {
     let version = match version {
@@ -229,10 +234,11 @@ fn build_release(
         document: &doc.file,
         system: &doc.system,
         keys,
-        copy_keys,
+        pcr_keys,
+        index_keys,
         version,
         dest: dest.as_ref(),
-        out_link,
+        out,
         author: None,
     };
     let nix_build = Program::from_env("GOLCONDA_NIX_BUILD", "nix-build");
@@ -286,17 +292,17 @@ fn run_release(command: Releases) -> Result<String, Box<dyn error::Error>> {
         Releases::Build {
             doc,
             keys,
+            pcr_keys,
+            index_keys,
             version,
             to,
-            copy_keys,
-            out_link,
+            out,
         } => build_release(
             &doc,
-            &keys,
+            (&keys, pcr_keys.as_deref(), index_keys.as_deref()),
             &version,
             to.as_deref(),
-            copy_keys,
-            out_link,
+            out,
             (&git, &gpgv, &rclone),
         ),
         Releases::List { image, to, repo } => {

@@ -155,6 +155,14 @@ impl Program {
         }
     }
 
+    /// The program at `path`, with no arguments of its own (a path may hold spaces).
+    pub fn at(path: &Path) -> Program {
+        Program {
+            argv: vec![path.as_os_str().to_owned()],
+            dir: None,
+        }
+    }
+
     /// The same program, run in `dir`.
     #[must_use]
     pub fn in_dir(&self, dir: &Path) -> Program {

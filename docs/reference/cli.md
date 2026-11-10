@@ -89,17 +89,22 @@ A release is the directory `release/` that an image build writes: four files and
 take the key set made by `scripts/make-keys`.
 
 ```sh
-golconda release build -f server.toml --keys /srv/golconda-keys [--version auto] [--to DEST]
+golconda release build -f server.toml --keys /srv/golconda-keys [--version auto] [--to DEST] [--out DIR]
 golconda release check result-release/release --keys /srv/golconda-keys [--json]
 golconda release publish result-release/release --to hetzner:updates/web --keys /srv/golconda-keys
 golconda release list --to hetzner:updates/web
 ```
 
 - `build` needs a clean working tree and a document inside a Golconda checkout. It picks the
-  version, writes it into the document, builds the image with `nix-build`, runs `check` and commits
-  the version line as `release: <id> <version>`, with the digests as trailers. `--copy-keys` passes
-  the key set as a copied path, for a build daemon with a chroot store; `--out-link` names the link
-  (default `result-release`).
+  version, writes it into the document, builds `lib.mkImage`'s unsigned outputs with `nix-build`,
+  runs their signer with the key set on this host, runs `check` and commits the version line as
+  `release: <id> <version>`, with the digests as trailers. Nix copies only the key set's three
+  public halves; the private keys stay where they are
+  ([Trust: Signing outside Nix](../design/trust.md#signing-outside-nix)). `--out` names a new
+  directory for the release (default `result-release`): `disk.raw`, `release/`, and `unsigned`, the
+  link to the unsigned outputs; an existing one is refused, and a failed build removes it.
+  `--pcr-keys` and `--index-keys` name the key sets of the PCR and release keys when a `db` rotation
+  keeps them ([Making a release: Rotate a key](release.md#6-rotate-a-key)).
 - `check` verifies the index (the four lines in their fixed order), every digest, the shared image
   id and version in the names, the UUIDs against the root hash, and the signature against the key
   set's `release/index.pgp`.

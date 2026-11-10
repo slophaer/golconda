@@ -765,24 +765,28 @@ pub struct BuildRequest<'a> {
     pub document: &'a Path,
     /// the build host's Nix system double: pure evaluation has no `builtins.currentSystem`
     pub system: &'a str,
-    /// the key set; passed as a string, so its private keys stay out of the store, or with
-    /// `copy_keys` as a path that the expression copies whole (a daemon with a chroot store sees
-    /// no other)
+    /// the key set (scripts/make-keys). Nix reads its three public halves; the signer reads the
+    /// private keys where they are, outside Nix
     pub keys: &'a Path,
-    pub copy_keys: bool,
+    /// the key sets of the PCR key and the release key, when a `db` rotation keeps them
+    /// (default: `keys`)
+    pub pcr_keys: Option<&'a Path>,
+    pub index_keys: Option<&'a Path>,
     /// None: `--version auto`
     pub version: Option<Version>,
     /// a destination whose versions count as seen
     pub dest: Option<&'a Destination<'a>>,
-    /// where the build's output is linked (a GC root)
-    pub out_link: PathBuf,
+    /// the directory the signed release goes to, made new: disk.raw, release/, and `unsigned`,
+    /// the link to the unsigned outputs (a GC root)
+    pub out: PathBuf,
     /// the release commit's author, `Name <id>`; None: git's configured one
     pub author: Option<String>,
 }
 
 /// The programs a build runs. The build goes through nix-build, not iets: the image's
 /// outputs are content-addressed, and nix-build is the client that gets their paths from any
-/// daemon (iets 0.2 builds them but reports no output path).
+/// daemon (iets 0.2 builds them but reports no output path). The signer is the build's own
+/// (`unsigned/sign`).
 pub struct Tools<'a> {
     pub nix_build: &'a Program,
     pub git: &'a Program,
@@ -796,17 +800,16 @@ pub struct Built {
     pub record: Record,
 }
 
-/// The build's expression: Golconda's mkImage on the document, its disk step (the release
-/// directory is in it).
-const BUILD_EXPR: &str = "{ config, keys, system }: \
-    ((import ./default.nix).lib.mkImage { inherit config keys system; }).disk";
-
-/// The same with the key set copied into the store, by name and whole (`--copy-keys`).
-const BUILD_COPY_EXPR: &str = "{ config, keys, system }: \
+/// The build's expression: Golconda's mkImage on the document, its unsigned outputs. The key
+/// sets are strings: mkImage copies their three public halves into the store, each file alone,
+/// and nothing else of them.
+const BUILD_EXPR: &str = "{ config, keys, pcrKeys, indexKeys, system }: \
     ((import ./default.nix).lib.mkImage { \
       inherit config system; \
-      keys = builtins.path { path = keys; name = \"golconda-keys\"; filter = _: _: true; }; \
-    }).disk";
+      publicKeys = keys; \
+      pcrPublicKeys = pcrKeys; \
+      indexPublicKeys = indexKeys; \
+    }).unsigned";
 
 fn git_out(git: &Program, dir: &Path, args: &[&str]) -> Result<String> {
     let mut all = vec!["-C", dir.to_str().unwrap_or(".")];
@@ -918,43 +921,48 @@ fn build_and_check(
     id: &str,
     version: Version,
 ) -> Result<(Release, Record)> {
-    let keys = path::absolute(req.keys).map_err(|e| Error(e.to_string()))?;
-    let keys_arg = if req.copy_keys { "--arg" } else { "--argstr" };
-    let out_link = path::absolute(&req.out_link).map_err(|e| Error(e.to_string()))?;
-    let args: Vec<&OsStr> = vec![
-        "--arg".as_ref(),
-        "config".as_ref(),
-        document.as_os_str(),
-        keys_arg.as_ref(),
-        "keys".as_ref(),
-        keys.as_os_str(),
-        "--argstr".as_ref(),
-        "system".as_ref(),
-        req.system.as_ref(),
-        "--out-link".as_ref(),
-        out_link.as_os_str(),
-        "--expr".as_ref(),
-        if req.copy_keys {
-            BUILD_COPY_EXPR
-        } else {
-            BUILD_EXPR
-        }
-        .as_ref(),
-    ];
-    tools
-        .nix_build
-        .in_dir(root)
-        .run(&args, None)
-        .map_err(|e| Error(format!("the build failed: {}", e.0)))?;
-    let release = check(&out_link.join("release"), &keyring(req.keys), tools.gpgv)?;
-    if (release.index.id.as_str(), release.index.version) != (id, version) {
+    let abs = |p: &Path| path::absolute(p).map_err(|e| Error(e.to_string()));
+    let keys = abs(req.keys)?;
+    let pcr_keys = abs(req.pcr_keys.unwrap_or(req.keys))?;
+    let index_keys = abs(req.index_keys.unwrap_or(req.keys))?;
+    let out = abs(&req.out)?;
+    if out.symlink_metadata().is_ok() {
         return err(format!(
-            "the build made {} {}, not {id} {version}",
-            release.index.id, release.index.version
+            "{} exists: a release goes to a new directory; remove it or give another --out",
+            out.display()
         ));
     }
+    fs::create_dir(&out).map_err(|e| Error(format!("{}: {e}", out.display())))?;
+    let made = sign_release(
+        req,
+        tools,
+        root,
+        document,
+        &out,
+        [&keys, &pcr_keys, &index_keys],
+    )
+    .and_then(|()| check(&out.join("release"), &keyring(&index_keys), tools.gpgv))
+    .and_then(|r| {
+        if (r.index.id.as_str(), r.index.version) == (id, version) {
+            Ok(r)
+        } else {
+            err(format!(
+                "the build made {} {}, not {id} {version}",
+                r.index.id, r.index.version
+            ))
+        }
+    });
+    let release = match made {
+        Ok(r) => r,
+        Err(e) => {
+            // only what this build made: the directory was new
+            let _ = fs::remove_dir_all(&out);
+            return Err(e);
+        }
+    };
+    let unsigned = out.join("unsigned");
     let store_path =
-        fs::canonicalize(&out_link).map_err(|e| Error(format!("{}: {e}", out_link.display())))?;
+        fs::canonicalize(&unsigned).map_err(|e| Error(format!("{}: {e}", unsigned.display())))?;
     let mut ctx = Context::new(&SHA256);
     ctx.update(text.as_bytes());
     let config = format!("sha256:{}", hex(ctx.finish().as_ref()));
@@ -971,6 +979,61 @@ fn build_and_check(
         store_path: store_path.to_string_lossy().into_owned(),
     };
     Ok((release, record))
+}
+
+/// nix-build of mkImage's unsigned outputs, linked at OUT/unsigned, then their signer with the
+/// key sets [db, pcr, index] into OUT. The private keys are read by the signer only, on this
+/// host; Nix sees the paths of the key sets and copies their public halves.
+fn sign_release(
+    req: &BuildRequest<'_>,
+    tools: &Tools<'_>,
+    root: &Path,
+    document: &Path,
+    out: &Path,
+    [keys, pcr_keys, index_keys]: [&Path; 3],
+) -> Result<()> {
+    let unsigned = out.join("unsigned");
+    let args: Vec<&OsStr> = vec![
+        "--arg".as_ref(),
+        "config".as_ref(),
+        document.as_os_str(),
+        "--argstr".as_ref(),
+        "keys".as_ref(),
+        keys.as_os_str(),
+        "--argstr".as_ref(),
+        "pcrKeys".as_ref(),
+        pcr_keys.as_os_str(),
+        "--argstr".as_ref(),
+        "indexKeys".as_ref(),
+        index_keys.as_os_str(),
+        "--argstr".as_ref(),
+        "system".as_ref(),
+        req.system.as_ref(),
+        "--out-link".as_ref(),
+        unsigned.as_os_str(),
+        "--expr".as_ref(),
+        BUILD_EXPR.as_ref(),
+    ];
+    tools
+        .nix_build
+        .in_dir(root)
+        .run(&args, None)
+        .map_err(|e| Error(format!("the build failed: {}", e.0)))?;
+    let sign: Vec<&OsStr> = vec![
+        unsigned.as_os_str(),
+        "--keys".as_ref(),
+        keys.as_os_str(),
+        "--pcr-keys".as_ref(),
+        pcr_keys.as_os_str(),
+        "--index-keys".as_ref(),
+        index_keys.as_os_str(),
+        "--out".as_ref(),
+        out.as_os_str(),
+    ];
+    Program::at(&unsigned.join("sign"))
+        .run(&sign, None)
+        .map(|_| ())
+        .map_err(|e| Error(format!("signing failed: {}", e.0)))
 }
 
 /// The document with `/system`'s `version` set, everything else as it was written: a value
@@ -1825,13 +1888,14 @@ mod tests {
         assert_eq!(p("/srv/www"), "/srv/www/SHA256SUMS");
     }
 
-    // build: real git, a stand-in iets that links a prepared release of the version it finds
+    // build: real git, a stand-in nix-build that links prepared unsigned outputs of the version it
+    // finds, whose stand-in signer copies a prepared release
 
     const DOC: &str = "# the example server\n[\"/system\"]\nname = \"server\"\nversion = \"20261105.1\" # bumped by release build\n\n[\"/services/sshd\"]\nport = 22\n";
 
     impl Scene {
-        /// The repository as a Golconda checkout with server.toml committed, and an iets that
-        /// builds the releases `outs` holds (out-<version>/release).
+        /// The repository as a Golconda checkout with server.toml committed, and a nix-build
+        /// that links unsigned-<version> for the releases `out` prepared (out-<version>/release).
         fn checkout(&self) -> (PathBuf, Program) {
             fs::create_dir_all(self.repo.join("lib")).unwrap();
             fs::write(self.repo.join("lib/system.nix"), "{ }").unwrap();
@@ -1856,7 +1920,7 @@ mod tests {
             fs::write(
                 &script,
                 format!(
-                    "#!/bin/sh\necho \"$(pwd) $*\" > {t}/iets.log\nv=$(sed -n 's/^version = \"\\([^\"]*\\)\".*/\\1/p' \"$3\")\n[ -d {t}/out-$v ] || {{ echo \"error: no build for $v\" >&2; exit 1; }}\nln -sfn {t}/out-$v \"${{11}}\"\n"
+                    "#!/bin/sh\necho \"$(pwd) $*\" > {t}/iets.log\nv=$(sed -n 's/^version = \"\\([^\"]*\\)\".*/\\1/p' \"$3\")\n[ -d {t}/out-$v ] || {{ echo \"error: no build for $v\" >&2; exit 1; }}\nwhile [ $# -gt 0 ]; do [ \"$1\" = --out-link ] && link=$2; shift; done\nln -sfn {t}/unsigned-$v \"$link\"\n"
                 ),
             )
             .unwrap();
@@ -1866,12 +1930,25 @@ mod tests {
         }
 
         /// A build output for `version` whose release says `made` (another version, to test
-        /// that build notices)
+        /// that build notices): unsigned-<version>/sign copies out-<version>/release to --out
         fn out(&self, version: &str, made: &str) {
             let r = self.release(made, "build");
             let out = self.tmp.path().join(format!("out-{version}"));
             fs::create_dir_all(&out).unwrap();
             symlink(&r.dir, out.join("release")).unwrap();
+            let unsigned = self.tmp.path().join(format!("unsigned-{version}"));
+            fs::create_dir_all(&unsigned).unwrap();
+            let sign = unsigned.join("sign");
+            let t = self.tmp.path().display();
+            fs::write(
+                &sign,
+                format!(
+                    "#!/bin/sh\necho \"$*\" > {t}/sign.log\nwhile [ $# -gt 0 ]; do [ \"$1\" = --out ] && out=$2; shift; done\ncp -RL {} \"$out/release\"\n",
+                    out.join("release").display()
+                ),
+            )
+            .unwrap();
+            fs::set_permissions(&sign, fs::Permissions::from_mode(0o755)).unwrap();
         }
 
         fn build(
@@ -1890,10 +1967,11 @@ mod tests {
                 document: doc,
                 system: "x86_64-linux",
                 keys: &self.tmp.path().join("keys"),
-                copy_keys: false,
+                pcr_keys: None,
+                index_keys: None,
                 version: version.map(v),
                 dest: dest.then_some(&d),
-                out_link: self.tmp.path().join("result"),
+                out: self.tmp.path().join("result"),
                 author: None,
             };
             let tools = Tools {
@@ -1937,27 +2015,52 @@ mod tests {
                 hex(ring::digest::digest(&SHA256, text.as_bytes()).as_ref())
             )
         );
+        // the record names the unsigned outputs, which the release directory links
         assert_eq!(
             b.record.store_path,
-            fs::canonicalize(s.tmp.path().join("out-".to_string() + &want))
+            fs::canonicalize(s.tmp.path().join("unsigned-".to_string() + &want))
                 .unwrap()
                 .to_str()
                 .unwrap()
         );
-        // iets ran in the checkout with the keys as a string and absolute paths
+        assert_eq!(b.release.dir, s.tmp.path().join("result/release"));
+        // nix-build ran in the checkout with the key sets as strings and absolute paths, for
+        // mkImage's unsigned outputs only
         let log = fs::read_to_string(s.tmp.path().join("iets.log")).unwrap();
         let args: Vec<&str> = log.split_whitespace().collect();
+        let keys = s.tmp.path().join("keys");
+        let keys = keys.to_str().unwrap();
         assert_eq!(
             args[0],
             fs::canonicalize(&s.repo).unwrap().to_str().unwrap()
         );
         assert_eq!(&args[1..3], &["--arg", "config"]);
+        assert_eq!(&args[4..7], &["--argstr", "keys", keys]);
+        assert_eq!(&args[7..10], &["--argstr", "pcrKeys", keys]);
+        assert_eq!(&args[10..13], &["--argstr", "indexKeys", keys]);
+        assert!(
+            log.contains("publicKeys = keys;") && log.contains(").unsigned"),
+            "{log}"
+        );
+        assert!(
+            !log.contains(".disk") && !log.contains("builtins.path"),
+            "{log}"
+        );
+        // and the signer ran outside it, with the key sets and the new directory
+        let signed = fs::read_to_string(s.tmp.path().join("sign.log")).unwrap();
+        let result = s.tmp.path().join("result");
         assert_eq!(
-            &args[4..7],
-            &[
-                "--argstr",
-                "keys",
-                s.tmp.path().join("keys").to_str().unwrap()
+            signed.split_whitespace().collect::<Vec<_>>(),
+            [
+                result.join("unsigned").to_str().unwrap(),
+                "--keys",
+                keys,
+                "--pcr-keys",
+                keys,
+                "--index-keys",
+                keys,
+                "--out",
+                result.to_str().unwrap()
             ]
         );
         // and what it built is what publish takes
@@ -2058,18 +2161,28 @@ mod tests {
     }
 
     #[test]
-    fn copy_keys_passes_a_path_that_the_expression_copies() {
+    fn rotation_key_sets_reach_nix_and_the_signer_and_the_out_must_be_new() {
         let s = scene();
         let (doc, iets) = s.checkout();
         s.out("20261106.1", "20261106.1");
+        // the release key of another set: the check reads its keyring
+        let old = s.tmp.path().join("old");
+        fs::create_dir_all(old.join("release")).unwrap();
+        fs::copy(
+            s.tmp.path().join("keys/release/index.pgp"),
+            old.join("release/index.pgp"),
+        )
+        .unwrap();
+        let out = s.tmp.path().join("release-1");
         let req = BuildRequest {
             document: &doc,
             system: "x86_64-linux",
             keys: &s.tmp.path().join("keys"),
-            copy_keys: true,
+            pcr_keys: Some(&old),
+            index_keys: Some(&old),
             version: Some(v("20261106.1")),
             dest: None,
-            out_link: s.tmp.path().join("result"),
+            out: out.clone(),
             author: Some("Alice <id-alice>".into()),
         };
         let tools = Tools {
@@ -2080,11 +2193,58 @@ mod tests {
         build(&req, &tools).unwrap();
         let log = fs::read_to_string(s.tmp.path().join("iets.log")).unwrap();
         let args: Vec<&str> = log.split_whitespace().collect();
-        assert_eq!(&args[4..6], &["--arg", "keys"]);
-        assert!(!args.contains(&"--impure"));
-        assert!(log.contains("builtins.path { path = keys;"), "{log}");
+        assert_eq!(
+            &args[7..10],
+            &["--argstr", "pcrKeys", old.to_str().unwrap()]
+        );
+        assert_eq!(
+            &args[10..13],
+            &["--argstr", "indexKeys", old.to_str().unwrap()]
+        );
+        let signed = fs::read_to_string(s.tmp.path().join("sign.log")).unwrap();
+        assert!(
+            signed.contains(&format!("--pcr-keys {}", old.display()))
+                && signed.contains(&format!("--index-keys {}", old.display())),
+            "{signed}"
+        );
         // the author given, the committer git's own
         let who = sh(&s.repo, "git", &["log", "-1", "--format=%an <%ae>"]);
         assert_eq!(who, "Alice <id-alice>");
+        // a second build into the same directory is refused before anything is built, and
+        // leaves it as it was
+        fs::remove_file(s.tmp.path().join("iets.log")).unwrap();
+        let again = BuildRequest {
+            version: Some(v("20261106.2")),
+            ..req
+        };
+        s.out("20261106.2", "20261106.2");
+        let e = build(&again, &tools).unwrap_err();
+        assert!(e.0.contains("exists"), "{e}");
+        assert!(!s.tmp.path().join("iets.log").exists());
+        assert!(out.join("release/SHA256SUMS").is_file());
+        assert_eq!(
+            fs::read_to_string(&doc).unwrap(),
+            DOC.replace("20261105.1", "20261106.1")
+        );
+    }
+
+    #[test]
+    fn a_failed_signer_leaves_no_release_directory() {
+        let s = scene();
+        let (doc, iets) = s.checkout();
+        s.out("20261106.1", "20261106.1");
+        fs::write(
+            s.tmp.path().join("unsigned-20261106.1/sign"),
+            "#!/bin/sh\necho 'secureboot/db.key is not the key of the db certificate' >&2\nexit 1\n",
+        )
+        .unwrap();
+        let e = s.build(&doc, &iets, Some("20261106.1"), false).unwrap_err();
+        assert!(
+            e.0.contains("signing failed") && e.0.contains("is not the key of the db"),
+            "{e}"
+        );
+        assert!(!s.tmp.path().join("result").exists());
+        assert_eq!(fs::read_to_string(&doc).unwrap(), DOC);
+        assert_eq!(s.head(), "server");
     }
 }
