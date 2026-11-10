@@ -25,16 +25,17 @@ done
 [ "${FAKE_LINT:-}" = fail ] && { echo "lint: finding"; exit 3; }
 exit 0
 EOF
-# nix-build makes the out-link (-o): straight to an image folder, or, with FAKE_ROOT, into
-# /nix/store as a chroot store's out-link does, with the image under FAKE_ROOT and its disk/
-# a further store link.
+# nix-build makes the out-link (-o): straight to a folder named after the attribute
+# ($FAKE_IMAGES/ATTR), or, with FAKE_ROOT, into /nix/store as a chroot store's out-link does, with
+# the image under FAKE_ROOT and its disk/ a further store link. FAKE_IMAGE=fail fails every build,
+# FAKE_IMAGE=ATTR the build of ATTR.
 cat >"$WORK/bin/nix-build" <<'EOF'
 #!/bin/sh
 echo "nix-build $*" >>"$CALLS"
-[ "${FAKE_IMAGE:-}" = fail ] && exit 4
 while [ $# -gt 0 ]; do
-  case "$1" in -o) link=$2; shift 2 ;; *) shift ;; esac
+  case "$1" in -o) link=$2; shift 2 ;; -A) attr=${2##*.}; shift 2 ;; *) shift ;; esac
 done
+case "${FAKE_IMAGE:-}" in fail | "$attr") exit 4 ;; esac
 rm -f "$link"
 if [ -n "${FAKE_ROOT:-}" ]; then
   mkdir -p "$FAKE_ROOT/nix/store/aaa-image/keys" "$FAKE_ROOT/nix/store/bbb-disk"
@@ -42,9 +43,9 @@ if [ -n "${FAKE_ROOT:-}" ]; then
   ln -sfn /nix/store/bbb-disk "$FAKE_ROOT/nix/store/aaa-image/disk"
   ln -s /nix/store/aaa-image "$link"
 else
-  mkdir -p "$FAKE_IMAGES/img/disk" "$FAKE_IMAGES/img/keys"
-  : >"$FAKE_IMAGES/img/disk/disk.raw"
-  ln -s "$FAKE_IMAGES/img" "$link"
+  mkdir -p "$FAKE_IMAGES/$attr/disk" "$FAKE_IMAGES/$attr/keys"
+  : >"$FAKE_IMAGES/$attr/disk/disk.raw"
+  ln -s "$FAKE_IMAGES/$attr" "$link"
 fi
 exit 0
 EOF
@@ -113,7 +114,7 @@ order=$(cut -d' ' -f1 "$CALLS" | tr '\n' ' ')
 [ "$order" = "nix-shell nix-build boot-test " ] || fail "steps out of order: $order"
 grep -q 'nix-build -A packages\.[a-z0-9_]*-linux\.image-smoke-test -o result-verify' "$CALLS" ||
   fail "image not built to result-verify: $(cat "$CALLS")"
-grep -q "boot-test $WORK/images/img/disk/disk.raw --keys $WORK/images/img/keys --secure-boot --ssh-test --tpm --timeout 300" "$CALLS" ||
+grep -q "boot-test $WORK/images/image-smoke-test/disk/disk.raw --keys $WORK/images/image-smoke-test/keys --secure-boot --ssh-test --tpm --timeout 300" "$CALLS" ||
   fail "boot-test not given the image's disk, keys and the smoke flags: $(cat "$CALLS")"
 grep -qE -- '--run ./scripts/lint$' "$CALLS" || fail "lint is not scripts/lint in the dev shell"
 
@@ -176,17 +177,17 @@ run scripts/verify --boot-set '--rendezvous a --timeout 1' --boot-set '--rendezv
 [ $rc = 0 ] || fail "--boot-set run exited $rc: $out"
 [ "$(grep -c '^boot-test' "$CALLS")" = 2 ] || fail "want 2 boots: $(cat "$CALLS")"
 grep -q 'boot-test .* --keys .* --rendezvous b$' "$CALLS" || fail "set 2 not run: $(cat "$CALLS")"
-echo "$out" | grep -qE '^PASS boot\[1\] [0-9]+s --rendezvous a --timeout 1$' || fail "no line for set 1: $out"
-echo "$out" | grep -qE '^PASS boot\[2\] [0-9]+s --rendezvous b$' || fail "no line for set 2: $out"
+echo "$out" | grep -qE '^PASS boot\[1\] [0-9]+s @image=image-smoke-test --rendezvous a --timeout 1$' || fail "no line for set 1: $out"
+echo "$out" | grep -qE '^PASS boot\[2\] [0-9]+s @image=image-smoke-test --rendezvous b$' || fail "no line for set 2: $out"
 [ "$(echo "$out" | grep -cxF '  passed boot[1] (2): fake-a fake-b')" = 2 ] ||
   fail "the passed checks of set 1 not listed under its line and in the summary: $out"
 [ -z "$(find "$WORK/cache" -name 'boot-*.log')" ] || fail "the log of a passed set was kept"
 [ -z "$(find "$WORK/cache" -maxdepth 1 -name 'verify.*' -newer "$CALLS")" ] || fail "an empty log directory was kept"
 run scripts/verify --boot-set '--timeout 1' --boot-set '--fail'
 [ $rc != 0 ] || fail "a failing set passed"
-echo "$out" | grep -qE '^PASS boot\[1\] [0-9]+s --timeout 1$' || fail "passing set not reported: $out"
+echo "$out" | grep -qE '^PASS boot\[1\] [0-9]+s @image=image-smoke-test --timeout 1$' || fail "passing set not reported: $out"
 [ "$(echo "$out" | grep -c '^FAIL: fake-check')" = 2 ] || fail "failed checks not listed with the log tail: $out"
-echo "$out" | grep -qE '^FAIL\(6\) boot\[2\] [0-9]+s --fail \(log .*boot-2\.log\)$' || fail "failing set not reported: $out"
+echo "$out" | grep -qE '^FAIL\(6\) boot\[2\] [0-9]+s @image=image-smoke-test --fail \(log .*boot-2\.log\)$' || fail "failing set not reported: $out"
 echo "$out" | grep -qxF '  passed boot[2] (1): fake-a' || fail "the passed checks of a failed set not listed: $out"
 log=$(echo "$out" | sed -n 's/^FAIL(6) boot\[2\] .*(log \(.*\))$/\1/p' | head -1)
 grep -q 'fake boot failed' "$log" || fail "the failed set's log is missing: $log"
@@ -197,7 +198,7 @@ rm -rf "$(dirname "$log")"
 run scripts/verify --each-commit "$(git rev-list --max-parents=0 HEAD)" --boot-set '--timeout 1' --boot-set '--timeout 2'
 [ $rc = 0 ] || fail "--each-commit with sets exited $rc: $out"
 [ "$(grep -c '^boot-test' "$CALLS")" = 2 ] || fail "want 2 boots of the last commit: $(cat "$CALLS")"
-echo "$out" | grep -qE '^PASS boot\[2\] [0-9]+s --timeout 2$' || fail "set 2 not reported: $out"
+echo "$out" | grep -qE '^PASS boot\[2\] [0-9]+s @image=image-smoke-test --timeout 2$' || fail "set 2 not reported: $out"
 
 # 11 the logs of a failed set live under BOOT_TEST_CACHE, else
 #    ${XDG_CACHE_HOME:-$HOME/.cache}/golconda-boot-test, not /tmp; directories older than 7 days
@@ -227,10 +228,10 @@ for a in golconda-cli age; do
   grep -q "nix-build -A packages\\.[a-z0-9_]*-linux\\.$a -o result-verify-$a\$" "$CALLS" || fail "$a not built: $(cat "$CALLS")"
   echo "$out" | grep -qE "^PASS $a [0-9]+s\$" || fail "no PASS line for $a: $out"
 done
-grep -qxF "golconda=$WORK/images/img/bin/golconda path=$WORK/images/img/bin" "$WORK/boot-env" ||
+grep -qxF "golconda=$WORK/images/golconda-cli/bin/golconda path=$WORK/images/age/bin" "$WORK/boot-env" ||
   fail "BOOT_TEST_GOLCONDA or PATH not set for boot-test: $(cat "$WORK/boot-env")"
 echo "$out" | grep -qE '^PASS image-next [0-9]+s$' || fail "no PASS line for the next image: $out"
-grep -q "boot-test .* --ssh-test --next $WORK/images/img --timeout 1\$" "$CALLS" ||
+grep -q "boot-test .* --ssh-test --next $WORK/images/image-smoke-test-next --timeout 1\$" "$CALLS" ||
   fail "@next not replaced by the next image's path: $(cat "$CALLS")"
 grep -q '@next' "$CALLS" && fail "@next left in a boot-test call: $(cat "$CALLS")"
 rm -f "$WORK/boot-env"
@@ -242,7 +243,7 @@ grep -q 'result-verify-next' "$CALLS" && fail "built the next image despite --no
 run scripts/verify --image image-smoke-test-nosb --boot-args '--ssh-test --next @next --timeout 480'
 [ $rc = 0 ] || fail "@next in --boot-args exited $rc: $out"
 grep -q '\.image-smoke-test-nosb-next -o result-verify-next$' "$CALLS" || fail "nosb pair wrong: $(cat "$CALLS")"
-grep -q "boot-test .* --ssh-test --next $WORK/images/img --timeout 480\$" "$CALLS" ||
+grep -q "boot-test .* --ssh-test --next $WORK/images/image-smoke-test-nosb-next --timeout 480\$" "$CALLS" ||
   fail "@next in --boot-args not replaced: $(cat "$CALLS")"
 FAKE_IMAGE=fail run scripts/verify --boot-set '--next @next'
 grep -q boot-test "$CALLS" && fail "booted after an image failure with @next"
@@ -250,5 +251,59 @@ grep -q boot-test "$CALLS" && fail "booted after an image failure with @next"
 run scripts/verify --each-commit "$(git rev-list --max-parents=0 HEAD)" --boot-set '--next @next'
 [ $rc = 0 ] || fail "--each-commit with @next exited $rc: $out"
 grep -q 'result-verify-next' "$CALLS" || fail "--each-commit did not build the next image"
+
+# 13 a boot set can name its image with a leading @image=ATTR word (else --image's): verify builds
+#    each image once (the --image one to result-verify, another to result-verify-ATTR, with a
+#    PASS line "image:ATTR"), boots each set from its own image, puts the next image of the set's
+#    image where @next stands (ATTR-next, result-verify-ATTR-next), and names the image on each
+#    summary line
+run scripts/verify --boot-set '@image=image-nosb --ssh-test --timeout 1' --boot-set '--timeout 2' \
+  --boot-set '@image=image-nosb --ssh-test --next @next' --boot-set '@image=image-smoke-test --next @next'
+[ $rc = 0 ] || fail "@image run exited $rc: $out"
+for a in image-smoke-test:result-verify image-nosb:result-verify-image-nosb \
+  image-smoke-test-next:result-verify-next image-nosb-next:result-verify-image-nosb-next \
+  golconda-cli:result-verify-golconda-cli age:result-verify-age; do
+  [ "$(grep -c "^nix-build -A packages\\.[a-z0-9_]*-linux\\.${a%%:*} -o ${a#*:}\$" "$CALLS")" = 1 ] ||
+    fail "${a%%:*} not built once to ${a#*:}: $(cat "$CALLS")"
+done
+[ "$(grep -c '^nix-build' "$CALLS")" = 6 ] || fail "want 6 builds: $(cat "$CALLS")"
+for s in image image:image-nosb image-next image-next:image-nosb; do
+  echo "$out" | grep -qE "^PASS $s [0-9]+s\$" || fail "no PASS line for $s: $out"
+done
+I=$WORK/images
+grep -qxF "boot-test $I/image-nosb/disk/disk.raw --keys $I/image-nosb/keys --ssh-test --timeout 1" "$CALLS" ||
+  fail "set 1 not booted from image-nosb: $(grep boot-test "$CALLS")"
+grep -qxF "boot-test $I/image-smoke-test/disk/disk.raw --keys $I/image-smoke-test/keys --timeout 2" "$CALLS" ||
+  fail "set 2 not booted from the --image image: $(grep boot-test "$CALLS")"
+grep -qxF "boot-test $I/image-nosb/disk/disk.raw --keys $I/image-nosb/keys --ssh-test --next $I/image-nosb-next" "$CALLS" ||
+  fail "set 3: @next is not image-nosb's next image: $(grep boot-test "$CALLS")"
+grep -qxF "boot-test $I/image-smoke-test/disk/disk.raw --keys $I/image-smoke-test/keys --next $I/image-smoke-test-next" "$CALLS" ||
+  fail "set 4: @next is not image-smoke-test's next image: $(grep boot-test "$CALLS")"
+grep -q '@image' "$CALLS" && fail "@image left in a boot-test call: $(cat "$CALLS")"
+for l in '1 [0-9]+s @image=image-nosb --ssh-test --timeout 1' '2 [0-9]+s @image=image-smoke-test --timeout 2' \
+  '3 [0-9]+s @image=image-nosb --ssh-test --next @next' '4 [0-9]+s @image=image-smoke-test --next @next'; do
+  [ "$(echo "$out" | grep -cE "^PASS boot\\[${l%% *}\\] ${l#* }\$")" = 2 ] ||
+    fail "no line naming the image for set ${l%% *} (under it and in the summary): $out"
+done
+# a run whose sets all name another image does not build the --image one; --no-boot builds the
+# sets' images and no next image
+run scripts/verify --boot-set '@image=image-nosb --timeout 1'
+[ $rc = 0 ] || fail "@image-only run exited $rc: $out"
+[ "$(grep '^nix-build' "$CALLS" | sed 's/.*\.\([^ .]*\) -o .*/\1/' | tr '\n' ' ')" = "image-nosb " ] ||
+  fail "want image-nosb built alone: $(cat "$CALLS")"
+run scripts/verify --no-boot --boot-set '@image=image-nosb --next @next' --boot-set '--timeout 1'
+[ $rc = 0 ] || fail "--no-boot with @image exited $rc: $out"
+[ "$(grep '^nix-build' "$CALLS" | sed 's/.*\.\([^ .]*\) -o .*/\1/' | sort | tr '\n' ' ')" = "image-nosb image-smoke-test " ] ||
+  fail "--no-boot: want both images and no next image: $(cat "$CALLS")"
+grep -q boot-test "$CALLS" && fail "booted despite --no-boot"
+# a failed build of one image stops the run before any boot
+FAKE_IMAGE=image-nosb run scripts/verify --boot-set '--timeout 1' --boot-set '@image=image-nosb --timeout 1'
+[ $rc != 0 ] || fail "a failed image-nosb build passed"
+echo "$out" | grep -qE '^FAIL\(4\) image:image-nosb [0-9]+s$' || fail "no FAIL line for image:image-nosb: $out"
+grep -q boot-test "$CALLS" && fail "booted after a failed image build"
+# --each-commit hands @image sets to the last commit
+run scripts/verify --each-commit "$(git rev-list --max-parents=0 HEAD)" --boot-set '@image=image-nosb --timeout 1'
+[ $rc = 0 ] || fail "--each-commit with @image exited $rc: $out"
+grep -q "boot-test $I/image-nosb/disk/disk.raw " "$CALLS" || fail "--each-commit lost @image: $(cat "$CALLS")"
 
 echo "verify tests passed"

@@ -9,7 +9,7 @@
 #
 #   -C DIR              verify the tree in DIR (default: this repository)
 #   --image ATTR        the image under packages.<system> (default image-smoke-test); the out-link
-#                       is result-verify
+#                       is result-verify. A boot set may name another (@image below)
 #   --boot-args ARGS    scripts/boot-test's flags after the disk and --keys (default
 #                       "--secure-boot --ssh-test --tpm --timeout 300": a reboot on a loaded
 #                       host can outlast boot-test's own default). @next in the flags (and in
@@ -19,12 +19,19 @@
 #                       result-verify-next) and puts its path there, as in "--next @next". It
 #                       also builds golconda-cli and age, which --next needs
 #                       (BOOT_TEST_GOLCONDA, PATH)
-#   --boot-set ARGS     one boot of a list (repeat it): all sets boot the image at the same time,
-#                       each with its own log, and the summary has one line per set with its
-#                       result, time and ARGS, and a line with the names of the checks that
-#                       passed ("  passed boot[N] (COUNT): NAME ..."). The run fails when any set fails. A set that fails
-#                       keeps its log (the line names it); a set that passes removes it. Replaces
-#                       --boot-args. The VMs need about 2 GiB each.
+#   --boot-set ARGS     one boot of a list (repeat it): all sets boot at the same time, each with
+#                       its own log, and the summary has one line per set with its result, time,
+#                       image and ARGS ("PASS boot[N] 300s @image=ATTR ARGS"), and a line with the
+#                       names of the checks that passed ("  passed boot[N] (COUNT): NAME ...").
+#                       The run fails when any set fails. A set that fails keeps its log (the line
+#                       names it); a set that passes removes it. Replaces --boot-args. The VMs
+#                       need about 2 GiB each.
+#                       A set that starts with the word @image=ATTR boots packages.<system>.ATTR
+#                       instead of --image's, as in "@image=image-smoke-test-nosb --ssh-test
+#                       --next @next": verify builds each image the sets name once (out-link
+#                       result-verify-ATTR, step image:ATTR), and @next in the set is the next
+#                       image of the set's own image (ATTR-next, result-verify-ATTR-next, step
+#                       image-next:ATTR). So one run boots the Secure Boot sets and the nosb sets.
 #   --no-boot           build the image, do not boot it
 #   --lint-only         lint only
 #   --each-commit BASE  every commit in BASE..HEAD, in a scratch worktree: lint each, and build and
@@ -48,7 +55,7 @@ lint_only=0
 each=
 boot_sets=
 usage() {
-  sed -n '2,40s/^# \{0,1\}//p' "$self" >&2
+  sed -n '2,/^set -u$/{/^set -u$/d;s/^# \{0,1\}//p}' "$self" >&2
   exit 2
 }
 while [ $# -gt 0 ]; do
@@ -141,7 +148,47 @@ if ! git diff --quiet; then
   finish 1
 fi
 [ $lint_only = 1 ] && finish 0
-step image nix-build -A "packages.$system.$image" -o result-verify || finish 1
+
+# A boot set may start with @image=ATTR: the image it boots (default: --image's).
+# set_image SET: the set's image; set_flags SET: its boot-test flags, without the @image word
+set_image() {
+  case "$1" in
+  @image=*) a=${1%% *}; echo "${a#@image=}" ;;
+  *) echo "$image" ;;
+  esac
+}
+set_flags() {
+  case "$1" in
+  @image=*" "*) echo "${1#* }" ;;
+  @image=*) ;;
+  *) echo "$1" ;;
+  esac
+}
+# link ATTR: the image's out-link (result-verify for --image's, else result-verify-ATTR); its next
+# image's is that with -next. label NAME ATTR: the step's name, NAME for --image's, else NAME:ATTR
+link() { if [ "$1" = "$image" ]; then echo result-verify; else echo "result-verify-$1"; fi; }
+label() { if [ "$2" = "$image" ]; then echo "$1"; else echo "$1:$2"; fi; }
+# add LIST WORD: LIST with WORD at its end, once
+add() { case " $1 " in *" $2 "*) echo "$1" ;; *) echo "$1${1:+ }$2" ;; esac; }
+
+# the images to build, each once, and those whose next image a set's @next needs
+images=
+nexts=
+if [ -z "$boot_sets" ]; then
+  images=$image
+  case $boot_args in *@next*) nexts=$image ;; esac
+else
+  while IFS= read -r bs; do
+    a=$(set_image "$bs")
+    images=$(add "$images" "$a")
+    case $(set_flags "$bs") in *@next*) nexts=$(add "$nexts" "$a") ;; esac
+  done <<EOF
+$boot_sets
+EOF
+fi
+for a in $images; do
+  step "$(label image "$a")" nix-build -A "packages.$system.$a" -o "$(link "$a")" || finish 1
+done
 [ $boot = 1 ] || finish 0
 # resolve PATH: PATH with every symlink on the way followed, a target in /nix/store looked up
 # under $BOOT_TEST_STORE_ROOT (boot-test itself follows only a final link)
@@ -166,49 +213,73 @@ while parts:
 print(cur)
 PY
 }
-img=$(resolve result-verify) || finish 1
-disk=$(resolve "$img/disk/disk.raw")
-keys=$(resolve "$img/keys")
 # @next in the boot flags is the next release's image (<image>-next, the one boot-test --next
-# installs): build it too and put its path there
-case "$boot_args
-$boot_sets" in
-*@next*)
-  step image-next nix-build -A "packages.$system.$image-next" -o result-verify-next || finish 1
-  next=$(resolve result-verify-next) || finish 1
+# installs, of the set's own image): build it too and put its path there
+for a in $nexts; do
+  step "$(label image-next "$a")" nix-build -A "packages.$system.$a-next" -o "$(link "$a")-next" || finish 1
+done
+if [ -n "$nexts" ]; then
   # --next pushes admin vars with golconda, age and age-keygen
   step golconda-cli nix-build -A "packages.$system.golconda-cli" -o result-verify-golconda-cli || finish 1
   step age nix-build -A "packages.$system.age" -o result-verify-age || finish 1
   BOOT_TEST_GOLCONDA=$(resolve result-verify-golconda-cli)/bin/golconda
   PATH=$(resolve result-verify-age)/bin:$PATH
   export BOOT_TEST_GOLCONDA PATH
-  boot_args=$(printf '%s\n' "$boot_args" | sed "s|@next|$next|g")
-  boot_sets=$(printf '%s\n' "$boot_sets" | sed "s|@next|$next|g")
-  ;;
-esac
+fi
+# boot_cmd ATTR FLAGS: three lines for boot-test, the image's disk, its keys and FLAGS with @next
+# replaced
+boot_cmd() {
+  img=$(resolve "$(link "$1")") || return 1
+  flags=$2
+  case $flags in
+  *@next*)
+    next=$(resolve "$(link "$1")-next") || return 1
+    flags=$(printf '%s\n' "$flags" | sed "s|@next|$next|g")
+    ;;
+  esac
+  resolve "$img/disk/disk.raw" && resolve "$img/keys" && printf '%s\n' "$flags"
+}
 if [ -z "$boot_sets" ]; then
-  # shellcheck disable=SC2086 # boot_args is a list of flags
-  step boot ./scripts/boot-test "$disk" --keys "$keys" $boot_args || finish 1
+  cmd=$(boot_cmd "$image" "$boot_args") || finish 1
+  { read -r disk; read -r keys; read -r flags; } <<EOF
+$cmd
+EOF
+  # shellcheck disable=SC2086 # flags is a list of flags
+  step boot ./scripts/boot-test "$disk" --keys "$keys" $flags || finish 1
   finish 0
 fi
 
-# boot_set N SET: boot-test with SET's flags; the exit code and the seconds it took go to
-# $logs/boot-N.rc
+# boot_set N: boot-test with $logs/boot-N.cmd (boot_cmd's lines); the exit code and the seconds it
+# took go to $logs/boot-N.rc
 boot_set() {
   start=$(date +%s)
-  # shellcheck disable=SC2086 # the set is a list of flags
-  ./scripts/boot-test "$disk" --keys "$keys" $2 >"$logs/boot-$1.log" 2>&1
+  { read -r disk; read -r keys; read -r flags; } <"$logs/boot-$1.cmd"
+  # shellcheck disable=SC2086 # flags is a list of flags
+  ./scripts/boot-test "$disk" --keys "$keys" $flags >"$logs/boot-$1.log" 2>&1
   echo "$? $(($(date +%s) - start))" >"$logs/boot-$1.rc"
+}
+# shown SET: the set as the summary names it, with its image: @image=ATTR FLAGS
+shown() {
+  f=$(set_flags "$1")
+  echo "@image=$(set_image "$1")${f:+ $f}"
 }
 cache=${BOOT_TEST_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/golconda-boot-test}
 mkdir -p "$cache"
 find "$cache" -maxdepth 1 -name 'verify.*' -mtime +7 -exec rm -rf {} + 2>/dev/null
 logs=$(mktemp -d "$cache/verify.XXXXXX")
+# every set's command first, so a path that does not resolve stops the run before any boot
 n=0
 while IFS= read -r bs; do
   n=$((n + 1))
-  echo "== boot[$n]: $bs"
-  boot_set "$n" "$bs" &
+  boot_cmd "$(set_image "$bs")" "$(set_flags "$bs")" >"$logs/boot-$n.cmd" || { rm -rf "$logs"; finish 1; }
+done <<EOF
+$boot_sets
+EOF
+n=0
+while IFS= read -r bs; do
+  n=$((n + 1))
+  echo "== boot[$n]: $(shown "$bs")"
+  boot_set "$n" &
 done <<EOF
 $boot_sets
 EOF
@@ -233,8 +304,8 @@ while IFS= read -r bs; do
     grep '^FAIL' "$logs/boot-$i.log"
     tail -n 20 "$logs/boot-$i.log"
   fi
-  rm -f "$logs/boot-$i.rc"
-  line="$r boot[$i] ${secs}s $bs$where
+  rm -f "$logs/boot-$i.rc" "$logs/boot-$i.cmd"
+  line="$r boot[$i] ${secs}s $(shown "$bs")$where
 $passed"
   echo "$line"
   summary="$summary$line
