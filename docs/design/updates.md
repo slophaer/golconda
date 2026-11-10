@@ -40,9 +40,34 @@ the service is `systemd-sysupdate-update.service`.
 in `/etc`. When it is null (the default) no transfer definition, timer link or update runs. The
 transfers carry `Verify=yes` (rendered: `image/sysupdate.nix`): sysupdate checks the release's
 signed index before it writes a payload
-([Releases: The signed index](releases.md#the-signed-index)). After that, firmware checks each new
-UKI, and the kernel checks its verity signature against the `db` certificate
-([Trust: Verity key](trust.md#2-verity-key)).
+([Releases: The signed index](releases.md#the-signed-index)).
+
+## What an update authenticates
+
+Every image has `Verify=yes` on every transfer, with or without Secure Boot: `image/sysupdate.nix`
+sets it unconditionally and no option turns it off (`tests/eval/index.nix` checks each transfer). No
+image and no release uses `Verify=no`. So an update is authenticated by the release key when it is
+downloaded, also on a host that has no Secure Boot enrolled. What Secure Boot adds is a second check
+at every boot.
+
+| what                                                                                  | checked against                                                                                                   | when                                    | without Secure Boot                                                        |
+| ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------- | -------------------------------------------------------------------------- |
+| `SHA256SUMS`                                                                          | its signature `SHA256SUMS.gpg`, by `gpg` against the release key the running image carries (`import-pubring.pgp`) | download, before any payload is written | the same                                                                   |
+| each payload: `/usr`, its hash tree, its signature, the UKI                           | its digest in the signed `SHA256SUMS`                                                                             | download                                | the same                                                                   |
+| the UKI (kernel, initrd, and the cmdline with `usrhash=` and the root hash signature) | the firmware `db`                                                                                                 | every boot, before it runs              | nothing checks it                                                          |
+| the `/usr` root hash signature                                                        | the `db` certificate in the kernel's keyring: the platform keyring, which firmware fills from `db`                | every boot, when `/usr` is activated    | the same certificate, built into the kernel (`CONFIG_SYSTEM_TRUSTED_KEYS`) |
+| each block of `/usr`                                                                  | the root hash (dm-verity); IPE runs programs only from a volume whose signature the kernel verified               | every read, every exec                  | the same                                                                   |
+
+So without Secure Boot an update is not unauthenticated: the signed index stops a payload that the
+release key did not sign, and a `/usr` that the `db` key did not sign does not run (IPE stops the
+boot at switch-root). What is lost is the boot-time check of the UKI. After an install, whoever can
+write the ESP can replace the UKI, and with it the kernel that holds the trusted key
+([Trust: Verity key](trust.md#2-verity-key)). With Secure Boot, firmware also refuses such a UKI.
+
+Proven: `index-signed` and `sysupdate-installed` (`--next`), and `sysupdate-refused` with
+`boots-old` for a changed index (`--next --tamper-index`); the no-Secure-Boot image passed
+`--ssh-test --next`, and its update on Hetzner Cloud logged `Good signature`
+([What is proven](../proven.md)).
 
 ## Versions
 

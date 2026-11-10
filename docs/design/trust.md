@@ -12,11 +12,16 @@ own copy of any of them:
    ([Deployment keys](#deployment-keys)).
 1. **The verity signing key** decides *what is read*: it signs the root hash of every `/usr` image.
    In v1 it is the Secure Boot `db` key, and the kernel checks the signature against the firmware
-   `db` at every boot ([status](#2-verity-key)).
+   `db` at every boot; without Secure Boot, against the same certificate built into the kernel
+   ([status](#2-verity-key)).
 1. **The CA store** decides *whom the machine talks to*: one bundle, cacert's Mozilla roots, for
    every TLS client ([status](#3-ca-store)).
 
 A fourth thing, who may log in, is decided outside the image ([Identity](#identity)).
+
+The release key signs each release's index. sysupdate checks it when an update is downloaded, on
+every image: every transfer has `Verify=yes`, with or without Secure Boot
+([Updates: What an update authenticates](updates.md#what-an-update-authenticates)).
 
 ```mermaid
 flowchart TD

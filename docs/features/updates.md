@@ -12,8 +12,9 @@ verity signature. Each slot also has a UKI (Unified Kernel Image, a signed boot 
 (EFI System Partition). `systemd-sysupdate` fills the inactive slot with four transfers: `10-usr`,
 `20-usr-verity`, `30-usr-verity-sig` and `40-uki`, each a `.transfer` file in
 `/usr/lib/sysupdate.d`. Each transfer keeps two versions (`InstancesMax=2`) and never overwrites the
-running one (`ProtectVersion=%A`). Every transfer has `Verify=yes`: sysupdate checks the signed
-index before it writes ([Signed releases](signed-releases.md)).
+running one (`ProtectVersion=%A`). Every transfer has `Verify=yes`, with or without Secure Boot:
+sysupdate checks the signed index before it writes ([Signed releases](signed-releases.md),
+[Updates: What an update authenticates](../design/updates.md#what-an-update-authenticates)).
 
 The UKI lands on the ESP as `EFI/Linux/<id>_<version>+3-0.efi`. The suffix is the boot counter:
 three tries left, none done. systemd-boot counts down on each attempt.

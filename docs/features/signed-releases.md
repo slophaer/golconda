@@ -29,7 +29,9 @@ and runs `gpg --verify` against `/usr/lib/systemd/import-pubring.pgp`, the relea
 inside the running image. A payload whose digest the signed index does not list is never written.
 OpenPGP is the one signature systemd 262 checks here, so the image carries GnuPG.
 
-The signed index matters most without Secure Boot, where nothing else checks a UKI before it runs.
+No image turns this off: there is no `Verify=no`, with or without Secure Boot. The signed index
+matters most without Secure Boot, where nothing else checks a UKI before it runs
+([Updates: What an update authenticates](../design/updates.md#what-an-update-authenticates)).
 
 ## Using it
 
