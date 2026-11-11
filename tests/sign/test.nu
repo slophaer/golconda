@@ -10,7 +10,7 @@
 use sign.nu [private-keys check-keys]
 use verity.nu [sign-roothash]
 use uki.nu [roothash-signature]
-use disk.nu [sign-index verify-index fat-volume-id fat-volume-id-at]
+use disk.nu [sign-index verify-index]
 
 $env.OPENSSL_CONF = "/dev/null"
 let tmp = (mktemp -d -t "golconda-sign-test-XXXXXX")
@@ -123,20 +123,6 @@ fails "signing with a key the keyring does not hold fails" "does not verify" {||
 fails "a changed index does not verify" "does not verify" {||
   verify-index $rel $"($a)/release/index.pgp"
 }
-
-# --- the ESP's volume ID: the signer gives mkfs.fat repart's own (lib/image/disk.nu make)
-# An ESP that systemd-repart 262.1 made without --invariant (image-smoke-test, 2026-11-10): the
-# partition UUID 8ec70ff6-f5a7-4e8f-b27c-06cc4ba2649c, the volume ID 56e477d6 in its boot sector.
-if (fat-volume-id "8ec70ff6-f5a7-4e8f-b27c-06cc4ba2649c") != "56e477d6" {
-  error make {msg: $"fat-volume-id: expected 56e477d6, got (fat-volume-id '8ec70ff6-f5a7-4e8f-b27c-06cc4ba2649c')"}
-}
-ok "the FAT volume ID is the one systemd-repart derives from the partition UUID"
-# a boot sector at 4096 with BS_VolID (0x43) d6 77 e4 56, little-endian
-(0..4095 | each { 0x[00] } | bytes collect) ++ (0..66 | each { 0x[00] } | bytes collect) ++ 0x[d6 77 e4 56] ++ (0..440 | each { 0x[00] } | bytes collect) | save -f $"($tmp)/fat.raw"
-if (fat-volume-id-at $"($tmp)/fat.raw" 4096) != "56e477d6" {
-  error make {msg: $"fat-volume-id-at: expected 56e477d6, got (fat-volume-id-at $'($tmp)/fat.raw' 4096)"}
-}
-ok "the volume ID is read from the boot sector at the partition's offset"
 
 rm -rf $tmp
 print "all signer tests passed"

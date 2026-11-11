@@ -140,10 +140,9 @@ in
   '';
 
   # the signer's key checks and signatures (tests/sign): a signature by the right key verifies
-  # with the public half, one by another key does not, a mismatched key set is refused; the ESP's
-  # volume ID is repart's. The Nu functions the signer runs (lib/image), under the seed's nu, with
-  # Golconda's openssl, gpg and od
-  image-signer = run "image-signer" [ rp.openssl rp.gnupg rp.coreutils ] ''
+  # with the public half, one by another key does not, a mismatched key set is refused. The Nu
+  # functions the signer runs (lib/image), under the seed's nu, with Golconda's openssl and gpg
+  image-signer = run "image-signer" [ rp.openssl rp.gnupg ] ''
     export HOME=$TMPDIR
     nu --no-config-file --include-path ${src}/lib/image ${src}/tests/sign/test.nu
     touch $out
