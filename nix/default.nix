@@ -198,6 +198,46 @@ in
           exit 1
         '';
 
+      # The test image's release is bit-reproducible: the signer runs again on the same unsigned
+      # output with the same keys, with one variable more that it does not read (the first
+      # run's output, so it starts after the first ends), and every file of the two releases is
+      # the same bytes: disk.raw, cmdline and release/, and disk.json without the directories of
+      # its "file" and "node" paths (repart's definitions and the output: each run has its own).
+      # A clock that reaches the disk (mkfs.fat's volume label, an mtime in the ESP) shows; the
+      # check names each file that differs and its first differing bytes. scripts/verify builds
+      # it after the image.
+      disk-reproducible =
+        let
+          inherit (smokeTest) signed;
+          again = derivation (signed.drvAttrs // { reproducibilityRunAfter = "${signed}"; });
+        in
+        import ./run.nix set "check-disk-reproducible" [ ] ''
+          cd ${signed}
+          find . | sort > $TMPDIR/a.txt
+          (cd ${again} && find . | sort) > $TMPDIR/b.txt
+          if ! cmp -s $TMPDIR/a.txt $TMPDIR/b.txt; then
+            echo "the two releases have other files:"
+            diff $TMPDIR/a.txt $TMPDIR/b.txt || true
+            exit 1
+          fi
+          strip() { sed -e 's|"file" : "[^"]*/|"file" : "|' -e 's|"node" : "[^"]*/|"node" : "|' "$1"; }
+          strip disk.json > $TMPDIR/a.json
+          strip ${again}/disk.json > $TMPDIR/b.json
+          rc=0
+          for f in $(find . -type f | sort); do
+            a=$f b=${again}/$f
+            [ "$f" = ./disk.json ] && a=$TMPDIR/a.json b=$TMPDIR/b.json
+            if ! cmp -s "$a" "$b"; then
+              cmp -l "$a" "$b" > $TMPDIR/diff.txt || true
+              echo "differs: $f, $(wc -l < $TMPDIR/diff.txt) bytes; first (offset, octal a, b):"
+              head -8 $TMPDIR/diff.txt
+              rc=1
+            fi
+          done
+          [ $rc = 0 ] || exit 1
+          touch $out
+        '';
+
       # The test image without Secure Boot, and its next release for --next
       image-smoke-test-nosb =
         (testImage {
