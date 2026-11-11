@@ -213,13 +213,18 @@ not list itself. A file mtime is not the release date: the version epoch lives i
 image (and in `disk.raw`'s internal files), not in the release directory's metadata. The ESP is
 filled offline with mtools (`packages/mtools`).
 
-The initrd is the same bytes in every build of the same inputs. `lib/image/initrd.nu` lists the tree
-in sorted order and gives bsdtar one owner (root) and one mtime. bsdtar still copies each file's
-inode number, device and link count from the build directory into its newc header, and libarchive
-has no option to set them, so the seed's `python3` then rewrites them in place: inode numbers 1, 2,
-… in the archive's order (hard links keep one number), device 0, and for a directory 2 plus its
-subdirectories as the link count. `packages.<system>.initrd-reproducible` builds the test image's
-initrd a second time and compares the bytes; `scripts/verify` builds it after the image.
+The initrd is the same bytes in every build of the same inputs. `lib/image/initrd.nu` writes the
+newc cpio with the kernel's own `gen_init_cpio` (`packages/gen-init-cpio`, compiled from the kernel
+source that `packages/kernel` pins). It gives the tool a list of the entries in sorted order: each
+entry is owned by root and has its mode, and a symlink has its target. `-t 1` gives every entry
+mtime 1. The tool numbers the inodes itself (from 721) and writes fixed devices and link counts, so
+the bytes depend only on the names, modes, link targets and contents, not on the build directory.
+Each file is one entry with its own data; the initrd has no hard links. A symlink's data is its
+target with a NUL at the end, as in the kernel's built-in initramfs. A name or target with
+whitespace or `$`, or a file that is not a regular file, directory or symlink, fails the build: the
+list format cannot hold it. `packages.<system>.initrd-reproducible` builds the test image's initrd a
+second time and compares the bytes; when they differ, `tests/initrd/newc-diff.py` names the header
+fields that differ. `scripts/verify` builds it after the image.
 
 The signer is deterministic for the same unsigned output and keys: times, salts, UUIDs and seeds
 come from the version, `systemd-sbsign` takes its signing time from `SOURCE_DATE_EPOCH`, and the
