@@ -60,7 +60,8 @@ The boot test proves this with `--next` ([What is proven](../proven.md)):
 
 For reproducibility, two builds of the initrd give the same bytes (`initrd-reproducible`, which
 `scripts/verify` builds), and two runs of the signer on one unsigned output give the same release
-and `disk.raw` ([What is proven: Reproducible builds](../proven.md#reproducible-builds)).
+and `disk.raw` (`disk-reproducible`, which `scripts/verify` builds too;
+[What is proven: Reproducible builds](../proven.md#reproducible-builds)).
 
 One release signed with a `scripts/make-keys` set, passed as a path (so copied into the store),
 booted on the same markers as the throwaway set. Its next release installed over HTTP.
