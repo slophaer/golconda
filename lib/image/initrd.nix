@@ -116,7 +116,10 @@ in
       name = "${imageId}_${version}.initrd";
       inherit buildSystem;
       module = "initrd";
-      tools = [ pkgs.zstd ];
+      tools = [
+        pkgs.gen-init-cpio
+        pkgs.zstd
+      ];
       attrs = {
         inherit usrTree;
         dmRules = "${pkgs.lvm2}/lib/udev/rules.d";

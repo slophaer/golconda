@@ -174,13 +174,14 @@ in
 
       # The test image's initrd is bit-reproducible: Nix builds its derivation again, with one
       # variable more that lib/image/initrd.nu does not read, and the two initrd.cpio.zst are the
-      # same bytes. When they differ, tests/initrd/newc-diff.py names the cpio header fields that
-      # do. scripts/verify builds it after the image (an initrd build takes about 90 s, too long
-      # for scripts/lint).
+      # same bytes. The variable is the first build's output, so the second build starts after
+      # the first ends: a clock that reaches the archive (an mtime) shows. When they differ,
+      # tests/initrd/newc-diff.py names the cpio header fields that do. scripts/verify builds it
+      # after the image (an initrd build takes about 90 s, too long for scripts/lint).
       initrd-reproducible =
         let
           inherit (smokeTest) initrd;
-          again = derivation (initrd.drvAttrs // { reproducibilityRun = "2"; });
+          again = derivation (initrd.drvAttrs // { reproducibilityRunAfter = "${initrd}"; });
           newcDiff = builtins.path {
             path = ../tests/initrd/newc-diff.py;
             name = "newc-diff.py";

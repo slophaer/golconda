@@ -9,51 +9,6 @@ export def rdinit []: nothing -> string {
   "/init"
 }
 
-# renumber: a Python program (the seed's python3) that rewrites the newc headers of the cpio
-# it is given, in place. bsdtar copies each file's inode number, device and link count from the
-# build directory, and libarchive has no option to set them (its mtree reader takes them from
-# the file on disk too), so two builds of the same tree gave different bytes. The program numbers
-# the entries 1, 2, ... in the archive's (sorted) order, one number for each (device, inode) of
-# the build directory, so hard links keep their group; sets devmajor and devminor to 0; and
-# gives a directory 2 + its subdirectories as nlink (the file system's count differs: btrfs says
-# 1). The kernel links two entries only for the same inode and device with nlink >= 2.
-export def renumber []: nothing -> string {
-  r#'
-import mmap, sys
-from collections import Counter
-
-INO, MODE, NLINK, SIZE, DEVMAJOR, DEVMINOR, NAMESIZE = 0, 1, 4, 6, 7, 8, 11
-with open(sys.argv[1], "r+b") as f, mmap.mmap(f.fileno(), 0) as m:
-    def get(off, i):
-        return int(m[off + 6 + 8 * i : off + 14 + 8 * i], 16)
-
-    def put(off, i, v):
-        m[off + 6 + 8 * i : off + 14 + 8 * i] = b"%08X" % v
-
-    entries, inos, subdirs, off = [], {}, Counter(), 0
-    while True:
-        if m[off : off + 6] != b"070701":
-            sys.exit(f"renumber: no newc header at {off}")
-        namesize, size = get(off, NAMESIZE), get(off, SIZE)
-        name = m[off + 110 : off + 109 + namesize]
-        if name == b"TRAILER!!!":
-            break
-        isdir = get(off, MODE) & 0o170000 == 0o040000
-        if isdir:
-            subdirs[name.rpartition(b"/")[0]] += 1
-        key = (get(off, DEVMAJOR), get(off, DEVMINOR), get(off, INO))
-        entries.append((off, name, isdir, inos.setdefault(key, len(inos) + 1)))
-        off = (off + 110 + namesize + 3) & ~3
-        off = (off + size + 3) & ~3
-    for off, name, isdir, ino in entries:
-        put(off, INO, ino)
-        put(off, DEVMAJOR, 0)
-        put(off, DEVMINOR, 0)
-        if isdir:
-            put(off, NLINK, 2 + subdirs[name])
-'#
-}
-
 export def build [] {
   let a = (attrs)
   let out = $a.outputs.out
@@ -93,15 +48,29 @@ export def build [] {
     if not ($"($root)($p)" | path exists) { error make {msg: $"($p) missing from the initrd"} }
   }
 
-  # newc cpio, root-owned, one mtime, sorted names; then the fields bsdtar takes from the build
-  # directory, fixed (renumber): reproducible
+  # newc cpio by gen_init_cpio (packages/gen-init-cpio), from a list of the entries sorted by
+  # name: root-owned, the mode from the build directory, a symlink with its target, every mtime 1
+  # (-t). It numbers the inodes itself and writes fixed devices and link counts, so nothing of
+  # the build directory but the names, modes, targets and contents reaches the archive:
+  # reproducible. A file is one entry with its own data (no hard links: the initrd has none). The
+  # list splits at whitespace and expands ${VAR} in a file's location: a name or target with
+  # either, or another file type, fails here
   cd $root
+  let entries = (^find . -mindepth 1 -printf "%M\t%m\t%P\t%l\n" | lines | split column "\t" type mode name target | sort-by name)
+  let spec = ($entries | each {|e|
+    if ($"($e.name)($e.target)" =~ '\s|\$') { error make {msg: $"($e.name): a name or link target with whitespace or a dollar sign, which gen_init_cpio cannot take"} }
+    match ($e.type | str substring 0..0) {
+      "d" => $"dir /($e.name) ($e.mode) 0 0"
+      "-" => $"file /($e.name) ($root)/($e.name) ($e.mode) 0 0"
+      "l" => $"slink /($e.name) ($e.target) ($e.mode) 0 0"
+      _ => { error make {msg: $"($e.name): ($e.type) is no file, directory or symlink"} }
+    }
+  })
   let list = $"($env.NIX_BUILD_TOP)/list"
-  ^find . -mindepth 1 | lines | str replace -r '^\./' '' | sort | save -f $list
-  log $"(open --raw $list | lines | length) entries"
+  $spec | each {|l| $"($l)\n" } | str join | save -f $list
+  log $"($spec | length) entries"
   let cpio = $"($env.NIX_BUILD_TOP)/initrd.cpio"
-  ^bsdtar -cf $cpio --format newc --uid 0 --gid 0 --uname root --gname root --mtime "1970-01-01 00:00:01 UTC" -n -T $list
-  ^python3 -c (renumber) $cpio
+  ^gen_init_cpio -t 1 -o $cpio $list
   ^zstd -q -19 -T1 --rm -o $"($out)/initrd.cpio.zst" $"($env.NIX_BUILD_TOP)/initrd.cpio"
   $init | save -f $"($out)/rdinit"
   log $"initrd.cpio.zst: (ls $"($out)/initrd.cpio.zst" | get size.0), rdinit=($init)"
