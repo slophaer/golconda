@@ -42,6 +42,8 @@
   ukify = ./ukify;
   # build-time: systemd-repart fills the ESP with mcopy/mmd (the signer, lib/image/disk.nu)
   mtools = ./mtools;
+  # build-time: the initrd's newc cpio, reproducible by itself (lib/image/initrd.nu)
+  gen-init-cpio = ./gen-init-cpio;
   # build-time: systemd's and ukify's Python modules
   python-jinja2 = ./python-jinja2;
   python-markupsafe = ./python-markupsafe;
