@@ -3,6 +3,10 @@
 package {
   name = "dosfstools";
   uses = [ "autotools" ];
+  # mkfs.fat takes its clock from SOURCE_DATE_EPOCH: upstream's commit after 4.2, the last
+  # release (PR #106). systemd-repart passes the variable on, so the ESP in disk.raw is the same
+  # bytes on every signing (tests/packages/dosfstools)
+  patches = [ ./source-date-epoch.patch ];
   autotools.flags = [
     "--enable-compat-symlinks" # mkfs.vfat -> mkfs.fat, etc.
     "--without-udev" # no udev rules

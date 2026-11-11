@@ -59,6 +59,7 @@ in
   (check "sbom: each Golconda patch says why in its header, and an upstream link is a reference" (
     let
       golcondaPatched = [
+        "dosfstools"
         "gnupg"
         "libgpg-error"
         "p11-kit"
@@ -67,8 +68,19 @@ in
       ];
       patches = builtins.concatMap (n: sbomPatches.of fixturePkgs.${n}) golcondaPatched;
     in
-    builtins.length patches == 7
+    builtins.length patches == 8
     && builtins.all (p: p ? resolves) patches
+    &&
+      (builtins.head (sbomPatches.of fixturePkgs.dosfstools)).resolves == [
+        {
+          type = "enhancement";
+          name = "Honor the SOURCE_DATE_EPOCH variable";
+          references = [
+            "https://reproducible-builds.org/specs/source-date-epoch/"
+            "https://github.com/dosfstools/dosfstools/pull/106"
+          ];
+        }
+      ]
     &&
       (builtins.head (sbomPatches.of fixturePkgs.uptrack)).resolves == [
         {
