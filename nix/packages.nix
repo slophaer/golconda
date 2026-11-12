@@ -42,6 +42,10 @@
   # files the kernel build copies into its tree before configure, by path relative to the tree
   # (lib/system.nix: the verity certificate at the fixed path SYSTEM_TRUSTED_KEYS names)
   kernelFiles ? { },
+  # the certificates /trust's options name, PEM text each (lib/system.nix): the CA bundle is built
+  # from cacert's roots, plus caAnchors, minus caDistrust (packages/ca-bundle)
+  caAnchors ? [ ],
+  caDistrust ? [ ],
   downstream ? null,
   replaces ? [ ],
 }:
@@ -136,11 +140,16 @@ let
         GOLCONDA_KERNEL_FRAGMENTS = builtins.toJSON [ kernelConfigFragment ];
         GOLCONDA_KERNEL_FILES = builtins.toJSON kernelFiles;
       };
+      # /trust's options: the lists the bundle is made from, as JSON
+      ca-bundle.env.merge = {
+        GOLCONDA_CA_ANCHORS = builtins.toJSON caAnchors;
+        GOLCONDA_CA_DISTRUST = builtins.toJSON caDistrust;
+      };
     };
     # Set-wide choices: one TLS stack, one of each (docs/design/principles.md).
     features.tls = "openssl";
   };
-  # The generator gives a package a purl only from its own sources.toml. hwdb and gen-init-cpio
+  # The generator gives a package a purl only from its own sources.toml. hwdb, gen-init-cpio, ca-bundle
   # are built from another package's source and have none (lib/sbom-sources.nix): this sets their
   # purl to that source's, plus a subpath. The document is rebuilt with the generator's own
   # builder, so everything else in it is unchanged.

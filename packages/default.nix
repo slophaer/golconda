@@ -15,7 +15,9 @@
   openssh = ./openssh;
   iproute2 = ./iproute2;
   libmnl = ./libmnl;
-  # the CA store
+  # the CA store: the bundle (cacert's roots, /trust's anchors and distrust list) and the tool
+  # that makes it
+  ca-bundle = ./ca-bundle;
   p11-kit = ./p11-kit;
   libtasn1 = ./libtasn1;
   # the signer's tools for keys on a PKCS#11 token (lib/image/sign.nu), and SoftHSM, TEST-ONLY:

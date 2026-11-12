@@ -263,7 +263,8 @@ in
   (check "sbom: /usr gets the generator's sbom.json for this document" (
     fixture.usrTree.drvAttrs.sbomPath == "${fixture.sbom}/sbom.json"
   ))
-  (check "sbom: hwdb and gen-init-cpio name the source they are built from, as a purl with a subpath"
+  (check
+    "sbom: hwdb, gen-init-cpio and ca-bundle name the source they are built from, as a purl with a subpath"
     (
       let
         of =
@@ -277,6 +278,7 @@ in
           );
         hwdb = of "hwdb";
         cpio = of "gen-init-cpio";
+        bundle = of "ca-bundle";
       in
       hwdb.purl == "pkg:github/systemd/systemd@${base.pkgs.systemd.version}#hwdb.d"
       && cpio.purl == "pkg:generic/linux@${base.pkgs.linux-kernel.version}#usr/gen_init_cpio.c"
@@ -285,6 +287,10 @@ in
       && cpio.version == base.pkgs.linux-kernel.version
       && !(hwdb ? cpe)
       && !(cpio ? cpe)
+      # the CA bundle is cacert's roots (certifi's file), arranged by trust extract
+      && bundle.purl == "pkg:github/certifi/python-certifi@${base.pkgs.cacert.version}#certifi/cacert.pem"
+      && bundle.version == base.pkgs.cacert.version
+      && !(bundle ? cpe)
     )
   )
 ]

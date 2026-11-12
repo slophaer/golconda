@@ -274,6 +274,40 @@ in
     "touch $out"
   );
 
+  # The CA bundle that /trust's options make (docs/design/trust.md, "3. CA store"): the ca-bundle
+  # package built from an anchor, an anchor that is also distrusted, and a distrusted Mozilla
+  # root, and read by python for the set arithmetic and by OpenSSL for the verdict on a server
+  # certificate of each CA (tests/ca-store). The default bundle is the package test
+  # (tests/packages/ca-bundle). Nothing is booted; the boot test's tls-* markers do that.
+  ca-store =
+    let
+      fixture = n: builtins.readFile (../tests/fixtures/ca-store + "/${n}");
+      built = import ./packages.nix {
+        inherit sources;
+        system = double;
+        platform = double;
+        caAnchors = [
+          (fixture "anchor-ca.crt")
+          (fixture "distrusted-ca.crt")
+        ];
+        caDistrust = [
+          (fixture "distrusted-ca.crt")
+          (fixture "mozilla-root.crt")
+        ];
+      };
+    in
+    run "ca-store"
+      [
+        rp.cpython
+        rp.openssl
+      ]
+      ''
+        python3 ${src}/tests/ca-store/check.py ${src}/tests/fixtures/ca-store \
+          ${rp.cacert}/etc/ssl/certs/ca-bundle.crt \
+          ${built.pkgs.ca-bundle}/share/ca-certificates/ca-bundle.crt ${rp.openssl}/bin/openssl
+        touch $out
+      '';
+
   # The test image's SBOM is valid CycloneDX 1.5 (the vendored schema, tests/fixtures/cyclonedx),
   # and the validator has teeth: it refuses the negative fixtures and the same SBOM with one
   # patch type broken. The SBOM is the evaluated document (builtins.toJSON), so no image is built.

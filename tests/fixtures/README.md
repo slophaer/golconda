@@ -35,3 +35,23 @@ eval tests in `tests/real-packages/image-config.nix` give the directory to `lib.
 `publicKeys`, which reads only these three files. Nothing signs with it; the test images sign with
 throwaway keys made in the store (`lib/image/default.nix` `throwawayKeys`). To regenerate, run
 `scripts/make-keys` into a scratch directory and copy the three files.
+
+## Test CA certificates (`ca-store/`)
+
+The CA store's tests (`checks.ca-store`, the boot test's `tls-*` markers) need certificates that
+chain to a CA the image trusts, and to one it distrusts. All of it is test data, with no value
+outside the tests:
+
+- `anchor-ca.crt`: a CA the test images name in `/trust.anchors`. `server-anchor.{crt,key}` is a
+  server certificate it issued, for the IP address `169.254.169.5`.
+- `distrusted-ca.crt`: a CA that the test images name in both `anchors` and `distrust`; distrust
+  wins. `server-distrusted.{crt,key}` is its server certificate, for `169.254.169.6`.
+- `mozilla-root.crt`: one of Mozilla's roots (COMODO ECC Certification Authority, from cacert),
+  which the test images list in `distrust`. The package test of `ca-bundle` checks that cacert has
+  it, so a cacert update that drops it fails there and not silently here.
+
+Both CAs are EC P-256 and valid from 2020-01-01 to 2120-01-01, so the guest's clock does not matter.
+The CAs' private keys are not kept: the two server certificates are all the tests need. The server
+keys are committed because the boot test serves TLS with them. To regenerate, make two CAs and sign
+each server certificate with `openssl ca -startdate 20200101000000Z -enddate 21200101000000Z`,
+`subjectAltName = IP:<address>`, `extendedKeyUsage = serverAuth`.
