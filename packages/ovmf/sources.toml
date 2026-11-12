@@ -1,0 +1,12 @@
+[upstream]
+purl = "pkg:github/osdev0/edk2-ovmf-nightly-bins"
+
+[[source]]
+key = "default"
+url = "https://github.com/osdev0/edk2-ovmf-nightly-bins/releases/download/{tag}/edk2-ovmf-bins.tar.xz"
+hash = "sha256-qWXmw+j0ht4OJty+vsY+Ak0mWgFxXQ4eKXmo8LTRx0Q="
+
+[pin]
+version = "20261029T050735Z"
+date = "2026-10-29"
+tag = "20261029T050735Z"

@@ -95,4 +95,6 @@
   swtpm = ./swtpm;
   libtpms = ./libtpms;
   json-glib = ./json-glib;
+  # its firmware: OVMF, a pinned nightly build
+  ovmf = ./ovmf;
 }
