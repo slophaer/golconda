@@ -50,8 +50,9 @@ hostCertificate = true   # the admin var sshd-host-cert (file cert); until it is
 root = ["alice@example.com"]
 ```
 
-`authorizedKeys` lists plain public keys for root. Use it to bootstrap. `revokedKeys` and
-`hostCertificate` default to `false`.
+`authorizedKeys` lists plain public keys for root. Use it to bootstrap: with `hostCertificate` on,
+plain keys work only until the host certificate is enrolled. `revokedKeys` and `hostCertificate`
+default to `false`.
 
 A new machine enrols in its first release. Turn both options on, boot, and log in with a plain key
 (`authorizedKeys`, or the provisioning credential `ssh.authorized_keys.root`). Read the host key and
@@ -67,8 +68,11 @@ $ golconda vars set web1 sshd-revoked-keys krl < fleet.krl
 $ golconda vars push -i ~/.age/key.txt web1
 ```
 
-The push restarts sshd, which then presents the host certificate and checks the KRL. A KRL that
-names the bootstrap key retires it ([Trust: Enrolment](../design/trust.md#enrolment)).
+The push restarts sshd, which then presents the host certificate, checks the KRL and refuses every
+plain key: the image's `authorizedKeys`, `ssh.authorized_keys.root` and a cloud's keys. From then on
+only certificates log in, after reboots and updates too
+([Trust: Enrolment](../design/trust.md#enrolment)). One command for these steps,
+`golconda vars enrol` with the CA key on the same PKCS#11 token as the release keys, is *(later)*.
 
 ## Status
 
@@ -79,13 +83,18 @@ with a certificate for the allowed principal, and `cert-wrong-principal-refused`
 pushes the host certificate and a revocation list, and the next release, which turns both on, passes
 `host-cert-presented`, `cert-revoked-refused` and, after a second push, `krl-rotated`. With
 `--enrol` one release does all of it in its first boot: certificates are refused until the push
-(`cert-refused-before-enrol`), then the same boot presents the host certificate and refuses the
-retired bootstrap key (`bootstrap-key-revoked`). See [What is proven](../proven.md).
+(`cert-refused-before-enrol`), then the same boot presents the host certificate and refuses both
+plain keys, which the KRL does not name (`bootstrap-key-refused-after-enrol`, and after a reboot
+`bootstrap-key-refused-after-reboot`). See [What is proven](../proven.md).
 
 ## Limits
 
 - **Before the push** only plain keys log in, and no list checks them; the host is checked only by
   the console's fingerprint, not by a certificate.
+- **After the push** no plain key logs in. When certificate login breaks (the CA is lost, a KRL
+  refuses every certificate), recovery is the other slot, if its release has `hostCertificate` off
+  and someone chooses it at the console's boot menu, or a reflash, which wipes the sealed vars, so
+  the machine enrols again ([Boot loader: Recovery](../design/bootloader.md#recovery)).
 - The host certificate needs the host key first: the machine makes its key, then the CA signs it.
   Renewal is a new certificate pushed the same way; nothing on the machine renews it.
 - A password-less root is the only account. Per-operator records with `run0` and polkit are

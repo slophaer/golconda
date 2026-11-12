@@ -331,8 +331,8 @@ and `revokedKeys` on from the start:
    `golconda vars set` stores the certificate and the deployment's KRL, and `golconda vars push`
    sends both.
 1. The machine seals both, and the push restarts sshd (`KillMode=process` keeps the push's own
-   session). sshd now presents the certificate and checks the pushed KRL. A KRL that names the
-   bootstrap key retires it.
+   session). sshd now presents the certificate, checks the pushed KRL, and refuses every plain key:
+   from here on only certificates of the user CAs log in.
 
 ```mermaid
 sequenceDiagram
@@ -348,13 +348,33 @@ sequenceDiagram
   O->>M: golconda vars push (certificate and KRL)
   M->>M: seal both, restart sshd
   O->>M: ssh with a certificate, host certificate checked
+  O-xM: ssh with a plain key, refused
 ```
+
+**Plain keys stop at enrolment.** With `hostCertificate` on, `sshd_config` begins with
+`Include /run/golconda-sshd/*.conf`, before its `AuthorizedKeysFile` line; sshd takes the first
+value it reads. `golconda-sshd-enrolled.service` runs before sshd, only when the sealed certificate
+`/etc/credstore.encrypted/sshd-host-cert.cert` exists (`ConditionPathExists=`), and links
+`/usr/lib/sshd/enrolled.conf`, which says `AuthorizedKeysFile none`, into its runtime directory. So
+sshd reads no authorized-keys file at all: neither the image's `authorizedKeys` nor
+`/root/.ssh/authorized_keys`, where `ssh.authorized_keys.root` and the cloud's keys go. The unit is
+`PartOf=` sshd and sshd wants it, so the restart that the push makes runs it again: a start when the
+condition failed at boot, a restart when it ran. The decision is made at every start of sshd from a
+file on the state partition: it needs no second release, and it holds after a reboot and after an
+update to a release that has `hostCertificate` on.
+
+Recovery when certificate login breaks after the enrolment (the CA is lost, a KRL refuses every
+certificate, the host certificate does not unseal) is the other slot or a reflash. The other slot
+helps only when its release has `hostCertificate` off, and choosing it without a login takes the
+boot menu at the console ([Boot loader: Recovery](bootloader.md#recovery)). A reflash rewrites the
+state partition, and with it the sealed vars: the machine enrols again from its first boot. No plain
+key opens a way back in.
 
 Revocation is never off: sshd always reads a list. Before the push, that list refuses more than any
 real KRL could, every certificate of the user CAs, because the machine cannot know yet which of them
 are revoked. What logs in then is what the release already trusts without a CA: the plain keys of
 the image or of the provisioning credentials, which are the operator's own. A plain key is checked
-against no list until the push; to retire it, the pushed KRL names it.
+against no list until the push, and refused after it.
 
 The CA must sign the machine's key and no other. Before the push the client cannot check the host:
 there is no certificate yet, so a machine in the middle could hand over its own key for signing. The
@@ -375,11 +395,16 @@ certificates moves to them by a push and an update, in either order.
 with the bootstrap key and refuses a good certificate (`bootstrap-key-login`,
 `cert-refused-before-enrol`); the harness checks the console's fingerprint
 (`hostkey-fingerprint-on-console`), pushes, and in the same boot the host certificate is presented,
-a certificate logs in, the revoked one and the bootstrap key are refused, and a second KRL takes
-effect (`host-cert-presented`, `cert-login-after-enrol`, `cert-revoked-refused`,
-`bootstrap-key-revoked`, `krl-rotated`, `enrol-one-release`). With `--tpm` both hold after a reboot
-(`host-cert-presented-after-reboot`, `bootstrap-key-revoked-after-reboot`). `--next` pushes to a
-release with the options off and checks that the next release reads it.
+a certificate logs in, the revoked one is refused, both plain keys are refused though the KRL names
+neither, and a second KRL takes effect (`host-cert-presented`, `cert-login-after-enrol`,
+`cert-revoked-refused`, `bootstrap-key-refused-after-enrol`, `krl-rotated`, `enrol-one-release`).
+With `--tpm` all of it holds after a reboot (`host-cert-presented-after-reboot`,
+`cert-revoked-refused-after-reboot`, `bootstrap-key-refused-after-reboot`). `--next` pushes to a
+release with the options off and checks that the next release reads it, with a certificate.
+
+The operator runs six commands today. One command that reads the host key, checks its fingerprint,
+signs it with the CA key on the same PKCS#11 token as the release keys, and stores and pushes the
+result, `golconda vars enrol`, is *(later)*.
 
 ## TPM2 credential decryption
 

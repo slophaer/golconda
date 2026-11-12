@@ -347,4 +347,9 @@ fragment also brings the boot health unit `golconda-health-sshd.service`:
 `sshd_config` holds `AuthorizedKeysFile .ssh/authorized_keys /usr/lib/sshd/authorized_keys/%u`.
 `revokedKeys` and `hostCertificate` declare admin vars (a KRL and the signed host certificate); they
 reach sshd on the command line because `sshd_config` cannot refer to the credentials directory, and
-an app file may not ([`app`](#app)).
+an app file may not ([`app`](#app)). With `revokedKeys`, the KRL credential has a fallback
+(`SetCredential=`) that names the user CAs, so certificates are refused until the KRL is pushed.
+With `hostCertificate`, `sshd_config` begins with `Include /run/golconda-sshd/*.conf`, and
+`golconda-sshd-enrolled.service` links `/usr/lib/sshd/enrolled.conf` (`AuthorizedKeysFile none`)
+there when `/etc/credstore.encrypted/sshd-host-cert.cert` exists: plain keys stop once the host
+certificate is enrolled ([Trust: Enrolment](../../design/trust.md#enrolment)).

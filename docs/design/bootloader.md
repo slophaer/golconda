@@ -141,14 +141,15 @@ not fall back from it by itself.
 | the ESP is lost                                    | write the ESP partition of the release's `disk.raw` again, from another machine; it carries the loader, `loader.conf` and that release's UKI                                                                                                                       |
 | the `db` key leaks                                 | rotate it, with the old certificate in `dbx` (above)                                                                                                                                                                                                               |
 | the `db` private key is lost                       | running machines keep booting: the signatures they hold stay valid. No new release can be signed for them. Enrol a new key with the KEK (an authenticated write) or in firmware setup, then install a release signed with it (a rotation without step 3's overlap) |
+| certificate login is broken                        | after enrolment no plain key logs in ([Trust: Enrolment](trust.md#enrolment)). At the console, boot the other slot if its release has `hostCertificate` off; else reflash the disk: the state partition and its sealed vars go, and the machine enrols again       |
 
 The firmware path needs the console.
 
 The boot test runs the one-shot and default entries, the loader reinstall and the firmware reboot
 (`set-oneshot-other-slot`, `set-default-other-slot`, `loader-reinstall`, `reboot-to-firmware`), and
 a rotation with the old certificate in `dbx` (`--rotate`). The rows for a loader that does not
-start, a lost ESP and a lost `db` private key are *(being built)*: they use what is on `main`, but
-no test runs them ([What is proven](../proven.md#not-proven)).
+start, a lost ESP, a lost `db` private key and a broken certificate login are *(being built)*: they
+use what is on `main`, but no test runs them ([What is proven](../proven.md#not-proven)).
 
 ## What is not possible
 

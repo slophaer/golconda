@@ -203,6 +203,38 @@ in
       + "\\nssh-ed25519 AAAA user-ca\\n\n"
     ) certUnit
   ))
+  # fail closed once enrolled (owner, 2026-11-12): when the host certificate is sealed, plain keys
+  # stop. A unit before sshd links a config file with `AuthorizedKeysFile none` into a runtime
+  # directory only when the sealed certificate exists; sshd_config includes that directory first,
+  # and sshd takes the first value. PartOf= and Wants= make the push's restart of sshd run it again.
+  (check "sshd: with hostCertificate, plain keys stop once the certificate is sealed" (
+    let
+      enrolled = certSshd.units."golconda-sshd-enrolled.service";
+      includeAt = builtins.match "(.*)\nInclude /run/golconda-sshd/[*][.]conf\n(.*)" certConfig;
+    in
+    certSshd.files."${sshdDir}/enrolled.conf".text == "AuthorizedKeysFile none\n"
+    && includeAt != null
+    # before the AuthorizedKeysFile line: sshd takes the first value it reads
+    && !hasInfix "AuthorizedKeysFile" (head includeAt)
+    && hasInfix "\nAuthorizedKeysFile .ssh/authorized_keys" (builtins.elemAt includeAt 1)
+    && all (l: hasInfix "\n${l}\n" enrolled) [
+      "ConditionPathExists=/etc/credstore.encrypted/sshd-host-cert.cert"
+      "PartOf=sshd.service"
+      "Before=sshd.service"
+      "Type=oneshot"
+      "RemainAfterExit=yes"
+      "RuntimeDirectory=golconda-sshd"
+      "ExecStart=/usr/bin/ln -s /usr/lib/sshd/enrolled.conf /run/golconda-sshd/enrolled.conf"
+    ]
+    && hasInfix "\nWants=golconda-sshd-enrolled.service\n" certUnit
+    && hasInfix "\nAfter=golconda-sshd-enrolled.service\n" certUnit
+  ))
+  (check "sshd: without hostCertificate plain keys stay, nothing is included" (
+    !(system.units ? "golconda-sshd-enrolled.service")
+    && !hasInfix "Include" sshdConfig
+    && !(system.files ? "${sshdDir}/enrolled.conf")
+    && !hasInfix "golconda-sshd-enrolled" unit
+  ))
   (check "sshd: without revokedKeys no fallback list" (
     !hasInfix "SetCredential=" unit
     && !hasInfix "SetCredential="

@@ -421,9 +421,10 @@ the one-release enrolment of [Trust: Enrolment](../design/trust.md#enrolment). B
 harness makes a second plain key, the bootstrap key, and passes it as the SMBIOS credential
 `ssh.authorized_keys.root` (`io.systemd.credential.binary:`, base64). Before anything is pushed, it
 logs in with that key and checks that a good certificate is refused and that sshd's journal names
-the revocation list; then it pushes as `--next` does, with a KRL that also names the bootstrap key,
-and runs the certificate checks in the same boot. It needs the tools of `--next` (`golconda`,
-`age`).
+the revocation list; then it pushes as `--next` does and runs the certificate checks in the same
+boot. The KRL names neither plain key, so their refusal after the push is the enrolment's. From the
+push on, the harness logs in with its own certificate, `cert-admin` (serial 4), after the test key.
+It needs the tools of `--next` (`golconda`, `age`).
 
 `--secure-boot` enrolls the throwaway db key with `virt-fw-vars` (one fixed owner GUID) and boots
 OVMF's Secure Boot build (`share/ovmf/secure-boot`: Secure Boot, SMM and TPM 2.0, 4 MB flash) with
@@ -556,10 +557,11 @@ With `--enrol` (and `--ssh-test`; instead of `cert-login`):
 | `cert-refused-before-enrol`                                                | a good certificate is refused, and sshd's journal says the revocation list refused it            |
 | `hostkey-fingerprint-on-console`, `admin-vars-pushed`, `admin-vars-sealed` | the push of `--next`, in the first boot of the release that reads it                             |
 | `host-cert-presented`, `cert-login-after-enrol`, `cert-revoked-refused`    | the same boot presents the host certificate, takes the good certificate, refuses the revoked one |
-| `bootstrap-key-revoked`                                                    | the pushed KRL names the bootstrap key: it is refused                                            |
+| `bootstrap-key-refused-after-enrol`                                        | the bootstrap key and the image's test key are refused; the KRL names neither                    |
 | `krl-pushed-again`, `krl-rotated`                                          | a second KRL takes effect, as with `--next`                                                      |
 | `enrol-one-release`                                                        | all of it ran in the first boot: the boot id and the version did not change                      |
-| `host-cert-presented-after-reboot`, `bootstrap-key-revoked-after-reboot`   | with `--tpm`: after the reboot the sealed certificate and the pushed KRL are in force            |
+| `host-cert-presented-after-reboot`, `cert-revoked-refused-after-reboot`    | with `--tpm`: after the reboot the sealed certificate and the rotated KRL are in force           |
+| `bootstrap-key-refused-after-reboot`                                       | with `--tpm`: after the reboot plain keys are still refused                                      |
 
 With `--rotate`:
 
