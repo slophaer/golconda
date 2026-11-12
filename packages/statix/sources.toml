@@ -7,7 +7,7 @@ url = "https://github.com/oppiliappan/statix/archive/{rev}.tar.gz"
 hash = "sha256-5GBxiBDnhGJUCWc4Fc6YgODcJkUepV8dP/tY+lSrC5I="
 
 [pin]
-# the commit nixpkgs' statix (the dev pin's) builds, "0.5.8-unstable-2026-07-17" there; its
+# the commit nixpkgs' statix (the former dev pin's) builds, "0.5.8-unstable-2026-07-17" there; its
 # crate says 0.6.0, and so does `statix --version`
 version = "0.6.0"
 rev = "52530001bdbc8e94aae0d406a929c7ad7f09d9d1"

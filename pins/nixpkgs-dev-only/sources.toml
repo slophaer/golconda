@@ -1,7 +1,0 @@
-[upstream]
-frozen = "a nixpkgs-unstable channel build: developer tools repkgs does not build yet (scripts/boot-test's virtual machine). Its build id is not derivable; bump by hand"
-
-[[source]]
-key = "default"
-url = "https://releases.nixos.org/nixpkgs/nixpkgs-26.11pre1104102.e62746b0b472/nixexprs.tar.xz"
-hash = "sha256-GYpArmwi/iMuX2ov31oCBhAXRMJdNX9kOl2LZHCuR6M="

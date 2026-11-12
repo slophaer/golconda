@@ -26,7 +26,7 @@ Code enforces what it can:
   error that names both. There is no priority and no override (the composer in `/system`).
 - **Shell.** A test (`tests/eval/base.nix`) checks that `/usr/bin/sh` is dash and that no bash
   package is in the base.
-- **nixpkgs.** `checks.boundary` fails when a nixpkgs reference leaks outside developer tooling.
+- **nixpkgs.** `checks.boundary` fails when a Nix file, a script or a pin refers to nixpkgs.
 - **CA store.** The image ships one bundle, cacert's Mozilla roots, in `/usr`. Tmpfiles links it to
   `/etc/ssl/cert.pem` and `/etc/ssl/certs/ca-certificates.crt`.
 

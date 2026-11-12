@@ -3,8 +3,8 @@
 #
 # Each check is `run`: a content-addressed derivation whose builder is the repkgs seed's shell, as
 # repkgs' own tests are, with tools from repkgs where it has them (python3, gnumake, coreutils) and
-# the seed's nu, which Golconda's builders run. None uses the dev pin (nixpkgs); checks.boundary keeps
-# it in nix/dev.
+# the seed's nu, which Golconda's builders run. None uses nixpkgs; checks.boundary keeps it out of
+# every Nix file, script and pin.
 {
   sources,
   self,
@@ -208,19 +208,24 @@ in
   # clippy over the command line, tests included, as a repkgs cargo build (cli/checks)
   cli-clippy = rp.golconda-cli-clippy;
 
-  # nixpkgs is named in no Nix file, and in scripts only by scripts/boot-test, for the virtual
-  # machine repkgs does not build yet (QEMU's system emulator, OVMF, swtpm, virt-firmware)
+  # nixpkgs is an input of nothing: no pin fetches it, and no Nix file or script names it as a
+  # search path (angle brackets, -I, NIX_PATH) or as the old dev pin (docs/design/principles.md)
   boundary = run "boundary" [ ] ''
     cd ${src}
-    # in pieces, so that this file does not name the pin
+    # in pieces, so that this file does not match
     n=nixpkgs
-    pattern="$n-dev-only\|<$n>"
+    pattern="$n-dev-only\|<$n>\|-I $n=\|NIX_PATH=$n"
     if grep -rn --include='*.nix' "$pattern" .; then
       echo "nixpkgs referenced in Nix (docs/design/principles.md)" >&2
       exit 1
     fi
-    if grep -rn "$pattern" scripts | grep -v '^scripts/boot-test:'; then
-      echo "nixpkgs referenced by a script other than scripts/boot-test (docs/design/principles.md)" >&2
+    if grep -rn "$pattern" scripts; then
+      echo "nixpkgs referenced by a script (docs/design/principles.md)" >&2
+      exit 1
+    fi
+    # a pin of nixpkgs: by its name, or by its URL (a channel tarball, the GitHub repository)
+    if ls -d pins/*$n* 2>/dev/null || grep -rn -i "releases\.nixos\.org/$n\|github\.com/nixos/$n\|channels\.nixos\.org" pins; then
+      echo "nixpkgs pinned in pins/ (docs/design/principles.md)" >&2
       exit 1
     fi
     touch $out

@@ -7,7 +7,7 @@ url = "https://github.com/nushell/tree-sitter-nu/archive/{rev}.tar.gz"
 hash = "sha256-eWHAcV8bPCnL9y4PtPn6cJRylGQ2KMxCUoUGwDVigkg="
 
 [pin]
-# the commit the dev pin's tree-sitter-grammars.tree-sitter-nu builds
+# the commit the former nixpkgs dev pin's tree-sitter-grammars.tree-sitter-nu builds
 version = "0-unstable-2026-07-01"
 rev = "d694570aa26b53d0d642460a0430e8aa07dcbea0"
 date = "2026-07-01"

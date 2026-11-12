@@ -47,7 +47,6 @@ with `lib/pins.nix`, the reader `lib.readPins` exports:
 - `adios`: the module system (korora types vendored inside)
 - `flake-incompat`: the output schema
 - `iets`: the evaluator and linter
-- `nixpkgs-dev-only`: the boot test's virtual machine, used nowhere else
 
 ## `lib.mkImage`
 

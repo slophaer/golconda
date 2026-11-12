@@ -52,7 +52,7 @@ administrator overrides in `/etc`, state in `/var`, exactly as systemd documents
 | store                     | `/usr/nix/store`, image only                   | a Nix daemon on the machine     |
 
 The choice is enforced where it can be: repkgs `features` (`tls = "openssl"` set-wide), lints, and
-the boundary check that keeps nixpkgs out of everything but developer tooling.
+the boundary check that keeps nixpkgs out of every Nix file, script and pin.
 
 The one CA file is Mozilla's roots (cacert), kept in `/usr` and linked into `/etc/ssl` at boot at
 the two paths the image's clients read by default: `/etc/ssl/cert.pem` for OpenSSL
@@ -76,6 +76,7 @@ needs them is not packaged.
 
 Packages come from repkgs and `packages/`, and so do the tools the scripts run on the build host
 (`scripts/tools.sh`) and the sandboxed checks' builders (the repkgs seed's shell, `nix/checks.nix`).
-The only nixpkgs reference is the `nixpkgs-dev-only` pin, for the tools repkgs does not build yet:
-the boot test's virtual machine (QEMU, OVMF, swtpm, virt-firmware). `checks.boundary` fails when a
-Nix file, or a script other than `scripts/boot-test`, names it.
+The boot test's virtual machine is no exception: QEMU, swtpm and virt-firmware are `packages/`, and
+OVMF is a pinned prebuilt edk2 nightly (`packages/ovmf`, until edk2 is built from source).
+`checks.boundary` fails when a Nix file or a script names nixpkgs as a search path or as the old
+`nixpkgs-dev-only` pin, or when `pins/` pins it.

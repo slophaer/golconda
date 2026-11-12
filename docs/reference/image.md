@@ -288,7 +288,11 @@ output.
 ## Boot test (`scripts/boot-test`)
 
 The boot test runs the image in QEMU and checks that it reaches `multi-user.target`. It cannot run
-inside the Nix sandbox (no KVM), so it is a script, not a derivation. Usage:
+inside the Nix sandbox (no KVM), so it is a script, not a derivation. Its tools are Golconda's own
+packages, built through `scripts/tools.sh` before the run: `qemu-system` (QEMU's x86_64 system
+emulator and `qemu-img`), `swtpm`, `virt-firmware` (`virt-fw-vars`), `openssh` and `cpython`, first
+on `PATH`; the firmware is `ovmf`, a pinned edk2 nightly build (`packages/ovmf/package.nix` says
+where it comes from and what that trusts). Usage:
 
 ```sh
 # Build the test image
@@ -408,9 +412,11 @@ which the file replaces. QEMU's router advertisements name only `fec0::/64`, so 
 that address. QEMU's DHCP server offers the host name `dhcp-test` (`-netdev user,hostname=`).
 
 `--secure-boot` enrolls the throwaway db key with `virt-fw-vars` (one fixed owner GUID) and boots
-`OVMFFull.fd` with `-machine smm=on`: plain `OVMF.fd` has no Secure Boot support. The guest must
-report `Secure Boot: enabled` (the `secure-boot-enabled` marker); the same disk with an unsigned
-loader on the ESP is refused by firmware, which is the negative control for this check.
+OVMF's Secure Boot build (`share/ovmf/secure-boot`: Secure Boot, SMM and TPM 2.0, 4 MB flash) with
+`-machine smm=on`; `--tpm` takes that build too. A boot with neither takes the plain build
+(`share/ovmf/plain`), which has no Secure Boot support. The guest must report `Secure Boot: enabled`
+(the `secure-boot-enabled` marker); the same disk with an unsigned loader on the ESP is refused by
+firmware, which is the negative control for this check.
 
 The script creates a 40 GiB qcow2 overlay (room for the root partition), copies the OVMF variable
 store, passes the host name `boot-test` as a credential (`-smbios type=11,...`, not with
