@@ -87,6 +87,10 @@ enum Releases {
         /// (default: --keys)
         #[arg(long, value_name = "DIR")]
         index_keys: Option<PathBuf>,
+        /// The PKCS#11 module of the token that holds the db or PCR key, when a key set names
+        /// it by URI (secureboot/db.pkcs11, pcr/pcr.pkcs11), e.g. a YubiKey's libykcs11.so
+        #[arg(long, value_name = "FILE")]
+        pkcs11_module: Option<PathBuf>,
         /// YYYYMMDD.N, or auto
         #[arg(long, value_name = "VERSION", default_value = "auto")]
         version: String,
@@ -220,6 +224,7 @@ fn list_releases(
 fn build_release(
     doc: &Doc,
     (keys, pcr_keys, index_keys): (&Path, Option<&Path>, Option<&Path>),
+    pkcs11_module: Option<&Path>,
     version: &str,
     to: Option<&str>,
     out: PathBuf,
@@ -236,6 +241,7 @@ fn build_release(
         keys,
         pcr_keys,
         index_keys,
+        pkcs11_module,
         version,
         dest: dest.as_ref(),
         out,
@@ -294,12 +300,14 @@ fn run_release(command: Releases) -> Result<String, Box<dyn error::Error>> {
             keys,
             pcr_keys,
             index_keys,
+            pkcs11_module,
             version,
             to,
             out,
         } => build_release(
             &doc,
             (&keys, pcr_keys.as_deref(), index_keys.as_deref()),
+            pkcs11_module.as_deref(),
             &version,
             to.as_deref(),
             out,

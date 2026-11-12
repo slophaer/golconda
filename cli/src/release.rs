@@ -772,6 +772,9 @@ pub struct BuildRequest<'a> {
     /// (default: `keys`)
     pub pcr_keys: Option<&'a Path>,
     pub index_keys: Option<&'a Path>,
+    /// the PKCS#11 module of the token a key set names its db or PCR key on
+    /// (`secureboot/db.pkcs11`, `pcr/pcr.pkcs11`); the signer loads it
+    pub pkcs11_module: Option<&'a Path>,
     /// None: `--version auto`
     pub version: Option<Version>,
     /// a destination whose versions count as seen
@@ -983,7 +986,8 @@ fn build_and_check(
 
 /// nix-build of mkImage's unsigned outputs, linked at OUT/unsigned, then their signer with the
 /// key sets [db, pcr, index] into OUT. The private keys are read by the signer only, on this
-/// host; Nix sees the paths of the key sets and copies their public halves.
+/// host, or stay on a token it reaches through `req.pkcs11_module`; Nix sees the paths of the
+/// key sets and copies their public halves.
 fn sign_release(
     req: &BuildRequest<'_>,
     tools: &Tools<'_>,
@@ -1019,7 +1023,11 @@ fn sign_release(
         .in_dir(root)
         .run(&args, None)
         .map_err(|e| Error(format!("the build failed: {}", e.0)))?;
-    let sign: Vec<&OsStr> = vec![
+    let module = req
+        .pkcs11_module
+        .map(|m| path::absolute(m).map_err(|e| Error(format!("{}: {e}", m.display()))))
+        .transpose()?;
+    let mut sign: Vec<&OsStr> = vec![
         unsigned.as_os_str(),
         "--keys".as_ref(),
         keys.as_os_str(),
@@ -1027,9 +1035,11 @@ fn sign_release(
         pcr_keys.as_os_str(),
         "--index-keys".as_ref(),
         index_keys.as_os_str(),
-        "--out".as_ref(),
-        out.as_os_str(),
     ];
+    if let Some(m) = &module {
+        sign.extend(["--pkcs11-module".as_ref(), m.as_os_str()]);
+    }
+    sign.extend(["--out".as_ref(), out.as_os_str()]);
     Program::at(&unsigned.join("sign"))
         .run(&sign, None)
         .map(|_| ())
@@ -1958,6 +1968,17 @@ mod tests {
             version: Option<&str>,
             dest: bool,
         ) -> Result<Built> {
+            self.build_with(doc, iets, version, dest, None)
+        }
+
+        fn build_with(
+            &self,
+            doc: &Path,
+            iets: &Program,
+            version: Option<&str>,
+            dest: bool,
+            pkcs11_module: Option<&Path>,
+        ) -> Result<Built> {
             let to = self.dest.to_string_lossy().into_owned();
             let d = Destination {
                 rclone: &self.rclone,
@@ -1969,6 +1990,7 @@ mod tests {
                 keys: &self.tmp.path().join("keys"),
                 pcr_keys: None,
                 index_keys: None,
+                pkcs11_module,
                 version: version.map(v),
                 dest: dest.then_some(&d),
                 out: self.tmp.path().join("result"),
@@ -2068,6 +2090,24 @@ mod tests {
             s.publish(&b.release, false).unwrap(),
             Published::Uploaded { record: Some(_) }
         ));
+    }
+
+    #[test]
+    fn build_gives_the_signer_the_pkcs11_module() {
+        let s = scene();
+        let (doc, iets) = s.checkout();
+        let want = auto().to_string();
+        s.out(&want, &want);
+        let module = s.tmp.path().join("libykcs11.so");
+        s.build_with(&doc, &iets, None, false, Some(&module))
+            .unwrap();
+        let signed = fs::read_to_string(s.tmp.path().join("sign.log")).unwrap();
+        let args: Vec<&str> = signed.split_whitespace().collect();
+        let at = args
+            .iter()
+            .position(|a| *a == "--pkcs11-module")
+            .unwrap_or_else(|| panic!("no --pkcs11-module: {signed}"));
+        assert_eq!(args[at + 1], module.to_str().unwrap());
     }
 
     #[test]
@@ -2180,6 +2220,7 @@ mod tests {
             keys: &s.tmp.path().join("keys"),
             pcr_keys: Some(&old),
             index_keys: Some(&old),
+            pkcs11_module: None,
             version: Some(v("20261106.1")),
             dest: None,
             out: out.clone(),
