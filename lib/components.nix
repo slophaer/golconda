@@ -46,6 +46,7 @@ let
     "/base"
     "/network"
     "/security"
+    "/trust"
     "/factory"
     "/vars"
   ];

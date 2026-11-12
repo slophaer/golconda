@@ -6,7 +6,6 @@
   compose,
   hasInfix,
   hasPrefix,
-  stubCacert,
   stubSet,
   stubSystemd,
   stubTzdata,
@@ -101,22 +100,6 @@ in
     in
     result.links ? "/usr/lib/libsystemd.so.0"
     && result.links."/usr/lib/libsystemd.so.0".kind == "dlopen"
-  ))
-  (check "base: the one CA bundle is cacert's, in /usr, linked from the paths OpenSSL and curl read" (
-    let
-      result = compose [ ];
-      bundle = "/usr/share/ca-certificates/ca-bundle.crt";
-    in
-    any (p: p.name == "cacert-2026.1") result.packages
-    &&
-      result.links."${bundle}" == {
-        target = "${stubCacert}/etc/ssl/certs/ca-bundle.crt";
-        kind = "explicit";
-      }
-    # OPENSSLDIR=/etc/ssl (openssl version -d): the default cert file
-    && elem "L /etc/ssl/cert.pem - - - - ${bundle}" result.tmpfiles
-    # curl's compiled-in CURL_CA_BUNDLE
-    && elem "L /etc/ssl/certs/ca-certificates.crt - - - - ${bundle}" result.tmpfiles
   ))
   (check "base: tzdata, /usr/share/zoneinfo, and /etc/localtime at UTC" (
     let

@@ -63,6 +63,7 @@
   - [`/services`](reference/modules/generated/services.md)
     - [`/services/sshd`](reference/modules/generated/services-sshd.md)
   - [`/system`](reference/modules/generated/system.md)
+  - [`/trust`](reference/modules/generated/trust.md)
   - [`/vars`](reference/modules/generated/vars.md)
   - [Types](reference/modules/generated/types.md)
 - [Configuration](reference/config.md)

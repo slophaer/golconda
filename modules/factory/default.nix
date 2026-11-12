@@ -145,9 +145,7 @@ in
           "session optional linux-pam/pam_umask.so silent"
           "session optional systemd/pam_systemd.so"
         ];
-        # p11-kit trust paths and PKCS#11 module configuration (docs/design/trust.md)
-        "ssl/anchors/.keep" = "";
-        "ssl/blocklist/.keep" = "";
+        # PKCS#11 module configuration (docs/design/trust.md)
         "pkcs11/.keep" = "";
       };
 

@@ -101,6 +101,7 @@ in
         "/base"
         "/network"
         "/security"
+        "/trust"
         "/factory"
         "/vars"
       ]

@@ -1,28 +1,11 @@
 # Part of /base (modules/base/default.nix merges it): the /usr links into the
 # packages. /usr/bin/sh, the util-linux and e2fsprogs tools, systemd's farm
-# directories, the dlopen sonames, the PAM module directories, the CA bundle, the
-# zone database, the compiled hwdb, and the tmpfiles lines that link the CA bundle from /etc.
-# `p` is the package set. Returns { links; tmpfiles; }.
+# directories, the dlopen sonames, the PAM module directories, the zone database and the
+# compiled hwdb. (The CA bundle and its /etc links are /trust's.)
+# `p` is the package set. Returns { links; }.
 { p }:
 let
   inherit (builtins) listToAttrs;
-
-  # The one CA file of the image: cacert's Mozilla bundle. /etc carries only
-  # symlinks to it, made at boot by the tmpfiles lines below: OpenSSL's
-  # OPENSSLDIR is /etc/ssl, so its default cert file is /etc/ssl/cert.pem, and
-  # libcurl is built with CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt.
-  # The file stays in /usr, so an image update replaces it; a later p11-kit
-  # trust extract may replace the links, but not this file.
-  caBundleLinks = {
-    "/usr/share/ca-certificates/ca-bundle.crt" = {
-      target = "${p.cacert}/etc/ssl/certs/ca-bundle.crt";
-      kind = "explicit";
-    };
-  };
-  caBundleTmpfiles = [
-    "L /etc/ssl/cert.pem - - - - /usr/share/ca-certificates/ca-bundle.crt"
-    "L /etc/ssl/certs/ca-certificates.crt - - - - /usr/share/ca-certificates/ca-bundle.crt"
-  ];
 
   # The zone database: /etc/localtime (the factory's tmpfiles line) links
   # /usr/share/zoneinfo/<timezone>, UTC by default. One directory link: the
@@ -167,16 +150,5 @@ let
     };
 in
 {
-  links =
-    shLinks
-    // toolLinks
-    // farmLinks
-    // dlopenLinks
-    // pamLinks
-    // caBundleLinks
-    // zoneinfoLinks
-    // hwdbLinks;
-
-  # /etc is created by tmpfiles at boot, and an admin file at either path wins (L, not L+)
-  tmpfiles = caBundleTmpfiles;
+  links = shLinks // toolLinks // farmLinks // dlopenLinks // pamLinks // zoneinfoLinks // hwdbLinks;
 }

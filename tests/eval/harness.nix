@@ -96,6 +96,8 @@ let
   stubLinuxKernel = withBin "linux-kernel-6.18.0" [ ];
   # cacert ships one file, tzdata one directory: neither has a bin list
   stubCacert = withBin "cacert-2026.1" [ ];
+  # ca-bundle ships one data file, built from cacert's roots and /trust's options
+  stubCaBundle = withBin "ca-bundle-2026.1" [ ];
   stubTzdata = withBin "tzdata-2026a" [ ];
   # hwdb ships one data file
   stubHwdb = withBin "hwdb-262" [ ];
@@ -111,6 +113,7 @@ let
       dash = stubDash;
       uutils-coreutils = stubUutils;
       cacert = stubCacert;
+      ca-bundle = stubCaBundle;
       tzdata = stubTzdata;
       hwdb = stubHwdb;
       linux-kernel = stubLinuxKernel;
@@ -331,6 +334,7 @@ in
     sshdDir
     sshdTree
     standIn
+    stubCaBundle
     stubCacert
     stubDash
     stubSet

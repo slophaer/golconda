@@ -7,7 +7,7 @@
 #! Packages: systemd, dbus-broker, dash (linked as /usr/bin/sh; the image
 #! has no bash), uutils-coreutils, tpm2-tss (only systemd's dlopen reaches
 #! it), e2fsprogs (mkfs.ext4 and fsck.ext4 for the root partition systemd-repart
-#! makes at first boot), cacert (Mozilla's roots, one bundle), tzdata
+#! makes at first boot), tzdata
 #! (/usr/share/zoneinfo), hwdb (systemd's hardware database, compiled, at
 #! /usr/lib/udev/hwdb.bin) and the kernel (consumed later by the UKI builder).
 #! No GNU coreutils.
@@ -38,19 +38,12 @@
 #! - `/usr/bin` links for the util-linux and e2fsprogs executables that mount
 #!   units, systemd-fsck and udev rules exec (the whole packages would bring
 #!   100 more tools).
-#! - `/usr/share/ca-certificates/ca-bundle.crt`: cacert's Mozilla bundle, the
-#!   one CA file of the image;
 #! - `/usr/share/zoneinfo`: tzdata's zone database, the one time zone source.
 #!
 #! Files: the timesyncd and journald drop-ins, and
 #! `/usr/lib/repart.d/30-root.conf` (the root partition systemd-repart makes
 #! at first boot, rendered from `image/repart.nix`). Tmpfiles lines: `L /bin`, `L /sbin` and `L /lib`, the
 #! merged-`/usr` links on the root partition.
-#! `L /etc/ssl/cert.pem` and `L /etc/ssl/certs/ca-certificates.crt`, the
-#! paths OpenSSL and curl read by default: `openssl version -d` says
-#! OPENSSLDIR=/etc/ssl, so OpenSSL reads /etc/ssl/cert.pem, and curl is built
-#! with CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt. Both link the one
-#! bundle in /usr, so an update carries it and /etc holds no copy.
 #! `L /etc/localtime` is the factory's line: it links `/usr/share/zoneinfo/<timezone>`, UTC by default.
 #!
 #! Unit drop-ins (a link to /dev/null cannot mask a unit the systemd farm
@@ -178,7 +171,6 @@ in
         p.uutils-coreutils
         p.tpm2-tss # dlopen only (see parts/links.nix): nothing else brings it into the closure
         p.e2fsprogs # mkfs.ext4 and fsck.ext4: repart makes the root partition at first boot
-        p.cacert # the one CA bundle: /usr/share/ca-certificates/ca-bundle.crt
         p.tzdata # the zone database: /usr/share/zoneinfo
         p.hwdb # the compiled hardware database: /usr/lib/udev/hwdb.bin
         p.linux-kernel # kernel; UKI builder consumes it
@@ -204,13 +196,11 @@ in
       inherit (dbus) sysusers;
 
       # merged /usr on the root partition: #!/bin/sh and friends. The root partition starts
-      # empty (image/repart.nix makes only directories), so tmpfiles makes these links at
-      # boot. Plus the CA links of parts/links.nix.
+      # empty (image/repart.nix makes only directories), so tmpfiles makes these links at boot.
       tmpfiles = [
         "L /bin - - - - usr/bin"
         "L /sbin - - - - usr/bin"
         "L /lib - - - - usr/lib"
-      ]
-      ++ usrLinks.tmpfiles;
+      ];
     };
 }

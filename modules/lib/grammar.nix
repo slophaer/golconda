@@ -75,6 +75,11 @@ in
   # A path under /etc, relative: plain components that are not . or ..
   etcPath = "${etcComponent}(/${etcComponent})*";
 
+  # One PEM certificate, as /trust takes it: the block with base64 and white space inside, and
+  # white space around it, nothing else (no comment, no second block, no other kind of block).
+  # The bracket holds literal tab, CR and LF characters, which both dialects read alike.
+  pemCertificate = "[ \t\r\n]*-----BEGIN CERTIFICATE-----[ \t\r\n]*[A-Za-z0-9+/][A-Za-z0-9+/= \t\r\n]*-----END CERTIFICATE-----[ \t\r\n]*";
+
   # An IANA zone name, a path under /usr/share/zoneinfo such as Europe/Berlin.
   timezone = "[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*";
 

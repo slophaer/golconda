@@ -78,6 +78,15 @@ let
     downstream = project.packages;
     inherit (project) replaces;
     inherit kernelConfig kernelFiles;
+    inherit (trustOptions) caAnchors caDistrust;
+  };
+
+  # /trust's lists, read from the options before the tree checks them (as secureBoot is): the CA
+  # bundle package is built from them, and the option types still check every entry when /trust is
+  # evaluated. A document that gives anything but lists fails there, not here.
+  trustOptions = {
+    caAnchors = (loadedOptions."/trust" or { }).anchors or [ ];
+    caDistrust = (loadedOptions."/trust" or { }).distrust or [ ];
   };
   # Without Secure Boot the kernel's built-in keyring holds the verity certificate. The config
   # names a fixed path in the kernel tree, and the build copies the certificate there
@@ -282,6 +291,7 @@ let
   baseSet = import ../nix/packages.nix {
     inherit sources system platform;
     inherit kernelConfig kernelFiles;
+    inherit (trustOptions) caAnchors caDistrust;
   };
 
   # Where a package comes from: a downstream package, one of Golconda's packages/ (by its

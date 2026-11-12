@@ -45,6 +45,7 @@ let
     ./secure-boot.nix
     ./index.nix
     ./hwdb.nix
+    ./trust.nix
     ./imds.nix
     ./components.nix
     ./sbom-patches.nix

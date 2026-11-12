@@ -39,6 +39,7 @@ in
         "/services"
         "/services/sshd"
         "/system"
+        "/trust"
         "/vars"
       ]
   ))
@@ -54,6 +55,7 @@ in
       "services-sshd.md"
       "services.md"
       "system.md"
+      "trust.md"
       "types.md"
       "vars.md"
     ]
@@ -122,6 +124,7 @@ in
       "/services"
       "/services/sshd"
       "/system"
+      "/trust"
       "/vars"
     ]
     && all (m: pathExists m.filePath) modulePaths

@@ -42,6 +42,14 @@
     maximum = 65535;
   };
 
+  # modules/trust
+  pemCertificate = {
+    description = "The text of one PEM certificate: -----BEGIN CERTIFICATE-----, base64, -----END CERTIFICATE-----, with white space around it and no comment or other block. At most 16384 characters.";
+    type = "string";
+    pattern = pattern "pemCertificate";
+    maxLength = 16384;
+  };
+
   # modules/system/default.nix: the image id and version, one grammar each
   imageName = {
     description = "Image id: letters, digits and _ . -, starting with a letter or digit.";
