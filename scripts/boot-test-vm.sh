@@ -229,6 +229,12 @@ start_qemu() {
     NET_UPDATE=",guestfwd=tcp:$UPDATE_ADDR:$HTTP_PORT-cmd:$WORKDIR/serve-http"
   fi
 
+  # --ssh-test: the CA store check's two HTTPS servers (boot-test-tls.sh)
+  NET_TLS=""
+  if [ "$SSH_TEST" = 1 ]; then
+    NET_TLS=",guestfwd=tcp:$TLS_ADDR_ANCHOR:443-cmd:$WORKDIR/serve-tls-anchor,guestfwd=tcp:$TLS_ADDR_DISTRUSTED:443-cmd:$WORKDIR/serve-tls-distrusted"
+  fi
+
   QEMU_ARGS="-machine q35,accel=kvm:tcg \
     -cpu max \
     -m 2G \
@@ -242,7 +248,7 @@ start_qemu() {
     $SMBIOS_HOSTNAME \
     $SMBIOS_BOOTSTRAP \
     $SMBIOS_IMDS \
-    -netdev user,id=net0,net=$GUEST_NET,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22$NET_UPDATE$NET_IMDS \
+    -netdev user,id=net0,net=$GUEST_NET,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22$NET_UPDATE$NET_IMDS$NET_TLS \
     -device virtio-net-pci,netdev=net0"
   
   if [ "$TPM" = 1 ] || [ "$SECURE_BOOT" = 1 ]; then

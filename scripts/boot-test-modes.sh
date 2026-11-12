@@ -88,6 +88,8 @@ test_ssh() {
 
   check_hwdb hwdb
 
+  check_ca_store
+
   # IPE (docs/design/kernel.md): only files on a dm-verity volume with a verified signature run.
   # A copy of /usr's shell on the root partition must be refused with EACCES, and the kernel must
   # log a new IPE denial; the count before and after keeps an earlier denial from passing. The

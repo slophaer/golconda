@@ -40,6 +40,12 @@
 #   (--fail-health) and -after-refused-update (--tamper-index).
 #   With the test image it also logs in with certificates from tests/fixtures/snakeoil-user-ca
 #   (cert-login, cert-wrong-principal-refused).
+#   The CA store (docs/design/trust.md, "3. CA store"): ca-store-links, ca-bundle-content (the guest's
+#   bundle: Mozilla's roots and the test image's added anchor in, its distrusted certificates out),
+#   tls-anchor-trusted (systemd-pull fetches https://169.254.169.5/, whose certificate chains to the
+#   added anchor) and tls-distrusted-refused (https://169.254.169.6/, a CA in both `anchors` and
+#   `distrust`, fails on the certificate). Both servers are QEMU guestfwds to a TLS server over
+#   stdio (boot-test-tls.sh); no host port opens.
 # With --next: before the update it pushes the host certificate (the guest's host key signed by
 #   tests/fixtures/snakeoil-host-ca) and a revocation list with `golconda vars`
 #   (packages.<system>.golconda-cli; set BOOT_TEST_GOLCONDA, and put age and age-keygen on PATH),
@@ -233,6 +239,8 @@ IMDS_NET_CRED=60-imds-ipv6
 . "$SCRIPT_DIR/boot-test-vm.sh"
 # shellcheck source=boot-test-http.sh
 . "$SCRIPT_DIR/boot-test-http.sh"
+# shellcheck source=boot-test-tls.sh
+. "$SCRIPT_DIR/boot-test-tls.sh"
 # shellcheck source=boot-test-guest.sh
 . "$SCRIPT_DIR/boot-test-guest.sh"
 # shellcheck source=boot-test-checks.sh
@@ -463,6 +471,9 @@ main() {
   fi
   if [ "$IMDS" = 1 ]; then
     start_imds_server || exit 1
+  fi
+  if [ "$SSH_TEST" = 1 ]; then
+    start_tls_servers || exit 1
   fi
 
   start_qemu

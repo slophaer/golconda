@@ -43,6 +43,23 @@ in
     hostCertificate = true;
     revokedKeys = true;
   });
+  # the CA store (docs/design/trust.md): the boot test's HTTPS servers (scripts/boot-test-tls.sh)
+  # use certificates of two test CAs (tests/fixtures/ca-store). The first is an anchor. The second
+  # is an anchor too, and distrusted: distrust wins. A Mozilla root is distrusted as well.
+  "/trust" =
+    let
+      ca = n: builtins.readFile (../tests/fixtures/ca-store + "/${n}");
+    in
+    {
+      anchors = [
+        (ca "anchor-ca.crt")
+        (ca "distrusted-ca.crt")
+      ];
+      distrust = [
+        (ca "distrusted-ca.crt")
+        (ca "mozilla-root.crt")
+      ];
+    };
   # cloud metadata: QEMU's DMI names no cloud, so no import runs and no unit fails; a
   # boot test that fakes a cloud's DMI and endpoint imports from it
   "/imds" = { };
