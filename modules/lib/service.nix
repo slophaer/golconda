@@ -123,6 +123,21 @@ let
       null
   );
 
+  # A credential fallback's text: what PID 1 gives the service when the sealed credential is
+  # missing (SetCredential=). Not empty (systemd ignores SetCredential=ID: with no value), and no
+  # control character but a line break, which the renderer escapes with the backslash.
+  credentialFallback = typedef' "credentialFallback" (
+    v:
+    if !isString v then
+      "Expected a string"
+    else if v == "" then
+      "a credential fallback is text: systemd ignores an empty SetCredential= value"
+    else if match "[^[:cntrl:]]*" (replaceStrings [ "\n" ] [ "" ] v) == null then
+      "a credential fallback holds no control character but a line break"
+    else
+      null
+  );
+
   # A StateDirectory= entry: one directory name under /var/lib, so a space or
   # a .. cannot add a second directory or leave /var/lib.
   stateDirectory = typedef' "stateDirectory" path.componentError;
@@ -163,6 +178,10 @@ let
       # System scope only: Golconda seals credentials for the system manager.
       # app.argv names a credential by its handle: { credential = "n"; prefix ? ""; }.
       credentials = optionalAttr (attrsOf credentialId);
+      # credential handle -> text PID 1 gives the service under that credential's id when
+      # the sealed file is not in the credstore (SetCredential=, systemd.exec(5)); default
+      # { }. The text is in the unit file in /usr: public values only, never a secret.
+      credentialFallbacks = optionalAttr (attrsOf credentialFallback);
       # StateDirectory= entries under /var/lib, one name each; default [ ]
       state = optionalAttr (listOf stateDirectory);
       # RuntimeDirectory= under /run, one component (not . or ..); default none
@@ -190,7 +209,15 @@ let
           else if isUser svc && (svc.credentials or { }) != { } then
             "a user service cannot load a Golconda credential: credentials are sealed for the system manager in /etc/credstore.encrypted, which the per-user manager does not search (systemd.exec(5), Credentials); make it a system service"
           else
-            null;
+            let
+              undeclared = filter (n: !((svc.credentials or { }) ? ${n})) (
+                attrNames (svc.credentialFallbacks or { })
+              );
+            in
+            if undeclared != [ ] then
+              "a credential fallback names no declared credential: ${concatStringsSep ", " undeclared}"
+            else
+              null;
       };
 
   # systemd command-line text: % and $ are specifiers and variables, so they
@@ -232,6 +259,11 @@ let
     svc:
     let
       credentials = svc.credentials or { };
+      fallbacks = svc.credentialFallbacks or { };
+      # PID 1 unescapes a SetCredential= value (cunescape): a backslash doubles, a line break is \n
+      setCredential =
+        n:
+        "SetCredential=${credentials.${n}}:${replaceStrings [ "\\" "\n" ] [ "\\\\" "\\n" ] fallbacks.${n}}";
 
       # a credential ref must name a declared credential, or the unit cannot start
       checkedRef =
@@ -272,6 +304,7 @@ let
       ++ map (id: "LoadCredentialEncrypted=${id}") (
         sortStrings (map (n: credentials.${n}) (attrNames credentials))
       )
+      ++ map setCredential (attrNames fallbacks)
       ++ map (d: "StateDirectory=${d}") (svc.state or [ ])
       ++ (on (svc ? runtimeDirectory) [ "RuntimeDirectory=${svc.runtimeDirectory}" ])
       ++ (on (svc ? killMode) [ "KillMode=${svc.killMode}" ])

@@ -25,6 +25,14 @@
         };
         description = "Credential name -> credstore id (one name, never a path).";
       };
+      credentialFallbacks = {
+        type = "object";
+        additionalProperties = {
+          type = "string";
+          minLength = 1;
+        };
+        description = "Credential name (declared in credentials) -> public text PID 1 gives the service when the sealed credential is missing (SetCredential=). In the unit file: never a secret.";
+      };
       state = {
         type = "array";
         items = {

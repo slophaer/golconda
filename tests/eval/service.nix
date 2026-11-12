@@ -312,4 +312,51 @@ in
     && hasInfix "\nEnvironment=VAR=$HOME\n" u
     && hasInfix "\nEnvironment=PATH=/usr/lib/foo/bin\n" u
   ))
+  # a credential fallback: public text PID 1 gives the service when the sealed credential is not
+  # in the credstore (SetCredential= under the same id, systemd.exec(5)); a backslash and a line
+  # break are escaped, because PID 1 unescapes the value (cunescape) and a line ends the directive
+  (check "render: a credential fallback is SetCredential= under the credential's id, escaped" (
+    let
+      u =
+        (s.render {
+          name = "x";
+          app = {
+            package = standIn;
+            argv = [ (s.credential "krl") ];
+          };
+          user = "root";
+          sandbox = "default";
+          credentials.krl = "foo-krl.krl";
+          credentialFallbacks.krl = "# none yet\nssh-ed25519 AAAA a\\b\n";
+        }).units."x.service";
+    in
+    hasInfix (
+      "\nLoadCredentialEncrypted=foo-krl.krl\n"
+      + "SetCredential=foo-krl.krl:# none yet\\nssh-ed25519 AAAA a\\\\b\\n\n"
+    ) u
+  ))
+  (check "render: a credential fallback must name a declared credential, and hold text" (
+    let
+      withFallback =
+        credentials: fallbacks:
+        s.render {
+          name = "x";
+          app = {
+            package = standIn;
+          };
+          user = "root";
+          sandbox = "default";
+          inherit credentials;
+          credentialFallbacks = fallbacks;
+        };
+    in
+    # the positive case composes, so the refusals below have teeth
+    !(throws (withFallback { krl = "foo-krl.krl"; } { krl = "x"; }))
+    && throws (withFallback { krl = "foo-krl.krl"; } { other = "x"; })
+    # systemd ignores SetCredential=ID: with no value, and then the load fails as before
+    && throws (withFallback { krl = "foo-krl.krl"; } { krl = ""; })
+    # a control character other than a line break would reach the unit file raw
+    && throws (withFallback { krl = "foo-krl.krl"; } { krl = "a\rb"; })
+    && throws (withFallback { krl = "foo-krl.krl"; } { krl = 1; })
+  ))
 ]
