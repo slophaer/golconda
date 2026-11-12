@@ -1,11 +1,13 @@
 # lib/image/signer.nix: the signer as a program, and the test images it signs in the store.
 #
 # signer { pkgs; buildSystem; } → derivation with bin/golconda-sign (lib/image/sign-main.nu):
-#   golconda-sign UNSIGNED --keys DIR [--pcr-keys DIR] [--index-keys DIR] --out DIR
+#   golconda-sign UNSIGNED --keys DIR [--pcr-keys DIR] [--index-keys DIR]
+#     [--pkcs11-module FILE] --out DIR
 #   The tools are the image's own (its package set, downstream replacements included):
 #   systemd-sbsign, ukify and systemd-measure, mkfs.erofs, veritysetup, openssl, systemd-repart
-#   with mtools and dosfstools, gpg. The release host runs it (`golconda release build`), with
-#   the key set where it lies; nothing of it enters the store.
+#   with mtools and dosfstools, gpg, and pkcs11-provider for keys on a token (OPENSSL_MODULES).
+#   The release host runs it (`golconda release build`), with the key set where it lies; nothing
+#   of it enters the store.
 #
 # signedWithTestKeys { unsigned; name; keys; pcrKeys ? keys; indexKeys ? keys; buildSystem; }
 #   → derivation: the release of `unsigned` (lib/image/manifest.nix) signed in the store with
@@ -33,6 +35,8 @@ in
         pkgs.mtools # mcopy, mmd: how repart fills a vfat offline
         pkgs.gnupg # SHA256SUMS.gpg
       ];
+      # OpenSSL's provider for keys on a PKCS#11 token: the tools load it by name from here
+      attrs.opensslModules = "${pkgs.pkcs11-provider}/lib/ossl-modules";
       libs = [
         pkgs.openssl # systemd-sbsign, systemd-measure, systemd-repart: libcrypto
         pkgs.tpm2-tss # systemd-measure: libtss2-mu for the PCR policy

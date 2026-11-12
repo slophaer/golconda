@@ -8,7 +8,8 @@ use initrd.nu [rdinit]
 # make P ROOTHASH SIGPART KEYS OUT: the UKI at OUT, its cmdline with ROOTHASH and the signature
 # from the usr-verity-sig partition SIGPART, Secure Boot signed with KEYS.dbKey/dbCert
 # (systemd-sbsign) and with one PCR 11 signature per phase path by KEYS.pcrKey, KEYS.pcrPublic
-# embedded as .pcrpkey. Returns the cmdline.
+# embedded as .pcrpkey. Each key is a file or a `pkcs11:` URI (sign.nu use-token). Returns the
+# cmdline.
 export def make [p: record, roothash: string, sigpart: string, keys: record, out: string]: nothing -> string {
   # the kernel package: lib/modules/<uname>/vmlinuz
   let moddir = (ls $"($p.kernel)/lib/modules" | get name | first)
@@ -31,11 +32,36 @@ export def make [p: record, roothash: string, sigpart: string, keys: record, out
   let phases = ($p.phases | str join ",")
 
   # --sign-kernel: the kernel is unsigned; said so because systemd-sbsign cannot check (ukify)
-  ^ukify build --linux $linux --initrd $p.initrd --cmdline $cmdline --os-release $"@($p.osRelease)" --uname $uname --stub $p.stub --tools $"($p.systemd)/lib/systemd" --signtool systemd-sbsign --sign-kernel --secureboot-private-key $keys.dbKey --secureboot-certificate $keys.dbCert --pcr-private-key $keys.pcrKey --pcr-public-key $keys.pcrPublic --phases $phases --pcr-banks sha256 --measure --output $out
+  ^ukify build --linux $linux --initrd $p.initrd --cmdline $cmdline --os-release $"@($p.osRelease)" --uname $uname --stub $p.stub --tools $"($p.systemd)/lib/systemd" --signtool systemd-sbsign --sign-kernel --secureboot-private-key $keys.dbKey --secureboot-certificate $keys.dbCert --pcr-private-key $keys.pcrKey ...(pcr-key-args $keys $out) --phases $phases --pcr-banks sha256 --measure --output $out
+  rm -rf $"($out).pcr"
   log $"($out | path basename): (ls $out | get size.0)"
 
   check-pcrsig $out $p.phases
   $cmdline
+}
+
+# pcr-key-args KEYS OUT: ukify's arguments for the PCR public half and for a key on a token.
+# Keys in files: --pcr-public-key. A key on a token: ukify's --signing-provider, which systemd
+# 262 applies to both keys (a key in a file still loads through it: the default provider opens
+# the path). With a provider, ukify gives systemd-measure the PCR key's certificate, which it
+# requires (--private-key-source needs --certificate); the PCR key has only a public half, so the
+# signer makes a self-signed certificate with the PCR key in OUT.pcr. measure reads only its
+# public key, and --pcrpkey embeds the image's pcr.pub itself, so the UKI is the same bytes as
+# one signed from files.
+def pcr-key-args [keys: record, out: string]: nothing -> list<string> {
+  if not ((on-token $keys.dbKey) or (on-token $keys.pcrKey)) {
+    return [--pcr-public-key $keys.pcrPublic]
+  }
+  let dir = $"($out).pcr"
+  mkdir $dir
+  let cert = $"($dir)/pcr.crt"
+  ^openssl req -x509 -new ...(openssl-key-source $keys.pcrKey) -key $keys.pcrKey -subj "/CN=Golconda PCR policy key/" -days 1 -out $cert
+  let have = (^openssl x509 -in $cert -noout -pubkey)
+  if $have != (^openssl pkey -pubin -in $keys.pcrPublic -pubout) {
+    error make {msg: $"the certificate of ($keys.pcrKey) does not carry ($keys.pcrPublic | path basename)"}
+  }
+  log "a key on a token: ukify --signing-provider pkcs11, and a certificate for the PCR key"
+  [--signing-provider pkcs11 --pcr-certificate $cert --pcrpkey $keys.pcrPublic]
 }
 
 # roothash-signature PARTITION ROOTHASH CERT: the base64 signature from the usr-verity-sig

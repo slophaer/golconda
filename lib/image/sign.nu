@@ -20,8 +20,10 @@
 # (docs/design/trust.md).
 #
 # A key set is a directory in scripts/make-keys' layout: secureboot/db.key, pcr/pcr.key and
-# release/index.key are read. The certificates and public keys come from the manifest, never
-# from the key set, so a signature is always by the key the image trusts.
+# release/index.key are read, or for the db and PCR keys a `pkcs11:` URI of a key on a token
+# (secureboot/db.pkcs11, pcr/pcr.pkcs11; private-keys). The certificates and public keys come
+# from the manifest, never from the key set, so a signature is always by the key the image
+# trusts.
 
 use common.nu *
 use erofs.nu
@@ -30,30 +32,97 @@ use loader.nu
 use uki.nu
 use disk.nu
 
-# private-keys DB PCR INDEX: the private key files of the three key sets (each a directory; the
-# same one unless a rotation keeps the PCR or the release key, docs/reference/release.md)
-#
-# The hook for keys on a token: a key set that is a PKCS#11 URI (`pkcs11:…`) would give the
-# tools a provider instead of a file (systemd-sbsign --private-key-source=provider:pkcs11, ukify
-# --signing-provider and --pcr-private-key with a URI, openssl smime -provider pkcs11, and gpg
-# through scdaemon for the release key). Not built: such a set is refused here.
+# private-keys DB PCR INDEX: the private keys of the three key sets (each a directory; the same
+# one unless a rotation keeps the PCR or the release key, docs/reference/release.md). Each key is
+# a file path, or a `pkcs11:` URI when the set holds the key on a token: secureboot/db.pkcs11 and
+# pcr/pcr.pkcs11 in place of db.key and pcr.key, one line with the URI (RFC 7512). The token
+# signs; the key never leaves it (use-token). The release key is a file: gpg signs the index,
+# and gpg takes no PKCS#11 key (docs/design/trust.md, Keys on a token).
 export def private-keys [db: string, pcr: string, index: string]: nothing -> record {
   for k in [$db $pcr $index] {
     if ($k | str starts-with "pkcs11:") {
-      error make {msg: $"($k): a PKCS#11 key is not supported yet; give a key directory \(scripts/make-keys\)"}
+      error make {msg: $"($k): a key set is a directory; a key on a token is a URI in its secureboot/db.pkcs11 or pcr/pcr.pkcs11 \(docs/reference/release.md\)"}
     }
   }
-  let keys = {
-    dbKey: ($db | path join secureboot/db.key | path expand)
-    pcrKey: ($pcr | path join pcr/pcr.key | path expand)
-    indexKey: ($index | path join release/index.key | path expand)
+  let index_uri = ($index | path join release/index.pkcs11 | path expand)
+  if ($index_uri | path exists) {
+    error make {msg: $"($index_uri): the release key cannot be on a PKCS#11 token: gpg signs SHA256SUMS and takes no PKCS#11 key; keep release/index.key \(docs/design/trust.md\)"}
   }
-  for f in ($keys | values) {
-    if not ($f | path exists) {
-      error make {msg: $"($f): no such key \(a key set is a directory in the layout of scripts/make-keys\)"}
+  {
+    dbKey: (key-of $db secureboot/db)
+    pcrKey: (key-of $pcr pcr/pcr)
+    indexKey: (key-of $index release/index)
+  }
+}
+
+# The key BASE (secureboot/db, pcr/pcr, release/index) of the set DIR: BASE.key, a file, or the
+# URI in BASE.pkcs11, not both
+def key-of [dir: string, base: string]: nothing -> string {
+  let file = ($dir | path join $"($base).key" | path expand)
+  let uri_file = ($dir | path join $"($base).pkcs11" | path expand)
+  match [($file | path exists) ($uri_file | path exists)] {
+    [true true] => {
+      error make {msg: $"($dir): both ($base).key and ($base).pkcs11: a key is a file or on a token, not both"}
+    }
+    [true false] => $file
+    [false true] => {
+      let uri = (open --raw $uri_file | decode utf-8 | lines | where {|l| ($l | str trim) != "" } | first | str trim)
+      if not ($uri | str starts-with "pkcs11:") {
+        error make {msg: $"($uri_file): not a pkcs11: URI \(RFC 7512, e.g. pkcs11:token=golconda;object=db;type=private\)"}
+      }
+      $uri
+    }
+    _ => {
+      error make {msg: $"($file): no such key, and no ($base).pkcs11 \(a key set is a directory in the layout of scripts/make-keys\)"}
     }
   }
-  $keys
+}
+
+# use-token PRIVATE DIR MODULE: when a key of PRIVATE is on a token, make the tools reach it: an
+# OpenSSL configuration (OPENSSL_CONF, DIR/openssl.cnf) that gives pkcs11-provider the
+# PKCS#11 module MODULE (a YubiKey's, or SoftHSM's in the tests) and keeps the token from serving
+# digests: they stay with the default provider, and a module that hashes with OpenSSL itself
+# (SoftHSM) would call back into itself. The tools load the provider by name, from
+# OPENSSL_MODULES (the signer's wrapper sets it, lib/image/signer.nu). Keys in files need nothing.
+export def --env use-token [priv: record, dir: string, module?: string] {
+  let token = ([$priv.dbKey $priv.pcrKey] | where {|k| on-token $k })
+  if ($token | is-empty) { return }
+  if $module == null {
+    error make {msg: $"($token | first) is on a token: give the PKCS#11 module with --pkcs11-module \(a YubiKey's libykcs11.so\)"}
+  }
+  if not ($module | path exists) {
+    error make {msg: $"($module): no such PKCS#11 module"}
+  }
+  let conf = ($dir | path join openssl.cnf)
+  [
+    "openssl_conf = openssl_init"
+    "[openssl_init]"
+    "providers = provider_sect"
+    "[provider_sect]"
+    "default = default_sect"
+    "pkcs11 = pkcs11_sect"
+    "[default_sect]"
+    "activate = 1"
+    "[pkcs11_sect]"
+    $"pkcs11-module-path = ($module | path expand)"
+    "pkcs11-module-block-operations = digest"
+  ] | str join "\n" | $"($in)\n" | save -f $conf
+  $env.OPENSSL_CONF = $conf
+  log $"PKCS#11: ($token | length) key\(s\) on a token, module ($module)"
+}
+
+# The public half of a private key (a file or a URI), as PEM SubjectPublicKeyInfo: a token's
+# provider writes RSA keys as PKCS#1, so it goes through the default provider once more
+def public-of-key [key: string]: nothing -> string {
+  if (on-token $key) {
+    let der = (mktemp -t "golconda-pub-XXXXXX")
+    ^openssl pkey ...(openssl-key-source $key) -in $key -pubout -outform DER -out $der
+    let pem = (^openssl pkey -pubin -inform DER -in $der -pubout)
+    rm $der
+    $pem
+  } else {
+    ^openssl pkey -in $key -pubout
+  }
 }
 
 # check-keys PRIVATE PUBLIC: each private key must be the half of the public key the image
@@ -62,12 +131,12 @@ export def private-keys [db: string, pcr: string, index: string]: nothing -> rec
 # A signature by another key would make a release that does not boot or does not install.
 export def check-keys [priv: record, pub: record] {
   let cert_key = (^openssl x509 -in $pub.dbCert -noout -pubkey)
-  let db_key = (^openssl pkey -in $priv.dbKey -pubout)
+  let db_key = (public-of-key $priv.dbKey)
   if $cert_key != $db_key {
     error make {msg: $"($priv.dbKey) is not the key of the db certificate this image trusts \((fingerprint $pub.dbCert)\)"}
   }
   let pcr_pub = (^openssl pkey -pubin -in $pub.pcrPublicKey -pubout)
-  let pcr_key = (^openssl pkey -in $priv.pcrKey -pubout)
+  let pcr_key = (public-of-key $priv.pcrKey)
   if $pcr_pub != $pcr_key {
     error make {msg: $"($priv.pcrKey) is not the key of the PCR public key this image carries"}
   }
@@ -76,7 +145,8 @@ export def check-keys [priv: record, pub: record] {
   if $want != $have {
     error make {msg: $"($priv.indexKey) is the OpenPGP key ($have), but this image trusts ($want)"}
   }
-  log $"keys: db ((fingerprint $pub.dbCert)), PCR, release ($want): each is the half the image carries"
+  let where = {|k| if (on-token $k) { " on a token" } else { "" } }
+  log $"keys: db ((fingerprint $pub.dbCert))(do $where $priv.dbKey), PCR(do $where $priv.pcrKey), release ($want): each is the half the image carries"
 }
 
 # The SHA-256 fingerprint of a PEM certificate
@@ -98,13 +168,16 @@ def pgp-fingerprint [file: string, kind: string]: nothing -> string {
   $rows | where {|l| $l starts-with "fpr:" } | first | split row ':' | get 9
 }
 
-# sign UNSIGNED KEYSETS OUT: the release of the unsigned outputs UNSIGNED (a directory with
-# manifest.json), signed with KEYSETS {db pcr index} (key set directories), written to OUT. OUT
-# may exist, but must not hold a release yet.
-export def main [unsigned: string, sets: record, out: string] {
+# sign UNSIGNED KEYSETS OUT [MODULE]: the release of the unsigned outputs UNSIGNED (a directory
+# with manifest.json), signed with KEYSETS {db pcr index} (key set directories), written to OUT.
+# OUT may exist, but must not hold a release yet. MODULE is the PKCS#11 module of a token that
+# holds a key (use-token).
+export def main [unsigned: string, sets: record, out: string, pkcs11_module?: string] {
   let m = (open $"($unsigned)/manifest.json")
   let pub = $m.publicKeys
   let priv = (private-keys $sets.db $sets.pcr $sets.index)
+  let token_dir = (mktemp -d -t "golconda-pkcs11-XXXXXX")
+  use-token $priv $token_dir $pkcs11_module
   check-keys $priv $pub
 
   for f in [disk.raw release] {
@@ -177,5 +250,6 @@ export def main [unsigned: string, sets: record, out: string] {
   disk sign-index $release $priv.indexKey $m.disk.epoch $pub.indexKeyring
   $cmdline | save -f $"($out)/cmdline"
   rm -rf $work
+  rm -rf $token_dir
   log $"release: (ls $release | get name | path basename | str join ' ')"
 }

@@ -1,7 +1,8 @@
 # signer.nu: the program golconda-sign (lib/image/signer.nix): a shell script that runs
-# sign-main.nu under the seed's nu, with the signing tools on PATH and nothing else of the
-# caller's environment but HOME and TMPDIR. So the signer sees the same tools on the release host
-# as in the build sandbox, where the test images are signed.
+# sign-main.nu under the seed's nu, with the signing tools on PATH, pkcs11-provider in
+# OPENSSL_MODULES and nothing else of the caller's environment but HOME and TMPDIR. So the
+# signer sees the same tools on the release host as in the build sandbox, where the test images
+# are signed.
 
 use common.nu *
 
@@ -21,7 +22,7 @@ export def build [] {
     $"#!($sh)"
     "# golconda-sign: the signer of Golconda's image chain (lib/image/sign.nu)"
     $"exec ($nu_exe | path dirname | path join env) -i HOME=\"$HOME\" TMPDIR=\"${TMPDIR:-/tmp}\" OPENSSL_CONF=/dev/null \\"
-    $"  PATH='($a.PATH)' \\"
+    $"  PATH='($a.PATH)' OPENSSL_MODULES='($a.opensslModules)' \\"
     $"  LD_LIBRARY_PATH='($a.LD_LIBRARY_PATH)' \\"
     $"  ($nu_exe) --no-config-file '--include-path=($tree)' '--experimental-options=[cell-path-types]' \\"
     $"  ($tree)/sign-main.nu \"$@\""

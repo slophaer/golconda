@@ -31,11 +31,12 @@ export def make [usr: string, dir: string, p: record, key: string, cert: string]
 }
 
 # sign-roothash ROOTHASH KEY CERT: the base64 DER PKCS#7 of the hex string, without certificates
-# or attributes, as the kernel's dm-verity takes it
+# or attributes, as the kernel's dm-verity takes it. KEY is a file or a `pkcs11:` URI (sign.nu
+# use-token)
 export def sign-roothash [roothash: string, key: string, cert: string]: nothing -> string {
   let work = (mktemp -d -t "golconda-roothash-XXXXXX")
   $roothash | save -f $"($work)/roothash"
-  ^openssl smime -sign -nocerts -noattr -binary -in $"($work)/roothash" -inkey $key -signer $cert -outform der -out $"($work)/roothash.p7s"
+  ^openssl smime ...(openssl-key-source $key) -sign -nocerts -noattr -binary -in $"($work)/roothash" -inkey $key -signer $cert -outform der -out $"($work)/roothash.p7s"
   let sig = (open --raw $"($work)/roothash.p7s" | encode base64)
   rm -rf $work
   $sig

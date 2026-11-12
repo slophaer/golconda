@@ -3,8 +3,8 @@
 use common.nu *
 
 # sign UNSIGNED OUT KEY CERT: enforcing firmware starts only a loader signed by a key in db; a
-# signing failure fails the release
+# signing failure fails the release. KEY is a file or a `pkcs11:` URI (sign.nu use-token)
 export def sign [unsigned: string, out: string, key: string, cert: string] {
-  ^systemd-sbsign sign $unsigned --private-key $key --certificate $cert --output $out
+  ^systemd-sbsign sign $unsigned ...(systemd-key-source $key) --private-key $key --certificate $cert --output $out
   log $"($out | path basename): signed, (ls $out | get size.0)"
 }
