@@ -95,6 +95,10 @@
   swtpm = ./swtpm;
   libtpms = ./libtpms;
   json-glib = ./json-glib;
-  # its firmware: OVMF, a pinned nightly build
+  # its firmware: OVMF (a pinned nightly build), and virt-fw-vars, which enrols the Secure Boot keys
   ovmf = ./ovmf;
+  virt-firmware = ./virt-firmware;
+  python-cryptography = ./python-cryptography;
+  python-cffi = ./python-cffi;
+  python-pycparser = ./python-pycparser;
 }

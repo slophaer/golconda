@@ -1,0 +1,11 @@
+[upstream]
+purl = "pkg:pypi/pycparser"
+
+[[source]]
+key = "default"
+url = "https://files.pythonhosted.org/packages/source/p/pycparser/pycparser-{version}.tar.gz"
+hash = "sha256-19zIFAk1LFuRtL6KDC2Qmcnx8QoIcU2Vk6YoGTAH1mE="
+
+[pin]
+version = "3.12"
+date = "2026-10-22"

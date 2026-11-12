@@ -1,0 +1,11 @@
+[upstream]
+purl = "pkg:pypi/cffi"
+
+[[source]]
+key = "default"
+url = "https://files.pythonhosted.org/packages/source/c/cffi/cffi-{version}.tar.gz"
+hash = "sha256-6NSNWKNBezaqtT7Qeyo9jqp3Q9b2pXvVsUeVf6kXfRA="
+
+[pin]
+version = "2.1.1"
+date = "2026-08-03"

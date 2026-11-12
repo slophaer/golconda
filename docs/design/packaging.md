@@ -9,7 +9,8 @@ package-local phases; repkgs supplies the shared build machinery.
 - **In `packages/`**: every package the image needs that upstream repkgs lacks (systemd,
   dbus-broker, openssh, cryptsetup and the rest). They go into the set through its `packages`
   argument, so another package finds them by name. A package's own test goes in
-  `tests/packages/<name>/test.nu` and builds as `packages.<system>.tests-<name>`.
+  `tests/packages/<name>/test.nu` and builds as `packages.<system>.tests-<name>`; a test that needs
+  another package names it in an `inputs.nix` beside it.
 - **In the fork**: changes to the shared build system (relocation, `wrap`, `prefix`) and to the
   toolchain packages (glibc, crt-interp, jig). The fork also keeps the packages its own tests need:
   automake and libtool for the aclocal test. The general build tools bc and elfutils also stay

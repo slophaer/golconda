@@ -1,0 +1,12 @@
+[upstream]
+purl = "pkg:pypi/cryptography"
+
+[[source]]
+key = "default"
+url = "https://files.pythonhosted.org/packages/source/c/cryptography/cryptography-{version}.tar.gz"
+hash = "sha256-1jjh2asZuC4KmT3Oi0kstX0wI8GuXepysnuvsnbgqRU="
+
+[pin]
+version = "50.0.2"
+date = "2026-09-30"
+sys = ["openssl"]
