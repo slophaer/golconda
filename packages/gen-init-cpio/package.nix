@@ -7,7 +7,7 @@
 #
 # The source is the kernel tree packages/kernel pins, so there is no second pin to keep in step:
 # a kernel update updates this too. One C file with only libc headers; no sources.toml, so the
-# SBOM names it without a purl (as hwdb). Not part of an image.
+# SBOM purl is the kernel's plus a subpath (lib/sbom-sources.nix). Not part of an image.
 { package, pkgs }:
 package {
   name = "gen-init-cpio";

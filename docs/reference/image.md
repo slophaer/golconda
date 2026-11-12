@@ -121,6 +121,12 @@ custom property says where a component comes from.
 - `cpe` comes from `[upstream] cpe` in the package's `sources.toml`, with `{version}` replaced by
   the package's version, modelled on nixpkgs' `meta.identifiers.cpe`; the repkgs SBOM generator
   reads it.
+- `hwdb` and `gen-init-cpio` are compiled from another package's source (systemd's `hwdb.d`, the
+  kernel's `usr/gen_init_cpio.c`) and have no `sources.toml`. Their `purl` is the source package's,
+  at its pinned version, with a purl subpath (`#hwdb.d`, `#usr/gen_init_cpio.c`), for example
+  `pkg:github/systemd/systemd@262.1#hwdb.d`. They have no `cpe`: they are not the product the NVD
+  names, and a systemd `cpe` would report systemd's CVEs against a data file. The table is
+  `lib/sbom-sources.nix`; `nix/packages.nix` applies it.
 - `pedigree.ancestors` names the package a downstream package replaced: its name, version, purl and
   cpe, as the set without the downstream packages describes it. A new package has no `ancestors`.
 - `pedigree.patches` lists each patch the build applies, in order, for every component with

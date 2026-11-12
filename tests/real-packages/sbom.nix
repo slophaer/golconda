@@ -263,4 +263,28 @@ in
   (check "sbom: /usr gets the generator's sbom.json for this document" (
     fixture.usrTree.drvAttrs.sbomPath == "${fixture.sbom}/sbom.json"
   ))
+  (check "sbom: hwdb and gen-init-cpio name the source they are built from, as a purl with a subpath"
+    (
+      let
+        of =
+          n:
+          builtins.head (
+            builtins.filter (c: c.name == n)
+              (base.set.sbom {
+                roots = [ base.pkgs.${n} ];
+                name = "source";
+              }).bom.components
+          );
+        hwdb = of "hwdb";
+        cpio = of "gen-init-cpio";
+      in
+      hwdb.purl == "pkg:github/systemd/systemd@${base.pkgs.systemd.version}#hwdb.d"
+      && cpio.purl == "pkg:generic/linux@${base.pkgs.linux-kernel.version}#usr/gen_init_cpio.c"
+      # the version is the source's pin; and hwdb is not systemd, so it has no systemd cpe
+      && hwdb.version == base.pkgs.systemd.version
+      && cpio.version == base.pkgs.linux-kernel.version
+      && !(hwdb ? cpe)
+      && !(cpio ? cpe)
+    )
+  )
 ]
