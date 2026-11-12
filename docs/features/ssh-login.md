@@ -44,14 +44,31 @@ sequenceDiagram
 ```toml
 ["/services/sshd"]
 trustedUserCAKeys = ["ssh-ed25519 AAAA... user-ca"]
-revokedKeys = true       # needs the admin var sshd-revoked-keys (file krl)
-hostCertificate = true   # needs the admin var sshd-host-cert (file cert)
+revokedKeys = true       # the admin var sshd-revoked-keys (file krl); until it is pushed, certificates are refused
+hostCertificate = true   # the admin var sshd-host-cert (file cert); until it is pushed, the plain host key
 ["/services/sshd".principals]
 root = ["alice@example.com"]
 ```
 
 `authorizedKeys` lists plain public keys for root. Use it to bootstrap. `revokedKeys` and
 `hostCertificate` default to `false`.
+
+A new machine enrols in its first release. Turn both options on, boot, and log in with a plain key
+(`authorizedKeys`, or the provisioning credential `ssh.authorized_keys.root`). Read the host key and
+compare its fingerprint with the line `golconda: ssh host key …` that the first boot wrote on the
+console. Have the CA sign it, store the certificate and the KRL, and push them:
+
+```console
+$ golconda vars pub web1 sshd-hostkey key.pub > web1.pub
+$ ssh-keygen -lf web1.pub        # the same SHA256:… as on the console?
+$ step ssh certificate --host --sign web1 web1.pub
+$ golconda vars set web1 sshd-host-cert cert < web1-cert.pub
+$ golconda vars set web1 sshd-revoked-keys krl < fleet.krl
+$ golconda vars push -i ~/.age/key.txt web1
+```
+
+The push restarts sshd, which then presents the host certificate and checks the KRL. A KRL that
+names the bootstrap key retires it ([Trust: Enrolment](../design/trust.md#enrolment)).
 
 ## Status
 
@@ -60,16 +77,17 @@ With `--ssh-test`, `sshd-active` and `ssh-login` show sshd up and root reachable
 with a certificate for the allowed principal, and `cert-wrong-principal-refused` is refused. With
 `--esp-creds`, `esp-authorized-keys` shows a key that only the ESP holds. With `--next` the harness
 pushes the host certificate and a revocation list, and the next release, which turns both on, passes
-`host-cert-presented`, `cert-revoked-refused` and, after a second push, `krl-rotated`. See
-[What is proven](../proven.md).
+`host-cert-presented`, `cert-revoked-refused` and, after a second push, `krl-rotated`. With
+`--enrol` one release does all of it in its first boot: certificates are refused until the push
+(`cert-refused-before-enrol`), then the same boot presents the host certificate and refuses the
+retired bootstrap key (`bootstrap-key-revoked`). See [What is proven](../proven.md).
 
 ## Limits
 
-- **Delivery order.** `revokedKeys` and `hostCertificate` need the pushed credentials. If ssh is the
-  only channel, start with `authorizedKeys`, push the credentials with `golconda vars push`, then
-  enable both options in the next release.
-- The host certificate needs the host key first: the machine makes its key, then the CA signs it. An
-  enrolment service that does both at first boot is *(later)*.
+- **Before the push** only plain keys log in, and no list checks them; the host is checked only by
+  the console's fingerprint, not by a certificate.
+- The host certificate needs the host key first: the machine makes its key, then the CA signs it.
+  Renewal is a new certificate pushed the same way; nothing on the machine renews it.
 - A password-less root is the only account. Per-operator records with `run0` and polkit are
   *(later)*.
 - A hardware second factor (FIDO2) is client policy: the CA signs a FIDO2 key.

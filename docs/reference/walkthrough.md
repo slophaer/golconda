@@ -285,7 +285,8 @@ revocation list as further vars. The boot test runs all of this with its own tes
 document: `--ssh-test` logs in with a user certificate and refuses another principal (`cert-login`,
 `cert-wrong-principal-refused`), and `--next` pushes the host certificate and the KRL with
 `golconda vars`, then checks that the next release presents the one and refuses a revoked
-certificate (`host-cert-presented`, `cert-revoked-refused`, `krl-rotated`). See
+certificate (`host-cert-presented`, `cert-revoked-refused`, `krl-rotated`); `--enrol` does the push
+in the first boot of a release that has both options on (`enrol-one-release`). See
 [What is proven](../proven.md).
 
 ## 8. The next version

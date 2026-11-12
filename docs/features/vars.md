@@ -84,7 +84,8 @@ Admin vars are pushed with `golconda vars set`, `push`, `list` and `pub`
 ([Commands](../reference/cli.md#golconda-vars)). With `--next` the boot test pushes sshd's host
 certificate and revocation list with it (`admin-vars-pushed`, `admin-vars-sealed`), the next release
 reads them (`host-cert-presented`, `cert-revoked-refused`), and a second push rotates the revocation
-list (`krl-rotated`).
+list (`krl-rotated`). With `--enrol` the release that reads them takes the push in its own first
+boot, and sshd uses them after the push restarts it (`enrol-one-release`).
 
 ## Limits
 

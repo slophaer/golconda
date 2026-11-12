@@ -312,6 +312,10 @@ scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-te
 # Provision by ESP credentials instead of SMBIOS and the image's test key (see below)
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-test --esp-creds
 
+# Enrol in one release: push the host certificate and the KRL in the first boot (see below)
+nix-build -A packages.x86_64-linux.image-smoke-test-next -o next
+scripts/boot-test next/disk/disk.raw --keys next/keys --secure-boot --ssh-test --tpm --enrol
+
 # Update to the next release, the loader update and the recovery paths (needs both images)
 nix-build -A packages.x86_64-linux.image-smoke-test-next -o next
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --next next --timeout 480
@@ -410,6 +414,16 @@ import skips) and `network.network.60-imds-ipv6`: the static address `2001:db8:5
 `IPv6AcceptRA=no` and `UseHostname=no`, and nothing of the IMDS lock of `85-imds-early.network`,
 which the file replaces. QEMU's router advertisements name only `fec0::/64`, so no other route gives
 that address. QEMU's DHCP server offers the host name `dhcp-test` (`-netdev user,hostname=`).
+
+`--enrol` (with `--ssh-test`; not with `--next`, `--esp-creds`, `--imds` or `--factory-reset`) is
+the one-release enrolment of [Trust: Enrolment](../design/trust.md#enrolment). Boot it on
+`image-smoke-test-next`, which has `hostCertificate` and `revokedKeys` on from its first boot. The
+harness makes a second plain key, the bootstrap key, and passes it as the SMBIOS credential
+`ssh.authorized_keys.root` (`io.systemd.credential.binary:`, base64). Before anything is pushed, it
+logs in with that key and checks that a good certificate is refused and that sshd's journal names
+the revocation list; then it pushes as `--next` does, with a KRL that also names the bootstrap key,
+and runs the certificate checks in the same boot. It needs the tools of `--next` (`golconda`,
+`age`).
 
 `--secure-boot` enrolls the throwaway db key with `virt-fw-vars` (one fixed owner GUID) and boots
 OVMF's Secure Boot build (`share/ovmf/secure-boot`: Secure Boot, SMM and TPM 2.0, 4 MB flash) with
@@ -515,6 +529,7 @@ With `--next DIR` ([The update test](#the-update-test)):
 | `boots-old`                                                            | with `--tamper-index`, after the reboot `IMAGE_VERSION` is still the old version                                                                            |
 | `no-failed-units-after-refused-update`                                 | with `--tamper-index`, the system has no failed unit after the refused update                                                                               |
 | `clock-not-reset-after-refused-update`                                 | with `--tamper-index`, `clock-not-reset` on the journal of the boot after the refused update                                                                |
+| `hostkey-fingerprint-on-console`                                       | the key `golconda vars pub` reads has the fingerprint the first boot wrote on the console                                                                   |
 | `admin-vars-pushed`                                                    | before the update, `golconda vars` stored and pushed the host certificate (the guest's host key signed by `snakeoil-host-ca`) and a KRL, and restarted sshd |
 | `admin-vars-sealed`                                                    | `golconda vars list` says both are stored and sealed                                                                                                        |
 | `host-cert-presented`                                                  | the next release presents the host certificate to a strict `@cert-authority` known_hosts                                                                    |
@@ -532,6 +547,19 @@ With `--next DIR` ([The update test](#the-update-test)):
 | `set-oneshot-other-slot`, `other-slot-keeps-loader`, `oneshot-is-once` | `bootctl set-oneshot` boots the other slot once and installs nothing                                                                                        |
 | `set-default-other-slot`, `set-default-cleared`                        | `bootctl set-default` boots the other slot until it is cleared                                                                                              |
 | `reboot-to-firmware`                                                   | `bootctl reboot-to-firmware` reaches OVMF's boot menu                                                                                                       |
+
+With `--enrol` (and `--ssh-test`; instead of `cert-login`):
+
+| marker                                                                     | what it proves                                                                                   |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `bootstrap-key-login`                                                      | the bootstrap key from the SMBIOS credential logs in before anything is pushed                   |
+| `cert-refused-before-enrol`                                                | a good certificate is refused, and sshd's journal says the revocation list refused it            |
+| `hostkey-fingerprint-on-console`, `admin-vars-pushed`, `admin-vars-sealed` | the push of `--next`, in the first boot of the release that reads it                             |
+| `host-cert-presented`, `cert-login-after-enrol`, `cert-revoked-refused`    | the same boot presents the host certificate, takes the good certificate, refuses the revoked one |
+| `bootstrap-key-revoked`                                                    | the pushed KRL names the bootstrap key: it is refused                                            |
+| `krl-pushed-again`, `krl-rotated`                                          | a second KRL takes effect, as with `--next`                                                      |
+| `enrol-one-release`                                                        | all of it ran in the first boot: the boot id and the version did not change                      |
+| `host-cert-presented-after-reboot`, `bootstrap-key-revoked-after-reboot`   | with `--tpm`: after the reboot the sealed certificate and the pushed KRL are in force            |
 
 With `--rotate`:
 

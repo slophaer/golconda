@@ -66,9 +66,10 @@ follow three rules:
   `--fail-health`, and the IPE check runs in the ssh battery. Neither changes an image.
 - **One configuration change.** Every change to the test configuration rebuilds all five test
   images. The test CA and principals, and the host certificate and KRL in the next release, go in
-  together, after the deploy tool exists. The first release logs in with a plain key, the harness
-  pushes the host certificate and the KRL with the deploy tool, and the next release turns them on:
-  the bootstrap that [Trust: Identity](design/trust.md#identity) describes.
+  together, after the deploy tool exists. With `--next` the first release logs in with a plain key,
+  the harness pushes the host certificate and the KRL with the deploy tool, and the next release
+  turns them on. With `--enrol` the next release's image boots alone and the push happens in its
+  first boot: the enrolment that [Trust: Enrolment](design/trust.md#enrolment) describes.
 - **No new harness logic.** The harness calls the deploy tool rather than copying it, and each check
   is one function that every mode calls.
 
@@ -93,7 +94,8 @@ NOSB="@image=image-smoke-test-nosb --ssh-test --timeout 400"
 scripts/verify --boot-set "$SB" --boot-set "$SB --next @next" \
   --boot-set "$SB --next @next --fail-health" --boot-set "$SB --next @next --tamper-index" \
   --boot-set "$SB --imds" --boot-set "$SB --imds --next @next" \
-  --boot-set "$NOSB --esp-creds" --boot-set "$NOSB --next @next"
+  --boot-set "$NOSB --esp-creds" --boot-set "$NOSB --next @next" \
+  --boot-set "@image=image-smoke-test-next $SB --enrol"
 ```
 
 Every mode runs on QEMU's user network `169.254.169.0/24`, so `--imds` and `--next` also run
@@ -105,8 +107,6 @@ its own name (after the reboot, the update, the fallback and the refused update)
 
 Wanted, but not needed for v0.1:
 
-- a first-boot enrolment unit before sshd (host key, certificate and KRL in one flow): v0.1 uses the
-  two-release bootstrap of [Trust: Identity](design/trust.md#identity), which the boot test runs;
 - `golconda diff` between two built images, by their `config.json`: no diff tool exists; the
   console's diff of a document against git left with the console
   ([Configuration: Diffing](design/config.md#diffing-later));

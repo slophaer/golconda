@@ -308,28 +308,78 @@ The machine's own identity is its host key, a local var, plus a host certificate
 revocation list, both admin vars; sshd reads them from its credentials directory, never from the
 image.
 
-A single deployment is possible if an independent provisioning path supplies the credentials before
-sshd needs them. The revocation list has no dependency on the machine's host key. A host certificate
-does: the machine first generates its key, then the CA signs its public half.
-
-If SSH is the only delivery channel, bootstrap with plain `authorizedKeys` and leave
-`hostCertificate` and `revokedKeys` off. Push the credentials, then enable those settings. This
-avoids needing the SSH connection that the missing revocation list would prevent. It is a delivery
-constraint, not a rule that every deployment needs 2 images. sshd declares both admin vars whether
-or not the options are on, so the first release takes the push and the next one reads it; the boot
-test runs exactly this (`admin-vars-pushed`, then `host-cert-presented` and `cert-revoked-refused`
-after `--next`).
-
-The ESP helper can supply named credentials before boot, but uses null-key encryption. That route is
-unavailable with Secure Boot and TPM2 together
-([Bootstrap credentials](boot.md#bootstrap-credentials)). An enrollment service ordered before sshd
-could instead generate the host key, obtain its certificate and install the revocation list in one
-first-boot flow. That service is *(later)*. Do not make revocation checking optional to bypass the
-delivery constraint.
-
 Later: operators as `/usr/lib/userdb/*.user` records with `run0` gated by polkit on a few action ids
 (a root-less image), and one CA for SSH and X.509 with TPM device attestation (workload identity).
 Both are designed, not built *(later)*.
+
+### Enrolment
+
+A new machine goes from its first boot to certificate login in one release, with `hostCertificate`
+and `revokedKeys` on from the start:
+
+1. At first boot `golconda-var-sshd-hostkey.service` makes the host key, seals it, and writes its
+   fingerprint to the journal and the console:
+   `golconda: ssh host key 256 SHA256:… root@HOST (ED25519)`.
+1. sshd starts before anything is pushed. The host certificate is missing, so sshd logs that and
+   presents the plain host key. The revocation list is missing, so PID 1 gives sshd a fallback under
+   the same credential id (`SetCredential=`): a flat list that names the user CAs of
+   `trustedUserCAKeys`. sshd refuses every certificate those CAs signed; plain keys log in (the
+   image's `authorizedKeys`, or the provisioning credential `ssh.authorized_keys.root`).
+1. The operator logs in with a plain key, reads the host key with
+   `golconda vars pub HOST sshd-hostkey key.pub`, compares its fingerprint with the console's line,
+   and has the CA sign it (`step ssh certificate --host --sign`, or `ssh-keygen -s`). Then
+   `golconda vars set` stores the certificate and the deployment's KRL, and `golconda vars push`
+   sends both.
+1. The machine seals both, and the push restarts sshd (`KillMode=process` keeps the push's own
+   session). sshd now presents the certificate and checks the pushed KRL. A KRL that names the
+   bootstrap key retires it.
+
+```mermaid
+sequenceDiagram
+  participant M as machine (first boot)
+  participant O as operator
+  participant C as step-ca
+  M->>M: make and seal the host key, fingerprint on the console
+  M->>M: start sshd with the fallback list and the plain host key
+  O->>M: ssh with the bootstrap key, golconda vars pub
+  O->>O: compare the fingerprint with the console line
+  O->>C: sign the host key
+  C-->>O: host certificate
+  O->>M: golconda vars push (certificate and KRL)
+  M->>M: seal both, restart sshd
+  O->>M: ssh with a certificate, host certificate checked
+```
+
+Revocation is never off: sshd always reads a list. Before the push, that list refuses more than any
+real KRL could, every certificate of the user CAs, because the machine cannot know yet which of them
+are revoked. What logs in then is what the release already trusts without a CA: the plain keys of
+the image or of the provisioning credentials, which are the operator's own. A plain key is checked
+against no list until the push; to retire it, the pushed KRL names it.
+
+The CA must sign the machine's key and no other. Before the push the client cannot check the host:
+there is no certificate yet, so a machine in the middle could hand over its own key for signing. The
+console line is the check, on a channel that the network cannot change (the serial console, a
+cloud's console). Without it, the first connection is trust on first use.
+
+Bootstrap credentials are not the route for the host key: the certificate and the KRL are public,
+but the certificate needs the host key, which exists only after the first boot, and a key made
+elsewhere would travel on the ESP or in user data, which carry no secret. An ESP credential is
+refused anyway with Secure Boot and TPM2 together
+([Bootstrap credentials](boot.md#bootstrap-credentials)).
+
+sshd declares both admin vars whether or not the options are on, so a release with the options off
+accepts the push and a later release that turns them on reads it: a machine that runs without
+certificates moves to them by a push and an update, in either order.
+
+**Status.** Proven by boot with `--enrol`: the first boot of a release with both options on logs in
+with the bootstrap key and refuses a good certificate (`bootstrap-key-login`,
+`cert-refused-before-enrol`); the harness checks the console's fingerprint
+(`hostkey-fingerprint-on-console`), pushes, and in the same boot the host certificate is presented,
+a certificate logs in, the revoked one and the bootstrap key are refused, and a second KRL takes
+effect (`host-cert-presented`, `cert-login-after-enrol`, `cert-revoked-refused`,
+`bootstrap-key-revoked`, `krl-rotated`, `enrol-one-release`). With `--tpm` both hold after a reboot
+(`host-cert-presented-after-reboot`, `bootstrap-key-revoked-after-reboot`). `--next` pushes to a
+release with the options off and checks that the next release reads it.
 
 ## TPM2 credential decryption
 

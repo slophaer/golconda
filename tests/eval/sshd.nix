@@ -193,6 +193,31 @@ in
     hasInfix "LoadCredentialEncrypted=sshd-revoked-keys.krl\n" certUnit
     && hasInfix " -o RevokedKeys=%d/sshd-revoked-keys.krl" certUnit
   ))
+  # one release from first boot to certificates (docs/design/trust.md, "Identity"): until a KRL
+  # is pushed, sshd reads a list that names the user CAs, so every certificate is refused and
+  # revocation is never off; plain keys log in for the push
+  (check "sshd: before a KRL is pushed, the revocation list names the user CAs" (
+    hasInfix (
+      "\nSetCredential=sshd-revoked-keys.krl:# Golconda (modules/services/sshd): no revocation list"
+      + " was pushed yet; until one is, the certificates of these user CAs are refused."
+      + "\\nssh-ed25519 AAAA user-ca\\n\n"
+    ) certUnit
+  ))
+  (check "sshd: without revokedKeys no fallback list" (
+    !hasInfix "SetCredential=" unit
+    && !hasInfix "SetCredential="
+      (composeWith { "/services/sshd".hostCertificate = true; }).units."sshd.service"
+  ))
+  # the operator compares this line with the key `golconda vars pub` reads before the CA signs
+  # it: the serial console is a channel the network cannot change
+  (check "sshd: the host key's fingerprint goes to the console at first boot" (
+    let
+      script = system.files."/usr/lib/golconda/vars.d/sshd-hostkey.sh".text;
+    in
+    hasInfix "ssh-keygen -l -f key.pub" script
+    && hasInfix "golconda: ssh host key " script
+    && hasInfix "> /dev/console" script
+  ))
   (check "sshd: the admin vars are declared, with sshd as their consumer" (
     builtins.fromJSON certSshd.files."/usr/lib/golconda/vars.d/sshd-host-cert.json".text == {
       name = "sshd-host-cert";
