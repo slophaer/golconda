@@ -1,0 +1,13 @@
+Token.cpp calls time(), gmtime() and strftime() and includes <ctime> only
+through other headers, which libc++ does not do: include it.
+
+--- a/src/lib/slot_mgr/Token.cpp
++++ b/src/lib/slot_mgr/Token.cpp
+@@ -32,6 +32,7 @@
+ #include "ByteString.h"
+ #include "SecureDataManager.h"
+ #include <cstdio>
++#include <ctime>
+ 
+ #ifndef _WIN32
+ #include <sys/time.h>

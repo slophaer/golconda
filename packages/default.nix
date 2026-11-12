@@ -18,6 +18,10 @@
   # the CA store
   p11-kit = ./p11-kit;
   libtasn1 = ./libtasn1;
+  # the signer's tools for keys on a PKCS#11 token (lib/image/sign.nu), and SoftHSM, TEST-ONLY:
+  # the token the signer's tests put throwaway keys on
+  pkcs11-provider = ./pkcs11-provider;
+  softhsm = ./softhsm;
   # the signed update index: gpg verifies SHA256SUMS.gpg (systemd-pull's argv); gpg-agent signs it
   gnupg = ./gnupg;
   libgpg-error = ./libgpg-error;

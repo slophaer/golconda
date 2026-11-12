@@ -1,0 +1,10 @@
+[upstream]
+purl = "pkg:github/softhsm/SoftHSMv2"
+
+[[source]]
+key = "default"
+url = "https://github.com/softhsm/SoftHSMv2/archive/refs/tags/{version}.tar.gz"
+hash = "sha256-gwqdgGCVPQwPkE6gFlZxZdk6Ln/qZn3CmMfbcLm9p04="
+
+[pin]
+version = "2.7.0"

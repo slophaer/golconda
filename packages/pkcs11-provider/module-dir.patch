@@ -1,0 +1,15 @@
+Install the provider into the package, lib/ossl-modules, not into the
+modules directory of the libcrypto it builds against: that is another
+package. OPENSSL_MODULES names the directory at run time.
+
+--- a/meson.build
++++ b/meson.build
+@@ -49,7 +49,7 @@
+ if not libcrypto.found()
+   libcrypto = dependency('libcrypto3', version: '>= 3.0.7', required: true)
+ endif
+-provider_path = libcrypto.get_variable(pkgconfig: 'modulesdir')
++provider_path = get_option('libdir') / 'ossl-modules'
+ libssl = dependency('libssl', version: '>= 3.0.7', required: false)
+ if not libssl.found()
+   libssl = dependency('libssl3', version: '>= 3.0.7', required: true, method: 'pkg-config')

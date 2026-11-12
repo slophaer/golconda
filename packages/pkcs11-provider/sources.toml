@@ -1,0 +1,10 @@
+[upstream]
+purl = "pkg:github/latchset/pkcs11-provider"
+
+[[source]]
+key = "default"
+url = "https://github.com/latchset/pkcs11-provider/releases/download/v{version}/pkcs11-provider-{version}.tar.xz"
+hash = "sha256-nPyAcTXEBzVHGj3orc8UYzb6kwOeTbYHPc+hIBVyWmQ="
+
+[pin]
+version = "1.3.0"
