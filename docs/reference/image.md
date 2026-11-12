@@ -291,8 +291,11 @@ The boot test runs the image in QEMU and checks that it reaches `multi-user.targ
 inside the Nix sandbox (no KVM), so it is a script, not a derivation. Its tools are Golconda's own
 packages, built through `scripts/tools.sh` before the run: `qemu-system` (QEMU's x86_64 system
 emulator and `qemu-img`), `swtpm`, `virt-firmware` (`virt-fw-vars`), `openssh` and `cpython`, first
-on `PATH`; the firmware is `ovmf`, a pinned edk2 nightly build (`packages/ovmf/package.nix` says
-where it comes from and what that trusts). Usage:
+on `PATH`; the firmware is the OVMF that comes with `qemu-system` (`share/qemu/edk2-*.fd`): the QEMU
+project builds it from edk2-stable202408 and ships it prebuilt in its release tarball, which
+`packages/qemu-system/sources.toml` pins by hash. Golconda does not rebuild it, and the project's
+own signatures are not checked beyond that hash (`packages/qemu-system/package.nix` has the build
+flags and what that trusts); building edk2 from source stays a later step. Usage:
 
 ```sh
 # Build the test image
@@ -427,11 +430,12 @@ push on, the harness logs in with its own certificate, `cert-admin` (serial 4), 
 It needs the tools of `--next` (`golconda`, `age`).
 
 `--secure-boot` enrolls the throwaway db key with `virt-fw-vars` (one fixed owner GUID) and boots
-OVMF's Secure Boot build (`share/ovmf/secure-boot`: Secure Boot, SMM and TPM 2.0, 4 MB flash) with
-`-machine smm=on`; `--tpm` takes that build too. A boot with neither takes the plain build
-(`share/ovmf/plain`), which has no Secure Boot support. The guest must report `Secure Boot: enabled`
-(the `secure-boot-enabled` marker); the same disk with an unsigned loader on the ESP is refused by
-firmware, which is the negative control for this check.
+OVMF's Secure Boot build (`edk2-x86_64-secure-code.fd`: Secure Boot, SMM and TPM 2.0, 3.5 MB of
+code) with `-machine smm=on`; `--tpm` takes that build too. A boot with neither takes the plain
+build (`edk2-x86_64-code.fd`), which has no Secure Boot support. Both pair with the empty variable
+store `edk2-i386-vars.fd` (528 KB: together the 4 MB flash). The guest must report
+`Secure Boot: enabled` (the `secure-boot-enabled` marker); the same disk with an unsigned loader on
+the ESP is refused by firmware, which is the negative control for this check.
 
 The script creates a 40 GiB qcow2 overlay (room for the root partition), copies the OVMF variable
 store, passes the host name `boot-test` as a credential (`-smbios type=11,...`, not with

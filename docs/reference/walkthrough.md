@@ -188,8 +188,8 @@ kernel trusts the verity signature only from the platform keyring, which the fir
 Secure Boot `db`. A plain OVMF has no Secure Boot, so the boot stops at switch-root with
 `Failed to execute /sbin/init` ([Image artifacts](image.md#boot-test-scriptsboot-test)). The harness
 does what is needed: it enrols the throwaway db key into the variable store of OVMF's Secure Boot
-build (`packages/ovmf`), starts QEMU with SMM and a 40 GiB overlay (room for `root`), and passes the
-host name `boot-test` as an SMBIOS credential.
+build (`qemu-system`'s `share/qemu`), starts QEMU with SMM and a 40 GiB overlay (room for `root`),
+and passes the host name `boot-test` as an SMBIOS credential.
 
 ```sh
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --timeout 120
