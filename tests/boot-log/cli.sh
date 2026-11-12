@@ -4,13 +4,32 @@ set -eu
 ROOT=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd)
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
-mkdir -p "$WORK/bin" "$WORK/firmware/FV" "$WORK/keys" "$WORK/runs"
-: > "$WORK/firmware/FV/OVMF_VARS.fd"
+mkdir -p "$WORK/bin" "$WORK/keys/secureboot" "$WORK/runs"
+# packages/ovmf's layout: both variants, each a code image and an empty variable store
+for v in plain secure-boot; do
+  mkdir -p "$WORK/firmware/share/ovmf/$v"
+  : > "$WORK/firmware/share/ovmf/$v/OVMF_CODE.fd"
+  : > "$WORK/firmware/share/ovmf/$v/OVMF_VARS.fd"
+done
+: > "$WORK/keys/secureboot/db.crt"
 : > "$WORK/disk.raw"
 
-for tool in nix-instantiate nix-build qemu-img; do
+# every Nix call answers with the fake firmware's directory (scripts/tools.sh builds the tools and
+# OVMF with nix-build); nix-build also records what it was asked for
+for tool in nix-instantiate qemu-img; do
   printf '#!/bin/sh\nprintf "%%s\\n" "$FAKE_FIRMWARE"\n' > "$WORK/bin/$tool"
 done
+printf '#!/bin/sh\necho "$*" >> "$FAKE_NIX_BUILD_ARGS"\nprintf "%%s\\n" "$FAKE_FIRMWARE"\n' > "$WORK/bin/nix-build"
+# the tools come from Golconda's packages, never from a nix-shell over nixpkgs
+printf '#!/bin/sh\necho "nix-shell $*" >> "$FAKE_NIX_BUILD_ARGS"\nexit 1\n' > "$WORK/bin/nix-shell"
+# virt-fw-vars writes its --output (enroll_keys)
+cat > "$WORK/bin/virt-fw-vars" <<'EOF'
+#!/bin/sh
+while [ $# -gt 0 ]; do
+  case $1 in --output) : > "$2"; shift ;; esac
+  shift
+done
+EOF
 cat > "$WORK/bin/qemu-system-x86_64" <<'EOF'
 #!/bin/sh
 set -eu
@@ -65,8 +84,9 @@ export FAKE_REAL_SLEEP
 PATH=$WORK/bin:$PATH
 FAKE_FIRMWARE=$WORK/firmware
 FAKE_FIXTURES=$ROOT/tests/boot-log
+FAKE_NIX_BUILD_ARGS=$WORK/nix-build.args
 BOOT_TEST_CACHE=$WORK/runs
-export PATH FAKE_FIRMWARE FAKE_FIXTURES BOOT_TEST_CACHE
+export PATH FAKE_FIRMWARE FAKE_FIXTURES FAKE_NIX_BUILD_ARGS BOOT_TEST_CACHE
 ERRORS=0
 for mode in delayed success-systemd mentions-systemd dependency-failed multi-user-only empty exited-after-poll; do
   FAKE_MODE=$mode
@@ -141,6 +161,40 @@ if grep -q -- '-netdev user,[^ ]*net=169\.254\.169\.0/24' "$WORK/qemu-args" && !
   echo "PASS: CLI the default boot's user network is 169.254.169.0/24"
 else
   echo "FAIL: CLI the default boot's user network: $(cat "$WORK/qemu-args" 2>&1)"
+  ERRORS=$((ERRORS + 1))
+fi
+# the VM's tools and its firmware are Golconda's packages (scripts/tools.sh), and the boot without
+# Secure Boot or TPM loads the plain OVMF without SMM
+for attr in qemu-system swtpm virt-firmware openssh cpython ovmf; do
+  if grep -q -- "-A packages\.[^ ]*\.$attr\( \|$\)" "$FAKE_NIX_BUILD_ARGS"; then
+    echo "PASS: CLI builds packages.<system>.$attr"
+  else
+    echo "FAIL: CLI does not build packages.<system>.$attr: $(cat "$FAKE_NIX_BUILD_ARGS")"
+    ERRORS=$((ERRORS + 1))
+  fi
+done
+if grep -q 'nixpkgs\|nix-shell' "$FAKE_NIX_BUILD_ARGS"; then
+  echo "FAIL: CLI uses nixpkgs or nix-shell: $(cat "$FAKE_NIX_BUILD_ARGS")"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "PASS: CLI uses neither nixpkgs nor nix-shell"
+fi
+if grep -q "file=$FAKE_FIRMWARE/share/ovmf/plain/OVMF_CODE\.fd" "$WORK/qemu-args" && ! grep -q 'smm=on' "$WORK/qemu-args"; then
+  echo "PASS: CLI the default boot loads the plain OVMF, without SMM"
+else
+  echo "FAIL: CLI the default boot's firmware: $(cat "$WORK/qemu-args" 2>&1)"
+  ERRORS=$((ERRORS + 1))
+fi
+# --secure-boot loads the Secure Boot OVMF, with SMM and secure pflash
+FAKE_STOPPED=$WORK/stopped-sb FAKE_RELEASE=$WORK/release-sb FAKE_TIMEOUT_PID=$WORK/timeout-pid-sb
+export FAKE_STOPPED FAKE_RELEASE FAKE_TIMEOUT_PID
+sh "$ROOT/scripts/boot-test" "$WORK/disk.raw" --keys "$WORK/keys" --secure-boot --timeout 3 \
+  > "$WORK/sb.out" 2>&1 || true
+if grep -q "file=$FAKE_FIRMWARE/share/ovmf/secure-boot/OVMF_CODE\.fd" "$WORK/qemu-args" &&
+   grep -q 'smm=on' "$WORK/qemu-args" && grep -q 'cfi.pflash01,property=secure,value=on' "$WORK/qemu-args"; then
+  echo "PASS: CLI --secure-boot loads the Secure Boot OVMF, with SMM"
+else
+  echo "FAIL: CLI --secure-boot's firmware: $(cat "$WORK/qemu-args" 2>&1) $(cat "$WORK/sb.out")"
   ERRORS=$((ERRORS + 1))
 fi
 unset FAKE_QEMU_ARGS

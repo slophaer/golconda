@@ -94,7 +94,7 @@
 #   /imds's UseHostname=no drop-in reaches 85-imds-early.network, and after a renewal the host
 #   name is still imds-test) and imds-no-ordering-cycle (the import before sysinit.target made no
 #   ordering cycle).
-# With --secure-boot: boots OVMFFull and checks that the firmware enforces Secure Boot.
+# With --secure-boot: boots the Secure Boot OVMF and checks that the firmware enforces Secure Boot.
 # With --ssh-test: also checks the boot loader (docs/design/bootloader.md): the ESP's two
 #   copies of systemd-boot are the signed file in /usr, loader/loader.conf is the one
 #   systemd-boot reads and the copy in /usr, golconda-loader-update.service ran after the boot
@@ -160,7 +160,7 @@
 # Exit: 0 if all markers pass, 1 otherwise.
 #
 # The files: this one has the usage above, the bootstrap, the command line, the work directory,
-# the firmware (the only place that names the nixpkgs pin, docs/design/principles.md) and main.
+# the tools and the firmware (Golconda's own packages, through scripts/tools.sh) and main.
 # It sources the parts beside it:
 #   boot-test-log.sh     the serial markers and check_markers
 #   boot-test-vm.sh      Secure Boot keys, swtpm, the guest's credentials, QEMU
@@ -172,20 +172,8 @@
 
 set -eu
 
-# --- bootstrap: re-exec under nix-shell if tools are missing ---
-if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
-  SCRIPT_DIR="$(dirname "$(realpath "$0")")"
-  REPO_DIR="$(dirname "$SCRIPT_DIR")"
-  # Get the dev pin path from pins/nixpkgs-dev-only via nix-instantiate
-  DEV_PIN=$(nix-instantiate --eval -E "(import $REPO_DIR/pins).nixpkgs-dev-only" 2>/dev/null | tr -d '"')
-  if [ -z "$DEV_PIN" ] || [ ! -d "$DEV_PIN" ]; then
-    echo "Error: cannot find nixpkgs-dev-only pin" >&2
-    exit 1
-  fi
-  exec nix-shell -I "nixpkgs=$DEV_PIN" -p qemu OVMF swtpm openssh python3 python3Packages.virt-firmware --run "$0 $*"
-fi
-
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+REPO_DIR="$(dirname "$SCRIPT_DIR")"
 
 # the work directories of all runs, and scripts/verify's logs: not /tmp, whose contents a queue task
 # or a reboot may drop with the logs of a failed run
@@ -293,6 +281,18 @@ if [ ! -d "$KEYS_DIR" ]; then
   exit 1
 fi
 
+# --- the virtual machine's tools: Golconda's own packages (scripts/tools.sh) ---
+# qemu-system (qemu-system-x86_64, qemu-img), swtpm, virt-firmware (virt-fw-vars), openssh (ssh,
+# ssh-keygen) and cpython (python3) come first on PATH, whatever the caller's PATH has; OVMF is
+# packages/ovmf (a pinned edk2 nightly build)
+. "$SCRIPT_DIR/tools.sh"
+if ! TOOLS=$(tools_path "$REPO_DIR" qemu-system swtpm virt-firmware openssh cpython) ||
+  ! OVMF=$(tools_outs "$REPO_DIR" ovmf); then
+  echo "Error: cannot build the boot test's tools (packages.<system>.qemu-system and the rest)" >&2
+  exit 1
+fi
+PATH="$TOOLS:$PATH"
+
 
 if [ "$ESP_CREDS" = 1 ] && [ "$SSH_TEST" = 0 ]; then
   echo "Error: --esp-creds needs --ssh-test: the checks log in with the generated key" >&2
@@ -384,22 +384,18 @@ SERIAL_LOG="$WORKDIR/serial.log"
 QEMU_OUT="$WORKDIR/qemu.out"
 VARS="$WORKDIR/vars.fd"
 
-# --- find OVMF ---
-SCRIPT_DIR="$(dirname "$(realpath "$0")")"
-REPO_DIR="$(dirname "$SCRIPT_DIR")"
-DEV_PIN=$(nix-instantiate --eval -E "(import $REPO_DIR/pins).nixpkgs-dev-only" 2>/dev/null | tr -d '"')
-# OVMF.fd has neither Secure Boot nor TPM support. OVMFFull.fd has both, and it is
-# built with SMM, so QEMU gets smm=on below. --tpm needs the TPM measurement, or
-# systemd-stub does not pass the UKI's PCR public key on and credentials are sealed
-# without the signed PCR 11 policy. --secure-boot needs a firmware that enforces.
-OVMF_ATTR=OVMF.fd
+# --- the firmware ---
+# packages/ovmf's plain build has neither Secure Boot nor TPM support. The secure-boot one has
+# both, and it is built with SMM, so QEMU gets smm=on below. --tpm needs the TPM measurement, or
+# systemd-stub does not pass the UKI's PCR public key on and credentials are sealed without the
+# signed PCR 11 policy. --secure-boot needs a firmware that enforces.
+OVMF_DIR=$OVMF/share/ovmf/plain
 if [ "$TPM" = 1 ] || [ "$SECURE_BOOT" = 1 ]; then
-  OVMF_ATTR=OVMFFull.fd
+  OVMF_DIR=$OVMF/share/ovmf/secure-boot
 fi
-OVMF_DIR=$(nix-build -I "nixpkgs=$DEV_PIN" '<nixpkgs>' -A "$OVMF_ATTR" --no-out-link 2>/dev/null)/FV
 
-if [ ! -d "$OVMF_DIR" ]; then
-  echo "Error: cannot find OVMF.fd" >&2
+if [ ! -f "$OVMF_DIR/OVMF_VARS.fd" ]; then
+  echo "Error: no OVMF_VARS.fd in $OVMF_DIR" >&2
   exit 1
 fi
 
