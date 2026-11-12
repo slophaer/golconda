@@ -103,6 +103,88 @@ enroll_keys() {
   echo "Secure Boot keys enrolled"
 }
 
+# --- --auto-enrol: systemd-boot enrols the ESP's keys (docs/design/bootloader.md) ---
+# The variable store is the firmware's empty template, in Setup Mode: enroll_keys does not run.
+# systemd-boot finds loader/keys/auto on the ESP, writes db, KEK and PK (in that order; PK ends
+# Setup Mode) and resets the machine; the next boot runs with Secure Boot on.
+
+# efivar_holds NAME GUID SPEC...: the guest's EFI variable NAME-GUID (kept in the work directory)
+# holds each SPEC +FILE and none of -FILE. FILE is a certificate (.crt PEM, .der DER), found as
+# the DER of an EFI_SIGNATURE_LIST entry, or Microsoft's signed dbx update (.bin), whose signature
+# lists must be the variable's content. A variable that does not exist holds nothing.
+efivar_holds() {
+  efi_v=$1
+  efi_g=$2
+  shift 2
+  guest cat "/sys/firmware/efi/efivars/$efi_v-$efi_g" > "$WORKDIR/efivar-$efi_v" 2>/dev/null ||
+    : > "$WORKDIR/efivar-$efi_v"
+  python3 - "$WORKDIR/efivar-$efi_v" "$@" <<'EOF'
+import ssl, struct, sys
+# efivarfs puts the variable's 4 attribute bytes first
+raw = open(sys.argv[1], "rb").read()
+var = raw[4:]
+ok = True
+for spec in sys.argv[2:]:
+    want, path = spec[0] == "+", spec[1:]
+    data = open(path, "rb").read()
+    if path.endswith(".crt"):
+        data = ssl.PEM_cert_to_DER_cert(data.decode())
+    if path.endswith(".bin"):
+        # EFI_VARIABLE_AUTHENTICATION_2: EFI_TIME (16), then dwLength of the WIN_CERTIFICATE
+        data = data[16 + struct.unpack_from("<I", data, 16)[0]:]
+        found = len(data) > 0 and var == data
+    else:
+        found = len(data) > 0 and data in var
+    print(("holds " if found else "lacks ") + path.rsplit("/", 1)[-1])
+    ok = ok and found == want
+sys.exit(0 if ok else 1)
+EOF
+}
+
+# check_auto_enrol: systemd-boot enrolled the keys, and PK, KEK, db and dbx hold what the key set
+# and, unless --no-microsoft-keys, Microsoft's objects (packages/secureboot-objects) say: KEK the
+# key set's KEK.crt and Microsoft's KEK CA 2011 and 2023; db its db.crt and the Microsoft UEFI CA
+# 2011 and 2023 and Option ROM UEFI CA 2023, never the two Windows CAs; dbx Microsoft's list. With
+# --no-microsoft-keys none of Microsoft's, and no dbx. secure-boot-enabled is test_ssh's.
+check_auto_enrol() {
+  echo ""
+  echo "=== Secure Boot keys enrolled by systemd-boot ==="
+  RC=0
+  # systemd-boot prints to the firmware console, which OVMF copies to the serial port
+  grep -a 'Secure Boot keys' "$SERIAL_LOG" | tr -d '\033\r' | head -5 || true
+  grep -aqF 'Custom Secure Boot keys successfully enrolled' "$SERIAL_LOG" || RC=1
+  verdict "auto-enrolled (systemd-boot enrolled loader/keys/auto in Setup Mode and rebooted)" $RC
+  GLOBAL=8be4df61-93ca-11d2-aa0d-00e098032b8c
+  SECDB=d719b2cb-3d3a-4596-a3bc-dad00e67656f
+  SB=$(real_path "$KEYS_DIR/secureboot")
+  if ! MS=$(tools_outs "$REPO_DIR" secureboot-objects)/share/secureboot-objects; then
+    verdict "secureboot-objects (packages.<system>.secureboot-objects builds)" 1
+    return 1
+  fi
+  if [ "$MICROSOFT_KEYS" = 1 ]; then
+    M=+
+    WHOSE="the key set's and Microsoft's"
+  else
+    M=-
+    WHOSE="only the key set's"
+  fi
+  RC=0
+  efivar_holds PK "$GLOBAL" "+$SB/PK.crt" || RC=1
+  verdict "pk-enrolled (the firmware's PK is the key set's secureboot/PK.crt)" $RC
+  RC=0
+  efivar_holds KEK "$GLOBAL" "+$SB/KEK.crt" "$M$MS/KEK/microsoft-kek-ca-2011.der" \
+    "$M$MS/KEK/microsoft-kek-2k-ca-2023.der" || RC=1
+  verdict "kek-enrolled (KEK holds $WHOSE: KEK.crt, Microsoft KEK CA 2011 and 2023)" $RC
+  RC=0
+  efivar_holds db "$SECDB" "+$SB/db.crt" "$M$MS/db/microsoft-uefi-ca-2011.der" \
+    "$M$MS/db/microsoft-uefi-ca-2023.der" "$M$MS/db/microsoft-option-rom-uefi-ca-2023.der" \
+    "-$MS/db/windows-production-pca-2011.der" "-$MS/db/windows-uefi-ca-2023.der" || RC=1
+  verdict "db-enrolled (db holds $WHOSE: db.crt, Microsoft UEFI CA 2011, 2023, Option ROM UEFI CA 2023; no Windows CA)" $RC
+  RC=0
+  efivar_holds dbx "$SECDB" "$M$MS/dbx/DBXUpdate-amd64.bin" || RC=1
+  verdict "dbx-enrolled (dbx is Microsoft's revocation list: $([ "$M" = + ] && echo yes || echo none))" $RC
+}
+
 # --- start TPM ---
 start_tpm() {
   TPM_DIR="$WORKDIR/tpm"
@@ -195,9 +277,10 @@ start_qemu() {
     qemu-img create -q -f qcow2 -b "$DISK" -F raw "$OVERLAY" 40G
   fi
 
-  # the --tpm, --next and --factory-reset runs reboot the guest in the same QEMU
+  # the --tpm, --next and --factory-reset runs reboot the guest in the same QEMU, and so does
+  # systemd-boot after it enrols the keys (--auto-enrol)
   NO_REBOOT=-no-reboot
-  if [ "$TPM" = 1 ] || [ -n "$NEXT" ] || [ "$FACTORY_RESET" = 1 ]; then
+  if [ "$TPM" = 1 ] || [ -n "$NEXT" ] || [ "$FACTORY_RESET" = 1 ] || [ "$AUTO_ENROL" = 1 ]; then
     NO_REBOOT=""
   fi
 

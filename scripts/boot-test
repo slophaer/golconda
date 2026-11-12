@@ -1,7 +1,8 @@
 #!/bin/sh
 # scripts/boot-test: VM boot test for Golconda images.
 #
-# Usage: boot-test <disk.raw> --keys DIR [--secure-boot] [--tpm] [--timeout SECONDS]
+# Usage: boot-test <disk.raw> --keys DIR [--secure-boot [--auto-enrol [--no-microsoft-keys]]]
+#                  [--tpm] [--timeout SECONDS]
 #                  [--ssh-test [--esp-creds | --imds | --enrol]]
 #                  [--next DIR [--rotate | --fail-health | --tamper-index]] [--factory-reset]
 #
@@ -117,6 +118,15 @@
 #   name is still imds-test) and imds-no-ordering-cycle (the import before sysinit.target made no
 #   ordering cycle).
 # With --secure-boot: boots the Secure Boot OVMF and checks that the firmware enforces Secure Boot.
+# With --secure-boot --auto-enrol (needs --ssh-test; not with --rotate): enrols nothing. The
+#   firmware starts with its empty variable store, in Setup Mode, and systemd-boot must enrol the
+#   ESP's loader/keys/auto and reboot (docs/design/bootloader.md). Checks: auto-enrolled (the
+#   serial log has systemd-boot's message), then over ssh pk-enrolled, kek-enrolled, db-enrolled
+#   and dbx-enrolled: PK is the key set's secureboot/PK.crt, KEK holds its KEK.crt and Microsoft's
+#   KEK CAs, db its db.crt and Microsoft's UEFI CAs (never the Windows CAs), dbx Microsoft's
+#   revocation list (packages/secureboot-objects); and secure-boot-enabled. With
+#   --no-microsoft-keys (an image with /system.secureBootMicrosoftKeys = false) KEK and db hold
+#   none of Microsoft's certificates and dbx is empty.
 # With --ssh-test: also checks the boot loader (docs/design/bootloader.md): the ESP's two
 #   copies of systemd-boot are the signed file in /usr, loader/loader.conf is the one
 #   systemd-boot reads and the copy in /usr, golconda-loader-update.service ran after the boot
@@ -214,6 +224,8 @@ HTTP_PORT=${BOOT_TEST_HTTP_PORT:-8074}
 DISK=""
 KEYS_DIR=""
 SECURE_BOOT=0
+AUTO_ENROL=0
+MICROSOFT_KEYS=1
 TPM=0
 TIMEOUT=120
 SSH_TEST=0
@@ -251,7 +263,7 @@ IMDS_NET_CRED=60-imds-ipv6
 . "$SCRIPT_DIR/boot-test-update.sh"
 
 usage() {
-  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot] [--tpm] [--timeout SECONDS] [--ssh-test [--esp-creds | --imds | --enrol]] [--next DIR [--rotate | --fail-health | --tamper-index]] [--factory-reset]"
+  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot [--auto-enrol [--no-microsoft-keys]]] [--tpm] [--timeout SECONDS] [--ssh-test [--esp-creds | --imds | --enrol]] [--next DIR [--rotate | --fail-health | --tamper-index]] [--factory-reset]"
   exit 1
 }
 
@@ -259,6 +271,8 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --keys) KEYS_DIR="$2"; shift 2 ;;
     --secure-boot) SECURE_BOOT=1; shift ;;
+    --auto-enrol) AUTO_ENROL=1; shift ;;
+    --no-microsoft-keys) MICROSOFT_KEYS=0; shift ;;
     --tpm) TPM=1; shift ;;
     --timeout) TIMEOUT="$2"; shift 2 ;;
     --ssh-test) SSH_TEST=1; shift ;;
@@ -356,6 +370,14 @@ if [ "$TAMPER_INDEX" = 1 ] && { [ -z "$NEXT" ] || [ "$FAIL_HEALTH" = 1 ] || [ "$
   echo "Error: --tamper-index needs --next, and the update never installs: not with --fail-health or --rotate" >&2
   exit 1
 fi
+if [ "$AUTO_ENROL" = 1 ] && { [ "$SECURE_BOOT" = 0 ] || [ "$SSH_TEST" = 0 ] || [ "$ROTATE" = 1 ]; }; then
+  echo "Error: --auto-enrol needs --secure-boot and --ssh-test (the checks read the EFI variables over ssh), and not --rotate (which enrols)" >&2
+  exit 1
+fi
+if [ "$MICROSOFT_KEYS" = 0 ] && [ "$AUTO_ENROL" = 0 ]; then
+  echo "Error: --no-microsoft-keys needs --auto-enrol" >&2
+  exit 1
+fi
 if [ "$ROTATE" = 1 ] && { [ -z "$NEXT" ] || [ "$SECURE_BOOT" = 0 ]; }; then
   echo "Error: --rotate needs --next and --secure-boot" >&2
   exit 1
@@ -441,7 +463,7 @@ chmod u+w "$VARS"
 main() {
   echo "Boot test for: $DISK"
   echo "Keys: $KEYS_DIR"
-  echo "Secure Boot: $SECURE_BOOT"
+  echo "Secure Boot: $SECURE_BOOT (auto-enrol: $AUTO_ENROL)"
   echo "TPM: $TPM"
   echo "Factory reset: $FACTORY_RESET"
   echo "ESP credentials: $ESP_CREDS"
@@ -451,7 +473,7 @@ main() {
   echo "Work directory: $WORKDIR"
   echo ""
 
-  if [ "$SECURE_BOOT" = 1 ]; then
+  if [ "$SECURE_BOOT" = 1 ] && [ "$AUTO_ENROL" = 0 ]; then
     enroll_keys
   fi
 
@@ -484,6 +506,9 @@ main() {
     PASS=0
     FAIL=0
     test_ssh || RESULT=1
+    if [ "$AUTO_ENROL" = 1 ]; then
+      check_auto_enrol || RESULT=1
+    fi
     if [ "$ENROL" = 1 ] && [ "$RESULT" = 0 ]; then
       test_enrol || RESULT=1
     fi
