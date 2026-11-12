@@ -152,6 +152,15 @@ in
       inherit (pkgs) openssl gnupg;
       # the dev shell's book tools (scripts/docs), and what scripts/tool runs (scripts/tools.sh)
       inherit (pkgs) mdbook mdbook-pele hcloud;
+      # scripts/boot-test's virtual machine (scripts/tools.sh): QEMU, the TPM, the Secure Boot key
+      # enrolment, the firmware, and the ssh client its checks log in with (python3 is cpython)
+      inherit (pkgs)
+        qemu-system
+        swtpm
+        virt-firmware
+        ovmf
+        openssh
+        ;
     }
     # tests-<name>: a package's own test from tests/packages/ (they moved with the packages)
     // import ../tests/packages { inherit sources set; }
