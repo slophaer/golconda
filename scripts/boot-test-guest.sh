@@ -14,9 +14,12 @@ init_ssh_opts() {
     -o BatchMode=yes -o LogLevel=ERROR -p $SSH_PORT"
 }
 
+# GUEST_EXTRA_ID: more ssh identities after the test key; push_admin_vars sets it to the
+# certificate cert-admin, because a release with an enrolled host certificate refuses plain keys
+GUEST_EXTRA_ID=""
 guest() {
   # shellcheck disable=SC2086
-  ssh $SSH_OPTS $NO_HOSTKEY_CHECK -i "$WORKDIR/ssh/user" root@localhost "$@"
+  ssh $SSH_OPTS $NO_HOSTKEY_CHECK -i "$WORKDIR/ssh/user" $GUEST_EXTRA_ID root@localhost "$@"
 }
 
 # wait for an ssh login while QEMU runs; $1: the boot id it must differ from
@@ -28,7 +31,7 @@ wait_for_ssh() {
       return 0
     fi
     # shellcheck disable=SC2086
-    SSH_LAST=$(ssh $SSH_OPTS $NO_HOSTKEY_CHECK -v -i "$WORKDIR/ssh/user" root@localhost true 2>&1) || true
+    SSH_LAST=$(ssh $SSH_OPTS $NO_HOSTKEY_CHECK -v -i "$WORKDIR/ssh/user" $GUEST_EXTRA_ID root@localhost true 2>&1) || true
     sleep 2
   done
   return 1

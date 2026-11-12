@@ -171,18 +171,18 @@ setup_ssh_test() {
 
 # setup_certs: user certificates from the test user CA (tests/fixtures/snakeoil-user-ca), which
 # the test image trusts for the principal boot-test-admin: a good one, one for another principal,
-# and one the revocation list will name (by serial)
+# one the revocation list will name (by serial), and the harness's own (admin), which no list names
 setup_certs() {
   cp "$REPO_DIR/tests/fixtures/snakeoil-user-ca" "$SSH_DIR/user-ca"
   chmod 600 "$SSH_DIR/user-ca"
-  for c in "ok boot-test-admin 1" "wrong nobody 2" "revoked boot-test-admin 3"; do
+  for c in "ok boot-test-admin 1" "wrong nobody 2" "revoked boot-test-admin 3" "admin boot-test-admin 4"; do
     # shellcheck disable=SC2086 # split the case into name, principal and serial
     set -- $c
     ssh-keygen -q -t ed25519 -N '' -C "boot-test-$1" -f "$SSH_DIR/cert-$1"
     ssh-keygen -q -s "$SSH_DIR/user-ca" -I "boot-test-$1" -n "$2" -z "$3" "$SSH_DIR/cert-$1.pub"
   done
   # --enrol: a plain bootstrap key that only the SMBIOS credential ssh.authorized_keys.root
-  # carries (start_qemu), which the pushed KRL names
+  # carries (start_qemu); the pushed KRL does not name it
   if [ "$ENROL" = 1 ]; then
     ssh-keygen -q -t ed25519 -N '' -C boot-test-bootstrap -f "$SSH_DIR/bootstrap"
   fi

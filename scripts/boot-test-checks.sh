@@ -12,8 +12,9 @@ vars() {
 
 # push_admin_vars: the host CA signs the guest's host key once its fingerprint matches the one
 # the first boot printed on the serial console; the host certificate and a revocation list naming
-# cert-revoked (with --enrol also the bootstrap key) are stored and pushed with golconda vars, and
-# both must be sealed
+# cert-revoked are stored and pushed with golconda vars, and both must be sealed. From then on a
+# release with hostCertificate on refuses plain keys, so the harness also offers the certificate
+# cert-admin (GUEST_EXTRA_ID: guest, the vars ssh config, check_unsealed)
 push_admin_vars() {
   echo ""
   echo "=== admin vars: the host certificate and the revocation list, with golconda vars ==="
@@ -23,6 +24,7 @@ Host boot-test
   Port $SSH_PORT
   User root
   IdentityFile $WORKDIR/ssh/user
+  IdentityFile $WORKDIR/ssh/cert-admin
   IdentitiesOnly yes
   BatchMode yes
   StrictHostKeyChecking no
@@ -49,14 +51,12 @@ EOF
     ssh-keygen -q -s ssh/host-ca -h -I boot-test -n localhost ssh/host.pub
     vars set boot-test sshd-host-cert cert < ssh/host-cert.pub
     echo "serial: 3" > ssh/krl.spec
-    if [ "$ENROL" = 1 ]; then
-      echo "key: $(cat ssh/bootstrap.pub)" >> ssh/krl.spec
-    fi
     ssh-keygen -q -k -f ssh/krl -s "$REPO_DIR/tests/fixtures/snakeoil-user-ca.pub" ssh/krl.spec
     vars set boot-test sshd-revoked-keys krl < ssh/krl
     vars push -i age.key boot-test
   ) > "$WORKDIR/push.out" 2>&1 || RC=1
   cat "$WORKDIR/push.out"
+  GUEST_EXTRA_ID="-i $WORKDIR/ssh/cert-admin"
   grep -qx "sealed sshd-host-cert.cert" "$WORKDIR/push.out" || RC=1
   grep -qx "sealed sshd-revoked-keys.krl" "$WORKDIR/push.out" || RC=1
   grep -qx "restarted sshd.service" "$WORKDIR/push.out" || RC=1
@@ -94,14 +94,15 @@ test_certs() {
   expect_login "krl-rotated (the good certificate is refused once the new KRL names it)" ok 1
 }
 
-# host_cert_login: log in with the bootstrap key, trusting only the host CA (strict known_hosts)
+# host_cert_login: log in with the certificate cert-admin, trusting only the host CA (strict
+# known_hosts)
 host_cert_login() {
   echo "@cert-authority localhost,[localhost]:$SSH_PORT $(cat "$REPO_DIR/tests/fixtures/snakeoil-host-ca.pub")" \
     > "$WORKDIR/known_hosts_ca"
   # shellcheck disable=SC2086
   ssh $SSH_OPTS -o UserKnownHostsFile="$WORKDIR/known_hosts_ca" -o StrictHostKeyChecking=yes \
     -o HostKeyAlgorithms=ssh-ed25519-cert-v01@openssh.com -o IdentitiesOnly=yes \
-    -i "$WORKDIR/ssh/user" root@localhost true
+    -i "$WORKDIR/ssh/cert-admin" root@localhost true
 }
 
 # bootstrap_login: the plain bootstrap key of the SMBIOS credential (--enrol)
@@ -110,34 +111,52 @@ bootstrap_login() {
   ssh $SSH_OPTS $NO_HOSTKEY_CHECK -o IdentitiesOnly=yes -i "$WORKDIR/ssh/bootstrap" root@localhost true
 }
 
+# check_plain_refused NAME: neither plain key logs in: the SMBIOS credential's bootstrap key nor the
+# image's authorizedKeys test key. The pushed KRL names neither, so the refusal is the enrolment's
+# (modules/services/sshd: AuthorizedKeysFile none once the host certificate is sealed)
+# Each refused connection costs this source 5 s of sshd's PerSourcePenalties (authfail), and 15 s
+# block it ("Not allowed at this time"); every connection of the harness comes from QEMU's one
+# gateway address. So each refusal here starts after the last penalty ran out.
+check_plain_refused() {
+  RC=0
+  sleep 6
+  if bootstrap_login 2>/dev/null; then RC=1; fi
+  sleep 6
+  # shellcheck disable=SC2086
+  if ssh $SSH_OPTS $NO_HOSTKEY_CHECK -o IdentitiesOnly=yes -i "$WORKDIR/ssh/user" root@localhost true 2>/dev/null; then
+    RC=1
+  fi
+  sleep 6
+  verdict "$1 (the bootstrap key and the image's test key are refused; the KRL names neither)" $RC
+}
+
 # test_enrol: one release from first boot to certificates (docs/design/trust.md, "Identity"). The
 # image has hostCertificate and revokedKeys on from its first boot; test_ssh showed the bootstrap
-# key in and certificates refused. Push the host certificate and a KRL that names the bootstrap key,
-# then the same boot of the same release presents the certificate, takes certificates, refuses the
-# revoked one and the retired bootstrap key, and takes a rotated KRL.
+# key in and certificates refused. Push the host certificate and a KRL, then the same boot of the
+# same release presents the certificate, takes certificates, refuses the revoked one, refuses every
+# plain key (the KRL names none), and takes a rotated KRL.
 test_enrol() {
   ENROL_VERSION=$(guest_version)
   push_admin_vars
   test_certs cert-login-after-enrol
-  RC=0
-  if bootstrap_login 2>/dev/null; then RC=1; fi
-  verdict "bootstrap-key-revoked (the pushed KRL names the plain bootstrap key: refused)" $RC
+  check_plain_refused bootstrap-key-refused-after-enrol
   RC=0
   B=$(guest cat /proc/sys/kernel/random/boot_id 2>/dev/null) || B=""
   [ "$B" = "$FIRST_BOOT_ID" ] && [ -n "$ENROL_VERSION" ] && [ "$(guest_version)" = "$ENROL_VERSION" ] || RC=1
   verdict "enrol-one-release (all of it in the first boot of ${ENROL_VERSION:-?}: no update, no reboot)" $RC
 }
 
-# test_enrol_after_reboot: the sealed certificate and KRL unseal after a reboot (--enrol --tpm)
+# test_enrol_after_reboot: the sealed certificate and KRL unseal after a reboot (--enrol --tpm):
+# cert-admin logs in (the image's fallback list would refuse it), the rotated KRL still refuses the
+# good certificate, and plain keys stay refused
 test_enrol_after_reboot() {
   echo ""
   echo "=== certificates after the reboot ==="
   RC=0
   host_cert_login || RC=1
-  verdict "host-cert-presented-after-reboot" $RC
-  RC=0
-  if bootstrap_login 2>/dev/null; then RC=1; fi
-  verdict "bootstrap-key-revoked-after-reboot (the pushed KRL, not the image's fallback, is in force)" $RC
+  verdict "host-cert-presented-after-reboot (cert-admin logs in: the pushed KRL, not the fallback)" $RC
+  expect_login "cert-revoked-refused-after-reboot (the rotated KRL names serial 1)" ok 1
+  check_plain_refused bootstrap-key-refused-after-reboot
 }
 
 # check_hwdb NAME: the hardware database is compiled into /usr (packages/hwdb, linked by /base), so
@@ -206,7 +225,7 @@ check_unsealed() {
   RC=0
   # shellcheck disable=SC2086
   ssh $SSH_OPTS -o UserKnownHostsFile="$WORKDIR/known_hosts" -o StrictHostKeyChecking=yes \
-    -i "$WORKDIR/ssh/user" root@localhost true || RC=1
+    -i "$WORKDIR/ssh/user" $GUEST_EXTRA_ID root@localhost true || RC=1
   H=$(guest_hash "$HOSTKEY_CRED")
   [ -n "$H" ] && [ "$H" = "$SEALED_HASH" ] || RC=1
   A=$(guest systemctl is-active sshd.service 2>&1) || true

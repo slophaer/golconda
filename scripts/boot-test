@@ -46,18 +46,21 @@
 #   and the next release, which turns both on, must present the certificate, refuse the revoked
 #   certificate, and take a second revocation list pushed while it runs. Before it signs the host
 #   key, the harness finds the key's fingerprint on the serial console, as an operator would
-#   (hostkey-fingerprint-on-console).
+#   (hostkey-fingerprint-on-console). After the push it also offers its own user certificate
+#   (cert-admin), because a release with the host certificate enrolled refuses plain keys.
 # With --enrol (needs --ssh-test; not with --next, --esp-creds, --imds or --factory-reset): one
 #   release from first boot to certificates (docs/design/trust.md, "Identity"). Boot an image that
 #   has hostCertificate and revokedKeys on from its first boot (image-smoke-test-next), with a
 #   second plain key, the bootstrap key, as the SMBIOS credential ssh.authorized_keys.root. Before
 #   anything is pushed, the bootstrap key logs in (bootstrap-key-login) and a good certificate is
 #   refused by the image's fallback list, which names the user CA (cert-refused-before-enrol). The
-#   harness then pushes the host certificate and a KRL that also names the bootstrap key, as with
-#   --next, and the same release presents the certificate, takes certificates, refuses the revoked
-#   one and the bootstrap key (bootstrap-key-revoked), and takes a second KRL. Needs the same tools
-#   as --next. With --tpm, after the reboot the certificate and the pushed KRL still hold
-#   (host-cert-presented-after-reboot, bootstrap-key-revoked-after-reboot).
+#   harness then pushes the host certificate and a KRL, as with --next, and the same release
+#   presents the certificate, takes certificates, refuses the revoked one, refuses both plain keys
+#   though the KRL names neither (bootstrap-key-refused-after-enrol), and takes a second KRL. After
+#   the push the harness logs in with its own certificate (cert-admin). Needs the same tools as
+#   --next. With --tpm, after the reboot the certificate, the pushed KRL and the refusal of plain
+#   keys hold (host-cert-presented-after-reboot, cert-revoked-refused-after-reboot,
+#   bootstrap-key-refused-after-reboot).
 # With --tpm: the host key is sealed to TPM2 and the signed PCR 11 policy; after a reboot, and
 #   with --next after the update or --fail-health's fallback, it is the first boot's key, its
 #   credential has the first boot's bytes, and sshd runs (hostkey-unchanged).
