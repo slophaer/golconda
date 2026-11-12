@@ -88,4 +88,7 @@
   python-referencing = ./python-referencing;
   python-attrs = ./python-attrs;
   python-hatch-fancy-pypi-readme = ./python-hatch-fancy-pypi-readme;
+  # scripts/boot-test's virtual machine: QEMU's x86_64 system emulator and its user network
+  qemu-system = ./qemu-system;
+  libslirp = ./libslirp;
 }
