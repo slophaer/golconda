@@ -181,6 +181,11 @@ setup_certs() {
     ssh-keygen -q -t ed25519 -N '' -C "boot-test-$1" -f "$SSH_DIR/cert-$1"
     ssh-keygen -q -s "$SSH_DIR/user-ca" -I "boot-test-$1" -n "$2" -z "$3" "$SSH_DIR/cert-$1.pub"
   done
+  # --enrol: a plain bootstrap key that only the SMBIOS credential ssh.authorized_keys.root
+  # carries (start_qemu), which the pushed KRL names
+  if [ "$ENROL" = 1 ]; then
+    ssh-keygen -q -t ed25519 -N '' -C boot-test-bootstrap -f "$SSH_DIR/bootstrap"
+  fi
 }
 
 # --- run QEMU ---
@@ -199,6 +204,12 @@ start_qemu() {
   SMBIOS_HOSTNAME="-smbios type=11,value=io.systemd.credential:system.hostname=boot-test"
   if [ "$ESP_CREDS" = 1 ] || [ "$IMDS" = 1 ]; then
     SMBIOS_HOSTNAME=""
+  fi
+  # --enrol: the bootstrap key as a provisioning credential (docs/design/boot.md); base64, because
+  # the key line has spaces
+  SMBIOS_BOOTSTRAP=""
+  if [ "$ENROL" = 1 ]; then
+    SMBIOS_BOOTSTRAP="-smbios type=11,value=io.systemd.credential.binary:ssh.authorized_keys.root=$(base64 -w0 "$SSH_DIR/bootstrap.pub")"
   fi
   # --imds: Hetzner by DMI, and nothing else: the guest takes the endpoint from hwdb and the
   # image, as on Hetzner. Its address, 169.254.169.254, must be on the guest's link (imdsd's route
@@ -229,6 +240,7 @@ start_qemu() {
     -display none \
     $NO_REBOOT \
     $SMBIOS_HOSTNAME \
+    $SMBIOS_BOOTSTRAP \
     $SMBIOS_IMDS \
     -netdev user,id=net0,net=$GUEST_NET,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22$NET_UPDATE$NET_IMDS \
     -device virtio-net-pci,netdev=net0"

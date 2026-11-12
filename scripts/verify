@@ -19,7 +19,7 @@
 #                       <image>-next too (image-smoke-test-next for the default image,
 #                       image-smoke-test-nosb-next for image-smoke-test-nosb; out-link
 #                       result-verify-next) and puts its path there, as in "--next @next". It
-#                       also builds golconda-cli and age, which --next needs
+#                       also builds golconda-cli and age, which --next and --enrol need
 #                       (BOOT_TEST_GOLCONDA, PATH)
 #   --boot-set ARGS     one boot of a list (repeat it): all sets boot at the same time, each with
 #                       its own log, and the summary has one line per set with its result, time,
@@ -238,8 +238,10 @@ for nx in $nexts; do
   attr=${nx%%:*}; rest=${nx#*:}
   step "${rest#*:}" nix-build -A "packages.$system.$attr" -o "${rest%%:*}" || finish 1
 done
-if [ -n "$nexts" ]; then
-  # --next pushes admin vars with golconda, age and age-keygen
+case "$boot_args
+$boot_sets" in *--enrol*) enrol=1 ;; *) enrol=0 ;; esac
+if [ -n "$nexts" ] || [ $enrol = 1 ]; then
+  # --next and --enrol push admin vars with golconda, age and age-keygen
   step golconda-cli nix-build -A "packages.$system.golconda-cli" -o result-verify-golconda-cli || finish 1
   step age nix-build -A "packages.$system.age" -o result-verify-age || finish 1
   BOOT_TEST_GOLCONDA=$(resolve result-verify-golconda-cli)/bin/golconda

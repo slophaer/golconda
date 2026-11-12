@@ -67,7 +67,23 @@ test_ssh() {
   # the test image trusts the test user CA for boot-test-admin (nix/default.nix)
   echo ""
   echo "=== certificate login ==="
-  expect_login "cert-login (a certificate from the trusted user CA, principal boot-test-admin)" ok 0
+  if [ "$ENROL" = 1 ]; then
+    # --enrol: nothing is pushed yet. The plain bootstrap key from the SMBIOS credential logs in;
+    # a good certificate is refused, and sshd says the revocation list refused it: the image's
+    # fallback list names the user CA until a KRL is pushed (modules/services/sshd)
+    RC=0
+    # shellcheck disable=SC2086
+    ssh $SSH_OPTS $NO_HOSTKEY_CHECK -o IdentitiesOnly=yes -i "$WORKDIR/ssh/bootstrap" root@localhost true || RC=1
+    verdict "bootstrap-key-login (the plain key of the SMBIOS credential ssh.authorized_keys.root)" $RC
+    RC=0
+    if cert_login ok 2>/dev/null; then RC=1; fi
+    REFUSED=$(guest journalctl -b -u sshd.service -o cat --no-pager 2>/dev/null |
+      grep "revoked by file /run/credentials/sshd.service/sshd-revoked-keys.krl") || RC=1
+    echo "$REFUSED" | tail -2
+    verdict "cert-refused-before-enrol (no KRL pushed: the fallback list revokes the user CA)" $RC
+  else
+    expect_login "cert-login (a certificate from the trusted user CA, principal boot-test-admin)" ok 0
+  fi
   expect_login "cert-wrong-principal-refused" wrong 1
 
   check_hwdb hwdb

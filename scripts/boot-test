@@ -2,7 +2,7 @@
 # scripts/boot-test: VM boot test for Golconda images.
 #
 # Usage: boot-test <disk.raw> --keys DIR [--secure-boot] [--tpm] [--timeout SECONDS]
-#                  [--ssh-test [--esp-creds | --imds]]
+#                  [--ssh-test [--esp-creds | --imds | --enrol]]
 #                  [--next DIR [--rotate | --fail-health | --tamper-index]] [--factory-reset]
 #
 # The script boots the image in QEMU with:
@@ -44,7 +44,20 @@
 #   tests/fixtures/snakeoil-host-ca) and a revocation list with `golconda vars`
 #   (packages.<system>.golconda-cli; set BOOT_TEST_GOLCONDA, and put age and age-keygen on PATH),
 #   and the next release, which turns both on, must present the certificate, refuse the revoked
-#   certificate, and take a second revocation list pushed while it runs.
+#   certificate, and take a second revocation list pushed while it runs. Before it signs the host
+#   key, the harness finds the key's fingerprint on the serial console, as an operator would
+#   (hostkey-fingerprint-on-console).
+# With --enrol (needs --ssh-test; not with --next, --esp-creds, --imds or --factory-reset): one
+#   release from first boot to certificates (docs/design/trust.md, "Identity"). Boot an image that
+#   has hostCertificate and revokedKeys on from its first boot (image-smoke-test-next), with a
+#   second plain key, the bootstrap key, as the SMBIOS credential ssh.authorized_keys.root. Before
+#   anything is pushed, the bootstrap key logs in (bootstrap-key-login) and a good certificate is
+#   refused by the image's fallback list, which names the user CA (cert-refused-before-enrol). The
+#   harness then pushes the host certificate and a KRL that also names the bootstrap key, as with
+#   --next, and the same release presents the certificate, takes certificates, refuses the revoked
+#   one and the bootstrap key (bootstrap-key-revoked), and takes a second KRL. Needs the same tools
+#   as --next. With --tpm, after the reboot the certificate and the pushed KRL still hold
+#   (host-cert-presented-after-reboot, bootstrap-key-revoked-after-reboot).
 # With --tpm: the host key is sealed to TPM2 and the signed PCR 11 policy; after a reboot, and
 #   with --next after the update or --fail-health's fallback, it is the first boot's key, its
 #   credential has the first boot's bytes, and sshd runs (hostkey-unchanged).
@@ -202,6 +215,7 @@ TAMPER_INDEX=0
 FACTORY_RESET=0
 ESP_CREDS=0
 IMDS=0
+ENROL=0
 # --imds: Hetzner's metadata address, and the user data's IPv6 address and .network credential
 # (boot-test-http.sh serves them; no host port is opened)
 IMDS_ADDR=169.254.169.254
@@ -226,7 +240,7 @@ IMDS_NET_CRED=60-imds-ipv6
 . "$SCRIPT_DIR/boot-test-update.sh"
 
 usage() {
-  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot] [--tpm] [--timeout SECONDS] [--ssh-test [--esp-creds | --imds]] [--next DIR [--rotate | --fail-health | --tamper-index]] [--factory-reset]"
+  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot] [--tpm] [--timeout SECONDS] [--ssh-test [--esp-creds | --imds | --enrol]] [--next DIR [--rotate | --fail-health | --tamper-index]] [--factory-reset]"
   exit 1
 }
 
@@ -244,6 +258,7 @@ while [ $# -gt 0 ]; do
     --factory-reset) FACTORY_RESET=1; shift ;;
     --esp-creds) ESP_CREDS=1; shift ;;
     --imds) IMDS=1; shift ;;
+    --enrol) ENROL=1; shift ;;
     --help|-h) usage ;;
     -*)
       echo "Unknown option: $1" >&2
@@ -317,6 +332,11 @@ if [ "$FACTORY_RESET" = 1 ] && { [ -n "$NEXT" ] || [ "$ROTATE" = 1 ] || [ "$FAIL
   exit 1
 fi
 
+if [ "$ENROL" = 1 ] && { [ "$SSH_TEST" = 0 ] || [ -n "$NEXT" ] || [ "$ESP_CREDS" = 1 ] || [ "$IMDS" = 1 ] || [ "$FACTORY_RESET" = 1 ]; }; then
+  echo "Error: --enrol needs --ssh-test, and is a first boot of its own: not with --next, --esp-creds, --imds or --factory-reset" >&2
+  exit 1
+fi
+
 if [ "$FAIL_HEALTH" = 1 ] && [ -z "$NEXT" ]; then
   echo "Error: --fail-health needs --next" >&2
   exit 1
@@ -340,12 +360,14 @@ if [ -n "$NEXT" ]; then
     echo "Error: python3 is required to serve $NEXT_RELEASE over HTTP, and it is not on PATH" >&2
     exit 1
   fi
-  # the next release reads the host certificate and the revocation list: the harness pushes them
-  # with `golconda vars` and age, as an operator would (docs/design/trust.md)
+fi
+if [ -n "$NEXT" ] || [ "$ENROL" = 1 ]; then
+  # --next and --enrol push the host certificate and the revocation list with `golconda vars` and
+  # age, as an operator would (docs/design/trust.md)
   GOLCONDA=${BOOT_TEST_GOLCONDA:-golconda}
   for tool in "$GOLCONDA" age age-keygen ssh-keygen; do
     if ! command -v "$tool" >/dev/null 2>&1; then
-      echo "Error: --next pushes admin vars with $tool, and it is not on PATH (BOOT_TEST_GOLCONDA names the golconda binary)" >&2
+      echo "Error: --next and --enrol push admin vars with $tool, and it is not on PATH (BOOT_TEST_GOLCONDA names the golconda binary)" >&2
       exit 1
     fi
   done
@@ -412,6 +434,7 @@ main() {
   echo "Factory reset: $FACTORY_RESET"
   echo "ESP credentials: $ESP_CREDS"
   echo "IMDS: $IMDS"
+  echo "Enrolment: $ENROL"
   echo "Timeout: ${TIMEOUT}s"
   echo "Work directory: $WORKDIR"
   echo ""
@@ -446,8 +469,14 @@ main() {
     PASS=0
     FAIL=0
     test_ssh || RESULT=1
+    if [ "$ENROL" = 1 ] && [ "$RESULT" = 0 ]; then
+      test_enrol || RESULT=1
+    fi
     if [ "$TPM" = 1 ] && [ "$RESULT" = 0 ]; then
       test_reboot || RESULT=1
+      if [ "$ENROL" = 1 ] && [ "$RESULT" = 0 ]; then
+        test_enrol_after_reboot
+      fi
     fi
     if [ "$FACTORY_RESET" = 1 ] && [ "$RESULT" = 0 ]; then
       test_factory_reset || RESULT=1

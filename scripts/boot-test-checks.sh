@@ -10,8 +10,10 @@ vars() {
   GOLCONDA_SSH="ssh -F $WORKDIR/ssh/config" "$GOLCONDA" vars "$@"
 }
 
-# push_admin_vars: the host CA signs the guest's host key; the host certificate and a revocation
-# list naming cert-revoked are stored and pushed with golconda vars, and both must be sealed
+# push_admin_vars: the host CA signs the guest's host key once its fingerprint matches the one
+# the first boot printed on the serial console; the host certificate and a revocation list naming
+# cert-revoked (with --enrol also the bootstrap key) are stored and pushed with golconda vars, and
+# both must be sealed
 push_admin_vars() {
   echo ""
   echo "=== admin vars: the host certificate and the revocation list, with golconda vars ==="
@@ -32,13 +34,24 @@ EOF
   age-keygen -y "$WORKDIR/age.key" > "$WORKDIR/vars/recipients.txt"
   cp "$REPO_DIR/tests/fixtures/snakeoil-host-ca" "$WORKDIR/ssh/host-ca"
   chmod 600 "$WORKDIR/ssh/host-ca"
+  # the operator's check before signing: the key golconda vars reads over ssh is the key whose
+  # fingerprint the machine printed on its serial console at first boot (modules/services/sshd)
+  RC=0
+  (cd "$WORKDIR" && vars pub boot-test sshd-hostkey key.pub) > "$WORKDIR/ssh/host.pub" || RC=1
+  FP=$(ssh-keygen -l -f "$WORKDIR/ssh/host.pub" 2>/dev/null | cut -d' ' -f2) || FP=""
+  echo "host key fingerprint: ${FP:-none}"
+  grep -a "golconda: ssh host key" "$FIRST_SERIAL_LOG" | tail -1 || true
+  [ -n "$FP" ] && grep -aq "golconda: ssh host key .*$FP" "$FIRST_SERIAL_LOG" || RC=1
+  verdict "hostkey-fingerprint-on-console (the key golconda vars pub reads is the one the console names)" $RC
   RC=0
   (
     cd "$WORKDIR" || exit 1
-    vars pub boot-test sshd-hostkey key.pub > ssh/host.pub
     ssh-keygen -q -s ssh/host-ca -h -I boot-test -n localhost ssh/host.pub
     vars set boot-test sshd-host-cert cert < ssh/host-cert.pub
     echo "serial: 3" > ssh/krl.spec
+    if [ "$ENROL" = 1 ]; then
+      echo "key: $(cat ssh/bootstrap.pub)" >> ssh/krl.spec
+    fi
     ssh-keygen -q -k -f ssh/krl -s "$REPO_DIR/tests/fixtures/snakeoil-user-ca.pub" ssh/krl.spec
     vars set boot-test sshd-revoked-keys krl < ssh/krl
     vars push -i age.key boot-test
@@ -56,21 +69,17 @@ EOF
   verdict "admin-vars-sealed (golconda vars list: stored here, sealed there)" $RC
 }
 
-# test_certs_after_update: the release that turned hostCertificate and revokedKeys on reads what
-# was pushed: it presents the certificate, refuses the revoked user certificate, and a second
-# revocation list, pushed while it runs, takes effect when sshd restarts (rotation)
-test_certs_after_update() {
+# test_certs LOGIN: the release with hostCertificate and revokedKeys on reads what was pushed:
+# it presents the certificate, takes a good user certificate (the check LOGIN), refuses the
+# revoked one, and a second revocation list, pushed while it runs, takes effect when sshd restarts
+# (rotation)
+test_certs() {
   echo ""
-  echo "=== certificates after the update ==="
+  echo "=== certificates: $1 ==="
   RC=0
-  echo "@cert-authority localhost,[localhost]:$SSH_PORT $(cat "$REPO_DIR/tests/fixtures/snakeoil-host-ca.pub")" \
-    > "$WORKDIR/known_hosts_ca"
-  # shellcheck disable=SC2086
-  ssh $SSH_OPTS -o UserKnownHostsFile="$WORKDIR/known_hosts_ca" -o StrictHostKeyChecking=yes \
-    -o HostKeyAlgorithms=ssh-ed25519-cert-v01@openssh.com -o IdentitiesOnly=yes \
-    -i "$WORKDIR/ssh/user" root@localhost true || RC=1
+  host_cert_login || RC=1
   verdict "host-cert-presented (the host CA vouches for the key; strict known_hosts)" $RC
-  expect_login "cert-login-after-update" ok 0
+  expect_login "$1" ok 0
   expect_login "cert-revoked-refused (the KRL names serial 3)" revoked 1
 
   echo "serial: 1" >> "$WORKDIR/ssh/krl.spec"
@@ -83,6 +92,52 @@ test_certs_after_update() {
   ) || RC=1
   verdict "krl-pushed-again (rotation: set and push)" $RC
   expect_login "krl-rotated (the good certificate is refused once the new KRL names it)" ok 1
+}
+
+# host_cert_login: log in with the bootstrap key, trusting only the host CA (strict known_hosts)
+host_cert_login() {
+  echo "@cert-authority localhost,[localhost]:$SSH_PORT $(cat "$REPO_DIR/tests/fixtures/snakeoil-host-ca.pub")" \
+    > "$WORKDIR/known_hosts_ca"
+  # shellcheck disable=SC2086
+  ssh $SSH_OPTS -o UserKnownHostsFile="$WORKDIR/known_hosts_ca" -o StrictHostKeyChecking=yes \
+    -o HostKeyAlgorithms=ssh-ed25519-cert-v01@openssh.com -o IdentitiesOnly=yes \
+    -i "$WORKDIR/ssh/user" root@localhost true
+}
+
+# bootstrap_login: the plain bootstrap key of the SMBIOS credential (--enrol)
+bootstrap_login() {
+  # shellcheck disable=SC2086
+  ssh $SSH_OPTS $NO_HOSTKEY_CHECK -o IdentitiesOnly=yes -i "$WORKDIR/ssh/bootstrap" root@localhost true
+}
+
+# test_enrol: one release from first boot to certificates (docs/design/trust.md, "Identity"). The
+# image has hostCertificate and revokedKeys on from its first boot; test_ssh showed the bootstrap
+# key in and certificates refused. Push the host certificate and a KRL that names the bootstrap key,
+# then the same boot of the same release presents the certificate, takes certificates, refuses the
+# revoked one and the retired bootstrap key, and takes a rotated KRL.
+test_enrol() {
+  ENROL_VERSION=$(guest_version)
+  push_admin_vars
+  test_certs cert-login-after-enrol
+  RC=0
+  if bootstrap_login 2>/dev/null; then RC=1; fi
+  verdict "bootstrap-key-revoked (the pushed KRL names the plain bootstrap key: refused)" $RC
+  RC=0
+  B=$(guest cat /proc/sys/kernel/random/boot_id 2>/dev/null) || B=""
+  [ "$B" = "$FIRST_BOOT_ID" ] && [ -n "$ENROL_VERSION" ] && [ "$(guest_version)" = "$ENROL_VERSION" ] || RC=1
+  verdict "enrol-one-release (all of it in the first boot of ${ENROL_VERSION:-?}: no update, no reboot)" $RC
+}
+
+# test_enrol_after_reboot: the sealed certificate and KRL unseal after a reboot (--enrol --tpm)
+test_enrol_after_reboot() {
+  echo ""
+  echo "=== certificates after the reboot ==="
+  RC=0
+  host_cert_login || RC=1
+  verdict "host-cert-presented-after-reboot" $RC
+  RC=0
+  if bootstrap_login 2>/dev/null; then RC=1; fi
+  verdict "bootstrap-key-revoked-after-reboot (the pushed KRL, not the image's fallback, is in force)" $RC
 }
 
 # check_hwdb NAME: the hardware database is compiled into /usr (packages/hwdb, linked by /base), so
