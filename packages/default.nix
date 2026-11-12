@@ -91,4 +91,8 @@
   # scripts/boot-test's virtual machine: QEMU's x86_64 system emulator and its user network
   qemu-system = ./qemu-system;
   libslirp = ./libslirp;
+  # its TPM: swtpm, and the TPM implementation and JSON library it needs
+  swtpm = ./swtpm;
+  libtpms = ./libtpms;
+  json-glib = ./json-glib;
 }

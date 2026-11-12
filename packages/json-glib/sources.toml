@@ -1,0 +1,14 @@
+[upstream]
+purl = "pkg:generic/json-glib"
+
+[[source]]
+key = "default"
+url = "https://download.gnome.org/sources/json-glib/{major}.{minor}/json-glib-{version}.tar.xz"
+hash = "sha256-YJDSlsAVcbMSecR8JOWdBSanrQBfTRvMrwVyqs2UaZw="
+
+[pin]
+version = "1.10.8"
+
+[watch]
+url = "https://download.gnome.org/sources/json-glib/cache.json"
+regex = 'json-glib-([0-9]+\.[0-9]*[02468]\.[0-9]+)\.tar'

@@ -1,0 +1,12 @@
+[upstream]
+purl = "pkg:github/stefanberger/libtpms"
+
+[[source]]
+key = "default"
+url = "https://github.com/stefanberger/libtpms/archive/refs/tags/v{version}.tar.gz"
+hash = "sha256-UhEpq5f/FT5DmtzQBe/Si414mOq+D4glikgRNK60GKQ="
+
+[pin]
+version = "0.10.2"
+date = "2026-01-02"
+tag = "v0.10.2"
