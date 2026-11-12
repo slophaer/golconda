@@ -21,7 +21,9 @@ export def build [] {
   [
     $"#!($sh)"
     "# golconda-sign: the signer of Golconda's image chain (lib/image/sign.nu)"
-    $"exec ($nu_exe | path dirname | path join env) -i HOME=\"$HOME\" TMPDIR=\"${TMPDIR:-/tmp}\" OPENSSL_CONF=/dev/null \\"
+    # SOFTHSM2_CONF: where the token of the test images is (lib/image/token.nu); a YubiKey's
+    # module needs no variable
+    $"exec ($nu_exe | path dirname | path join env) -i HOME=\"$HOME\" TMPDIR=\"${TMPDIR:-/tmp}\" OPENSSL_CONF=/dev/null ${SOFTHSM2_CONF:+\"SOFTHSM2_CONF=$SOFTHSM2_CONF\"} \\"
     $"  PATH='($a.PATH)' OPENSSL_MODULES='($a.opensslModules)' \\"
     $"  LD_LIBRARY_PATH='($a.LD_LIBRARY_PATH)' \\"
     $"  ($nu_exe) --no-config-file '--include-path=($tree)' '--experimental-options=[cell-path-types]' \\"

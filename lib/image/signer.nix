@@ -14,6 +14,12 @@
 #   throwaway keys (lib/image/default.nix throwawayKeys), for the test images only. Its builder
 #   is the program the release host runs, `unsigned`'s `sign`, so the boot test tests the
 #   production signer. A key set given here enters the store: never give it a deployment's keys.
+#
+# signedWithTestToken { unsigned; name; keys; pcrKeys ? keys; indexKeys ? keys; buildSystem;
+#   pkgs; } → derivation: the same release, signed with the db and PCR keys on a SoftHSM token
+#   (TEST-ONLY) through pkcs11-provider, as a release host signs with keys on a YubiKey
+#   (lib/image/token.nu). The release key stays a file. RSA PKCS#1 v1.5 draws no random numbers,
+#   so the release is the one signedWithTestKeys makes, byte for byte (checks pkcs11-signed-same).
 _:
 let
   common = import ./common.nix { };
@@ -72,5 +78,34 @@ in
         "--out"
         (placeholder "out")
       ];
+    };
+
+  signedWithTestToken =
+    {
+      unsigned,
+      name,
+      keys,
+      pcrKeys ? keys,
+      indexKeys ? keys,
+      buildSystem,
+      pkgs,
+    }:
+    common.nuDerivation {
+      inherit name buildSystem;
+      module = "token";
+      tools = [ pkgs.softhsm ];
+      modules = [
+        "token.nu"
+        "common.nu"
+      ];
+      attrs = {
+        inherit
+          unsigned
+          keys
+          pcrKeys
+          indexKeys
+          ;
+        pkcs11Module = "${pkgs.softhsm}/lib/softhsm/libsofthsm2.so";
+      };
     };
 }

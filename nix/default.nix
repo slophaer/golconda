@@ -68,6 +68,7 @@ in
           keys ? throwawayKeys,
           pcrKeys ? keys,
           indexKeys ? keys,
+          onToken ? false,
         }:
         let
           chain = imageChain {
@@ -76,7 +77,10 @@ in
             pcrPublicKeys = pcrKeys.public;
             indexPublicKeys = indexKeys.public;
           };
-          signed = chain.signWithTestKeys { inherit keys pcrKeys indexKeys; };
+          # onToken: the db and PCR keys on a SoftHSM token (lib/image/token.nu)
+          signed = (if onToken then chain.signWithTestToken else chain.signWithTestKeys) {
+            inherit keys pcrKeys indexKeys;
+          };
         in
         chain
         // {
@@ -101,6 +105,11 @@ in
       testConfig = import ./test-config.nix;
       smokeTest = testImage {
         config = testConfig { version = "20261031.1"; };
+      };
+      # the same image, signed with the db and PCR keys on a PKCS#11 token
+      smokeTestToken = testImage {
+        config = testConfig { version = "20261031.1"; };
+        onToken = true;
       };
 
       # The test image for a host without Secure Boot (Hetzner Cloud): the kernel carries
@@ -243,6 +252,32 @@ in
               rc=1
             fi
           done
+          [ $rc = 0 ] || exit 1
+          touch $out
+        '';
+
+      # The test image signed from a PKCS#11 token (SoftHSM, TEST-ONLY, through pkcs11-provider),
+      # as a release host signs with keys on a YubiKey: scripts/boot-test boots it as
+      # `@image=image-smoke-test-pkcs11`.
+      image-smoke-test-pkcs11 = smokeTestToken.smoke;
+
+      # The token's release is the file keys' release: every file is the same bytes (RSA PKCS#1
+      # v1.5 signatures draw no random numbers), and `golconda release check` passes on it
+      # against the image's own keyring.
+      pkcs11-signed-same =
+        let
+          a = smokeTest.signed;
+          b = smokeTestToken.signed;
+        in
+        import ./run.nix set "check-pkcs11-signed-same" [ pkgs.golconda-cli pkgs.gnupg ] ''
+          golconda release check ${b}/release --keys ${throwawayKeys.public}
+          cd ${a}
+          rc=0
+          for f in $(find . -type f | sort); do
+            [ "$f" = ./disk.json ] && continue # names the build's own directories
+            cmp "$f" ${b}/"$f" || rc=1
+          done
+          [ "$(cd ${b} && find . | sort)" = "$(find . | sort)" ] || { echo "other files"; rc=1; }
           [ $rc = 0 ] || exit 1
           touch $out
         '';

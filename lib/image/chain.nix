@@ -14,6 +14,7 @@
 #   imageId, version    the system's /system name and version
 #   signWithTestKeys    { keys; pcrKeys ? keys; indexKeys ? keys; } → the release signed in the
 #                       store with throwaway keys, for tests and examples only
+#   signWithTestToken   the same, with the db and PCR keys on a SoftHSM token (PKCS#11), for tests
 #
 # The public halves, in scripts/make-keys' layout, are all the chain reads of a key set:
 #   secureboot/db.crt   the db certificate: the signer signs with its key; without Secure Boot
@@ -167,6 +168,23 @@ in
         keys
         pcrKeys
         indexKeys
+        ;
+      buildSystem = system;
+    };
+  signWithTestToken =
+    {
+      keys,
+      pcrKeys ? keys,
+      indexKeys ? keys,
+    }:
+    imageLib.signedWithTestToken {
+      name = "${sys.name}_${sys.version}.token-signed";
+      inherit
+        unsigned
+        keys
+        pcrKeys
+        indexKeys
+        pkgs
         ;
       buildSystem = system;
     };
