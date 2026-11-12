@@ -69,12 +69,13 @@ Nothing it builds is signed, and no private key is read
 - `unsigned`: `manifest.json`, which names the `/usr` tree, the initrd, the kernel, systemd's stub
   and unsigned systemd-boot and every parameter of the signer's steps; `keys/`, copies of the public
   halves; and `sign`, the signer of this image's package set
-  (`sign UNSIGNED --keys DIR [--pcr-keys DIR] [--index-keys DIR] --out DIR`);
+  (`sign UNSIGNED --keys DIR [--pcr-keys DIR] [--index-keys DIR] [--pkcs11-module FILE] --out DIR`);
 - `usrTree` (without the signed loader, which the signer adds), `initrd`, `signer`, `pkgs`,
   `imageId` and `version`;
 - `signWithTestKeys { keys; pcrKeys ? keys; indexKeys ? keys; }`: the release signed in the store by
   the same signer, for throwaway keys only (the test images use it with `throwawayKeys`). The keys
-  it gets enter the store: never give it a deployment's keys.
+  it gets enter the store: never give it a deployment's keys. `signWithTestToken` takes the same
+  arguments and signs with the `db` and PCR keys on a SoftHSM token (`image-smoke-test-pkcs11`).
 
 `publicKeys` is a path or an absolute string. From it the chain copies three files into the store,
 each alone: `secureboot/db.crt`, `pcr/pcr.pub` and `release/index.pgp`; a directory that also holds

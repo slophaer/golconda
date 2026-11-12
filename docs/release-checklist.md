@@ -114,8 +114,8 @@ Wanted, but not needed for v0.1:
 - the p11-kit CA store with anchors and a distrust list
   ([Trust: CA store](design/trust.md#3-ca-store)): the Mozilla bundle covers a server that talks to
   public services;
-- private keys on a token (PKCS#11): the signer reads a key directory and refuses a `pkcs11:` URI
-  ([Trust: Signing outside Nix](design/trust.md#signing-outside-nix));
+- the release key on a token: the `db` and PCR keys can be on a PKCS#11 token, the release key is a
+  file ([Trust: Keys on a token](design/trust.md#keys-on-a-token));
 - a read-only `/etc` (a confext built from the image): built and boot-tested on 2026-11-05, then
   shelved; the code is the tag `archive/readonly-etc`. It would also drop enable links for units a
   release no longer ships;

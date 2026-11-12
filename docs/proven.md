@@ -177,7 +177,7 @@ each marker above tests the signer too. On 2026-11-10 (branch `sign-outside-nix`
 
 | claim                                                                                                 | evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| the signer checks the keys and its signatures verify with the public halves only                      | `checks.image-signer` (`tests/sign/test.nu`): the right key verifies, another key does not, a key set that is not the image's is refused, a PKCS#11 URI is refused, the root hash and index signatures are deterministic                                                                                                                                                                                                                                                                                                                                                |
+| the signer checks the keys and its signatures verify with the public halves only                      | `checks.image-signer` (`tests/sign/test.nu`): the right key verifies, another key does not, a key set that is not the image's is refused, the root hash and index signatures are deterministic; with keys on a SoftHSM token: the URIs are read, another key on the token is refused, a release key on a token is refused, the root hash signature is the file key's                                                                                                                                                                                                    |
 | `lib.mkImage` takes no private key                                                                    | `tests/real-packages/image-config.nix`: `keys`, `pcrKeys` and a relative `publicKeys` are refused; the manifest names three store paths `db.crt`, `pcr.pub`, `index.pgp`                                                                                                                                                                                                                                                                                                                                                                                                |
 | the boot matrix passes with the signer                                                                | one `scripts/verify` run, the eight sets of [the release checklist](release-checklist.md#how-to-test-it), all PASS; `--next --rotate` (without `--tpm`) PASS with `boots-after-rotation`, `kernel-db-rotated`, `old-loader-refused`                                                                                                                                                                                                                                                                                                                                     |
 | a release built and signed by `golconda release build` with a fresh `scripts/make-keys` set boots     | `--secure-boot --tpm --ssh-test`: 5 and 21 SSH checks PASS; a second release signed the same way installs over HTTP with `--next`: 5 and 52 PASS (`index-signed`, `sysupdate-installed`, `boots-next`)                                                                                                                                                                                                                                                                                                                                                                  |
@@ -196,6 +196,14 @@ on 2026-11-10 (branch `stack-sign`): one `scripts/verify` run booted the eight s
 and 53 PASS (#660). No line of a private key of that set and not the release key's fingerprint was
 in the closures of both unsigned outputs, in their derivations or in the 83 store paths registered
 since the keys were made (#662).
+
+Keys on a token, on 2026-11-12 (branch `pkcs11-signing`): the test image signed with its `db` and
+PCR keys on a SoftHSM token (`image-smoke-test-pkcs11`, `lib/image/token.nu`) gives the release that
+the same keys in files give, every file byte for byte, and `golconda release check` passes on it
+(`packages.<system>.pkcs11-signed-same`, queue #772). One `scripts/verify` run booted it and the
+default image with `--secure-boot --ssh-test --tpm`: both passed with 27 checks, among them
+`secure-boot-enabled`, `hostkey-sealed-with-tpm2` and `ipe-denies-copy` (#776). A YubiKey has not
+been used.
 
 ## Reproducible builds
 
@@ -224,4 +232,5 @@ same inputs is not compared either.
 
 - **A boot without the `db` enrolled.** It stops at switch-root; the harness has no marker for it.
 
-- **A key on a token.** The signer reads a key directory and refuses a PKCS#11 URI *(later)*.
+- **A key on a real token.** The `db` and PCR keys on a token are proven with SoftHSM only; no run
+  on a YubiKey *(being built)*. The release key on a token *(later)*.

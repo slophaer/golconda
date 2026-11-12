@@ -201,10 +201,11 @@ directory of six files (`scripts/make-keys`):
 
 `lib.mkImage` takes the directory as `publicKeys` and copies the three public files into the store,
 each alone; it reads nothing else of the set. The signer reads the three private files where they
-lie. Nothing needs a `PK` or `KEK`: they are enrolled in firmware and sign nothing a release holds.
-A `db` rotation keeps the PCR key and the release key from the old set (`pcrPublicKeys` and
-`indexPublicKeys` for `lib.mkImage`, `--pcr-keys` and `--index-keys` for the signer;
-[Boot loader: Key rotation](bootloader.md#key-rotation),
+lie, or has a token sign with the `db` and PCR keys that `secureboot/db.pkcs11` and `pcr/pcr.pkcs11`
+name instead ([Keys on a token](#keys-on-a-token)). Nothing needs a `PK` or `KEK`: they are enrolled
+in firmware and sign nothing a release holds. A `db` rotation keeps the PCR key and the release key
+from the old set (`pcrPublicKeys` and `indexPublicKeys` for `lib.mkImage`, `--pcr-keys` and
+`--index-keys` for the signer; [Boot loader: Key rotation](bootloader.md#key-rotation),
 [Releases: The signed index](releases.md#the-signed-index)).
 
 The `db` key signs both the UKI (`ukify --secureboot-private-key`, `lib/image/uki.nu`) and the
@@ -251,8 +252,8 @@ few seconds.
 `golconda release build` builds the unsigned output with `nix-build` and runs its `sign` with the
 release host's key directory. The keys stay where they are. The test images run the same program in
 a derivation, with throwaway keys that are test fixtures, so every boot test tests the signer a
-release uses. The signer reads a key directory; a PKCS#11 URI is refused, and the place where a
-token would plug in is named in the code *(later)*.
+release uses. The `db` key and the PCR key can also stay on a hardware token
+([Keys on a token](#keys-on-a-token)).
 
 The unsigned outputs depend on the public halves only: the release keyring is in `/usr`, an image
 without Secure Boot has the `db` certificate in its kernel, and the manifest carries copies of all
@@ -279,6 +280,60 @@ Rotation and recovery:
   the new key, and firmware must hold the new certificate, or Secure Boot and the verity check fail
   ([Execution policy](#execution-policy)). With no local console path, that enrolment is offline
   work on the variable store or a reinstall ([Recovery](recovery.md)).
+
+### Keys on a token
+
+A key on a token signs without leaving it: the release host holds no file of it. The signer takes
+the `db` key and the PCR key from a PKCS#11 token, such as a YubiKey's PIV applet. The release key
+stays a file for now.
+
+| key           | signs                                   | tool and how it reaches the token                                                      |
+| ------------- | --------------------------------------- | -------------------------------------------------------------------------------------- |
+| `db`          | systemd-boot                            | `systemd-sbsign --private-key-source=provider:pkcs11 --private-key=pkcs11:…`           |
+| `db`          | the verity root hash (PKCS#7)           | `openssl smime -provider pkcs11 -inkey pkcs11:…`                                       |
+| `db`          | the kernel and the UKI                  | `ukify --signing-provider pkcs11`, which runs `systemd-sbsign` with the provider       |
+| PCR           | `.pcrsig`, one signature per phase path | `ukify --signing-provider pkcs11`, which runs `systemd-measure sign` with the provider |
+| release index | `SHA256SUMS.gpg` (OpenPGP)              | gpg; no PKCS#11 path *(later)*                                                         |
+
+The OpenSSL side is [pkcs11-provider](https://github.com/latchset/pkcs11-provider), an OpenSSL 3
+provider, packaged as a tool of the release host (`packages/pkcs11-provider`); it is not in the
+image. systemd 262's tools load it by name (`provider:pkcs11`), and so does `openssl`. The signer
+writes an OpenSSL configuration that gives the provider the token's PKCS#11 module and keeps digests
+off the token: they stay with OpenSSL's default provider, and a module that hashes with OpenSSL
+itself (SoftHSM) would otherwise call back into itself and hang. OpenSSL engines are deprecated in
+OpenSSL 3, and systemd's `engine:` source is the older path; the provider is the one in use.
+
+A key set names a key on a token in place of the key file: `secureboot/db.pkcs11` and
+`pcr/pcr.pkcs11` hold one line each, the key's URI (RFC 7512). The set stays a directory, because
+`lib.mkImage` reads the three public halves from it. The signer checks a token's key against the
+public half the image carries, as it checks a file, by reading the public half through the provider.
+systemd-measure needs a certificate for a key that comes through a provider; the PCR key has only a
+public half, so the signer makes a self-signed certificate with the PCR key for that call.
+`--pcrpkey` still embeds the image's `pcr.pub`.
+
+RSA PKCS#1 v1.5, the scheme of both keys, draws no random numbers, so a release signed from the
+token is the release signed from the same keys in files, byte for byte. The check
+`pkcs11-signed-same` compares the two for the test image, whose keys are on a SoftHSM token
+(test-only, `packages/softhsm`), and the boot test boots that image
+([What is proven](../proven.md#signing-outside-nix)). A run on a real YubiKey has not been done
+*(being built)*: the procedure is in [Making a release](../reference/release.md#6-keys-on-a-token).
+
+**The release key.** gpg signs `SHA256SUMS`, because systemd-sysupdate checks an OpenPGP signature,
+and gpg reaches a token only as an OpenPGP card through scdaemon, not through PKCS#11. The options:
+
+1. **PKCS#7 manifests** (recommended): systemd#44292, merged after v262, lets sysupdate check a
+   PKCS#7 signature of `SHA256SUMS`. With it the release key signs as the `db` key does, through
+   pkcs11-provider, and GnuPG leaves the image. It waits for systemd v263, and moving to it changes
+   the key every machine trusts, a release-key rotation ([Releases](releases.md#the-signed-index)).
+1. **An OpenPGP card through scdaemon**: a YubiKey's OpenPGP applet holds the Ed25519 key, so the
+   key in the image stays the same. The signer's gpg needs scdaemon, which the image's GnuPG is
+   built without, and scdaemon needs pcsc-lite or its own USB driver on the release host. A second
+   applet, with its own PIN, beside the PIV one. No software token stands in for it in a test.
+1. **gnupg-pkcs11-scd**, an scdaemon that talks PKCS#11: it signs with RSA keys only, so the release
+   key would change from Ed25519 to RSA, and it adds pkcs11-helper.
+
+Until one of them is built *(later)*, the release key is a file; the signer refuses a
+`release/index.pkcs11`.
 
 ## Identity
 

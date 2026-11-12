@@ -12,6 +12,7 @@ certificate in the firmware. The key layout and the reason for each key are in
 | 3. publish `release/`    | an update source rclone reaches, and `/system.updateSource` on the machine           |
 | 4. enrol the certificate | firmware setup, or the `KEK` private key for an authenticated `db` append            |
 | 5. rotate                | the old key set, and the same firmware access                                        |
+| 6. keys on a token       | a PKCS#11 token (a YubiKey) and its module, for the `db` and PCR keys                |
 
 ## 1. Make the key set
 
@@ -165,3 +166,81 @@ order of the steps, and what firmware refuses at each, are in
 The boot test runs a rotation against OVMF with `virt-fw-vars`
 (`scripts/boot-test --next DIR --rotate`). **Unverified:** a rotation on a machine's own firmware. A
 rotation on the machine, with a boot of each slot, would test it.
+
+## 6. Keys on a token
+
+The `db` key and the PCR key can stay on a PKCS#11 token instead of in files: the token signs, and
+the release host holds no copy of either key. The release key stays a file
+([Trust: Keys on a token](../design/trust.md#keys-on-a-token)).
+
+In the key set, a key on a token replaces its key file with a `.pkcs11` file of one line, the key's
+PKCS#11 URI (RFC 7512). The public halves stay: `lib.mkImage` reads them.
+
+| file                   | instead of          | holds                                                              |
+| ---------------------- | ------------------- | ------------------------------------------------------------------ |
+| `secureboot/db.pkcs11` | `secureboot/db.key` | the URI of the `db` key, e.g. `pkcs11:token=…;id=%02;type=private` |
+| `pcr/pcr.pkcs11`       | `pcr/pcr.key`       | the URI of the PCR key                                             |
+
+The signer refuses a set with both files for one key, a `.pkcs11` file without a `pkcs11:` URI, and
+a `release/index.pkcs11`. Build with the token's PKCS#11 module:
+
+```sh
+golconda release build -f server.toml --keys /srv/golconda-keys \
+  --pkcs11-module /path/to/libykcs11.so
+```
+
+The signer checks each key on the token against the public half the image carries before it signs,
+as it does for a file. It gives the tools the key through pkcs11-provider: `systemd-sbsign` for the
+loader, `openssl smime` for the verity root hash, `ukify` for the kernel, the UKI and `.pcrsig`.
+
+The token asks for its PIN in each program that opens it: the signer runs eight (two key checks, the
+loader, the root hash, the PCR certificate, and three in `ukify`). A URI can carry the PIN source,
+so that the PIN is typed once into a file that lives only in memory, as
+`pkcs11:…;type=private?pin-source=file:/run/user/1000/token-pin`. The tests give the PIN with
+`pin-value=`; the prompt and `pin-source=` have not run *(being built)*.
+
+Verification: the test image's `db` and PCR keys on a SoftHSM token (a token in software, used for
+tests only) sign a release that is the release signed from the same keys in files, byte for byte,
+and `golconda release check` passes on it (`packages.<system>.pkcs11-signed-same`); that image boots
+with `--secure-boot --ssh-test --tpm` (`@image=image-smoke-test-pkcs11`;
+[What is proven](../proven.md#signing-outside-nix)). `checks.image-signer` covers the key checks.
+
+### A YubiKey *(being built)*
+
+No run on a real YubiKey has been done, and the YubiKey's PKCS#11 module is not a Golconda package:
+the steps below are the plan, not a tested procedure. A YubiKey 5 holds RSA 2048 keys in its PIV
+applet, the type `scripts/make-keys` makes for both keys.
+
+1. Make the key set on an offline machine (`scripts/make-keys`) and keep an encrypted copy of
+   `db.key` and `pcr.key` offline: a key made on the token cannot be copied, and a lost token would
+   mean a new `db` certificate in every machine's firmware and a new PCR key for every sealed
+   credential.
+
+1. Set the PIV PIN, PUK and management key, then import each key and its certificate into a slot,
+   with the PIN asked once per session rather than for each signature (`ykman`, from
+   yubikey-manager):
+
+   ```sh
+   ykman piv access change-pin
+   ykman piv access change-puk
+   ykman piv access change-management-key --generate --protect
+   ykman piv keys import --pin-policy ONCE --touch-policy NEVER 9c secureboot/db.key
+   ykman piv certificates import 9c secureboot/db.crt
+   openssl req -x509 -new -key pcr/pcr.key -subj "/CN=Golconda PCR policy key/" -days 3650 \
+     -out pcr/pcr.crt
+   ykman piv keys import --pin-policy ONCE --touch-policy NEVER 9d pcr/pcr.key
+   ykman piv certificates import 9d pcr/pcr.crt
+   ```
+
+   The PCR key gets a self-signed certificate only so that it is in the slot: yubico-piv-tool's
+   module lists a slot's key with its certificate. Nothing checks the certificate.
+
+1. Repeat step 2 on a second YubiKey, the spare.
+
+1. On the release host, list the token's private keys with the module, e.g.
+   `pkcs11-tool --module libykcs11.so --list-objects --type privkey`, and write their URIs (token
+   label and `id`) into `secureboot/db.pkcs11` and `pcr/pcr.pkcs11`. Delete `db.key` and `pcr.key`
+   from the release host.
+
+1. Build with `--pkcs11-module` and the module of yubico-piv-tool (`libykcs11.so`), or OpenSC's
+   `opensc-pkcs11.so`. Both talk to the card through the host's pcscd.
