@@ -113,7 +113,7 @@ in
       };
 
       # The test image for a host without Secure Boot (Hetzner Cloud): the kernel carries
-      # the db certificate (/system.secureBoot = false); scripts/boot-test runs it on plain OVMF.
+      # the db certificate (/system.secureBoot = false); scripts/boot-test runs it on the plain OVMF.
       noSecureBootConfig =
         args:
         let
@@ -167,7 +167,6 @@ in
         qemu-system
         swtpm
         virt-firmware
-        ovmf
         openssh
         ;
     }

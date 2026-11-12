@@ -302,10 +302,10 @@ fi
 # --- the virtual machine's tools: Golconda's own packages (scripts/tools.sh) ---
 # qemu-system (qemu-system-x86_64, qemu-img), swtpm, virt-firmware (virt-fw-vars), openssh (ssh,
 # ssh-keygen) and cpython (python3) come first on PATH, whatever the caller's PATH has; OVMF is
-# packages/ovmf (a pinned edk2 nightly build)
+# the edk2 build in qemu-system's share/qemu (prebuilt by the QEMU project, in its release tarball)
 . "$SCRIPT_DIR/tools.sh"
 if ! TOOLS=$(tools_path "$REPO_DIR" qemu-system swtpm virt-firmware openssh cpython) ||
-  ! OVMF=$(tools_outs "$REPO_DIR" ovmf); then
+  ! OVMF=$(tools_outs "$REPO_DIR" qemu-system)/share/qemu; then
   echo "Error: cannot build the boot test's tools (packages.<system>.qemu-system and the rest)" >&2
   exit 1
 fi
@@ -410,21 +410,22 @@ QEMU_OUT="$WORKDIR/qemu.out"
 VARS="$WORKDIR/vars.fd"
 
 # --- the firmware ---
-# packages/ovmf's plain build has neither Secure Boot nor TPM support. The secure-boot one has
-# both, and it is built with SMM, so QEMU gets smm=on below. --tpm needs the TPM measurement, or
+# The plain build has neither Secure Boot nor SMM. The secure one has both, with SMM, so QEMU gets
+# smm=on below. Both share one empty variable store (edk2-i386-vars.fd). --tpm needs the TPM measurement, or
 # systemd-stub does not pass the UKI's PCR public key on and credentials are sealed without the
 # signed PCR 11 policy. --secure-boot needs a firmware that enforces.
-OVMF_DIR=$OVMF/share/ovmf/plain
+OVMF_CODE=$OVMF/edk2-x86_64-code.fd
 if [ "$TPM" = 1 ] || [ "$SECURE_BOOT" = 1 ]; then
-  OVMF_DIR=$OVMF/share/ovmf/secure-boot
+  OVMF_CODE=$OVMF/edk2-x86_64-secure-code.fd
 fi
+OVMF_VARS=$OVMF/edk2-i386-vars.fd
 
-if [ ! -f "$OVMF_DIR/OVMF_VARS.fd" ]; then
-  echo "Error: no OVMF_VARS.fd in $OVMF_DIR" >&2
+if [ ! -f "$OVMF_CODE" ] || [ ! -f "$OVMF_VARS" ]; then
+  echo "Error: no $OVMF_CODE or $OVMF_VARS" >&2
   exit 1
 fi
 
-cp "$OVMF_DIR/OVMF_VARS.fd" "$VARS"
+cp "$OVMF_VARS" "$VARS"
 chmod u+w "$VARS"
 
 

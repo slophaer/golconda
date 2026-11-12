@@ -6,9 +6,19 @@
 # TCG as the fallback, pflash, virtio-blk/net, the user network with hostfwd and guestfwd
 # (libslirp), and the TPM (tpm-tis on swtpm's socket, the emulator backend). Every feature that is
 # `auto` stays off (--without-default-features): no display (pixman, VNC, GTK, SDL), no audio, no
-# guest agent, no seccomp, no vhost-user, no virtfs. The firmware QEMU ships for its own default
-# boot (edk2-*.fd) is removed: the boot test brings its OVMF (packages/ovmf); the option ROMs
-# (efi-virtio.rom, vgabios-stdvga.bin) and kvmvapic.bin stay, q35 loads them.
+# guest agent, no seccomp, no vhost-user, no virtfs. The option ROMs (efi-virtio.rom,
+# vgabios-stdvga.bin) and kvmvapic.bin stay, q35 loads them.
+#
+# The boot test's firmware (OVMF) is the one QEMU's release tarball ships in pc-bios/, kept in
+# share/qemu: edk2-x86_64-secure-code.fd (Secure Boot, SMM, TPM 2.0), edk2-x86_64-code.fd (the
+# same without Secure Boot and SMM), and edk2-i386-vars.fd, the empty variable store for both
+# (QEMU's descriptors pair the 32-bit name with the 64-bit code). The code images are 3.5 MB and the
+# store 528 KB: together the 4 MB flash. The QEMU project builds them with edk2-stable202408
+# (roms/edk2-build.config: OvmfPkgX64.dsc, TPM2_ENABLE, and for the secure one SECURE_BOOT_ENABLE and
+# SMM_REQUIRE, no EFI shell) and checks the .bz2 blobs into the tarball; meson unpacks them at install.
+# Trust: prebuilt by the QEMU project, inside the tarball that sources.toml pins by hash; not rebuilt
+# here. The other edk2 images (32-bit, ARM, RISC-V, LoongArch, microvm) and the firmware descriptors
+# are removed. Building edk2 from source (its BaseTools, nasm, iasl) is a later step.
 {
   package,
   pkgs,
@@ -54,8 +64,10 @@ package {
       run = ''
         with-env {DESTDIR: $"($c.build)/dest"} { x ninja -C $c.build install }
         ^cp -r $"($c.build)/dest/usr/." $c.out
-        # QEMU's own edk2 builds and their descriptors: one OVMF, packages/ovmf
-        rm -rf ...(glob $"($c.out)/share/qemu/edk2-*") $"($c.out)/share/qemu/firmware"
+        # only the x86_64 firmware the boot test loads (see the head of this file), their licenses,
+        # and no descriptors (they name /usr/share/qemu)
+        let keep = [edk2-x86_64-secure-code.fd edk2-x86_64-code.fd edk2-i386-vars.fd edk2-licenses.txt]
+        rm -rf ...(glob $"($c.out)/share/qemu/edk2-*" | where { ($in | path basename) not-in $keep }) $"($c.out)/share/qemu/firmware"
       '';
     }
   ];

@@ -99,8 +99,7 @@
   swtpm = ./swtpm;
   libtpms = ./libtpms;
   json-glib = ./json-glib;
-  # its firmware: OVMF (a pinned nightly build), and virt-fw-vars, which enrols the Secure Boot keys
-  ovmf = ./ovmf;
+  # its firmware: OVMF comes with qemu-system; virt-fw-vars enrols the Secure Boot keys
   virt-firmware = ./virt-firmware;
   python-cryptography = ./python-cryptography;
   python-cffi = ./python-cffi;

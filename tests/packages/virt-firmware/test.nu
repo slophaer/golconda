@@ -1,6 +1,6 @@
 # virt-fw-vars as scripts/boot-test runs it (scripts/boot-test-vm.sh, enroll_keys; --rotate in
 # boot-test-update.sh): Secure Boot keys written offline into a copy of OVMF's empty variable store
-# (packages/ovmf, inputs.nix). A certificate comes from virt-fw-vars itself (--enroll-generate,
+# (qemu-system's edk2-i386-vars.fd, inputs.nix). A certificate comes from virt-fw-vars itself (--enroll-generate,
 # then --extract-certs); then the boot test's calls: PK, KEK and db from that certificate with one
 # owner GUID and Secure Boot on, and the rotation: db replaced, the old certificate into dbx. The
 # certificate is parsed by python-cryptography and the store written in edk2's format; --print
@@ -11,7 +11,7 @@ let t = $"($env.TMPDIR? | default /tmp)/virt-firmware-test"
 rm -rf $t
 mkdir $t
 cd $t
-^cp $"($env.ovmf)/share/ovmf/secure-boot/OVMF_VARS.fd" empty.fd
+^cp $"($env.qemu)/share/qemu/edk2-i386-vars.fd" empty.fd
 ^chmod u+w empty.fd
 
 def --wrapped fwvars [what: string, ...args: string]: nothing -> string {

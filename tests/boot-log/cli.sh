@@ -5,11 +5,10 @@ ROOT=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd)
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/bin" "$WORK/keys/secureboot" "$WORK/runs"
-# packages/ovmf's layout: both variants, each a code image and an empty variable store
-for v in plain secure-boot; do
-  mkdir -p "$WORK/firmware/share/ovmf/$v"
-  : > "$WORK/firmware/share/ovmf/$v/OVMF_CODE.fd"
-  : > "$WORK/firmware/share/ovmf/$v/OVMF_VARS.fd"
+# qemu-system's OVMF: the plain and the secure code image, and the empty variable store
+mkdir -p "$WORK/firmware/share/qemu"
+for f in edk2-x86_64-code.fd edk2-x86_64-secure-code.fd edk2-i386-vars.fd; do
+  : > "$WORK/firmware/share/qemu/$f"
 done
 : > "$WORK/keys/secureboot/db.crt"
 : > "$WORK/disk.raw"
@@ -165,7 +164,7 @@ else
 fi
 # the VM's tools and its firmware are Golconda's packages (scripts/tools.sh), and the boot without
 # Secure Boot or TPM loads the plain OVMF without SMM
-for attr in qemu-system swtpm virt-firmware openssh cpython ovmf; do
+for attr in qemu-system swtpm virt-firmware openssh cpython; do
   if grep -q -- "-A packages\.[^ ]*\.$attr\( \|$\)" "$FAKE_NIX_BUILD_ARGS"; then
     echo "PASS: CLI builds packages.<system>.$attr"
   else
@@ -179,7 +178,7 @@ if grep -q 'nixpkgs\|nix-shell' "$FAKE_NIX_BUILD_ARGS"; then
 else
   echo "PASS: CLI uses neither nixpkgs nor nix-shell"
 fi
-if grep -q "file=$FAKE_FIRMWARE/share/ovmf/plain/OVMF_CODE\.fd" "$WORK/qemu-args" && ! grep -q 'smm=on' "$WORK/qemu-args"; then
+if grep -q "file=$FAKE_FIRMWARE/share/qemu/edk2-x86_64-code\.fd" "$WORK/qemu-args" && ! grep -q 'smm=on' "$WORK/qemu-args"; then
   echo "PASS: CLI the default boot loads the plain OVMF, without SMM"
 else
   echo "FAIL: CLI the default boot's firmware: $(cat "$WORK/qemu-args" 2>&1)"
@@ -190,7 +189,7 @@ FAKE_STOPPED=$WORK/stopped-sb FAKE_RELEASE=$WORK/release-sb FAKE_TIMEOUT_PID=$WO
 export FAKE_STOPPED FAKE_RELEASE FAKE_TIMEOUT_PID
 sh "$ROOT/scripts/boot-test" "$WORK/disk.raw" --keys "$WORK/keys" --secure-boot --timeout 3 \
   > "$WORK/sb.out" 2>&1 || true
-if grep -q "file=$FAKE_FIRMWARE/share/ovmf/secure-boot/OVMF_CODE\.fd" "$WORK/qemu-args" &&
+if grep -q "file=$FAKE_FIRMWARE/share/qemu/edk2-x86_64-secure-code\.fd" "$WORK/qemu-args" &&
    grep -q 'smm=on' "$WORK/qemu-args" && grep -q 'cfi.pflash01,property=secure,value=on' "$WORK/qemu-args"; then
   echo "PASS: CLI --secure-boot loads the Secure Boot OVMF, with SMM"
 else

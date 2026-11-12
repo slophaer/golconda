@@ -233,7 +233,7 @@ start_qemu() {
     -cpu max \
     -m 2G \
     -smp 2 \
-    -drive if=pflash,format=raw,readonly=on,file=$OVMF_DIR/OVMF_CODE.fd \
+    -drive if=pflash,format=raw,readonly=on,file=$OVMF_CODE \
     -drive if=pflash,format=raw,file=$VARS \
     -drive file=$OVERLAY,format=qcow2,if=virtio \
     -serial file:$SERIAL_LOG \

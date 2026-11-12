@@ -2,7 +2,7 @@
 # tools.sh: Golconda's own packages for the scripts that run on the build host (scripts/provision-esp,
 # scripts/boot-test, scripts/make-keys), instead of nixpkgs.
 #   PATH="$(tools_path "$REPO_DIR" systemd mtools):$PATH"
-#   OVMF=$(tools_outs "$REPO_DIR" ovmf)
+#   OVMF=$(tools_outs "$REPO_DIR" qemu-system)/share/qemu
 # Each name is an output packages.<system>.<name> of default.nix, built by the Nix daemon.
 
 # tools_outs REPO NAME...: the packages' store paths, one per line, in the order of the names

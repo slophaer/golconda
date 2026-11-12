@@ -243,16 +243,16 @@ test_recovery() {
   FW=1
   FW_WAIT=0
   while [ "$FW_WAIT" -lt 45 ] && qemu_running; do
-    if tail -c +"$((FW_MARK + 1))" "$SERIAL_LOG" | grep -aq "EFI Firmware Setup"; then
+    if tail -c +"$((FW_MARK + 1))" "$SERIAL_LOG" | grep -aq "Boot Maintenance Manager"; then
       FW=0
       break
     fi
     FW_WAIT=$((FW_WAIT + 1))
     sleep 1
   done
-  # OVMF draws its menu with cursor moves; the item texts are plain runs
+  # OVMF (edk2-stable202408) draws its front page with cursor moves; the item texts are plain runs
   tail -c +"$((FW_MARK + 1))" "$SERIAL_LOG" \
-    | grep -ao "Please select boot device:\|EFI Firmware Setup\|UEFI [A-Za-z0-9 ]*Device" | sort -u || true
+    | grep -ao "Please select boot device:\|Device Manager\|Boot Maintenance Manager\|UEFI [A-Za-z0-9 ]*Device" | sort -u || true
   verdict "reboot-to-firmware (OVMF's boot menu on the serial console)" $FW
 }
 
