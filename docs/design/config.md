@@ -28,13 +28,14 @@ path, and nothing in it can name a derivation or a function.
 
 A document turns a module on by naming it: a table `["/services/sshd"]`, empty for the defaults,
 puts the sshd component in the system; a service with no table is off. The built-in components
-(`/base`, `/network`, `/security`, `/factory`, `/vars`) are in every system. There is no `enable`
-flag, and no other route in: a downstream repository adds a module, never a bare fragment. Its
-`modules/` directory beside the document is mounted under `/local`, so `/local/motd` is a component
-like `/services/sshd`, with typed options, a schema entry and a table that selects it. The optional
-`[golconda]` table names another directory (`modules = "site"`). `/usr/lib/golconda/modules.json`
-therefore lists every module in the image, with why, and the build's own named fragments
-(`/image/loader`, `/image/index`) ([Modules](modules.md#which-modules-a-system-has)).
+(`/base`, `/network`, `/security`, `/trust`, `/factory`, `/vars`) are in every system. There is no
+`enable` flag, and no other route in: a downstream repository adds a module, never a bare fragment.
+Its `modules/` directory beside the document is mounted under `/local`, so `/local/motd` is a
+component like `/services/sshd`, with typed options, a schema entry and a table that selects it. The
+optional `[golconda]` table names another directory (`modules = "site"`).
+`/usr/lib/golconda/modules.json` therefore lists every module in the image, with why, and the
+build's own named fragments (`/image/loader`, `/image/index`)
+([Modules](modules.md#which-modules-a-system-has)).
 
 The entry point that applies this rule is `lib/system.nix`: `mkSystem ./server.toml` (or
 `mkSystem { config; platform?; }`) takes the document, binds the package set of the platform,

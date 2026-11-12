@@ -121,9 +121,10 @@ custom property says where a component comes from.
 - `cpe` comes from `[upstream] cpe` in the package's `sources.toml`, with `{version}` replaced by
   the package's version, modelled on nixpkgs' `meta.identifiers.cpe`; the repkgs SBOM generator
   reads it.
-- `hwdb` and `gen-init-cpio` are compiled from another package's source (systemd's `hwdb.d`, the
-  kernel's `usr/gen_init_cpio.c`) and have no `sources.toml`. Their `purl` is the source package's,
-  at its pinned version, with a purl subpath (`#hwdb.d`, `#usr/gen_init_cpio.c`), for example
+- `hwdb`, `gen-init-cpio` and `ca-bundle` are compiled from another package's source (systemd's
+  `hwdb.d`, the kernel's `usr/gen_init_cpio.c`, cacert's roots) and have no `sources.toml`. Their
+  `purl` is the source package's, at its pinned version, with a purl subpath (`#hwdb.d`,
+  `#usr/gen_init_cpio.c`, `#certifi/cacert.pem`), for example
   `pkg:github/systemd/systemd@262.1#hwdb.d`. They have no `cpe`: they are not the product the NVD
   names, and a systemd `cpe` would report systemd's CVEs against a data file. The table is
   `lib/sbom-sources.nix`; `nix/packages.nix` applies it.
@@ -346,6 +347,13 @@ free port from 10022 up and prints it (`ssh: 127.0.0.1:10023 -> guest 22`). `BOO
 sets the port the guest uses for the release server of `--next` (default 8074): it is an address
 inside the guest's network, not a host port. The test image's `updateSource` names
 `169.254.169.2:8074`, so another port needs an image built with that `updateSource`.
+
+With `--ssh-test` the harness also serves two HTTPS sites to the guest, `169.254.169.5:443` and
+`169.254.169.6:443`: QEMU guestfwds to a TLS server over stdio (`scripts/boot-test-tls.sh`, python's
+`ssl`), with the server certificates of two test CAs (`tests/fixtures/ca-store`). The test image
+names those CAs in `/trust` (the first as an anchor, the second as an anchor and distrusted), and
+`ca-store-links`, `ca-bundle-content`, `tls-anchor-trusted` and `tls-distrusted-refused` check the
+guest's bundle and the fetch with `systemd-pull`. No host port opens.
 
 Every mode runs on QEMU's user network `169.254.169.0/24` (`-netdev user,net=`), not the default
 `10.0.2.0/24`: `--imds` needs Hetzner's metadata address, `169.254.169.254`, on the guest's link.

@@ -14,6 +14,7 @@ this shape: [design/modules](../../design/modules.md).
 | `/base`          | built in, composed first: systemd, dbus-broker, dash, uutils coreutils, tpm2-tss, e2fsprogs, the kernel, the base units, `C.UTF-8`, `ntp`, `journalMaxUse` (details below) |
 | `/network`       | built in: networkd `.network` files (DHCP on every wired link by default) and resolved's fallback `dns`                                                                    |
 | `/security`      | built in: `/usr/lib/sysctl.d/50-golconda.conf`, the kernel hardening settings                                                                                              |
+| `/trust`         | built in: the CA store, `/usr/share/ca-certificates/ca-bundle.crt` (Mozilla's roots plus `anchors`, minus `distrust`) and the `/etc/ssl` links to it                       |
 | `/factory`       | built in: the `/etc` seed under `/usr/share/factory/etc` and the `L` lines that link it                                                                                    |
 | `/vars`          | installs `/usr/lib/golconda/golconda-var-run` (mode `0755`), the POSIX sh runner for var units (`modules/vars/golconda-var-run`); built in                                 |
 | `/services/sshd` | OpenSSH as a service with its configuration under `/usr/lib/sshd/` and an ed25519 host key var; keys and certificates only                                                 |
@@ -233,8 +234,7 @@ them first, and a configuration never lists them.
 `/base` returns:
 
 - **packages**: systemd, dbus-broker, dash, uutils-coreutils, tpm2-tss (only systemd's dlopen
-  reaches it), e2fsprogs (`mkfs.ext4` for the root partition), cacert, tzdata, hwdb and
-  linux-kernel.
+  reaches it), e2fsprogs (`mkfs.ext4` for the root partition), tzdata, hwdb and linux-kernel.
 - **units**: `golconda-health-network.service`, `golconda-loader-update.service` and
   `golconda-etc-links.service`; `dbus.socket` is a file, because dbus-broker does not ship it.
 - **links**:
@@ -257,8 +257,7 @@ them first, and a configuration never lists them.
   - thirteen unit drop-ins, `/usr/lib/systemd/system/<unit>.d/golconda.conf` (for example
     `systemd-firstboot.service` runs without prompts, and `ldconfig.service` and `modprobe@.service`
     skip without their binary).
-- **tmpfiles**: `L /bin`, `L /sbin` and `L /lib` (merged `/usr` on the root partition), and
-  `L /etc/ssl/cert.pem` and `L /etc/ssl/certs/ca-certificates.crt` into the one CA bundle.
+- **tmpfiles**: `L /bin`, `L /sbin` and `L /lib` (merged `/usr` on the root partition).
 - **sysusers**: the `messagebus` user.
 
 The two health and loader units explain themselves in the design pages:
@@ -275,6 +274,25 @@ routable link is not blessed ([design/boot](../../design/boot.md#boot-health)).
 - `99-default-dhcp.network` (`Match Type=ether`, `DHCP=yes`, `IPv6AcceptRA=yes`) unless
   `defaultDhcp = false`;
 - `resolved.conf.d/golconda-dns.conf` when `dns` is set.
+
+### `/trust`
+
+`/trust` is a built-in component too. It returns the CA store
+([design/trust](../../design/trust.md#3-ca-store)):
+
+- **packages**: `ca-bundle`, which runs `trust extract` when the image is built over cacert's roots,
+  `anchors` and `distrust` (`mkSystem` hands the two lists to the package);
+- **links**: `/usr/share/ca-certificates/ca-bundle.crt` → the package's file;
+- **tmpfiles**: `L /etc/ssl/cert.pem` and `L /etc/ssl/certs/ca-certificates.crt` into that file, the
+  paths OpenSSL and libcurl read.
+
+| option     | type                                    | meaning                                                               |
+| ---------- | --------------------------------------- | --------------------------------------------------------------------- |
+| `anchors`  | list of PEM certificates, default `[ ]` | trusted besides Mozilla's roots                                       |
+| `distrust` | list of PEM certificates, default `[ ]` | removed from the bundle, whether a Mozilla root or one of the anchors |
+
+An entry is the text of exactly one certificate (base64 inside the block, nothing else, at most 16
+KB). The same certificate twice in one list is an error; in both lists it is distrusted.
 
 ### `/factory`
 
@@ -294,8 +312,6 @@ Built-in seeds:
 - `pam.d/other` (every type `linux-pam/pam_deny.so`);
 - `pam.d/sshd` (`account linux-pam/pam_unix.so`; `session systemd/pam_systemd.so` optional,
   `session linux-pam/pam_unix.so`; no `auth` line, so an auth request falls through to `other`);
-- `ssl/anchors/.keep`;
-- `ssl/blocklist/.keep`;
 - `pkcs11/.keep`.
 
 Never seeded: `passwd`, `group`, `shadow` (systemd-sysusers writes them on first boot), `machine-id`

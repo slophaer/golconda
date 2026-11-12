@@ -13,8 +13,9 @@ own copy of any of them:
    Today it is the Secure Boot `db` key, and the kernel checks the signature against the firmware
    `db` at every boot; without Secure Boot, against the same certificate built into the kernel
    ([status](#2-verity-key)).
-1. **The CA store** decides *whom the machine talks to*: one bundle, cacert's Mozilla roots, for
-   every TLS client ([status](#3-ca-store)).
+1. **The CA store** decides *whom the machine talks to*: one bundle for every TLS client, made when
+   the image is built from cacert's Mozilla roots, the administrator's anchors and a distrust list
+   ([status](#3-ca-store)).
 
 A fourth thing, who may log in, is decided outside the image ([Identity](#identity)).
 
@@ -152,33 +153,84 @@ logs `Loaded X.509 cert 'Golconda smoke Secure Boot db rotated: …'`, then
 
 ```mermaid
 flowchart LR
-  bundle["/usr/share/ca-certificates/ca-bundle.crt (cacert: Mozilla roots)"] --> pem["/etc/ssl/cert.pem (tmpfiles L link)"]
+  moz["cacert: Mozilla's roots"] --> extract
+  opts["/trust: anchors, distrust (the image's configuration)"] --> extract
+  extract["trust extract, when the image is built (ca-bundle)"] --> bundle["/usr/share/ca-certificates/ca-bundle.crt (dm-verity)"]
+  bundle --> pem["/etc/ssl/cert.pem (tmpfiles L link)"]
   bundle --> crt["/etc/ssl/certs/ca-certificates.crt (tmpfiles L link)"]
   pem --> openssl["OpenSSL (OPENSSLDIR=/etc/ssl)"]
   crt --> curl["curl (CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt)"]
 ```
 
-The image ships one CA file: cacert's Mozilla bundle, linked into `/usr` as
-`/usr/share/ca-certificates/ca-bundle.crt` (`caBundleLinks` in `modules/base/parts/links.nix`). Two
-tmpfiles lines make the paths the image's TLS clients read by default: `L /etc/ssl/cert.pem`, which
-OpenSSL reads because `openssl version -d` says `OPENSSLDIR=/etc/ssl`, and
+The image ships one CA file, `/usr/share/ca-certificates/ca-bundle.crt`. It holds cacert's Mozilla
+roots, plus the administrator's `anchors`, minus the `distrust` list. The configuration names them
+(`/trust`, [reference](../reference/modules/README.md)); each entry is the text of one PEM
+certificate, which is public data:
+
+```toml
+["/trust"]
+anchors = ["""
+-----BEGIN CERTIFICATE-----
+MIIB…
+-----END CERTIFICATE-----
+"""]
+distrust = ["""
+-----BEGIN CERTIFICATE-----
+MIIC…
+-----END CERTIFICATE-----
+"""]
+```
+
+A certificate in both lists is distrusted. Distrusting a Mozilla root removes that root and keeps
+the others. A duplicate entry is an error, as every duplicate is
+([Principles](principles.md#duplicates-are-errors)).
+
+**Built when the image is built.** The `ca-bundle` package (`packages/ca-bundle`) runs p11-kit's
+`trust extract` over the roots and the two lists and writes the bundle. The roots and the anchors go
+to the trust module's `anchors/`, the distrusted certificates to its `blocklist/`, and the module
+writes every anchor that is not blocklisted, for the purpose `server-auth` as plain PEM. The build
+then compares the file with (roots + anchors) − distrust as sets and fails on any difference, since
+`trust` skips a file it cannot parse without a word. The bundle is read-only, covered by dm-verity
+like the rest of `/usr`, and signed with the release, and an update replaces it whole. No unit runs
+on the machine, nothing writes the bundle, and the image has no `trust` binary and no module
+configuration for p11-kit's trust module, so nothing there reads `anchors` or `blocklist`
+directories.
+
+Why not a unit on the machine that runs `trust extract` over `/etc/ssl/anchors` into `/etc` or
+`/var`: the bundle would be a writable file that decides whom every TLS client trusts, so any root
+process could change that without a signed image; a unit must order itself before every client,
+`sysupdate` among them; and the image would carry the trust tool and its module. What it would buy
+is an anchor added without a release. The image already updates by a release, which is minutes of
+work and one signed index, and the administrator's CA certificates are public, fleet-wide data, not
+per-machine values. A secret does not belong in a CA store, so the vars
+([Secrets and vars](#secrets-and-vars)) have no part in it. An administrator who must change trust
+on one machine at once can put a file at `/etc/ssl/cert.pem` or
+`/etc/ssl/certs/ca-certificates.crt`: the `L` lines do not replace an existing file. That is a hand
+repair, outside the image. A run-time anchor directory stays *(later)* until a deployment needs it.
+
+Two tmpfiles lines make the paths the image's TLS clients read by default: `L /etc/ssl/cert.pem`,
+which OpenSSL reads because `openssl version -d` says `OPENSSLDIR=/etc/ssl`, and
 `L /etc/ssl/certs/ca-certificates.crt`, which libcurl reads because it is built with
-`CURL_CA_BUNDLE` set to that path. Both are links to the one file in `/usr`, so an image update
-replaces the roots and `/etc` holds no copy to go stale. No package ships `certifi` or its own
-bundle; there is no Java, so no keystore.
+`CURL_CA_BUNDLE` set to that path. Both are links to the one file in `/usr`, so `/etc` holds no copy
+to go stale. These are the readers in the image: the systemd tools that open an HTTPS URL
+(`systemd-pull`, `systemd-sysupdate`, the IMDS import) through libcurl, and OpenSSL in systemd
+(`systemd-resolved`'s DNS over TLS, when it is on). libcurl and OpenSSL also search the directory
+`/etc/ssl/certs` by hash, and it holds no hashed link. No package ships `certifi` or its own bundle;
+there is no Java, so no keystore.
 
-**Status.** Proven by a boot: the image's OpenSSL, run from the store, validated `example.com` with
-`Verification: OK` and no `CAfile` argument, and with the default paths disabled the same check
-failed with error 20 ("unable to get local issuer certificate"), so the success came from these
-paths and not from a file the test named. The image installs no TLS client binary; the check used
-the store's `openssl` on the held machine.
-
-The p11-kit design is *(later)*, not the current store: a factory `anchors`/`blocklist` pair, a
-`trust extract` unit that rewrites a hashed `/etc/ssl/certs` directory, and root-level distrust that
-works across TLS stacks. The factory today seeds only the empty directories (`ssl/anchors/.keep`,
-`ssl/blocklist/.keep`, [reference: /factory](../reference/modules/README.md)), and no unit runs
-`trust extract`. Until then the bundle is the whole store: Mozilla roots only, no administrator
-anchors, no distrust list.
+**Status.** Proven by build checks and by boot. `checks.ca-store` builds the bundle from an anchor,
+an anchor that is also distrusted and a distrusted Mozilla root: the bundle is exactly the roots
+plus the anchor minus the other two, and OpenSSL verifies a server certificate of the anchor and
+refuses one of the distrusted CA. The package test `tests-ca-bundle` checks the default bundle. The
+eval tests (`tests/eval/trust.nix`) check the options, that `/base` no longer carries cacert, and
+how the lists reach the build. The boot test's markers `ca-store-links`, `ca-bundle-content`,
+`tls-anchor-trusted` and `tls-distrusted-refused` run on the test image, which names those
+certificates in `/trust`: the guest's bundle has Mozilla's roots and the anchor and not the
+distrusted ones, `systemd-pull` fetches an HTTPS page from a server whose certificate chains to the
+anchor, and the same fetch to a server of the distrusted CA fails on the certificate
+([What is proven](../proven.md)). The distrust of a real Mozilla root is proven on the bundle
+(`ca-bundle-content`, `checks.ca-store`); no test server holds the key of a Mozilla root, so no
+fetch to one runs.
 
 Leaf revocation is not unified: OpenSSL, rustls and Go do not share a mechanism. Golconda's own PKI
 uses short-lived certificates instead.

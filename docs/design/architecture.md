@@ -46,8 +46,9 @@ tpm2-tss, e2fsprogs and the kernel; the units for networkd, resolved, timesyncd 
 socket; `C.UTF-8` as the only locale; the timesyncd pool and the journal size (the full list is in
 [Modules](../reference/modules/README.md#base-network-and-security)). `/network` is built in too:
 DHCP on every wired link unless the document says otherwise. So is `/security`: the sysctl hardening
-file. `/factory` (the `/etc` seed) and `/vars` (the var runner) are built in as well. Everything
-else is a module the document names with its table ([Configuration](config.md)).
+file. `/trust` (the CA bundle), `/factory` (the `/etc` seed) and `/vars` (the var runner) are built
+in as well. Everything else is a module the document names with its table
+([Configuration](config.md)).
 
 ## Components
 

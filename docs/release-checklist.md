@@ -111,9 +111,8 @@ Wanted, but not needed for v0.1:
   console's diff of a document against git left with the console
   ([Configuration: Diffing](design/config.md#diffing-later));
 - automatic Secure Boot enrolment (manual enrolment works);
-- the p11-kit CA store with anchors and a distrust list
-  ([Trust: CA store](design/trust.md#3-ca-store)): the Mozilla bundle covers a server that talks to
-  public services;
+- CA anchors added on a running machine, without a release: anchors and a distrust list are options
+  of `/trust`, built into the image ([Trust: CA store](design/trust.md#3-ca-store));
 - the release key on a token: the `db` and PCR keys can be on a PKCS#11 token, the release key is a
   file ([Trust: Keys on a token](design/trust.md#keys-on-a-token));
 - a read-only `/etc` (a confext built from the image): built and boot-tested on 2026-11-05, then

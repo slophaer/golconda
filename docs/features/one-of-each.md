@@ -27,7 +27,9 @@ Code enforces what it can:
 - **Shell.** A test (`tests/eval/base.nix`) checks that `/usr/bin/sh` is dash and that no bash
   package is in the base.
 - **nixpkgs.** `checks.boundary` fails when a Nix file, a script or a pin refers to nixpkgs.
-- **CA store.** The image ships one bundle, cacert's Mozilla roots, in `/usr`. Tmpfiles links it to
+- **CA store.** The image ships one bundle in `/usr`: cacert's Mozilla roots, plus the
+  administrator's anchors, minus a distrust list (`/trust`). p11-kit's `trust extract` makes it when
+  the image is built, so it is read-only and covered by dm-verity. Tmpfiles links it to
   `/etc/ssl/cert.pem` and `/etc/ssl/certs/ca-certificates.crt`.
 
 ## Against NixOS
@@ -72,16 +74,18 @@ GnuPG can leave the image. Until then the exception stays
 
 The dash test runs in `nix/tests.nix` and the boundary check in the sandboxed checks, both from
 `scripts/lint`. The duplicate rule has module tests. The `tls` feature has no test of its own. The
-CA paths were checked by hand on a booted machine: the image's OpenSSL validated `example.com`, and
-failed with the default paths off. No boot-test marker covers them. The signed index is proven by
-`index-signed` and `index-keyring`. See [What is proven](../proven.md).
+CA store has module tests (`tests/eval/trust.nix`), a build check of the bundle (`checks.ca-store`)
+and four boot-test markers: `ca-store-links`, `ca-bundle-content`, `tls-anchor-trusted` and
+`tls-distrusted-refused`. The signed index is proven by `index-signed` and `index-keyring`. See
+[What is proven](../proven.md).
 
 ## Limits
 
 - No check lists every library in the closure. Only the rules above are mechanical, and the rest is
   review.
 - OpenSSL is the TLS stack, but rustls is tolerated in Rust-only tools.
-- The CA store has Mozilla roots only. Administrator anchors and a distrust list are *(later)*.
+- The CA store is fixed when the image is built. An anchor added on a running machine, without a
+  release, is *(later)* ([Trust: CA store](../design/trust.md#3-ca-store) says why).
 - Build-only tools sit outside the rule. Python, Perl and GNU coreutils help build the image and are
   not in it.
 

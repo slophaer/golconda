@@ -40,6 +40,7 @@ iets eval --json -E '(import ./default.nix).configLib.validPaths'
 | path             | options                                                                                                           |
 | ---------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `/base`          | `ntp`, `journalMaxUse`                                                                                            |
+| `/trust`         | `anchors`, `distrust` (PEM certificates)                                                                          |
 | `/factory`       | `timezone`, `extraFiles`                                                                                          |
 | `/network`       | `networks`, `dns`, `defaultDhcp`                                                                                  |
 | `/system`        | `name`, `version`, `updateSource`                                                                                 |

@@ -36,9 +36,9 @@ authorizedKeys = [
 ```
 
 Two module tables: the image's identity and the one service. `/base`, `/network`, `/security`,
-`/factory` and `/vars` are not named because they are always there. There is no `updateSource`, so
-this image carries no update definitions (step 8 turns it on). The schema says what each table may
-hold:
+`/trust`, `/factory` and `/vars` are not named because they are always there. There is no
+`updateSource`, so this image carries no update definitions (step 8 turns it on). The schema says
+what each table may hold:
 
 ```sh
 iets eval --json -E '(import ./default.nix).schema' > schema.json
@@ -61,9 +61,9 @@ lists the valid paths: `/base`, `/factory`, `/network`, `/services/sshd`, `/syst
 ## 3. The composer
 
 `mkSystem` binds the platform's package set to `/pkgs.target`, selects the components
-(`lib/components.nix`: the built-ins `/base`, `/network`, `/security`, `/factory` and `/vars`, then
-`/services/sshd` because the document has its table), calls each for its fragment, and hands the
-list to `/system`, which unions them. The result is one attribute set:
+(`lib/components.nix`: the built-ins `/base`, `/network`, `/security`, `/trust`, `/factory` and
+`/vars`, then `/services/sshd` because the document has its table), calls each for its fragment, and
+hands the list to `/system`, which unions them. The result is one attribute set:
 
 ```sh
 iets eval --json -E 'builtins.attrNames (import ./examples/golconda.nix { golconda = import ./default.nix; }).composed'
@@ -91,8 +91,8 @@ iets eval --json -E 'builtins.attrNames (import ./examples/golconda.nix { golcon
   - `/network` (1): `99-default-dhcp.network`; `/security` (1):
     `/usr/lib/sysctl.d/50-golconda.conf`;
   - the var runner `/usr/lib/golconda/golconda-var-run` (1);
-  - `/factory` (7): `pam.d/other`, `pam.d/sshd`, `pam.d/systemd-user`, `shells` and three `.keep`
-    files, under `/usr/share/factory/etc`.
+  - `/factory` (5): `pam.d/other`, `pam.d/sshd`, `pam.d/systemd-user`, `shells` and one `.keep`
+    file, under `/usr/share/factory/etc`.
 
   There is no `ca.pub`, no `principals/` and no `/usr/lib/sysupdate.d/`: the example sets none of
   them.
@@ -101,12 +101,13 @@ iets eval --json -E 'builtins.attrNames (import ./examples/golconda.nix { golcon
   `u sshd - "SSH privilege separation" /var/empty`.
 
 - `tmpfiles`: `L /bin`, `L /sbin` and `L /lib` into `usr/`; `L /etc/ssl/cert.pem` and
-  `L /etc/ssl/certs/ca-certificates.crt`; `d /var/empty`; one
+  `L /etc/ssl/certs/ca-certificates.crt` (from `/trust`); `d /var/empty`; one
   `L /etc/<path> - - - - /usr/share/factory/etc/<path>` per factory file; `L /etc/localtime`
   (`/usr/share/zoneinfo/UTC`); `L /etc/os-release`.
 
-- `packageOrigins`: `openssh` from `/services/sshd`; `cacert`, `dash`, `dbus-broker`, `e2fsprogs`,
-  `hwdb`, `linux-kernel`, `systemd`, `tpm2-tss`, `tzdata` and `uutils-coreutils` from `/base`.
+- `packageOrigins`: `openssh` from `/services/sshd`; `ca-bundle` from `/trust`; `dash`,
+  `dbus-broker`, `e2fsprogs`, `hwdb`, `linux-kernel`, `systemd`, `tpm2-tss`, `tzdata` and
+  `uutils-coreutils` from `/base`.
 
 - `links`: not quoted (see above). It holds every `bin` name of the packages as `/usr/bin/<name>`,
   systemd's directories as `farm` links, one link per dlopen soname, and the `.wants` links.

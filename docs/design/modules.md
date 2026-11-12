@@ -86,9 +86,9 @@ Every module has one role, and one function decides which modules enter a system
 | composer  | `/system`, which unions the components' fragments | always                           |
 | group     | holds children and has no `impl` (`/services`)    | never: its children may be       |
 
-A built-in component (`/base`, `/network`, `/security`, `/factory`, `/vars`) is in every system; its
-table only configures it. An optional component (`/services/sshd`) is in the system when the
-document has its table, and an empty table selects it with its defaults:
+A built-in component (`/base`, `/network`, `/security`, `/trust`, `/factory`, `/vars`) is in every
+system; its table only configures it. An optional component (`/services/sshd`) is in the system when
+the document has its table, and an empty table selects it with its defaults:
 
 ```toml
 ["/services/sshd"]
@@ -108,8 +108,8 @@ under `/local`, never a bare fragment.
 
 ## The base system
 
-`/base`, `/network` and `/security` are built in, and composed first. A system with no table still
-boots with:
+`/base`, `/network`, `/security` and `/trust` are built in, and composed first. A system with no
+table still boots with:
 
 - systemd;
 - D-Bus;
@@ -118,11 +118,13 @@ boots with:
 - the kernel;
 - DHCP on every wired link;
 - time sync;
-- a bounded journal
+- a bounded journal;
+- Mozilla's CA roots, with the administrator's anchors and distrust list
   ([Architecture: What every image contains](architecture.md#what-every-image-contains)).
 
 They have options (`/base.ntp`, `/base.journalMaxUse`, `/network.networks`, `/network.dns`,
-`/network.defaultDhcp`; `/security` has none) but no switch: there is nothing to turn off.
+`/network.defaultDhcp`, `/trust.anchors`, `/trust.distrust`; `/security` has none) but no switch:
+there is nothing to turn off.
 
 ## `app` and `service`
 
