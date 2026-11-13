@@ -103,6 +103,20 @@ in
     in
     hasInfix "\nCONFIG_DMI_SYSFS=y\n" conf && hasInfix "\nCONFIG_FW_CFG_SYSFS=y\n" conf
   ))
+  (check "kernel: no 9P, no vsock, no /proc/config.gz (nothing in the image uses them)" (
+    let
+      base = builtins.fromJSON (
+        builtins.unsafeDiscardStringContext pkgs.linux-kernel.args.env.GOLCONDA_KERNEL_CONFIG
+      );
+      conf = readFile ../../packages/kernel/golconda.config;
+      off = n: hasInfix "\n# CONFIG_${n} is not set\n" conf && !(hasInfix "\nCONFIG_${n}=" conf);
+    in
+    off "NET_9P"
+    && off "VSOCKETS"
+    && base.IKCONFIG or null == "n"
+    && !(base ? IKCONFIG_PROC)
+    && !(hasInfix "CONFIG_IKCONFIG" conf)
+  ))
   (check "systemd: no sysext or confext stack (they would overlay /usr and /etc)" (
     pkgs.systemd.args.meson.defs.sysext == false
   ))

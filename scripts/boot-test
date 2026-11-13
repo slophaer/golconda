@@ -37,6 +37,7 @@
 #   ipe-denies-copy (a copy of /usr/bin/sh in /var/tmp is refused, and IPE logs it), index-keyring,
 #   units-composed-only (no link in /etc/systemd/system; each enabled unit has a static link in
 #   /usr), no-sysext (no sysext or confext unit or program),
+#   sshd-golconda-only (sshd.service is the one ssh server: no ssh socket, generator or vsock),
 #   and clock-not-reset (this boot's journal, journalctl -b, has no clock reset by PID 1 and no
 #   entry before the year of systemd's time-epoch). Each later boot checks the clock again under
 #   its own name: clock-not-reset-after-reboot (--tpm), -after-update (--next), -after-fallback

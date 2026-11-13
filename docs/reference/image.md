@@ -511,6 +511,7 @@ With `--ssh-test` (the harness logs in as root with `tests/fixtures/snakeoil-ssh
 | `ipe-denies-copy`              | a copy of `/usr/bin/sh` in `/var/tmp` gets EACCES, and IPE logs the denial                                                                                                    |
 | `units-composed-only`          | `/etc/systemd/system` holds no link, and every unit systemctl calls enabled has a static link in a `.wants`, `.requires` or `.upholds` directory of `/usr/lib/systemd/system` |
 | `no-sysext`                    | no unit file and no program of `systemd-sysext` or `systemd-confext`                                                                                                          |
+| `sshd-golconda-only`           | `sshd.service` is the one `sshd*` unit; no socket unit names ssh; no `systemd-ssh-generator`, no `/run/ssh-unix-local`, no `/dev/vsock`                                       |
 | `cert-login`                   | a certificate from the test user CA (`tests/fixtures/snakeoil-user-ca`) logs in as root for the principal `boot-test-admin`                                                   |
 | `cert-wrong-principal-refused` | a certificate for another principal is refused                                                                                                                                |
 | `index-keyring`                | `/usr/lib/systemd/import-pubring.pgp` is the key set's `release/index.pgp`                                                                                                    |

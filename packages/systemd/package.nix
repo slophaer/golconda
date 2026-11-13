@@ -211,6 +211,11 @@ package {
       # beside every other keyring: the image ships its release key at that path instead
       # (lib/image/index.nix), so only that key signs an index the machine accepts
       rm -f $"($c.out)/lib/systemd/import-pubring.pgp"
+      # systemd-ssh-generator binds a second sshd, with sshd_config's defaults and an
+      # AuthorizedKeysFile of its own, to AF_UNIX /run/ssh-unix-local/socket, to AF_VSOCK and
+      # to any address an ssh.listen credential or systemd.ssh_listen= names. meson has no
+      # option for it; Golconda's sshd.service (/services/sshd) is the one ssh server
+      rm $"($c.out)/lib/systemd/system-generators/systemd-ssh-generator"
       # Move /etc to share/factory/etc (sample configs, tmpfiles C copies them)
       # These become sources for tmpfiles C directive in the image.
       if ($"($destdir)/etc" | path exists) {

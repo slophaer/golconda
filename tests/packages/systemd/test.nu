@@ -2,7 +2,8 @@
 # farm links lib/systemd and lib/sysusers.d, so these files reach every image; /base's drop-ins
 # keep the units off unless the configuration has `/imds` (modules/base/parts/imds.nix).
 # Not built: the sysext and confext stack (meson `sysext`), whose units would overlay /usr and
-# /etc with images from /var/lib/extensions and /etc/extensions.
+# /etc with images from /var/lib/extensions and /etc/extensions. Not installed: the ssh generator,
+# whose sockets would start a stock sshd beside Golconda's.
 use checks.nu *
 let p = $env.pkg
 let unit = {|n| $"($p)/lib/systemd/system/($n)" }
@@ -22,4 +23,8 @@ for n in [systemd-sysext systemd-confext] {
 }
 let ext = (ls $"($p)/lib/systemd/system" | get name | path basename | where {|n| ($n | str contains "sysext") or ($n | str contains "confext") })
 assert $"no sysext or confext unit \(($ext | str join ' ')\)" ($ext | is-empty)
+
+# no ssh generator: it binds sshd to AF_UNIX, AF_VSOCK and any ssh.listen address with an
+# AuthorizedKeysFile of its own
+assert "no systemd-ssh-generator" (not ($"($p)/lib/systemd/system-generators/systemd-ssh-generator" | path exists -n))
 done

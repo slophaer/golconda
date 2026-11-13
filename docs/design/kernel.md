@@ -50,6 +50,19 @@ The signature reaches dm-verity through the UKI cmdline
 (`systemd.verity_usr_options=root-hash-signature=base64:`); why is in
 [Trust: Verity key](trust.md#2-verity-key).
 
+## Left out
+
+An option that nothing in the image uses is off: it is code an attacker can reach, and no test
+covers it.
+
+- **vsock** (`CONFIG_VSOCKETS`): a host-to-guest socket without a network. Nothing listens on it,
+  and it is where systemd's ssh generator would put a second sshd (the image does not have that
+  generator, [Certificate login](../features/ssh-login.md#how-it-works)).
+- **9P** (`CONFIG_NET_9P`): a file system shared by the host. The VM test does not share a
+  directory.
+- **`/proc/config.gz`** (`CONFIG_IKCONFIG`): nothing reads it. The package has the resolved config
+  in `lib/modules/<version>/config`.
+
 ## Lockdown
 
 The cmdline sets `lockdown=integrity`. This is kernel self-protection: it blocks operations that

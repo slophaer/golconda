@@ -23,6 +23,10 @@ the machine and gives a revocation path.
   setuid binary (the build checks this). A non-root process cannot verify a password at all.
 - **Root only, for now.** There are no per-human accounts. `LogLevel VERBOSE` writes the certificate
   principal and key id to the log, and that is the audit trail.
+- **One ssh server.** `sshd.service` with the generated `sshd_config` is the only one. systemd's ssh
+  generator is not in the image: it would start a second sshd, with `sshd_config`'s defaults and an
+  `AuthorizedKeysFile` of its own, on an `AF_UNIX` socket, on `AF_VSOCK` and on any address an
+  `ssh.listen` credential names. The kernel has no vsock either.
 - **No local login.** No getty, no password, no rescue shell. The serial console (`console=ttyS0`)
   is output only. `golconda-health-sshd.service` fails unless sshd is active, so the machine never
   blesses a boot whose sshd is down.
@@ -86,16 +90,17 @@ file or on a token. Signing through step-ca's API is *(later)*: step-ca signs us
 
 ## Status
 
-With `--ssh-test`, `sshd-active` and `ssh-login` show sshd up and root reachable, and
-`no-failed-units` shows a clean boot. The test image trusts a test user CA: `cert-login` logs in
-with a certificate for the allowed principal, and `cert-wrong-principal-refused` is refused. With
-`--esp-creds`, `esp-authorized-keys` shows a key that only the ESP holds. With `--next` the harness
-pushes the host certificate and a revocation list, and the next release, which turns both on, passes
-`host-cert-presented`, `cert-revoked-refused` and, after a second push, `krl-rotated`. With
-`--enrol` one release does all of it in its first boot: certificates are refused until
-`golconda vars enrol` (`cert-refused-before-enrol`), which refuses a fingerprint that is not the
-console's (`enrol-wrong-fingerprint-refused`) and enrols with the console's; then the same boot
-presents the host certificate and refuses both plain keys, which the KRL does not name
+With `--ssh-test`, `sshd-active` and `ssh-login` show sshd up and root reachable,
+`sshd-golconda-only` shows no other ssh unit or socket, and `no-failed-units` shows a clean boot.
+The test image trusts a test user CA: `cert-login` logs in with a certificate for the allowed
+principal, and `cert-wrong-principal-refused` is refused. With `--esp-creds`, `esp-authorized-keys`
+shows a key that only the ESP holds. With `--next` the harness pushes the host certificate and a
+revocation list, and the next release, which turns both on, passes `host-cert-presented`,
+`cert-revoked-refused` and, after a second push, `krl-rotated`. With `--enrol` one release does all
+of it in its first boot: certificates are refused until `golconda vars enrol`
+(`cert-refused-before-enrol`), which refuses a fingerprint that is not the console's
+(`enrol-wrong-fingerprint-refused`) and enrols with the console's; then the same boot presents the
+host certificate and refuses both plain keys, which the KRL does not name
 (`bootstrap-key-refused-after-enrol`, and after a reboot `bootstrap-key-refused-after-reboot`). See
 [What is proven](../proven.md).
 

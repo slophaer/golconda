@@ -31,9 +31,9 @@
   # No modules: the kernel is monolithic, so the image needs no kmod
   MODULES = "n";
 
-  # The smoke test reads /proc/config.gz
-  IKCONFIG = "y";
-  IKCONFIG_PROC = "y";
+  # No /proc/config.gz: nothing reads it, and it tells an attacker which defences are off.
+  # The package has the resolved config (lib/modules/<version>/config)
+  IKCONFIG = "n";
 
   # Full DWARF 5 in vmlinux, which install copies to the debug output (Linux 6.18 "Debug
   # information" choice; LLVM_IAS=1 meets its assembler condition). Not reduced, not split into

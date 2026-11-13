@@ -260,6 +260,26 @@ check_units_composed() {
   verdict "no-sysext${1:-} (no sysext or confext unit and no program)" $RC
 }
 
+# check_sshd_sockets: Golconda's sshd.service, with its sshd_config, is the only ssh server. systemd's
+# ssh generator is not in the image (packages/systemd), so no sshd-*.socket listens on AF_UNIX or
+# AF_VSOCK, or on an address an ssh.listen credential names, with a stock sshd that ignores
+# Golconda's sshd_config; and the kernel has no AF_VSOCK
+check_sshd_sockets() {
+  echo ""
+  echo "=== ssh servers ==="
+  RC=0
+  U=$(guest systemctl list-units --all --plain --no-legend --no-pager 'sshd*' 2>&1 | cut -d' ' -f1) || U="no answer"
+  echo "sshd units: $(echo "$U" | tr '\n' ' ')"
+  [ "$U" = sshd.service ] || RC=1
+  S=$(guest systemctl list-sockets --all --no-legend --no-pager --full 2>&1 | grep -i ssh) || S=""
+  echo "ssh sockets: ${S:-none}"
+  [ -z "$S" ] || RC=1
+  G=$(guest 'for f in /usr/lib/systemd/system-generators/systemd-ssh-generator /run/ssh-unix-local /dev/vsock; do [ -e "$f" ] && echo "$f"; done; true') || G="no answer"
+  echo "generator, its socket directory, vsock: ${G:-none}"
+  [ -z "$G" ] || RC=1
+  verdict "sshd-golconda-only (sshd.service is the one ssh unit; no ssh socket, no ssh generator, no vsock)" $RC
+}
+
 # check_no_failed NAME: no unit has failed in the running boot
 check_no_failed() {
   echo ""
