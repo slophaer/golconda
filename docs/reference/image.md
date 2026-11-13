@@ -351,9 +351,10 @@ inside the guest's network, not a host port. The test image's `updateSource` nam
 With `--ssh-test` the harness also serves two HTTPS sites to the guest, `169.254.169.5:443` and
 `169.254.169.6:443`: QEMU guestfwds to a TLS server over stdio (`scripts/boot-test-tls.sh`, python's
 `ssl`), with the server certificates of two test CAs (`tests/fixtures/ca-store`). The test image
-names those CAs in `/trust` (the first as an anchor, the second as an anchor and distrusted), and
-`ca-store-links`, `ca-bundle-content`, `tls-anchor-trusted` and `tls-distrusted-refused` check the
-guest's bundle and the fetch with `systemd-pull`. No host port opens.
+names those CAs in `/trust` (the first as an anchor, the second as an anchor and, by its SHA-256
+fingerprint, distrusted), and `ca-store-links`, `ca-bundle-content`, `tls-anchor-trusted` and
+`tls-distrusted-refused` check the guest's bundle and the fetch with `systemd-pull`. No host port
+opens.
 
 Every mode runs on QEMU's user network `169.254.169.0/24` (`-netdev user,net=`), not the default
 `10.0.2.0/24`: `--imds` needs Hetzner's metadata address, `169.254.169.254`, on the guest's link.

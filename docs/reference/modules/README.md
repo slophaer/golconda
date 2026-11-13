@@ -286,13 +286,18 @@ routable link is not blessed ([design/boot](../../design/boot.md#boot-health)).
 - **tmpfiles**: `L /etc/ssl/cert.pem` and `L /etc/ssl/certs/ca-certificates.crt` into that file, the
   paths OpenSSL and libcurl read.
 
-| option     | type                                    | meaning                                                               |
-| ---------- | --------------------------------------- | --------------------------------------------------------------------- |
-| `anchors`  | list of PEM certificates, default `[ ]` | trusted besides Mozilla's roots                                       |
-| `distrust` | list of PEM certificates, default `[ ]` | removed from the bundle, whether a Mozilla root or one of the anchors |
+| option     | type                                        | meaning                                                               |
+| ---------- | ------------------------------------------- | --------------------------------------------------------------------- |
+| `anchors`  | list of PEM certificates, default `[ ]`     | trusted besides Mozilla's roots                                       |
+| `distrust` | list of SHA-256 fingerprints, default `[ ]` | removed from the bundle, whether a Mozilla root or one of the anchors |
 
-An entry is the text of exactly one certificate (base64 inside the block, nothing else, at most 16
-KB). The same certificate twice in one list is an error; in both lists it is distrusted.
+An `anchors` entry is the text of exactly one certificate (base64 inside the block, nothing else, at
+most 16 KB). A `distrust` entry is the SHA-256 fingerprint of a certificate's DER form: 64 hex
+digits, colons between the bytes optional, any case (`openssl x509 -noout -fingerprint -sha256`
+prints one). It is the only form: there is no PEM. A fingerprint that matches no certificate of
+cacert or the anchors fails the build. The same certificate twice in one list is an error (two
+spellings of a fingerprint are the same); in both lists it is distrusted. Run-time anchors are not
+built, by design: a new release is the way.
 
 ### `/factory`
 
