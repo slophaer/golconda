@@ -43,7 +43,8 @@
 #                       boot the last; one PASS or FAIL line per commit
 #
 # The tree must be clean: the result belongs to one commit and one repkgs pin, named on the first
-# line. With BOOT_TEST_STORE_ROOT set (a chroot store, nix --store local?root=DIR), the dev shell is
+# line. No untracked file either, and no ignored one in modules/ or packages/: the build reads
+# them where they lie. With BOOT_TEST_STORE_ROOT set (a chroot store, nix --store local?root=DIR), the dev shell is
 # realised in the host store first (nix-shell runs it from /nix/store, the daemon builds it under
 # its root), and the image's links into /nix/store are followed under that root.
 #
@@ -81,6 +82,18 @@ system=${GOLCONDA_SYSTEM:-$(uname -m)-linux}
 
 if ! git diff --quiet || ! git diff --cached --quiet; then
   echo "verify: $(pwd) has uncommitted changes; commit or stash them first" >&2
+  exit 1
+fi
+# Nix reads the checkout's files where they lie: an untracked file can enter the build, and so can
+# an ignored one in modules/ or packages/, which the module walk and the package sources read
+# whole. Ignored files elsewhere (result links, docs/book) stay out of it.
+untracked=$({
+  git ls-files --others --exclude-standard
+  git ls-files --others -- modules packages
+} | sort -u)
+if [ -n "$untracked" ]; then
+  echo "verify: $(pwd) has files git does not track, which the build can read; commit, move or remove them first:" >&2
+  printf '%s\n' "$untracked" | sed 's/^/  /' >&2
   exit 1
 fi
 

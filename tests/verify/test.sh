@@ -87,6 +87,8 @@ EOF
 chmod +x "$repo/scripts/verify" "$repo/scripts/boot-test"
 printf '[pin]\nrev = "0123456789abcdef"\n' >"$repo/pins/repkgs/sources.toml"
 echo readme >"$repo/README.md"
+# the out-links, as the real .gitignore has them
+echo 'result*' >"$repo/.gitignore"
 git -C "$repo" init -q
 git -C "$repo" add -A
 git -C "$repo" -c user.email=t@t -c user.name=t commit -qm first
@@ -129,6 +131,25 @@ run scripts/verify
 [ $rc != 0 ] || fail "unclean tree accepted"
 [ -s "$CALLS" ] && fail "built despite an unclean tree"
 git checkout -q README.md
+
+# 2b an untracked file is refused too: the build reads the checkout's files where they lie
+echo x >notes.txt
+run scripts/verify
+[ $rc != 0 ] || fail "untracked file accepted"
+echo "$out" | grep -q 'notes.txt' || fail "untracked file not named: $out"
+[ -s "$CALLS" ] && fail "built despite an untracked file"
+rm notes.txt
+# and an ignored one in modules/ or packages/, which the module walk and the package sources read
+echo token >>.git/info/exclude
+for d in modules packages/hello; do
+  mkdir -p "$d"
+  echo secret >"$d/token"
+  run scripts/verify
+  [ $rc != 0 ] || fail "ignored $d/token accepted"
+  echo "$out" | grep -q "$d/token" || fail "ignored $d/token not named: $out"
+  [ -s "$CALLS" ] && fail "built despite an ignored $d/token"
+  rm -r "${d%%/*}"
+done
 
 # 3 a lint failure stops the run: no image, no boot
 FAKE_LINT=fail run scripts/verify

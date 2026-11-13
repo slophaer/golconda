@@ -101,6 +101,13 @@ record the document's digest, the four files' digests and the unsigned outputs' 
 puts the line back, and commits nothing. The command refuses an existing `--out`, and a version that
 is not newer than the last one: sysupdate would install nothing and say nothing.
 
+It also refuses a file that no commit holds, before it builds anything, because Nix reads the
+checkout's files where they lie: an uncommitted change or an untracked file in the document's
+repository or in Golconda's, and any file git does not track, ignored ones too, in the directories
+of modules and packages (Golconda's, and the document's: `modules/` and `packages/` beside it or the
+ones `[golconda]` names, which must be in a git work tree). Ignored files elsewhere, such as the
+`result*` links, do not count.
+
 By hand, the same two steps are:
 
 ```sh

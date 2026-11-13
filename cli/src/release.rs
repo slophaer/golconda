@@ -849,25 +849,14 @@ fn write_document(document: &Path, text: &str) -> Result<()> {
     copy.persist(&target).map_err(|e| fail(e.error))
 }
 
-/// Builds a release: refuses a dirty tree, picks the version (auto: today, after the
-/// document's version and the destination's), writes it into the document, builds mkImage's
-/// disk, checks its release directory and commits the version line with the release trailers.
-/// A failure after the write puts the document back as it was.
+/// Builds a release: refuses a tree with a file no commit holds (`refuse_untracked`), picks the
+/// version (auto: today, after the document's version and the destination's), writes it into the
+/// document, builds mkImage's disk, checks its release directory and commits the version line with
+/// the release trailers. A failure after the write puts the document back as it was.
 pub fn build(req: &BuildRequest<'_>, tools: &Tools<'_>) -> Result<Built> {
     let document = path::absolute(req.document).map_err(|e| Error(e.to_string()))?;
     let dir = document.parent().unwrap_or(Path::new("/"));
     let repo = PathBuf::from(git_out(tools.git, dir, &["rev-parse", "--show-toplevel"])?);
-    let dirty = git_out(
-        tools.git,
-        &repo,
-        &["status", "--porcelain", "--untracked-files=no"],
-    )?;
-    if !dirty.is_empty() {
-        return err(format!(
-            "{} has uncommitted changes: a release is built from a commit\n{dirty}",
-            repo.display()
-        ));
-    }
     let root = find_root(&document).ok_or_else(|| {
         Error(format!(
             "{}: not inside a Golconda checkout",
@@ -876,6 +865,7 @@ pub fn build(req: &BuildRequest<'_>, tools: &Tools<'_>) -> Result<Built> {
     })?;
     let text =
         fs::read_to_string(&document).map_err(|e| Error(format!("{}: {e}", document.display())))?;
+    refuse_untracked(tools.git, &repo, &root, dir, &text)?;
     let (id, current) = system_of(&text)?;
     let mut seen: Vec<Version> = current.into_iter().collect();
     if let Some(d) = req.dest {
@@ -913,6 +903,68 @@ pub fn build(req: &BuildRequest<'_>, tools: &Tools<'_>) -> Result<Built> {
         write_document(&document, &text)?;
     }
     built
+}
+
+/// Refuses a build that could read a file no commit holds. Nix reads the files where they lie:
+/// in the document's repository and in Golconda's, an uncommitted change or an untracked file
+/// can enter the build; in the directories of modules and packages (Golconda's, and the
+/// document's by its `[golconda]` table, default `modules` and `packages` beside it), which the
+/// module walk and the package sources read whole, an ignored file can too. Such a directory
+/// outside a git work tree cannot be checked, and is refused.
+fn refuse_untracked(git: &Program, repo: &Path, root: &Path, dir: &Path, text: &str) -> Result<()> {
+    let project: toml_edit::DocumentMut = text
+        .parse()
+        .map_err(|e| Error(format!("the document: {e}")))?;
+    let named = |key: &str| {
+        project
+            .get("golconda")
+            .and_then(|t| t.get(key))
+            .and_then(|v| v.as_str())
+            .unwrap_or(key)
+            .to_string()
+    };
+    let dirs = [
+        root.join("modules"),
+        root.join("packages"),
+        dir.join(named("modules")),
+        dir.join(named("packages")),
+    ];
+    let mut repos = vec![
+        repo.to_path_buf(),
+        PathBuf::from(git_out(git, root, &["rev-parse", "--show-toplevel"])?),
+    ];
+    let mut ignored = Vec::new();
+    for d in dirs.iter().filter(|d| d.is_dir()) {
+        let top = git_out(git, d, &["rev-parse", "--show-toplevel"]).map_err(|_| {
+            Error(format!(
+                "{}: not in a git work tree, so the files the build reads there cannot be checked: a release is built from commits",
+                d.display()
+            ))
+        })?;
+        let others = git_out(git, d, &["ls-files", "--others", "--full-name", "--", "."])?;
+        ignored.extend(others.lines().map(|l| format!("{top}/{l}")));
+        repos.push(PathBuf::from(top));
+    }
+    repos.sort();
+    repos.dedup();
+    for r in &repos {
+        let dirty = git_out(git, r, &["status", "--porcelain", "--untracked-files=all"])?;
+        if !dirty.is_empty() {
+            return err(format!(
+                "{} has uncommitted changes or untracked files: a release is built from a commit, and the build reads the files where they lie\n{dirty}",
+                r.display()
+            ));
+        }
+    }
+    ignored.sort();
+    ignored.dedup();
+    if !ignored.is_empty() {
+        return err(format!(
+            "files git does not track (ignored ones too) where the build reads modules and packages: move or remove them\n{}",
+            ignored.join("\n")
+        ));
+    }
+    Ok(())
 }
 
 fn build_and_check(
@@ -2157,11 +2209,56 @@ mod tests {
             e.0.contains("uncommitted changes") && e.0.contains("server.toml"),
             "{e}"
         );
-        // an untracked file does not count
+        // an untracked file counts: the build reads the checkout's files where they lie
         fs::write(&doc, DOC).unwrap();
         fs::write(s.repo.join("notes.txt"), "x").unwrap();
+        let e = s.build(&doc, &iets, Some("20261106.1"), false).unwrap_err();
+        assert!(
+            e.0.contains("untracked files") && e.0.contains("notes.txt"),
+            "{e}"
+        );
+        assert!(!s.tmp.path().join("iets.log").exists());
+        // an ignored file at the top (a result link, a release directory) does not
+        fs::remove_file(s.repo.join("notes.txt")).unwrap();
+        fs::write(s.repo.join(".git/info/exclude"), "/result-*\n").unwrap();
+        fs::write(s.repo.join("result-old"), "x").unwrap();
         s.out("20261106.1", "20261106.1");
         s.build(&doc, &iets, Some("20261106.1"), false).unwrap();
+    }
+
+    #[test]
+    fn an_ignored_file_where_modules_and_packages_are_read_is_refused() {
+        let s = scene();
+        let (doc, iets) = s.checkout();
+        fs::write(s.repo.join(".git/info/exclude"), "token\n").unwrap();
+        // the default packages/ and modules/ beside the document (here Golconda's own too)
+        for d in ["packages/hello", "modules"] {
+            fs::create_dir_all(s.repo.join(d)).unwrap();
+            fs::write(s.repo.join(d).join("token"), "secret").unwrap();
+            let e = s.build(&doc, &iets, Some("20261106.1"), false).unwrap_err();
+            assert!(
+                e.0.contains("files git does not track") && e.0.contains("token"),
+                "{d}: {e}"
+            );
+            fs::remove_file(s.repo.join(d).join("token")).unwrap();
+        }
+        // a directory [golconda] names
+        fs::create_dir_all(s.repo.join("site")).unwrap();
+        fs::write(s.repo.join("site/token"), "secret").unwrap();
+        let named = format!("[golconda]\nmodules = \"site\"\n{DOC}");
+        fs::write(&doc, &named).unwrap();
+        sh(&s.repo, "git", &["commit", "-qam", "site"]);
+        let e = s.build(&doc, &iets, Some("20261106.1"), false).unwrap_err();
+        assert!(e.0.contains("site/token"), "{e}");
+        // one outside any git work tree cannot be checked
+        fs::remove_file(s.repo.join("site/token")).unwrap();
+        let outside = s.tmp.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(&doc, named.replace("\"site\"", "\"../outside\"")).unwrap();
+        sh(&s.repo, "git", &["commit", "-qam", "outside"]);
+        let e = s.build(&doc, &iets, Some("20261106.1"), false).unwrap_err();
+        assert!(e.0.contains("not in a git work tree"), "{e}");
+        assert!(!s.tmp.path().join("iets.log").exists());
     }
 
     #[test]
