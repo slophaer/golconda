@@ -142,6 +142,45 @@ cmp -s "$keys/secureboot/auth/microsoft/KEK.auth" "$keys2/secureboot/auth/micros
 grep -qF "copies of $keys" "$tmp/out2" || fail "rotation: the report names the old set"
 "$repo/scripts/make-keys" --reuse-pk-kek "$keys2" "$tmp/keys3" >/dev/null 2>&1 && fail "--reuse-pk-kek needs a set with PK.key and KEK.key"
 
+# --auth-only: a set made before make-keys wrote the enrolment files gets them, and a PK and a KEK
+# of its own; the command is the one the signer's refusal names (tests/sign/enrol-test.nu)
+keys4=$tmp/keys4
+cp -R "$keys" "$keys4"
+rm -r "$keys4/secureboot/auth" "$keys4/secureboot/PK.key" "$keys4/secureboot/PK.crt" \
+  "$keys4/secureboot/KEK.key" "$keys4/secureboot/KEK.crt"
+"$repo/scripts/make-keys" --auth-only "$keys4" >"$tmp/out4" 2>"$tmp/stderr4" || {
+  cat "$tmp/stderr4" >&2
+  fail "make-keys --auth-only exits 0"
+}
+for k in PK KEK; do
+  [ -f "$keys4/secureboot/$k.key" ] || fail "--auth-only: makes $k.key for a set without one"
+  [ "$(mode "$keys4/secureboot/$k.key")" = 600 ] || fail "--auth-only: $k.key is 0600"
+done
+for s in microsoft golconda; do
+  for v in PK KEK db; do
+    holds "$keys4/secureboot/auth/$s/$v.auth" "$keys4/secureboot/$v.crt" || fail "--auth-only: auth/$s/$v.auth enrols $v.crt"
+  done
+done
+[ -f "$keys4/secureboot/auth/microsoft/dbx.auth" ] || fail "--auth-only: auth/microsoft/dbx.auth"
+cmp -s "$keys/secureboot/db.crt" "$keys4/secureboot/db.crt" || fail "--auth-only: keeps the db certificate"
+# again, with the keys there: the files are written anew (a newer dbx), the PK and KEK stay
+pk4=$(sha256sum < "$keys4/secureboot/PK.crt")
+"$repo/scripts/make-keys" --auth-only "$keys4" >/dev/null 2>&1 || fail "make-keys --auth-only runs again"
+[ "$(sha256sum < "$keys4/secureboot/PK.crt")" = "$pk4" ] || fail "--auth-only again: keeps the PK"
+# a set whose PK and KEK keys are elsewhere (offline, or a rotation): --reuse-pk-kek names them
+rm -r "$keys2/secureboot/auth"
+"$repo/scripts/make-keys" --auth-only --reuse-pk-kek "$keys" "$keys2" >/dev/null 2>"$tmp/stderr5" || {
+  cat "$tmp/stderr5" >&2
+  fail "make-keys --auth-only --reuse-pk-kek exits 0"
+}
+holds "$keys2/secureboot/auth/microsoft/db.auth" "$keys2/secureboot/db.crt" || fail "--auth-only --reuse-pk-kek: db.auth"
+[ ! -e "$keys2/secureboot/PK.key" ] || fail "--auth-only --reuse-pk-kek: no PK.key in the set"
+"$repo/scripts/make-keys" --auth-only "$keys2" >/dev/null 2>"$tmp/stderr6" && fail "--auth-only refuses a set with PK.crt but no PK.key"
+grep -qF -- "--reuse-pk-kek" "$tmp/stderr6" || fail "--auth-only without the keys names --reuse-pk-kek"
+"$repo/scripts/make-keys" --auth-only --reuse-pk-kek "$keys4" "$keys2" >/dev/null 2>&1 &&
+  fail "--auth-only --reuse-pk-kek refuses another PK than the set's"
+"$repo/scripts/make-keys" --auth-only "$tmp/nothing" >/dev/null 2>&1 && fail "--auth-only needs a key set"
+
 # refusals
 "$repo/scripts/make-keys" relative/dir >/dev/null 2>&1 && fail "relative DIR is refused"
 "$repo/scripts/make-keys" "$keys" >/dev/null 2>&1 && fail "non-empty DIR is refused"

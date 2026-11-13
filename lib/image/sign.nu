@@ -181,6 +181,7 @@ def enrol-files [m: record, set: string, db_cert: string]: nothing -> list<strin
     return []
   }
   let sb = ($set | path join secureboot | path expand)
+  enrol require-set $set $m.loader.enrolSet
   let files = (enrol check-set $"($sb)/auth/($m.loader.enrolSet)" {pk: $"($sb)/PK.crt" kek: $"($sb)/KEK.crt" db: $db_cert})
   log $"loader/keys/auto: ($m.loader.enrolSet): ($files | path basename | str join ', ')"
   $files

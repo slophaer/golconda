@@ -237,6 +237,27 @@ export def write [dir: string, certs: record, signers: record, ms: string, epoch
   }
 }
 
+# require-set SET WHICH: the key set SET has secureboot/auth/WHICH (microsoft or golconda); a set
+# made before scripts/make-keys wrote the enrolment files is refused with the commands that add
+# them, with SET's own path
+export def require-set [set: string, which: string] {
+  let set = ($set | path expand)
+  let dir = $"($set)/secureboot/auth/($which)"
+  if ($dir | path exists) {
+    return
+  }
+  error make {msg: ([
+    $"($dir) is missing: this key set was made before scripts/make-keys wrote the Secure Boot"
+    "enrolment files, which a Secure Boot image puts on its ESP. Add them on the release host, with"
+    "the set's PK and KEK keys (a set with no PK and KEK gets a pair of its own):"
+    $"  scripts/make-keys --auth-only ($set)"
+    "If secureboot/PK.key and KEK.key are in another directory (kept offline, or this set is a db"
+    "rotation), name it:"
+    $"  scripts/make-keys --auth-only --reuse-pk-kek DIR ($set)"
+    "(docs/reference/release.md)"
+  ] | str join "\n")}
+}
+
 # check-set DIR CERTS: DIR (secureboot/auth/microsoft or golconda) holds PK.auth, KEK.auth and
 # db.auth, and dbx.auth or not; each verifies against its signer's certificate (CERTS {pk kek}),
 # PK.auth enrols CERTS.pk, KEK.auth begins with CERTS.kek and db.auth with CERTS.db (the image's

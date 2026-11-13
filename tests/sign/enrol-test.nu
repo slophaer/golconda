@@ -140,6 +140,23 @@ fails "the signer refuses a set signed by another KEK" "does not verify" {||
 fails "the signer refuses a set without db.auth" "db.auth is missing" {||
   enrol check-set $"($tmp)/none" (set-of $a)
 }
+# a key set made before make-keys wrote the files: the refusal names the commands that add them,
+# with this set's path, for keys in the set and for keys elsewhere
+let old_set = $"($tmp)/old-set"
+mkdir $"($old_set)/secureboot"
+let msg = (try { enrol require-set $old_set microsoft; "no error" } catch {|e| $e.msg })
+let set_abs = ($old_set | path expand)
+for want in [
+  $"($set_abs)/secureboot/auth/microsoft is missing"
+  $"scripts/make-keys --auth-only ($set_abs)"
+  $"scripts/make-keys --auth-only --reuse-pk-kek DIR ($set_abs)"
+  "secureboot/PK.key and KEK.key"
+] {
+  if not ($msg | str contains $want) { error make {msg: $"the refusal does not say '($want)': ($msg)"} }
+}
+ok "a set without enrolment files is refused with the make-keys commands that add them"
+enrol require-set $a microsoft
+ok "a set with them passes"
 
 # a db rotation: B's db with A's PK and KEK, signed by A's keys; B holds no PK or KEK key
 for k in [PK KEK] {

@@ -1,6 +1,7 @@
 #!/bin/sh
 # make-keys [--reuse-pk-kek OLD] DIR: make a deployment key set for a release (golconda release
 # build).
+# make-keys --auth-only [--reuse-pk-kek OLD] DIR: write the enrolment files of an existing set again.
 #
 # The layout is the one the signer reads (lib/image/sign.nu) and whose public halves lib.mkImage
 # reads (lib/image/chain.nix, docs/design/trust.md):
@@ -31,23 +32,35 @@
 # KEK, and a new machine enrols the same ones. Without it the set gets a PK and a KEK of its own.
 # The script cannot tell a rotation from a new deployment, so a rotation names the old set.
 #
+# --auth-only: DIR is an existing set; only secureboot/auth is written, anew. For a set made
+# before make-keys wrote the files (the signer refuses it for a Secure Boot image and names this
+# command), and for a newer dbx (packages/secureboot-objects). The PK and KEK keys that sign are
+# DIR's, or OLD's with --reuse-pk-kek (keys kept offline, or a rotated set). A set with neither
+# PK.crt nor KEK.crt gets a PK and a KEK of its own first. The db certificate stays.
+#
 # docs/reference/release.md is the procedure around this script.
 
 set -eu
 
 usage() {
-  echo "usage: scripts/make-keys [--reuse-pk-kek OLD] DIR" >&2
+  echo "usage: scripts/make-keys [--auth-only] [--reuse-pk-kek OLD] DIR" >&2
 }
 
 old=""
-if [ "${1:-}" = --reuse-pk-kek ]; then
-  [ $# -ge 2 ] || {
-    usage
-    exit 2
-  }
-  old=$2
-  shift 2
-fi
+auth_only=0
+while [ $# -gt 1 ]; do
+  case $1 in
+    --auth-only)
+      auth_only=1
+      shift
+      ;;
+    --reuse-pk-kek)
+      old=$2
+      shift 2
+      ;;
+    *) break ;;
+  esac
+done
 [ $# -eq 1 ] || {
   usage
   exit 2
@@ -63,6 +76,10 @@ if [ -n "$old" ]; then
 fi
 
 dir=$1
+case $dir in
+  /*) ;;
+  *) [ "$auth_only" = 0 ] || dir=$(realpath "$dir") ;;
+esac
 case $dir in
   /*) ;;
   *)
@@ -85,6 +102,68 @@ PATH="$TOOLS:$PATH"
 # repkgs' openssl reads /etc/ssl/openssl.cnf (its OPENSSLDIR), which a host may not have
 # (lib/image/keys.nu does the same)
 export OPENSSL_CONF=/dev/null
+
+# keypair DIR NAME: a self-signed PK or KEK pair in DIR/secureboot, as below for a new set
+keypair() {
+  openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 3650 \
+    -subj "/CN=golconda deployment $2 $(date -u +%Y%m%d)" \
+    -addext "basicConstraints=critical,CA:TRUE" \
+    -addext "keyUsage=critical,digitalSignature,keyCertSign,cRLSign" \
+    -addext "subjectKeyIdentifier=hash" \
+    -keyout "$1/secureboot/$2.key" -out "$1/secureboot/$2.crt" 2>"$1/secureboot/.openssl.log" || {
+    cat "$1/secureboot/.openssl.log" >&2
+    rm -f "$1/secureboot/.openssl.log"
+    exit 1
+  }
+  rm -f "$1/secureboot/.openssl.log"
+}
+
+if [ "$auth_only" = 1 ]; then
+  sb=$dir/secureboot
+  [ -f "$sb/db.crt" ] || {
+    echo "make-keys: --auth-only: $dir is not a key set (no secureboot/db.crt)" >&2
+    exit 1
+  }
+  umask 077
+  if [ -n "$old" ]; then
+    for k in PK KEK; do
+      if [ -e "$sb/$k.crt" ]; then
+        cmp -s "$sb/$k.crt" "$old/secureboot/$k.crt" || {
+          echo "make-keys: $sb/$k.crt is not $old's $k.crt: that set's keys cannot sign this set" >&2
+          exit 1
+        }
+      else
+        cp "$old/secureboot/$k.crt" "$sb/$k.crt"
+      fi
+    done
+  elif [ ! -e "$sb/PK.crt" ] && [ ! -e "$sb/KEK.crt" ]; then
+    keypair "$dir" PK
+    keypair "$dir" KEK
+    echo "made $sb/PK.key, PK.crt, KEK.key, KEK.crt"
+  elif [ ! -f "$sb/PK.key" ] || [ ! -f "$sb/KEK.key" ]; then
+    echo "make-keys: $sb has PK.crt or KEK.crt but not both keys; name the set that holds" >&2
+    echo "make-keys: secureboot/PK.key and KEK.key: scripts/make-keys --auth-only --reuse-pk-kek DIR $dir" >&2
+    exit 1
+  fi
+  # written beside the set from copies of its certificates, then swapped in: the old files stay
+  # until the new ones are written and checked
+  work=$(mktemp -d "$sb/.auth.XXXXXX")
+  trap 'rm -rf "$work"' EXIT
+  mkdir "$work/secureboot"
+  cp "$sb/PK.crt" "$sb/KEK.crt" "$sb/db.crt" "$work/secureboot/"
+  if ! golconda-enrol-auth --keys "$work" --signing-keys "${old:-$dir}" >"$work/log" 2>&1; then
+    echo "make-keys: golconda-enrol-auth failed:" >&2
+    cat "$work/log" >&2
+    exit 1
+  fi
+  rm -rf "$sb/auth"
+  mv "$work/secureboot/auth" "$sb/auth"
+  find "$sb" -type f -exec chmod 600 {} +
+  find "$sb" -type d -exec chmod 700 {} +
+  echo "wrote $sb/auth/microsoft (PK, KEK, db, dbx) and $sb/auth/golconda (PK, KEK, db)"
+  echo "signed by ${old:-$dir}'s PK and KEK keys; keep those keys offline"
+  exit 0
+fi
 
 if [ -L "$dir" ]; then
   echo "make-keys: $dir is a symlink; give the key set a directory of its own" >&2
