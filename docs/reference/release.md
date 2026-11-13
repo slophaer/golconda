@@ -372,3 +372,9 @@ key of the two; the `release/` key stays a file there (above).
 
    The signer compares each key on the token with the public half in the key set before it signs
    (above), so a wrong id or a YubiKey with other keys fails the build, not the boot.
+
+The host CA key, which signs each machine's host certificate when it enrols, can sit on the same
+YubiKey in another PIV slot. `golconda vars enrol` takes its public key file and the same module
+(`--ca-key host_ca.pub --pkcs11-module "$(ykcs11-module)"`), and ssh-keygen asks for the PIN
+([Commands: golconda vars enrol](cli.md#golconda-vars-enrol)). **Unverified** on a YubiKey: the
+tests sign with a CA key on a SoftHSM token.

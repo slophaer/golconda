@@ -54,25 +54,35 @@ root = ["alice@example.com"]
 plain keys work only until the host certificate is enrolled. `revokedKeys` and `hostCertificate`
 default to `false`.
 
-A new machine enrols in its first release. Turn both options on, boot, and log in with a plain key
-(`authorizedKeys`, or the provisioning credential `ssh.authorized_keys.root`). Read the host key and
-compare its fingerprint with the line `golconda: ssh host key …` that the first boot wrote on the
-console. Have the CA sign it, store the certificate and the KRL, and push them:
+A new machine enrols in its first release. Turn both options on, boot, and run one command from the
+deploy host. It needs a plain key that logs in (`authorizedKeys`, or the provisioning credential
+`ssh.authorized_keys.root`), the host CA's key, and the deployment's current KRL:
 
 ```console
-$ golconda vars pub web1 sshd-hostkey key.pub > web1.pub
-$ ssh-keygen -lf web1.pub        # the same SHA256:… as on the console?
-$ step ssh certificate --host --sign web1 web1.pub
-$ golconda vars set web1 sshd-host-cert cert < web1-cert.pub
-$ golconda vars set web1 sshd-revoked-keys krl < fleet.krl
-$ golconda vars push -i ~/.age/key.txt web1
+$ golconda vars enrol -i ~/.age/key.txt web1 --ca-key host_ca --krl fleet.krl
+web1's host key: 256 SHA256:… root@web1 (ED25519)
+Is this the fingerprint on web1's console or journal (golconda: ssh host key …)? Type yes to sign it: yes
 ```
+
+Compare the fingerprint with the line `golconda: ssh host key …` that the first boot wrote on the
+console; `--fingerprint SHA256:…` compares without the question. Then the command does the six steps
+that were once typed by hand: it read the host key (`golconda vars pub web1 sshd-hostkey key.pub`)
+and checked its fingerprint (`ssh-keygen -lf`); it signs it as a host certificate
+(`ssh-keygen -s host_ca -h -I web1 -n web1`), stores the certificate and the KRL
+(`golconda vars set web1 sshd-host-cert cert`, `golconda vars set web1 sshd-revoked-keys krl`), and
+pushes both, the KRL first (`golconda vars push web1`). `--principal` names what clients reach the
+machine by (default: the name given), `--validity` how long the certificate holds (default a year).
+A CA key on a PKCS#11 token, such as the YubiKey that holds the release keys, is
+`--ca-key host_ca.pub --pkcs11-module "$(ykcs11-module)"`: ssh-keygen signs with the token's key
+that matches the public key file
+([Commands: golconda vars enrol](../reference/cli.md#golconda-vars-enrol)). It refuses with no KRL
+at all, and stops before anything is signed when the fingerprint is not confirmed.
 
 The push restarts sshd, which then presents the host certificate, checks the KRL and refuses every
 plain key: the image's `authorizedKeys`, `ssh.authorized_keys.root` and a cloud's keys. From then on
 only certificates log in, after reboots and updates too
-([Trust: Enrolment](../design/trust.md#enrolment)). One command for these steps,
-`golconda vars enrol` with the CA key on the same PKCS#11 token as the release keys, is *(later)*.
+([Trust: Enrolment](../design/trust.md#enrolment)). The signer is `ssh-keygen`, with the CA key in a
+file or on a token. Signing through step-ca's API is *(later)*: step-ca signs user certificates.
 
 ## Status
 
@@ -82,10 +92,12 @@ with a certificate for the allowed principal, and `cert-wrong-principal-refused`
 `--esp-creds`, `esp-authorized-keys` shows a key that only the ESP holds. With `--next` the harness
 pushes the host certificate and a revocation list, and the next release, which turns both on, passes
 `host-cert-presented`, `cert-revoked-refused` and, after a second push, `krl-rotated`. With
-`--enrol` one release does all of it in its first boot: certificates are refused until the push
-(`cert-refused-before-enrol`), then the same boot presents the host certificate and refuses both
-plain keys, which the KRL does not name (`bootstrap-key-refused-after-enrol`, and after a reboot
-`bootstrap-key-refused-after-reboot`). See [What is proven](../proven.md).
+`--enrol` one release does all of it in its first boot: certificates are refused until
+`golconda vars enrol` (`cert-refused-before-enrol`), which refuses a fingerprint that is not the
+console's (`enrol-wrong-fingerprint-refused`) and enrols with the console's; then the same boot
+presents the host certificate and refuses both plain keys, which the KRL does not name
+(`bootstrap-key-refused-after-enrol`, and after a reboot `bootstrap-key-refused-after-reboot`). See
+[What is proven](../proven.md).
 
 ## Limits
 
@@ -96,7 +108,10 @@ plain keys, which the KRL does not name (`bootstrap-key-refused-after-enrol`, an
   and someone chooses it at the console's boot menu, or a reflash, which wipes the sealed vars, so
   the machine enrols again ([Boot loader: Recovery](../design/bootloader.md#recovery)).
 - The host certificate needs the host key first: the machine makes its key, then the CA signs it.
-  Renewal is a new certificate pushed the same way; nothing on the machine renews it.
+  Renewal is `golconda vars enrol` again before the certificate expires; nothing on the machine
+  renews it.
+- `golconda vars enrol` with a CA key on a token is tested with SoftHSM, not with a YubiKey
+  ([Making a release: A YubiKey](../reference/release.md#a-yubikey-being-built)).
 - A password-less root is the only account. Per-operator records with `run0` and polkit are
   *(later)*.
 - A hardware second factor (FIDO2) is client policy: the CA signs a FIDO2 key.

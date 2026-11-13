@@ -460,11 +460,14 @@ and `revokedKeys` on from the start:
    the same credential id (`SetCredential=`): a flat list that names the user CAs of
    `trustedUserCAKeys`. sshd refuses every certificate those CAs signed; plain keys log in (the
    image's `authorizedKeys`, or the provisioning credential `ssh.authorized_keys.root`).
-1. The operator logs in with a plain key, reads the host key with
-   `golconda vars pub HOST sshd-hostkey key.pub`, compares its fingerprint with the console's line,
-   and has the CA sign it (`step ssh certificate --host --sign`, or `ssh-keygen -s`). Then
-   `golconda vars set` stores the certificate and the deployment's KRL, and `golconda vars push`
-   sends both.
+1. The operator runs `golconda vars enrol HOST --ca-key … --krl …`, which logs in with a plain key.
+   It reads the host key (as `golconda vars pub HOST sshd-hostkey key.pub` does), shows its
+   fingerprint and goes on only when the operator says it is the console's line, or when it equals
+   `--fingerprint`. It signs the key as a host certificate with `ssh-keygen -s` (key id HOST, the
+   principals the names clients use), with the host CA key in a file or on a PKCS#11 token
+   (`ssh-keygen -D`), stores the certificate and the deployment's KRL (as `golconda vars set` does),
+   and pushes both (as `golconda vars push` does), the KRL first and the certificate last
+   ([Commands: golconda vars enrol](../reference/cli.md#golconda-vars-enrol)).
 1. The machine seals both, and the push restarts sshd (`KillMode=process` keeps the push's own
    session). sshd now presents the certificate, checks the pushed KRL, and refuses every plain key:
    from here on only certificates of the user CAs log in.
@@ -473,14 +476,14 @@ and `revokedKeys` on from the start:
 sequenceDiagram
   participant M as machine (first boot)
   participant O as operator
-  participant C as step-ca
+  participant C as host CA key (file or token)
   M->>M: make and seal the host key, fingerprint on the console
   M->>M: start sshd with the fallback list and the plain host key
-  O->>M: ssh with the bootstrap key, golconda vars pub
+  O->>M: golconda vars enrol: ssh with the bootstrap key, read the host key
   O->>O: compare the fingerprint with the console line
-  O->>C: sign the host key
+  O->>C: ssh-keygen -s: sign the host key
   C-->>O: host certificate
-  O->>M: golconda vars push (certificate and KRL)
+  O->>M: push the KRL, then the certificate
   M->>M: seal both, restart sshd
   O->>M: ssh with a certificate, host certificate checked
   O-xM: ssh with a plain key, refused
@@ -528,18 +531,21 @@ certificates moves to them by a push and an update, in either order.
 
 **Status.** Proven by boot with `--enrol`: the first boot of a release with both options on logs in
 with the bootstrap key and refuses a good certificate (`bootstrap-key-login`,
-`cert-refused-before-enrol`); the harness checks the console's fingerprint
-(`hostkey-fingerprint-on-console`), pushes, and in the same boot the host certificate is presented,
-a certificate logs in, the revoked one is refused, both plain keys are refused though the KRL names
-neither, and a second KRL takes effect (`host-cert-presented`, `cert-login-after-enrol`,
-`cert-revoked-refused`, `bootstrap-key-refused-after-enrol`, `krl-rotated`, `enrol-one-release`).
-With `--tpm` all of it holds after a reboot (`host-cert-presented-after-reboot`,
-`cert-revoked-refused-after-reboot`, `bootstrap-key-refused-after-reboot`). `--next` pushes to a
-release with the options off and checks that the next release reads it, with a certificate.
+`cert-refused-before-enrol`); `golconda vars enrol` refuses a fingerprint that is not the console's
+and stores and seals nothing (`enrol-wrong-fingerprint-refused`), then enrols with the console's
+fingerprint (`hostkey-fingerprint-on-console`, `admin-vars-pushed`), and in the same boot the host
+certificate is presented, a certificate logs in, the revoked one is refused, both plain keys are
+refused though the KRL names neither, and a second KRL takes effect (`host-cert-presented`,
+`cert-login-after-enrol`, `cert-revoked-refused`, `bootstrap-key-refused-after-enrol`,
+`krl-rotated`, `enrol-one-release`). With `--tpm` all of it holds after a reboot
+(`host-cert-presented-after-reboot`, `cert-revoked-refused-after-reboot`,
+`bootstrap-key-refused-after-reboot`). `--next` pushes to a release with the options off and checks
+that the next release reads it, with a certificate.
 
-The operator runs six commands today. One command that reads the host key, checks its fingerprint,
-signs it with the CA key on the same PKCS#11 token as the release keys, and stores and pushes the
-result, `golconda vars enrol`, is *(later)*.
+The signer is `ssh-keygen`, with the host CA key in a file or on a token: a host certificate is
+signed once per machine and per renewal, offline like the release keys, and needs no CA service. The
+CLI tests sign with a real `ssh-keygen` from a key file and from a key on a SoftHSM token; no run
+with a YubiKey has been done. Signing host certificates through step-ca's API is *(later)*.
 
 ## TPM2 credential decryption
 
