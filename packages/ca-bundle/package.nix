@@ -7,17 +7,20 @@
 # Nothing on the machine writes or derives it: no unit, no writable bundle, no `trust` binary.
 #
 # What goes in: the roots of cacert (Mozilla's, server-auth only), plus the administrator's
-# anchors, minus the distrusted certificates. p11-kit's trust module does the arithmetic: the
-# roots and the anchors go into `anchors/`, the distrusted certificates into `blocklist/`, and
-# `trust extract` writes every anchor that is not blocklisted (a blocklisted certificate loses
-# even when it is also an anchor). The module is told the directory through a user module config
+# anchors, minus the distrusted certificates. The distrust list holds SHA-256 fingerprints of the
+# DER form (modules/trust normalises them to 64 lower-case hex digits). p11-kit's trust module
+# does the arithmetic: the roots and the anchors go into `anchors/`, each certificate whose
+# fingerprint is listed (found among both) into `blocklist/`, and `trust extract` writes every
+# anchor that is not blocklisted (a blocklisted certificate loses even when it is also an anchor).
+# A listed fingerprint that matches no certificate of the roots or the anchors fails the build: a
+# typo, or a root a cacert update dropped, must not pass in silence. The module is told the directory through a user module config
 # (`x-init-reserved: paths=`) in the build directory, so the build reads no ambient path.
-# The lists arrive as JSON in GOLCONDA_CA_ANCHORS and GOLCONDA_CA_DISTRUST, one PEM certificate
-# per entry; nix/packages.nix sets them from /trust's options (lib/system.nix), and they default
+# The lists arrive as JSON in GOLCONDA_CA_ANCHORS (one PEM certificate per entry) and
+# GOLCONDA_CA_DISTRUST (one fingerprint per entry); nix/packages.nix sets them from /trust's options (lib/system.nix), and they default
 # to empty, which is cacert's roots as they are.
 #
 # The build checks the result itself, because `trust` skips a file it cannot parse without a
-# word: the certificates of the bundle must be exactly (cacert's + anchors) - distrust, as sets.
+# word: the certificates of the bundle must be exactly (cacert's + anchors) - distrusted, as sets.
 # A package that fails here fails the image build, not the boot.
 #
 # The source is cacert's directory, so there is no second pin to keep in step: a cacert update
@@ -41,7 +44,7 @@ package {
   phases = [
     {
       name = "install";
-      run = ''
+      run = (builtins.readFile ./select.nu) + ''
         let c = (ctx)
         let work = $"($env.TMPDIR? | default /tmp)/ca-store"
         let anchors = $"($work)/trust/anchors"
@@ -49,27 +52,16 @@ package {
         let config = $"($work)/config"
         for d in [$anchors $blocklist $"($config)/pkcs11/modules" $"($work)/home"] { mkdir $d }
 
-        # PEM text -> the base64 of each certificate block, whitespace removed
-        let blocks = {|text|
-          $text
-          | parse --regex '(?s)-----BEGIN CERTIFICATE-----(.*?)-----END CERTIFICATE-----'
-          | get capture0
-          | each {|b| $b | str replace --all --regex '\s+' "" }
-        }
-
         let roots = (open --raw $"($c.src)/ca-bundle.crt")
         let admin = ($env.GOLCONDA_CA_ANCHORS | from json)
         let distrust = ($env.GOLCONDA_CA_DISTRUST | from json)
-        for l in [[anchors $admin] [distrust $distrust]] {
-          for e in $l.1 {
-            if (do $blocks $e | length) != 1 {
-              error make {msg: $"ca-bundle: a ($l.0) entry is not exactly one PEM certificate"}
-            }
-          }
-        }
+        let sel = (ca-select $roots $admin $distrust)
         $roots | save $"($anchors)/mozilla.pem"
         for e in ($admin | enumerate) { $e.item | save $"($anchors)/admin-($e.index).pem" }
-        for e in ($distrust | enumerate) { $e.item | save $"($blocklist)/distrust-($e.index).pem" }
+
+        for e in ($sel.denied | enumerate) {
+          $"-----BEGIN CERTIFICATE-----\n($e.item)\n-----END CERTIFICATE-----\n" | save $"($blocklist)/distrust-($e.index).pem"
+        }
 
         $"module: ($env.GOLCONDA_CA_TRUST_MODULE)\ntrust-policy: yes\nx-init-reserved: paths=($work)/trust\n"
         | save $"($config)/pkcs11/modules/trust.module"
@@ -80,11 +72,8 @@ package {
           ^trust extract --format=pem-bundle --filter=ca-anchors --purpose=server-auth $bundle
         }
 
-        let denied = ($distrust | each {|e| do $blocks $e } | flatten)
-        let want = ((do $blocks $roots) ++ ($admin | each {|e| do $blocks $e } | flatten)
-          | where {|b| not ($b in $denied) }
-          | uniq)
-        let got = (do $blocks (open --raw $bundle))
+        let want = $sel.want
+        let got = (ca-blocks (open --raw $bundle))
         let missing = ($want | where {|b| not ($b in $got) })
         let extra = ($got | where {|b| not ($b in $want) })
         if ($missing | is-not-empty) or ($extra | is-not-empty) or (($got | length) != ($got | uniq | length)) {

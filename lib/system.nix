@@ -86,7 +86,10 @@ let
   # evaluated. A document that gives anything but lists fails there, not here.
   trustOptions = {
     caAnchors = (loadedOptions."/trust" or { }).anchors or [ ];
-    caDistrust = (loadedOptions."/trust" or { }).distrust or [ ];
+    # one form for the build (the option's type has checked the entries; a bad one throws there)
+    caDistrust = map (
+      x: if builtins.isString x then (import ../modules/lib/fingerprint.nix).normalise x else x
+    ) ((loadedOptions."/trust" or { }).distrust or [ ]);
   };
   # Without Secure Boot the kernel's built-in keyring holds the verity certificate. The config
   # names a fixed path in the kernel tree, and the build copies the certificate there

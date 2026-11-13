@@ -50,6 +50,13 @@
     maxLength = 16384;
   };
 
+  sha256Fingerprint = {
+    description = "A SHA-256 fingerprint of a DER certificate: 64 hex digits of either case, or 32 pairs separated by colons.";
+    type = "string";
+    pattern = pattern "sha256Fingerprint";
+    maxLength = 95;
+  };
+
   # modules/system/default.nix: the image id and version, one grammar each
   imageName = {
     description = "Image id: letters, digits and _ . -, starting with a letter or digit.";

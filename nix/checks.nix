@@ -274,9 +274,18 @@ in
     "touch $out"
   );
 
+  # The distrust arithmetic of the ca-bundle build (packages/ca-bundle/select.nu), on cacert's real
+  # roots: a Mozilla root and an anchor are removed by fingerprint; a fingerprint that matches no
+  # certificate, or is no fingerprint, is an error (a build that must fail is tested here).
+  ca-store-select = run "ca-store-select" [ ] ''
+    export FIXTURES=${src}/tests/fixtures/ca-store CACERT=${rp.cacert}/etc/ssl/certs/ca-bundle.crt
+    nu --no-config-file -c 'source ${src}/packages/ca-bundle/select.nu; source ${src}/tests/ca-store/select.nu'
+    touch $out
+  '';
+
   # The CA bundle that /trust's options make (docs/design/trust.md, "3. CA store"): the ca-bundle
-  # package built from an anchor, an anchor that is also distrusted, and a distrusted Mozilla
-  # root, and read by python for the set arithmetic and by OpenSSL for the verdict on a server
+  # package built from an anchor, an anchor that is also distrusted (by fingerprint), and a
+  # distrusted Mozilla root (by fingerprint), and read by python for the set arithmetic and by OpenSSL for the verdict on a server
   # certificate of each CA (tests/ca-store). The default bundle is the package test
   # (tests/packages/ca-bundle). Nothing is booted; the boot test's tls-* markers do that.
   ca-store =
@@ -290,10 +299,14 @@ in
           (fixture "anchor-ca.crt")
           (fixture "distrusted-ca.crt")
         ];
-        caDistrust = [
-          (fixture "distrusted-ca.crt")
-          (fixture "mozilla-root.crt")
-        ];
+        caDistrust =
+          let
+            fp = builtins.fromJSON (fixture "fingerprints.json");
+          in
+          [
+            fp.distrusted-ca
+            fp.mozilla-root
+          ];
       };
     in
     run "ca-store"

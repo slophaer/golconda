@@ -4,9 +4,12 @@
 usage: check.py FIXTURES CACERT_BUNDLE BUNDLE OPENSSL
 
 BUNDLE is the ca-bundle package built from the anchors and the distrust list that
-nix/checks.nix names (the fixtures' anchor-ca, distrusted-ca; distrusted-ca and
-mozilla-root). Each check prints PASS or FAIL with its name; the exit status is 1 on any FAIL.
+nix/checks.nix names (the fixtures' anchor-ca, distrusted-ca as anchors; the fingerprints of
+distrusted-ca and mozilla-root as the distrust list). Each check prints PASS or FAIL with its name; the exit status is 1 on any FAIL.
 """
+import base64
+import hashlib
+import json
 import os
 import re
 import subprocess
@@ -40,6 +43,12 @@ mozilla = blocks(cacert)
 got = blocks(bundle)
 anchor, distrusted, root = one("anchor-ca.crt"), one("distrusted-ca.crt"), one("mozilla-root.crt")
 
+fingerprints = json.load(open(os.path.join(fixtures, "fingerprints.json")))
+for name, b in [("anchor-ca", anchor), ("distrusted-ca", distrusted), ("mozilla-root", root)]:
+    check(
+        "fingerprints.json holds the SHA-256 of the DER of %s.crt" % name,
+        fingerprints[name] == hashlib.sha256(base64.b64decode(b)).hexdigest(),
+    )
 check("the Mozilla root to distrust is in cacert (the test is not vacuous)", root in mozilla)
 check("an added anchor is in the bundle", anchor in got)
 check("a distrusted Mozilla root is not in the bundle", root not in got)

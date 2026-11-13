@@ -80,6 +80,10 @@ in
   # The bracket holds literal tab, CR and LF characters, which both dialects read alike.
   pemCertificate = "[ \t\r\n]*-----BEGIN CERTIFICATE-----[ \t\r\n]*[A-Za-z0-9+/][A-Za-z0-9+/= \t\r\n]*-----END CERTIFICATE-----[ \t\r\n]*";
 
+  # A SHA-256 fingerprint, as /trust.distrust takes it: 64 hex digits of either case, or the same
+  # as 32 bytes with a colon between each (the way `openssl x509 -fingerprint` prints it).
+  sha256Fingerprint = "([0-9A-Fa-f]{64}|[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){31})";
+
   # An IANA zone name, a path under /usr/share/zoneinfo such as Europe/Berlin.
   timezone = "[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*";
 

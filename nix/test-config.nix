@@ -55,10 +55,15 @@ in
         (ca "anchor-ca.crt")
         (ca "distrusted-ca.crt")
       ];
-      distrust = [
-        (ca "distrusted-ca.crt")
-        (ca "mozilla-root.crt")
-      ];
+      # by SHA-256 fingerprint (tests/fixtures/ca-store/fingerprints.json; checks.ca-store checks it)
+      distrust =
+        let
+          fp = builtins.fromJSON (ca "fingerprints.json");
+        in
+        [
+          fp.distrusted-ca
+          fp.mozilla-root
+        ];
     };
   # cloud metadata: QEMU's DMI names no cloud, so no import runs and no unit fails; a
   # boot test that fakes a cloud's DMI and endpoint imports from it

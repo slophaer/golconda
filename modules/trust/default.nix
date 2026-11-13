@@ -11,14 +11,17 @@
 #! `L /etc/ssl/certs/ca-certificates.crt` (libcurl is built with CURL_CA_BUNDLE set to it). An
 #! admin file at either path wins, as with every `L` line. No client reads another bundle.
 #!
-#! An entry of `anchors` or `distrust` is the text of one PEM certificate (public data, not a
-#! secret). A certificate in both lists is distrusted. Distrusting a Mozilla root removes it from
-#! the bundle; the other roots stay. A duplicate entry is an error. The build checks the result:
-#! the bundle holds exactly the roots plus the anchors minus the distrusted ones.
+#! An entry of `anchors` is the text of one PEM certificate (public data, not a secret). An entry
+#! of `distrust` is the SHA-256 fingerprint of a certificate's DER form: 64 hex digits, colons
+#! between the bytes optional, any case. A certificate in both lists is distrusted. Distrusting a
+#! Mozilla root removes it from the bundle; the other roots stay. A duplicate entry is an error
+#! (a fingerprint is compared in its normal form). The build checks the result: the bundle holds
+#! exactly the roots plus the anchors minus the distrusted ones, and a fingerprint that matches no
+#! certificate of the roots or the anchors fails the build, so a typo does not pass.
 #!
 #! Leaf revocation is not covered: OpenSSL has no revocation list shared with other TLS stacks.
-#! Run-time anchors (a unit that extracts from a directory in `/etc` or `/var`) are not built;
-#! see `docs/design/trust.md`, "CA store".
+#! Run-time anchors (a unit that extracts from a directory in `/etc` or `/var`) are not built, by
+#! design: a new release is the way; see `docs/design/trust.md`, "CA store".
 { types, ... }:
 let
   inherit (builtins)
@@ -50,6 +53,20 @@ let
       null
   );
 
+  # A SHA-256 fingerprint of a DER certificate, the way `openssl x509 -noout -fingerprint -sha256`
+  # prints it (colons between the bytes) or as bare hex; either case. `fingerprint.normalise` is
+  # the one form the build gets: 64 lower-case hex digits.
+  sha256Fingerprint = types.typedef' "sha256Fingerprint" (
+    v:
+    if !builtins.isString v then
+      "Expected a SHA-256 fingerprint (a string), got ${builtins.typeOf v}"
+    else if match grammar.sha256Fingerprint v == null then
+      "Expected a SHA-256 fingerprint of a certificate: 64 hex digits, or 32 pairs of hex digits separated by colons; got '${v}'"
+    else
+      null
+  );
+  inherit (import ../lib/fingerprint.nix) normalise;
+
   duplicates =
     xs:
     attrNames (
@@ -73,9 +90,9 @@ in
       description = "Certificates to trust besides Mozilla's roots, each the text of one PEM certificate. They go into the bundle at build time.";
     };
     distrust = {
-      type = types.listOf pemCertificate;
+      type = types.listOf sha256Fingerprint;
       default = [ ];
-      description = "Certificates to refuse, each the text of one PEM certificate: the same certificate is removed from the bundle, whether it is a Mozilla root or one of `anchors`.";
+      description = "Certificates to refuse, each the SHA-256 fingerprint of its DER form (64 hex digits, colons between the bytes optional, any case). The certificate is removed from the bundle, whether it is a Mozilla root or one of `anchors`. A fingerprint that matches no certificate fails the build.";
     };
   };
 
@@ -84,7 +101,7 @@ in
     let
       p = results.pkgs.pkgs;
       bundle = "/usr/share/ca-certificates/ca-bundle.crt";
-      dup = duplicates options.anchors ++ duplicates options.distrust;
+      dup = duplicates options.anchors ++ duplicates (map normalise options.distrust);
     in
     if dup != [ ] then
       throw "golconda: /trust lists the same certificate twice; a duplicate is an error, not a merge"
