@@ -346,6 +346,11 @@ firmware, and the ESP holds them only inside the signed `.auth` files. The test 
 (`packages.<system>.image-smoke*`) sign with throwaway keys made in the store (`throwawayKeys`) and
 link only their public halves as `keys/`.
 
+Nothing private in a checkout enters the store either. Nix reads a checkout's files where they lie,
+and a store path is world-readable, so a key or a token beside the source would leak with it. The
+checks' source is the files git tracks, with their working-tree contents (`nix/source.nix`): an
+untracked or ignored file stays out.
+
 Rotation and recovery:
 
 - **The ESP loader**: a new `db` key reaches the ESP with the next release. On that release's first

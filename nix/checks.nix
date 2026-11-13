@@ -15,8 +15,6 @@ let
   inherit (builtins)
     attrNames
     concatStringsSep
-    elem
-    substring
     toFile
     ;
   dev = import ./dev { inherit sources; } set;
@@ -43,26 +41,8 @@ let
   # run NAME TOOLS SCRIPT: a check, built on the seed's shell (nix/run.nix)
   run = name: import ./run.nix set "check-${name}";
 
-  src = builtins.path {
-    path = self;
-    name = "golconda-src";
-    # the same set .gitignore excludes: generated docs, review scratch, results, direnv
-    filter =
-      p: _:
-      let
-        b = baseNameOf p;
-        ignored = [
-          ".git"
-          ".review"
-          ".direnv"
-          "book"
-          "generated"
-          # cargo's build tree (cli/target)
-          "target"
-        ];
-      in
-      !(elem b ignored) && substring 0 6 b != "result";
-  };
+  # the files git tracks, nothing untracked or ignored (nix/source.nix)
+  src = import ./source.nix self;
 
   # the generated Markdown (lib/module-docs.nix): the pages by file name, the SUMMARY lines
   md =

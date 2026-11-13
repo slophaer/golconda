@@ -26,8 +26,10 @@ if hits=$(git ls-files -z | xargs -0 grep -nE \
   exit 1
 fi
 # eval-jobs prints one JSON line per job and exits 0 even when jobs failed (a lint finding is
-# an error): fail on any job that carries one
-jobs=$(iets eval-jobs --force-recurse --no-instantiate \
+# an error): fail on any job that carries one. --impure: the checks' source is the files git
+# tracks (nix/source.nix), and fetchGit reads a working tree only in an impure evaluation; the
+# purity lints (impure-builtin, unhashed-fetch) still apply
+jobs=$(iets eval-jobs --impure --force-recurse --no-instantiate \
   --expr 'let f = import ./default.nix; in { inherit (f) packages checks devShells formatter; }')
 if failed=$(printf '%s\n' "$jobs" | grep '"error":'); then
   echo "lint: eval-jobs reported errors:" >&2
@@ -45,6 +47,8 @@ nix-instantiate --readonly-mode --option restrict-eval true --option allowed-uri
 tests/errors/run.sh
 # scripts/make-keys: layout, modes, certificate extensions (builds its tools through the daemon)
 tests/make-keys/run.sh
+# the checks' source holds the tracked files only: no untracked or ignored file reaches the store
+tests/source/run.sh
 # the flake template: `nix flake update golconda` moves the lock, and the flake evaluates (no build)
 tests/flake-template/run.sh
 # The pinned iets cannot resolve outputs of dynamic package-test derivations.

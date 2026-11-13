@@ -1,6 +1,7 @@
 # The command line (`golconda`: vars and release), built from this directory with repkgs' Rust
 # toolchain. Not part of an image: it runs where operators work (cli/README.md).
-# The version is Cargo.toml's; the source is this directory without the build tree and packages.
+# The version is Cargo.toml's; the source is the crate's files by name, so nothing else in the
+# directory (the build tree, a stray key or token) reaches the store.
 {
   package,
   buildPkgs,
@@ -11,13 +12,16 @@ package {
   source = builtins.path {
     path = ./.;
     name = "golconda-cli-source";
-    # checks/ holds packages of the command line's checks, not source
+    # the top level by name; checks/ holds packages of the command line's checks, not source
     filter =
       path: _:
-      !builtins.elem (baseNameOf path) [
-        "target"
-        "package.nix"
-        "checks"
+      dirOf path != toString ./.
+      || builtins.elem (baseNameOf path) [
+        "Cargo.lock"
+        "Cargo.toml"
+        "README.md"
+        "src"
+        "tests"
       ];
   };
   uses = [ "cargo" ];
