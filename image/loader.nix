@@ -10,12 +10,21 @@
   # The menu policy, loader.conf(5) of systemd v262.1. systemd-boot reads `\loader\loader.conf`
   # at the root of the ESP (src/boot/boot.c config_load_defaults), not under EFI/. The UKI under
   # EFI/Linux is found without an entry line. The menu does not wait and the editor is off: an
-  # editor would let anyone at the console change the measured cmdline.
+  # editor would let anyone at the console change the measured cmdline. In Setup Mode, `force`
+  # enrols PK, KEK, db and dbx from enrolPath, also on hardware, and resets the machine; on
+  # hardware it first warns for 15 seconds (a key aborts), in a virtual machine not
+  # (src/boot/secure-boot.c, loader.conf(5); docs/design/bootloader.md). Outside Setup Mode the
+  # files are not read.
   conf = ''
     # Golconda: image/loader.nix; docs/design/bootloader.md.
     timeout 0
     editor no
+    secure-boot-enroll force
   '';
+
+  # where the signer puts the Secure Boot variables (PK.auth, KEK.auth, db.auth, dbx.auth; the key
+  # set's secureboot/auth, lib/image/enrol.nu): the set systemd-boot calls `auto`
+  enrolPath = "loader/keys/auto";
 
   # where loader.conf goes, from the root of the ESP
   confPath = "loader/loader.conf";

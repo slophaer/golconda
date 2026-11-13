@@ -134,6 +134,8 @@ let
     stepArgs
     // {
       inherit (sys) usrTree;
+      inherit (sys.composed) secureBoot;
+      microsoftKeys = sys.composed.secureBootMicrosoftKeys;
       inherit initrd signer;
       publicKeys = {
         inherit dbCert pcrPublicKey;

@@ -294,6 +294,52 @@ in
           touch $out
         '';
 
+      # A release needs no PK or KEK key: make-keys signed the enrolment files once. The test
+      # image signed with a copy of its key set without secureboot/PK.key and KEK.key is the same
+      # release, file for file.
+      release-without-pk-kek =
+        let
+          noPkKek = import ./run.nix set "golconda-throwaway-keys-no-pk-kek" [ ] ''
+            cp -R ${throwawayKeys} $out
+            chmod -R u+w $out
+            rm $out/secureboot/PK.key $out/secureboot/KEK.key
+          '';
+          a = smokeTest.signed;
+          b = smokeTest.signWithTestKeys {
+            keys = noPkKek;
+            pcrKeys = throwawayKeys;
+            indexKeys = throwawayKeys;
+          };
+        in
+        import ./run.nix set "check-release-without-pk-kek" [ ] ''
+          [ ! -e ${noPkKek}/secureboot/PK.key ] && [ ! -e ${noPkKek}/secureboot/KEK.key ]
+          cd ${a}
+          rc=0
+          for f in $(find . -type f | sort); do
+            [ "$f" = ./disk.json ] && continue # names the build's own directories
+            cmp "$f" ${b}/"$f" || rc=1
+          done
+          [ "$(cd ${b} && find . | sort)" = "$(find . | sort)" ] || { echo "other files"; rc=1; }
+          [ $rc = 0 ] || exit 1
+          touch $out
+        '';
+
+      # The test image whose disk enrols the key set's certificates alone, without Microsoft's
+      # (/system.secureBootMicrosoftKeys = false): boot-test --auto-enrol --no-microsoft-keys
+      image-smoke-test-own-keys =
+        (testImage {
+          config =
+            let
+              c = testConfig { version = "20261031.1"; };
+            in
+            c
+            // {
+              "/system" = c."/system" // {
+                secureBootMicrosoftKeys = false;
+              };
+            };
+        }).smoke;
+
       # The test image without Secure Boot, and its next release for --next
       image-smoke-test-nosb =
         (testImage {

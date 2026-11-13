@@ -162,9 +162,12 @@ in
     in
     # loader.conf(5), systemd v262.1: `editor` takes a boolean; the UKI under EFI/Linux is
     # found without an entry line
+    # `secure-boot-enroll force` enrols loader/keys/auto in Setup Mode, also on hardware
+    # (src/boot/secure-boot.c)
     settings == [
       "timeout 0"
       "editor no"
+      "secure-boot-enroll force"
     ]
     # one text: the disk step's and the one /base installs in /usr
     && conf == (import ../../image).loader.conf
@@ -175,7 +178,17 @@ in
         names.uefi = "x64";
       };
       pkgs.systemd = "/systemd";
-      l = imageLib.loaderParams { inherit platform pkgs; };
+      params =
+        secureBoot: microsoftKeys:
+        imageLib.loaderParams {
+          inherit
+            platform
+            pkgs
+            secureBoot
+            microsoftKeys
+            ;
+        };
+      l = params true true;
       p = "/usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed";
     in
     # bootctl prefers <name>.efi.signed to the unsigned <name>.efi beside it
@@ -190,6 +203,14 @@ in
         "EFI/BOOT/BOOTX64.EFI"
       ]
     && l.conf == imageLib.loaderConf
+    # the enrolment files go where systemd-boot looks for the set named `auto`: the key set's
+    # set with Microsoft's keys by default, the one without them on request, and none for an
+    # image without Secure Boot, whose firmware must not start checking by itself
+    && l.enrolPath == "loader/keys/auto"
+    && l.enrol
+    && l.enrolSet == "microsoft"
+    && (params true false).enrolSet == "golconda"
+    && !(params false true).enrol
   ))
   (check "image: the signer's parameters come from the version, not from a key" (
     let

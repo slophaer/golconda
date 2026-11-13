@@ -139,6 +139,11 @@ in
       default = true;
       description = "Whether the host's firmware enforces Secure Boot with the image's db key. When false, the kernel carries the db certificate in its built-in keyring and checks the /usr signature itself; the firmware then checks nothing, so whoever can write the ESP can replace the UKI (docs/design/trust.md). For a host without Secure Boot, such as Hetzner Cloud.";
     };
+    secureBootMicrosoftKeys = {
+      type = types.bool;
+      default = true;
+      description = "Whether the Secure Boot keys the disk enrols in Setup Mode include Microsoft's: KEK CA 2011 and KEK 2K CA 2023 in KEK, UEFI CA 2011, UEFI CA 2023 and Option ROM UEFI CA 2023 in db, and Microsoft's dbx. On hardware, option ROMs (graphics, network, storage) and shims are signed by the Microsoft UEFI CA; without it the firmware refuses them. When false, PK, KEK and db hold the deployment's certificates only. Only for an image with secureBoot; the key set's secureboot/auth/microsoft or secureboot/auth/golconda (docs/design/bootloader.md).";
+    };
     components = {
       type = types.listOf fragmentT;
       default = [ ];
@@ -171,6 +176,7 @@ in
         version
         updateSource
         secureBoot
+        secureBootMicrosoftKeys
         ;
     };
 }

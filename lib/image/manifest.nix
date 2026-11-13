@@ -1,6 +1,7 @@
 # lib/image/manifest.nix: the unsigned outputs of the image chain, what the signer takes.
 #
-# manifest { imageId; version; platform; buildSystem; pkgs; usrTree; initrd; signer; publicKeys; }
+# manifest { imageId; version; platform; buildSystem; pkgs; usrTree; initrd; signer; publicKeys;
+#   secureBoot; microsoftKeys; }
 #   → derivation with
 #   manifest.json   every input of the signer (lib/image/sign.nu): the /usr tree, the initrd, the
 #                   kernel, systemd's stub and unsigned systemd-boot (store paths, so they are
@@ -36,6 +37,8 @@ in
       usrTree,
       signer,
       publicKeys,
+      secureBoot,
+      microsoftKeys,
       ...
     }:
     common.nuDerivation {
@@ -52,7 +55,14 @@ in
           inherit imageId version;
           # a derivation: the JSON gets its path, Nix code its attributes (tests/real-packages)
           inherit usrTree;
-          loader = loader.loaderParams { inherit platform pkgs; };
+          loader = loader.loaderParams {
+            inherit
+              platform
+              pkgs
+              secureBoot
+              microsoftKeys
+              ;
+          };
           erofs = erofs.erofsParams { inherit imageId version; };
           verity = verity.verityParams { inherit imageId version; };
           uki = uki.ukiParams args;

@@ -9,8 +9,9 @@
 # The steps, in order: check that each private key is the half of the public key the image
 # carries; sign systemd-boot (db key); put it into a copy of the /usr tree; mkfs.erofs; the
 # verity hash tree and the root hash signature (db key); the UKI with its Secure Boot signature
-# (db key) and its .pcrsig (PCR key); the ESP and systemd-repart; SHA256SUMS and its signature
-# (release key). Each step is deterministic for the same inputs and keys: the times (the
+# (db key) and its .pcrsig (PCR key); the ESP, with the key set's Secure Boot enrolment files
+# (written once by scripts/make-keys; no PK or KEK key is read), and systemd-repart; SHA256SUMS
+# and its signature (release key). Each step is deterministic for the same inputs and keys: the times (the
 # signing time of systemd-sbsign too, through SOURCE_DATE_EPOCH) and identifiers come from the
 # version, and RSA PKCS#1 v1.5 and Ed25519 signatures do not draw random numbers.
 #
@@ -31,6 +32,7 @@ use verity.nu
 use loader.nu
 use uki.nu
 use disk.nu
+use enrol.nu
 
 # private-keys DB PCR INDEX: the private keys of the three key sets (each a directory; the same
 # one unless a rotation keeps the PCR or the release key, docs/reference/release.md). Each key is
@@ -168,6 +170,22 @@ def pgp-fingerprint [file: string, kind: string]: nothing -> string {
   $rows | where {|l| $l starts-with "fpr:" } | first | split row ':' | get 9
 }
 
+# enrol-files MANIFEST SET DBCERT: the enrolment files of the db key set SET for the ESP
+# (secureboot/auth/microsoft or golconda, the manifest's loader.enrolSet), checked against SET's
+# PK.crt and KEK.crt and the image's db certificate DBCERT (lib/image/enrol.nu check-set); none
+# for an image without Secure Boot. A Secure Boot image needs them: a set without them was made
+# before scripts/make-keys wrote them.
+def enrol-files [m: record, set: string, db_cert: string]: nothing -> list<string> {
+  if not $m.loader.enrol {
+    log "loader/keys/auto: none, the image is for a host without Secure Boot"
+    return []
+  }
+  let sb = ($set | path join secureboot | path expand)
+  let files = (enrol check-set $"($sb)/auth/($m.loader.enrolSet)" {pk: $"($sb)/PK.crt" kek: $"($sb)/KEK.crt" db: $db_cert})
+  log $"loader/keys/auto: ($m.loader.enrolSet): ($files | path basename | str join ', ')"
+  $files
+}
+
 # sign UNSIGNED KEYSETS OUT [MODULE]: the release of the unsigned outputs UNSIGNED (a directory
 # with manifest.json), signed with KEYSETS {db pcr index} (key set directories), written to OUT.
 # OUT may exist, but must not hold a release yet. MODULE is the PKCS#11 module of a token that
@@ -233,7 +251,8 @@ export def main [unsigned: string, sets: record, out: string, pkcs11_module?: st
   let uuids = (disk partition-uuids $roothash)
   log $"usr-a ($uuids.usr), usr-a-verity ($uuids.verity)"
   let esp = $"($work)/esp"
-  disk esp $esp $signed_loader $uki $m.loader $m.disk.epoch
+  let auto = (enrol-files $m $sets.db $pub.dbCert)
+  disk esp $esp $signed_loader $uki $m.loader $m.disk.epoch $auto
   disk make $out $m.disk {esp: $esp usr: $usr verity: $hash sig: $sig} $uuids
 
   # the release under the names the sysupdate sources match: the data and hash files carry the

@@ -1,6 +1,7 @@
 # lib/image/loader.nix: systemd-boot, signed for Secure Boot, in /usr and on the ESP.
 #
-# loaderParams { platform; pkgs; } → the manifest's `loader` (lib/image/manifest.nix):
+# loaderParams { platform; pkgs; secureBoot; microsoftKeys; } → the manifest's `loader`
+# (lib/image/manifest.nix):
 #   unsigned   systemd's systemd-boot<uefi>.efi, which the signer signs with the db key
 #              (lib/image/loader.nu, systemd-sbsign)
 #   usrPath    lib/systemd/boot/efi/systemd-boot<uefi>.efi.signed, relative to the /usr tree:
@@ -8,6 +9,12 @@
 #              golconda-loader-update copies to the ESP (modules/base)
 #   espPaths   bootctl's layout on the ESP: the primary copy and the removable-media path
 #   conf, confPath  image/loader.nix's loader.conf and where systemd-boot reads it
+#   enrol      whether the signer copies the key set's enrolment files to enrolPath: only for an
+#              image whose firmware enforces Secure Boot (/system.secureBoot); an image for a host
+#              without it must not turn the firmware's checks on by itself
+#   enrolSet   which of the key set's secureboot/auth sets: `microsoft` (with Microsoft's keys,
+#              /system.secureBootMicrosoftKeys) or `golconda`
+#   enrolPath  image/loader.nix's loader/keys/auto
 #
 # One signature, two places: the signer puts the signed file into its copy of the /usr tree
 # before mkfs.erofs, and the same bytes on the ESP. A release therefore ships its loader inside
@@ -37,7 +44,12 @@ in
   loaderConf = image.loader.conf;
 
   loaderParams =
-    { platform, pkgs }:
+    {
+      platform,
+      pkgs,
+      secureBoot,
+      microsoftKeys,
+    }:
     let
       uefi = platform.names.uefi;
     in
@@ -49,6 +61,13 @@ in
         "EFI/systemd/systemd-boot${uefi}.efi"
         "EFI/BOOT/${removableMediaName uefi}"
       ];
-      inherit (image.loader) conf confPath usrConfPath;
+      inherit (image.loader)
+        conf
+        confPath
+        usrConfPath
+        enrolPath
+        ;
+      enrol = secureBoot;
+      enrolSet = if microsoftKeys then "microsoft" else "golconda";
     };
 }
