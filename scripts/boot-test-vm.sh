@@ -185,6 +185,58 @@ check_auto_enrol() {
   verdict "dbx-enrolled (dbx is Microsoft's revocation list: $([ "$M" = + ] && echo yes || echo none))" $RC
 }
 
+# test_no_reenrol: the machine's later life, after the first good boot (--auto-enrol, run last:
+# the machine does not boot afterwards). Someone who can write the ESP puts enrolment files back
+# at loader/keys/auto (here the key set's own, which the guest gets over ssh), and the firmware is
+# in Setup Mode again (the empty variable store, as after a CMOS clear). systemd-boot must enrol
+# nothing: /usr's loader.conf, on the ESP since the first good boot, says secure-boot-enroll off.
+# It starts the UKI, and the kernel reports Secure Boot off; that boot then stops at switch-root,
+# as every boot without the db does (docs/proven.md, Not proven).
+test_no_reenrol() {
+  echo ""
+  echo "=== Setup Mode again, enrolment files back on the ESP ==="
+  AUTH=$(real_path "$KEYS_DIR/secureboot/auth")/$([ "$MICROSOFT_KEYS" = 1 ] && echo microsoft || echo golconda)
+  RC=0
+  SAVED_TIMEOUT=$TIMEOUT
+  if ! guest true 2>/dev/null; then
+    # not up: --next ends in the firmware menu. Start the machine again, keys as they are
+    echo "the guest does not answer: starting it again"
+    stop_qemu
+    SERIAL_LOG=$WORKDIR/serial-before-setup-mode.log
+    TIMEOUT=240
+    rotate_tpm
+    start_qemu
+    wait_for_ssh "" || RC=1
+  fi
+  guest mkdir -p /boot/loader/keys/auto || RC=1
+  for f in "$AUTH"/*.auth; do
+    guest "cat > /boot/loader/keys/auto/${f##*/}" < "$f" || RC=1
+  done
+  guest sync || RC=1
+  guest ls /boot/loader/keys/auto 2>&1 || true
+  stop_qemu
+  cp "$OVMF_VARS" "$VARS"
+  chmod u+w "$VARS"
+  SERIAL_LOG=$WORKDIR/serial-setup-mode-again.log
+  TIMEOUT=120
+  rotate_tpm
+  start_qemu
+  TIMEOUT=$SAVED_TIMEOUT
+  # the kernel's line on Secure Boot comes early; with `force` systemd-boot would have enrolled and
+  # reset before it, and the kernel would say enabled
+  W=0
+  while qemu_running && [ "$W" -lt 120 ] && ! grep -aq 'Secure boot \(dis\|en\)abled' "$SERIAL_LOG"; do
+    sleep 1
+    W=$((W + 1))
+  done
+  stop_qemu
+  tr -d '\033\r' < "$SERIAL_LOG" | grep -a 'Secure Boot keys\|Secure boot \(dis\|en\)abled\|Linux version' | head -5 || true
+  ! grep -aqF 'Custom Secure Boot keys successfully enrolled' "$SERIAL_LOG" || RC=1
+  grep -aq 'Linux version' "$SERIAL_LOG" || RC=1
+  grep -aq 'Secure boot disabled' "$SERIAL_LOG" || RC=1
+  verdict "no-reenrol (Setup Mode again with loader/keys/auto back on the ESP: systemd-boot enrolled nothing and started the UKI, Secure Boot off)" $RC
+}
+
 # --- start TPM ---
 start_tpm() {
   TPM_DIR="$WORKDIR/tpm"

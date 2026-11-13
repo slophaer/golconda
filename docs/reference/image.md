@@ -458,14 +458,18 @@ variables from efivarfs over ssh: `PK` is the key set's `secureboot/PK.crt`; `KE
 CA 2011, UEFI CA 2023 and Option ROM UEFI CA 2023, and neither Windows CA; `dbx` is Microsoft's list
 (the files of `packages/secureboot-objects`). With `--no-microsoft-keys`, for
 `image-smoke-test-own-keys`, `KEK` and `db` hold none of Microsoft's certificates and `dbx` is
-empty. Then the ssh battery runs as with `--secure-boot`.
+empty. Then the ssh battery runs as with `--secure-boot`. Last, `no-reenrol`: the harness writes the
+enrolment files back to `loader/keys/auto` over ssh, stops QEMU, empties the variable store (Setup
+Mode again, as after a CMOS clear) and boots: the serial log must have no enrolment message, the
+kernel's line, and `Secure boot disabled`. That boot stops at switch-root, as any boot without the
+`db` does, so it is the run's last.
 
 The script creates a 40 GiB qcow2 overlay (room for the root partition), copies the OVMF variable
 store, passes the host name `boot-test` as a credential (`-smbios type=11,...`, not with
 `--esp-creds` or `--imds`), and logs the serial console to a file. QEMU runs with `-display none`
 and no monitor or QMP socket: the harness reaches the guest through the serial log and ssh, and
-nothing else. QEMU runs with `-no-reboot` unless `--tpm`, `--next` or `--factory-reset` is given,
-because those reboot the guest.
+nothing else. QEMU runs with `-no-reboot` unless `--tpm`, `--next`, `--factory-reset` or
+`--auto-enrol` is given, because those reboot the guest.
 
 ### The markers
 
@@ -533,6 +537,8 @@ update, and after a rotation:
 | `loader-update-not-run` | it did not run on a blessed boot (used after a rotation)                                |
 | `loader-matches-usr`    | `EFI/systemd/systemd-bootx64.efi` and `EFI/BOOT/BOOTX64.EFI` are `/usr`'s signed loader |
 | `loader-conf-in-effect` | `bootctl status` reads `loader/loader.conf`, and it is `/usr/lib/golconda/loader.conf`  |
+| `enrol-disarmed`        | that `loader.conf` says `secure-boot-enroll off`: the first disk's `force` is replaced  |
+| `enrol-keys-removed`    | with `--secure-boot`: the ESP has no `loader/keys/auto`                                 |
 | `boot-update-off`       | `systemd-boot-update.service` was skipped by its condition                              |
 
 With `--tpm` (and `--ssh-test`):

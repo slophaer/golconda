@@ -155,22 +155,30 @@ in
     && hasInfix "IMAGE_ID=\"a b\\\"c\\$d\\`e\\\\f\"\n" os
     && builtins.all (l: builtins.match "[A-Z_]+=\".*\"" l != null) lines
   ))
-  (check "image: loader.conf turns the editor off and does not wait" (
+  (check "image: loader.conf turns the editor off, does not wait, enrols on the first start only" (
     let
-      conf = imageLib.loaderConf;
-      settings = filter (l: l != "" && !(hasPrefix "#" l)) (filter isString (split "\n" conf));
+      settings = conf: filter (l: l != "" && !(hasPrefix "#" l)) (filter isString (split "\n" conf));
+      image = (import ../../image).loader;
     in
     # loader.conf(5), systemd v262.1: `editor` takes a boolean; the UKI under EFI/Linux is
-    # found without an entry line
-    # `secure-boot-enroll force` enrols loader/keys/auto in Setup Mode, also on hardware
-    # (src/boot/secure-boot.c)
-    settings == [
+    # found without an entry line. The copy in /usr, which golconda-loader-update puts on the
+    # ESP after the first good boot, enrols nothing: `off` (the default `if-safe` enrols in a
+    # virtual machine, `manual` offers menu entries)
+    settings imageLib.loaderConf == [
       "timeout 0"
       "editor no"
-      "secure-boot-enroll force"
+      "secure-boot-enroll off"
     ]
-    # one text: the disk step's and the one /base installs in /usr
-    && conf == (import ../../image).loader.conf
+    # the first disk's ESP: `force` enrols loader/keys/auto in Setup Mode, also on hardware
+    # (src/boot/secure-boot.c)
+    &&
+      settings image.firstConf == [
+        "timeout 0"
+        "editor no"
+        "secure-boot-enroll force"
+      ]
+    # one text: the one /base installs in /usr and golconda-loader-update keeps on the ESP
+    && imageLib.loaderConf == image.conf
   ))
   (check "image: the signer puts the signed loader where bootctl looks, and on the ESP" (
     let
@@ -203,6 +211,9 @@ in
         "EFI/BOOT/BOOTX64.EFI"
       ]
     && l.conf == imageLib.loaderConf
+    # the first disk's ESP arms the enrolment only where there is something to enrol
+    && l.firstConf == (import ../../image).loader.firstConf
+    && (params false true).firstConf == imageLib.loaderConf
     # the enrolment files go where systemd-boot looks for the set named `auto`: the key set's
     # set with Microsoft's keys by default, the one without them on request, and none for an
     # image without Secure Boot, whose firmware must not start checking by itself

@@ -27,9 +27,10 @@
 #! `/usr/lib/golconda/golconda-loader-update` once a counted boot is blessed
 #! (wanted by and Requisite= `systemd-bless-boot.service`). It copies the
 #! signed systemd-boot in `/usr/lib/systemd/boot/efi/` (the image builder puts
-#! it there) and `/usr/lib/golconda/loader.conf` to the ESP when their content
-#! differs; `systemd-boot-update.service` is turned off by a drop-in
-#! (docs/design/bootloader.md).
+#! it there) and `/usr/lib/golconda/loader.conf`, which enrols no Secure Boot
+#! keys, to the ESP when their content differs, and removes the ESP's enrolment
+#! files (`loader/keys/auto`) once Secure Boot is on; `systemd-boot-update.service`
+#! is turned off by a drop-in (docs/design/bootloader.md).
 #!
 #! Links, besides the `/usr/bin` links the image builder makes for the packages:
 #! - farm links for systemd's own directories (`/usr/lib/systemd`,

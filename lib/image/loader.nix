@@ -8,7 +8,10 @@
 #              the name bootctl prefers to the unsigned file beside it and the file
 #              golconda-loader-update copies to the ESP (modules/base)
 #   espPaths   bootctl's layout on the ESP: the primary copy and the removable-media path
-#   conf, confPath  image/loader.nix's loader.conf and where systemd-boot reads it
+#   conf, confPath  image/loader.nix's loader.conf (the copy in /usr, which enrols nothing) and
+#              where systemd-boot reads it
+#   firstConf  the loader.conf of the first disk's ESP: image/loader.nix's firstConf, armed to
+#              enrol enrolPath, for an image that carries the files (enrol); else conf
 #   enrol      whether the signer copies the key set's enrolment files to enrolPath: only for an
 #              image whose firmware enforces Secure Boot (/system.secureBoot); an image for a host
 #              without it must not turn the firmware's checks on by itself
@@ -68,6 +71,7 @@ in
         enrolPath
         ;
       enrol = secureBoot;
+      firstConf = if secureBoot then image.loader.firstConf else image.loader.conf;
       enrolSet = if microsoftKeys then "microsoft" else "golconda";
     };
 }

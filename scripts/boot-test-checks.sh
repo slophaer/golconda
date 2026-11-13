@@ -276,7 +276,8 @@ check_unsealed() {
 
 # test_loader LABEL COUNTED: on a counted boot (COUNTED=1) golconda-loader-update.service ran
 # after bless-boot, on a blessed one (0) it did not; the ESP's two copies of systemd-boot are
-# /usr's signed file, and the loader.conf in effect is /usr's
+# /usr's signed file, the loader.conf in effect is /usr's and enrols nothing, and with Secure Boot
+# the ESP holds no enrolment files
 test_loader() {
   echo ""
   echo "=== boot loader ($1) ==="
@@ -318,6 +319,19 @@ test_loader() {
   echo "$CONF_LINE" | grep -q "/loader/loader.conf$" || RC=1
   [ "$(guest_hash /boot/loader/loader.conf)" = "$(guest_hash /usr/lib/golconda/loader.conf)" ] || RC=1
   verdict "loader-conf-in-effect (ESP loader/loader.conf = /usr/lib/golconda/loader.conf)" $RC
+
+  # the enrolment is armed on the first disk's ESP only: /usr's loader.conf, which
+  # golconda-loader-update puts on the ESP, enrols nothing, and once Secure Boot is on the
+  # enrolment files are gone (docs/design/bootloader.md, Enrolment)
+  RC=0
+  guest cat /boot/loader/loader.conf 2>/dev/null | grep -qx 'secure-boot-enroll off' || RC=1
+  verdict "enrol-disarmed (the loader.conf in effect says secure-boot-enroll off)" $RC
+  if [ "$SECURE_BOOT" = 1 ]; then
+    KA=$(guest '[ -e /boot/loader/keys/auto ] && echo present || echo absent' 2>&1) || true
+    echo "loader/keys/auto: $KA"
+    RC=0; [ "$KA" = absent ] || RC=1
+    verdict "enrol-keys-removed (Secure Boot is on: loader/keys/auto is gone from the ESP)" $RC
+  fi
 
   CR=$(guest systemctl show -P ConditionResult systemd-boot-update.service 2>&1) || true
   RC=0; [ "$CR" = no ] || RC=1

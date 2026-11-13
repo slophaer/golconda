@@ -1,5 +1,6 @@
 #!/bin/sh
-# golconda-loader-update: put this release's signed systemd-boot and loader.conf on the ESP.
+# golconda-loader-update: put this release's signed systemd-boot and loader.conf on the ESP, and
+# remove the Secure Boot enrolment files once Secure Boot is on.
 #
 # golconda-loader-update.service runs it after systemd-bless-boot.service has marked a counted
 # boot good, so only a release that booted and passed the health gate installs its loader. An
@@ -64,3 +65,22 @@ put "$src" "$primary"
 # the file firmware starts: last, so an interrupted run leaves it whole
 put "$src" "$esp/EFI/BOOT/$removable"
 put "$conf" "$esp/loader/loader.conf"
+
+# The first disk's ESP carries the Secure Boot enrolment files and a loader.conf armed to enrol
+# them (image/loader.nix firstConf); the line above disarmed it. Once the firmware enforces
+# Secure Boot the files have done their work: remove them, so nothing on the ESP is left to
+# enrol. Without Secure Boot they stay, unread.
+auto=$esp/loader/keys/auto
+# The SecureBoot variable: 4 bytes of attributes, then 1 when Secure Boot is on. Read whole:
+# efivarfs reports size 0 and cannot seek, so `od -j` fails there.
+secure_boot_on() {
+  # shellcheck disable=SC2046 # one word per byte
+  set -- $(od -An -tu1 </sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c 2>/dev/null)
+  [ "${5:-}" = 1 ]
+}
+if [ -d "$auto" ] && secure_boot_on; then
+  rm -rf "$auto"
+  rmdir "$esp/loader/keys" 2>/dev/null || true
+  sync
+  echo "$auto: removed (Secure Boot is on)"
+fi

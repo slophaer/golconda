@@ -17,19 +17,21 @@ the UKI and the verity root hash. The result is used twice:
   makes the erofs image; the tree Nix builds has nothing at that path. The name is the one bootctl
   prefers to the unsigned file.
 - **on the ESP**, the same file, written by the signer's disk step (`lib/image/disk.nu`). The signer
-  fails unless the tree's `/usr/lib/golconda/loader.conf` is the disk's `loader.conf`. A fresh disk
-  is therefore already in the state the machine keeps.
+  fails unless the tree's `/usr/lib/golconda/loader.conf` is image/loader.nix's `conf`. A fresh disk
+  is therefore in the state the machine keeps, except for its `loader.conf`, which is armed to enrol
+  the Secure Boot keys once ([Enrolment](#enrolment)); the first good boot puts `/usr`'s in its
+  place.
 
 The ESP has the layout `bootctl install` makes:
 
-| path on the ESP                            | what                                                                                                                               |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `EFI/BOOT/BOOTX64.EFI`                     | the signed loader on the removable-media path                                                                                      |
-| `EFI/systemd/systemd-bootx64.efi`          | the same file, the primary copy                                                                                                    |
-| `EFI/systemd/systemd-boot-fallbackx64.efi` | the loader before the last update (after one update)                                                                               |
-| `loader/loader.conf`                       | `timeout 0`, `editor no`, `secure-boot-enroll force` (`image/loader.nix`)                                                          |
-| `loader/keys/auto/{PK,KEK,db,dbx}.auth`    | the Secure Boot variables systemd-boot enrols in Setup Mode ([Enrolment](#enrolment)); only on a disk of an image with Secure Boot |
-| `EFI/Linux/<id>_<version>[+N-M].efi`       | one UKI per slot                                                                                                                   |
+| path on the ESP                            | what                                                                                                                                                                                                              |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `EFI/BOOT/BOOTX64.EFI`                     | the signed loader on the removable-media path                                                                                                                                                                     |
+| `EFI/systemd/systemd-bootx64.efi`          | the same file, the primary copy                                                                                                                                                                                   |
+| `EFI/systemd/systemd-boot-fallbackx64.efi` | the loader before the last update (after one update)                                                                                                                                                              |
+| `loader/loader.conf`                       | `timeout 0`, `editor no`, `secure-boot-enroll off` (`image/loader.nix` `conf`, the copy in `/usr`); on a new disk of an image with Secure Boot `secure-boot-enroll force` (`firstConf`) until its first good boot |
+| `loader/keys/auto/{PK,KEK,db,dbx}.auth`    | the Secure Boot variables systemd-boot enrols in Setup Mode ([Enrolment](#enrolment)); only on a disk of an image with Secure Boot, until the first good boot with Secure Boot on                                 |
+| `EFI/Linux/<id>_<version>[+N-M].efi`       | one UKI per slot                                                                                                                                                                                                  |
 
 Firmware starts `EFI/BOOT/BOOTX64.EFI`: Golconda writes no `Boot####` variable, and OVMF falls back
 to the removable-media path. `aa64` and `riscv64` use their own names (`removableMediaName`).
@@ -113,12 +115,12 @@ certificates and the image's `db` certificate first: a set for another key fails
 the boot.
 
 **On the machine.** systemd-boot looks at `loader/keys/` only when the firmware is in Setup Mode or
-Audit Mode. With `secure-boot-enroll force` in `loader.conf` it enrols the set named `auto`: it
-writes `db`, `dbx`, `KEK` and `PK`, in that order, and resets the machine. Writing PK ends Setup
-Mode, so the next boot runs with Secure Boot on, and systemd-boot never reads the files again
-(`src/boot/secure-boot.c`, systemd 262.1). In a virtual machine it does this at once; on hardware it
-first prints "Enrolling custom Secure Boot keys might soft-brick your machine!" and counts down 15
-seconds, during which a key aborts.
+Audit Mode. With `secure-boot-enroll force` in the new disk's `loader.conf` it enrols the set named
+`auto`: it writes `db`, `dbx`, `KEK` and `PK`, in that order, and resets the machine. Writing PK
+ends Setup Mode, so the next boot runs with Secure Boot on, and systemd-boot never reads the files
+again (`src/boot/secure-boot.c`, systemd 262.1). In a virtual machine it does this at once; on
+hardware it first prints "Enrolling custom Secure Boot keys might soft-brick your machine!" and
+counts down 15 seconds, during which a key aborts.
 
 ```mermaid
 flowchart TD
@@ -167,19 +169,29 @@ and `PK` too unless the build sets `PcdRequireSelfSignedPk`, so a boot alone wou
 signature; `make-keys` and the signer check each one. Enrolment changes PCR 7; Golconda's
 credentials are sealed to the PCR 11 signing key, not to PCR 7, so nothing sealed is lost.
 
-The ESP keeps `loader/keys/auto` from the disk it was written from: an update does not change it,
-and `golconda-loader-update` copies only the loader and `loader.conf`. After a `db` rotation the
-files on an installed machine still hold the old certificate; they matter only if its firmware is
-put back into Setup Mode.
+**Once.** Only the first disk's ESP is armed. On the first good boot `golconda-loader-update` puts
+`/usr`'s `loader.conf` on the ESP, which says `secure-boot-enroll off`, and, once the firmware
+enforces Secure Boot, removes `loader/keys/auto`. From then on systemd-boot enrols nothing, also in
+Setup Mode: after a CMOS clear, someone who can write the ESP cannot get a PK of theirs enrolled by
+putting files there. `off`, not `manual`: `manual` would offer a menu entry for any set under
+`loader/keys/`, and the default `if-safe` enrols by itself in a virtual machine. On a machine whose
+firmware does not enforce Secure Boot the files stay on the ESP, unread. To enrol a machine again
+after its keys were cleared, write a new disk, or add `secureboot/db.crt` in firmware setup
+([Making a release: 4](../reference/release.md#4-enrol-the-certificate-in-the-firmware)). An update
+changes neither: sysupdate writes the UKI and `/usr`, and `golconda-loader-update` copies only the
+loader and `/usr`'s `loader.conf`.
 
 The boot test runs the virtual machine path with both sets: `--secure-boot --auto-enrol` starts OVMF
 with its empty variable store and checks that systemd-boot enrolled the set and reset
 (`auto-enrolled`), that `PK`, `KEK`, `db` and `dbx` hold what the table says (`pk-enrolled`,
 `kek-enrolled`, `db-enrolled`, `dbx-enrolled`; with `--no-microsoft-keys` on
 `image-smoke-test-own-keys`, none of Microsoft's), that firmware enforces Secure Boot
-(`secure-boot-enabled`), then the whole ssh battery ([What is proven](../proven.md)). Hardware is
-*(being built)*: no run has shown the 15-second warning on a real console, a real firmware accepting
-the files, or option ROMs running after the enrolment.
+(`secure-boot-enabled`), then the whole ssh battery ([What is proven](../proven.md)). That battery
+checks that the `loader.conf` in effect says `off` (`enrol-disarmed`) and that `loader/keys/auto` is
+gone (`enrol-keys-removed`). Last, the test puts the files back on the ESP, empties the variable
+store again and boots: systemd-boot enrols nothing and starts the UKI with Secure Boot off
+(`no-reenrol`). Hardware is *(being built)*: no run has shown the 15-second warning on a real
+console, a real firmware accepting the files, or option ROMs running after the enrolment.
 
 ## Key rotation
 
@@ -265,6 +277,8 @@ use what is on `main`, but no test runs them ([What is proven](../proven.md#not-
   it writes ends Setup Mode ([Enrolment](#enrolment)).
 - **No enrolment outside Setup Mode.** A machine with a vendor's PK ignores `loader/keys/auto`;
   someone clears the keys or adds the `db` certificate in firmware setup ([Enrolment](#enrolment)).
+- **No automatic enrolment after the first good boot.** A machine whose keys are cleared later is
+  enrolled from a new disk or in firmware setup ([Enrolment](#enrolment)).
 - **No signature check before the copy.** The program trusts the build: the loader in `/usr` is
   signed with the key of the UKI that booted. A `/usr` built with two different keys would break
   that rule; the image chain gives both steps the same `sbKeys`.

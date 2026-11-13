@@ -26,7 +26,8 @@ policy with keys you make, so a swapped kernel opens nothing.
 - **Enrolment.** The ESP carries `loader/keys/auto/{PK,KEK,db,dbx}.auth`: by default with
   Microsoft's KEK, UEFI CAs and revocation list, so option ROMs run on hardware. A machine in Setup
   Mode enrols them on its first boot and reboots with Secure Boot on. Firmware with keys ignores
-  them.
+  them. Only a new disk enrols: its first good boot puts a `loader.conf` that enrols nothing on the
+  ESP and removes the files once Secure Boot is on.
 - **Without Secure Boot.** With `/system.secureBoot = false`, the kernel carries the `db`
   certificate itself (`CONFIG_SYSTEM_TRUSTED_KEYS`, a fixed path the build fills) and checks the
   `/usr` signature. Each key set builds its own kernel, with the same config, so with jig's compile

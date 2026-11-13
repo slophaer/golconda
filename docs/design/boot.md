@@ -214,5 +214,6 @@ else: with only this certificate enrolled, firmware refuses an unsigned loader.
 The signer copies the key set's signed Secure Boot variables (the deployment's PK, KEK and `db`, and
 by default Microsoft's KEK, UEFI CAs and `dbx`) to `loader/keys/auto` on the ESP. In Setup Mode
 systemd-boot enrols them and resets, on hardware after a 15-second warning; firmware that already
-has keys ignores them ([Boot loader: Enrolment](bootloader.md#enrolment)). Key hierarchy in
-[Trust](trust.md).
+has keys ignores them. Only the new disk's `loader.conf` enrols: the first good boot replaces it
+with `/usr`'s, which enrols nothing, and removes the files once Secure Boot is on
+([Boot loader: Enrolment](bootloader.md#enrolment)). Key hierarchy in [Trust](trust.md).

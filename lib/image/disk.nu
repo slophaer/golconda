@@ -17,8 +17,9 @@ export def partition-uuids [roothash: string]: nothing -> record {
 }
 
 # esp DIR LOADER UKI L EPOCH AUTO: the ESP's content in DIR: the signed systemd-boot where
-# bootctl puts it (L.espPaths: the primary copy and the removable-media path), its policy where
-# systemd-boot reads it (L.confPath), the UKI where it looks, and the files AUTO (the Secure Boot
+# bootctl puts it (L.espPaths: the primary copy and the removable-media path), its first policy
+# where systemd-boot reads it (L.firstConf at L.confPath: armed to enrol AUTO; the first good boot
+# puts /usr's L.conf there), the UKI where it looks, and the files AUTO (the Secure Boot
 # enrolment files, lib/image/enrol.nu; none without Secure Boot) at L.enrolPath. Every file gets
 # the time EPOCH: mcopy writes each file's time into the FAT, so the disk does not depend on when
 # the release was signed.
@@ -29,7 +30,7 @@ export def esp [dir: string, loader: string, uki: string, l: record, epoch: int,
     ^cp $loader $"($dir)/($p)"
   }
   mkdir $"($dir)/($l.confPath | path dirname)"
-  $l.conf | save -f $"($dir)/($l.confPath)"
+  $l.firstConf | save -f $"($dir)/($l.confPath)"
   ^cp $uki $"($dir)/EFI/Linux/($uki | path basename)"
   if ($auto | is-not-empty) {
     mkdir $"($dir)/($l.enrolPath)"
@@ -37,7 +38,7 @@ export def esp [dir: string, loader: string, uki: string, l: record, epoch: int,
   }
   ^find $dir -exec touch -h -d $"@($epoch)" "{}" +
   let keys = (if ($auto | is-empty) { "" } else { [", " $l.enrolPath ": " ($auto | path basename | str join " ")] | str join })
-  log $"ESP: ($l.espPaths | str join ', '), ($l.confPath): (($l.conf | lines | where {|x| not ($x | str starts-with '#') and ($x | str trim) != ''}) | str join ', ')($keys)"
+  log $"ESP: ($l.espPaths | str join ', '), ($l.confPath): (($l.firstConf | lines | where {|x| not ($x | str starts-with '#') and ($x | str trim) != ''}) | str join ', ')($keys)"
 }
 
 # make OUT P FILES UUIDS: OUT/disk.raw and repart's own listing OUT/disk.json, from the

@@ -176,6 +176,9 @@ the first boot of `disk.raw` from firmware without a PK, systemd-boot enrols the
 resets the machine; on hardware it first warns for 15 seconds, and a key aborts. The next boot runs
 with Secure Boot on ([Boot loader: Enrolment](../design/bootloader.md#enrolment)). A new virtual
 machine has an empty variable store; hardware gets one when its keys are cleared in firmware setup.
+This happens on the first boot of a new disk only: its first good boot puts `/usr`'s `loader.conf`,
+which enrols nothing, on the ESP and removes the files once Secure Boot is on. A machine whose keys
+are cleared later is enrolled from a new disk or in firmware setup.
 
 **Firmware with keys.** Firmware that already has a PK ignores the files. Add `secureboot/db.crt` to
 `db` in firmware setup, beside the vendor's keys, or clear the keys there and boot again. The image
@@ -187,7 +190,8 @@ machine, `bootctl reboot-to-firmware true` and a reboot reach the firmware menu
 The boot test runs both: `--secure-boot` writes an OVMF variable store offline with
 `virt-fw-vars --add-db`, and `--secure-boot --auto-enrol` boots from the empty store and lets
 systemd-boot enrol, with and without Microsoft's keys (`auto-enrolled`, `db-enrolled`,
-`dbx-enrolled`; `scripts/boot-test`).
+`dbx-enrolled`), then checks that a second Setup Mode enrols nothing (`no-reenrol`;
+`scripts/boot-test`).
 
 **Unverified:** enrolment on a machine's own firmware *(being built)*. Not run: clearing the keys in
 a real firmware's setup, the 15-second warning on its console, that firmware accepting the four

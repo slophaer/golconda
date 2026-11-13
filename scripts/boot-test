@@ -130,11 +130,16 @@
 #   KEK CAs, db its db.crt and Microsoft's UEFI CAs (never the Windows CAs), dbx Microsoft's
 #   revocation list (packages/secureboot-objects); and secure-boot-enabled. With
 #   --no-microsoft-keys (an image with /system.secureBootMicrosoftKeys = false) KEK and db hold
-#   none of Microsoft's certificates and dbx is empty.
+#   none of Microsoft's certificates and dbx is empty. Last, no-reenrol: the harness puts the
+#   enrolment files back on the ESP over ssh, empties the variable store (Setup Mode again) and
+#   boots: systemd-boot must enrol nothing (the loader.conf in effect says off) and start the UKI
+#   with Secure Boot off. That boot stops at switch-root, so the run ends there.
 # With --ssh-test: also checks the boot loader (docs/design/bootloader.md): the ESP's two
 #   copies of systemd-boot are the signed file in /usr, loader/loader.conf is the one
 #   systemd-boot reads and the copy in /usr, golconda-loader-update.service ran after the boot
-#   was blessed, and systemd-boot-update.service stayed off.
+#   was blessed, and systemd-boot-update.service stayed off; enrol-disarmed (that loader.conf
+#   says secure-boot-enroll off) and, with --secure-boot, enrol-keys-removed (no
+#   loader/keys/auto on the ESP).
 # With --next DIR (implies --ssh-test): DIR is the next release's image-smoke output
 #   (DIR/disk/release, DIR/keys). The harness checks that release directory against
 #   docs/design/releases.md (four SHA256SUMS lines, fixed order, digests match), resolves its
@@ -529,6 +534,10 @@ main() {
     fi
     if [ "$ROTATE" = 1 ] && [ "$RESULT" = 0 ]; then
       test_rotate || RESULT=1
+    fi
+    # last: the machine does not boot after it
+    if [ "$AUTO_ENROL" = 1 ] && qemu_running; then
+      test_no_reenrol || RESULT=1
     fi
     SSH_PASS=$PASS
     SSH_FAIL=$FAIL
