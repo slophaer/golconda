@@ -45,17 +45,33 @@ the release host: no build reads the private keys, and no step copies them
 without `codeSigning`; each has a key of its own. The enrolment files are signed once, here, by
 `golconda-enrol-auth` with Microsoft's certificates and revocation list
 (`packages/secureboot-objects`), so a release needs neither the PK key nor the KEK key: keep them
-offline. Run `golconda-enrol-auth --keys DIR` again, with them, for a newer `dbx`. `systemd-sbsign`
-takes a PEM certificate (systemd 262, `systemd-sbsign(1)`). The signer checks each private key
-against its public half and each verity root hash signature against the certificate, so a key and
-certificate that do not match fail the release and not the boot. Keep the set: a rotation uses the
-old `pcr/` key and the old release key (step 5).
+offline. `systemd-sbsign` takes a PEM certificate (systemd 262, `systemd-sbsign(1)`). The signer
+checks each private key against its public half and each verity root hash signature against the
+certificate, so a key and certificate that do not match fail the release and not the boot. Keep the
+set: a rotation uses the old `pcr/` key and the old release key (step 5).
+
+**A set without the enrolment files** (made before `make-keys` wrote them) is refused for a Secure
+Boot image; the error names the command for that set. `scripts/make-keys --auth-only DIR` writes
+`secureboot/auth` into the existing set and keeps its `db` certificate; a set with no PK and KEK
+gets a pair of its own first. If the PK and KEK keys are elsewhere, name the directory that holds
+them: `scripts/make-keys --auth-only --reuse-pk-kek KEYS DIR`.
+
+**The `dbx` is fixed when the files are made.** `auth/microsoft/dbx.auth` holds Microsoft's
+revocation list as `packages/secureboot-objects` pins it on the day `make-keys` ran. To take a newer
+list: move the package's pin in the Golconda tree (uptrack on `packages/`, with
+`UPTRACK_ROOT=packages` as for `pins/` in [Pinning](pinning.md#uptrack-recommended):
+`uptrack check secureboot-objects`, `uptrack apply secureboot-objects`), bring the PK and KEK keys
+from where they are kept offline, run `scripts/make-keys --auth-only --reuse-pk-kek KEYS DIR`, and
+put the keys away again. The next release carries the new files. That changes only what a machine
+enrols in Setup Mode: a machine that is already enrolled keeps the `dbx` it got and ignores the
+ESP's files. Updating `dbx` on an enrolled machine (an authenticated append signed by the KEK) is
+*(later)* ([Scope: Later](../design/scope.md#later)).
 
 `tests/make-keys/run.sh` (run by `scripts/lint`) runs the script into a temporary directory and
 checks the layout, the modes, the certificate's extensions, that each key matches its public half,
 that PK, KEK and `db` are three different keys, that each `.auth` enrols its certificate, and that
-`--reuse-pk-kek` keeps the old PK and KEK. `tests/sign/enrol-test.nu` checks the files field by
-field.
+`--reuse-pk-kek` keeps the old PK and KEK, and that `--auth-only` adds the files to an old set and
+writes them again. `tests/sign/enrol-test.nu` checks the files field by field.
 
 ## 2. Build and sign
 

@@ -273,9 +273,14 @@ variables systemd-boot enrols in Setup Mode, and `scripts/make-keys` signs those
 `secureboot/auth/` ([Boot loader: Enrolment](bootloader.md#enrolment)). So no release needs the PK
 or KEK key: the signer copies the files and checks them against `PK.crt`, `KEK.crt` and the image's
 `db` certificate, and `lib.mkImage` reads none of them. The PK and KEK keys can stay offline until
-the next `db` rotation or `dbx` update. A `db` rotation keeps the PCR key and the release key from
-the old set (`pcrPublicKeys` and `indexPublicKeys` for `lib.mkImage`, `--pcr-keys` and
-`--index-keys` for the signer; [Boot loader: Key rotation](bootloader.md#key-rotation),
+the next `db` rotation or `dbx` refresh. The `dbx` in the files is Microsoft's list as pinned when
+they were made; `scripts/make-keys --auth-only` with the PK and KEK keys writes them again with a
+newer one, for machines enrolled after that. A machine already enrolled keeps its `dbx`: nothing on
+it writes a new one, and a `dbx` update there is *(later)*
+([Making a release: 1](../reference/release.md#1-make-the-key-set)). A `db` rotation keeps the PCR
+key and the release key from the old set (`pcrPublicKeys` and `indexPublicKeys` for `lib.mkImage`,
+`--pcr-keys` and `--index-keys` for the signer;
+[Boot loader: Key rotation](bootloader.md#key-rotation),
 [Releases: The signed index](releases.md#the-signed-index)).
 
 The `db` key signs both the UKI (`ukify --secureboot-private-key`, `lib/image/uki.nu`) and the

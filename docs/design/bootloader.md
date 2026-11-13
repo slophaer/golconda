@@ -140,7 +140,9 @@ The files are copied only for an image with `/system.secureBoot` (the manifest's
 image for a host without Secure Boot carries the certificate in its kernel; enrolling it would make
 the firmware check every later loader against a key the operator did not mean to enrol. A key set
 without `secureboot/auth` (made before `scripts/make-keys` wrote it) is refused for a Secure Boot
-image: make a new set, or run `golconda-enrol-auth --keys DIR` with its PK and KEK keys.
+image, and the error names the command that adds the files, with the set's path:
+`scripts/make-keys --auth-only DIR` (it makes a PK and a KEK for a set that has none), or
+`scripts/make-keys --auth-only --reuse-pk-kek KEYS DIR` when the PK and KEK keys are in `KEYS`.
 
 **Microsoft keys, and why they are the default.** On hardware a graphics card, network card or
 storage controller often carries an option ROM signed by the Microsoft UEFI CA (2011, and the Option
