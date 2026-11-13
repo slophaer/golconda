@@ -80,10 +80,8 @@ Two units that systemd's preset enabled are needed, so `/base` links them:
 The other units that `systemctl enable systemd-networkd.service` would add are not linked: networkd
 and resolved open their varlink sockets themselves, and they own their D-Bus names while they run.
 
-`golconda-etc-links.service` rewrites an administrator's enable links, which name a store path, to
-`/usr/lib/systemd/system/<unit>` after `/sysroot/usr` is mounted and before switch-root, so a
-systemd store path change in an update leaves no dangling link
-([Updates](updates.md#enable-links-and-systemds-store-path)).
+An administrator's `systemctl enable` writes a link that names a store path, which an update can
+leave dangling ([Updates](updates.md#enable-links-and-systemds-store-path)).
 
 ## State
 

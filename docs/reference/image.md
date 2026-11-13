@@ -572,7 +572,7 @@ With `--next DIR` ([The update test](#the-update-test)):
 | `cert-login-after-update`, `cert-revoked-refused`                      | the good certificate logs in; the one the KRL names is refused                                                                                              |
 | `krl-pushed-again`, `krl-rotated`                                      | a second KRL, pushed while the release runs, refuses the good certificate too                                                                               |
 | `boots-next`                                                           | after the reboot `IMAGE_VERSION` is the new version                                                                                                         |
-| `etc-links-stable`                                                     | links under `/etc/systemd/system` exist, none names a store path, none dangles                                                                              |
+| `units-composed-only-after-update`, `no-sysext-after-update`           | `units-composed-only` and `no-sysext` on the updated release; with `--fail-health`, `-after-fallback` on the old release                                    |
 | `no-failed-units-after-update`                                         | the updated system has no failed unit                                                                                                                       |
 | `clock-not-reset-after-update`                                         | `clock-not-reset` on the updated release's first boot                                                                                                       |
 | `clock-not-reset-after-fallback`                                       | with `--fail-health`, `clock-not-reset` on the fallback boot of the old release                                                                             |
@@ -645,10 +645,10 @@ be held. `DIR` is a built release (`DIR/disk/release`, `DIR/keys`). The harness:
    `Successfully installed 'http://…'` line is `http-fetch`; the service's exit status is
    `sysupdate-installed`. sysupdate fetches `SHA256SUMS` and the four artifacts over HTTP, then
    writes the B slots and `EFI/Linux/<id>_<version>+3-0.efi`;
-1. reboots and checks `boots-next`, `etc-links-stable`, `no-failed-units-after-update`,
-   `clock-not-reset-after-update`, `hwdb-after-update` and the loader markers (the new release
-   installed its loader on its first good boot and kept the previous one as
-   `systemd-boot-fallbackx64.efi`);
+1. reboots and checks `boots-next`, `units-composed-only-after-update`,
+   `no-failed-units-after-update`, `clock-not-reset-after-update`, `hwdb-after-update` and the
+   loader markers (the new release installed its loader on its first good boot and kept the previous
+   one as `systemd-boot-fallbackx64.efi`);
 1. runs the recovery paths: `bootctl list` shows both slots, a damaged `BOOTX64.EFI` is reinstalled
    by `golconda-loader-update`, `bootctl set-oneshot` and `bootctl set-default` boot the other slot
    and back, and `bootctl reboot-to-firmware` reaches OVMF's boot menu.

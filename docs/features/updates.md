@@ -64,7 +64,7 @@ update runs. Read the counters with `bootctl list`.
 
 The boot test proves this in QEMU with OVMF ([What is proven](../proven.md)):
 
-- `release-index`, `sysupdate-installed`, `boots-next`, `etc-links-stable` and
+- `release-index`, `sysupdate-installed`, `boots-next`, `units-composed-only-after-update` and
   `no-failed-units-after-update`: the update installs and the new version boots (`--next`).
 - `http-source`, `http-fetch`, `index-signed`: the guest fetches over HTTP with its own definition.
 - `health-check-broken`, `attempt-[1-3]-unblessed`, `fallback-to-old-slot`, `counter-exhausted`: a

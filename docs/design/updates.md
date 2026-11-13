@@ -95,29 +95,22 @@ once, on the running machine.
 
 ## Enable links and systemd's store path
 
-`systemctl enable` writes enable links under `/etc/systemd/system` with an absolute target,
+The image enables its units with static links in `/usr`, and its first boot writes no link under
+`/etc/systemd/system` (`00-golconda.preset`, [Layout](layout.md#unit-enablement)). So an update
+finds no enable link of the image's own in `/etc`, and nothing rewrites links there.
+
+`systemctl enable` on the machine writes a link with an absolute target,
 `/usr/nix/store/<hash>-systemd/lib/systemd/system/<unit>`: the unit files in `/usr` are links into
-the store. The first boot writes none (`00-golconda.preset`, [Layout](layout.md#unit-enablement)),
-but an administrator's `systemctl enable` does, and so did the first boot of a release before that
-preset. A release that changes systemd's own store path would leave those links dangling, and the
-units they enable would not load.
+the store. A release that changes that package's store path leaves the link dangling, and the unit
+does not start. To enable a unit by hand so that it survives updates, link the stable path:
+`mkdir -p /etc/systemd/system/<target>.wants`, then
+`ln -s /usr/lib/systemd/system/<unit> /etc/systemd/system/<target>.wants/<unit>`.
 
-The unit `golconda-etc-links.service` runs `/usr/libexec/golconda-etc-links /sysroot` in the initrd,
-after `/sysroot/usr` is mounted and before switch-root. It rewrites each link whose target is an
-absolute store path to `/usr/lib/systemd/system/<unit>`: a stable path that exists in every release.
-Masks, links inside `/etc` and relative links stay as they are, so an administrator's unit is not
-bypassed. The script exits 1 and names the link when it cannot rewrite one, so the unit fails. The
-unit is pulled in by `Wants=`, so switch-root still goes on, and the failed unit is what tells the
-operator.
-
-The unit is wanted by `initrd-switch-root.target`, not `initrd.target`: only then is it in the same
-job transaction as `initrd-switch-root.service`, and `Before=` makes switch-root wait for it. A unit
-pulled by `initrd.target` is stopped when switch-root cleans up, possibly before it rewrites the
-links. The service environment may have no `PATH`, so the script uses `/usr/bin/readlink` and
-`/usr/bin/ln` and the shell's parameter expansion for the target's name.
-
-The unit does not remove an enable link for a unit that the new release no longer ships; such a link
-stays and is ignored by PID 1. Cleaning those links is not designed.
+A machine whose first boot ran a release from before `00-golconda.preset` has the links of systemd's
+preset in `/etc/systemd/system`, about 390, and 370 of them name a store path. Remove every link
+there whose target starts with `/usr/nix/store/` before it installs a release with another systemd:
+the next release does not rewrite them, and a dangling link for a unit such as `basic.target` stops
+the boot.
 
 ## Rollback protection *(later)*
 

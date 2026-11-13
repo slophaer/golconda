@@ -111,7 +111,7 @@ in
 
       # The rest of the fragment is in parts/, one concern each; this file merges them.
       # Each part returns the fragment fields it fills.
-      boot = import ./parts/boot.nix; # the health gate, the loader update, the /etc link step
+      boot = import ./parts/boot.nix; # the health gate, the loader update
       dbus = import ./parts/dbus.nix { inherit p; }; # the system bus on dbus-broker
       dropIns = import ./parts/drop-ins.nix; # conditions for units the systemd farm ships
       imds = import ./parts/imds.nix; # systemd's IMDS units: off without /imds
@@ -146,7 +146,7 @@ in
 
       # Unit enablement: .wants links for static enablement. systemd-networkd,
       # systemd-resolved, systemd-timesyncd enabled via their target's .wants directories
-      # (dbus.socket is in parts/dbus.nix, golconda-etc-links.service in parts/boot.nix).
+      # (dbus.socket is in parts/dbus.nix).
       # No preset enables anything (presetFile), so a unit systemd's preset used to enable
       # that the image needs is here, with its reason.
       wantsLinks = {

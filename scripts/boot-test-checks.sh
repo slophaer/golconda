@@ -409,33 +409,6 @@ test_release_index() {
   verdict "release-index (4 lines: usr, verity, signature, UKI; digests match)" $RC
 }
 
-# test_etc_links: the links the first boot wrote under /etc/systemd/system named the old
-# release's systemd store path. golconda-etc-links.service rewrote them in this boot's initrd,
-# so no link may name a store path, and none may dangle (docs/design/updates.md).
-test_etc_links() {
-  echo ""
-  echo "=== /etc/systemd/system links after the update ==="
-  COUNTS=$(
-    guest '
-      n=0; s=0; d=0
-      for f in /etc/systemd/system/* /etc/systemd/system/*/*; do
-        [ -L "$f" ] || continue
-        n=$((n + 1))
-        case "$(readlink "$f")" in *nix/store*) s=$((s + 1)) ;; esac
-        [ -e "$f" ] || d=$((d + 1))
-      done
-      echo "$n $s $d"'
-  ) || COUNTS="0 0 0"
-  echo "links, store-path targets, dangling: $COUNTS"
-  # shellcheck disable=SC2086
-  set -- $COUNTS
-  RC=0
-  [ "${1:-0}" -gt 0 ] || RC=1
-  [ "${2:-1}" = 0 ] || RC=1
-  [ "${3:-1}" = 0 ] || RC=1
-  verdict "etc-links-stable ($1 links, $2 naming a store path, $3 dangling)" $RC
-}
-
 # --- /imds (docs/features/provisioning.md) ---
 IMDS_UNIT=systemd-imds-import.service
 

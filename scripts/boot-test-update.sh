@@ -149,7 +149,7 @@ test_next() {
   if [ "$FAIL_HEALTH" = 1 ]; then
     # no blessed boot of the candidate, so no loader and no recovery checks here
     test_fail_health || return 1
-    test_etc_links
+    check_units_composed -after-fallback
     check_no_failed no-failed-units-after-update
     return 0
   fi
@@ -158,7 +158,7 @@ test_next() {
   RC=0; [ "$V" = "$NEXT_VERSION" ] || RC=1
   verdict "boots-next ($OLD_VERSION -> $V)" $RC
   check_unsealed "after the update to $V"
-  test_etc_links
+  check_units_composed -after-update
   check_no_failed no-failed-units-after-update
   check_clock clock-not-reset-after-update
   check_hwdb hwdb-after-update

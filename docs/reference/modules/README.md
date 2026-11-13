@@ -235,8 +235,8 @@ them first, and a configuration never lists them.
 
 - **packages**: systemd, dbus-broker, dash, uutils-coreutils, tpm2-tss (only systemd's dlopen
   reaches it), e2fsprogs (`mkfs.ext4` for the root partition), tzdata, hwdb and linux-kernel.
-- **units**: `golconda-health-network.service`, `golconda-loader-update.service` and
-  `golconda-etc-links.service`; `dbus.socket` is a file, because dbus-broker does not ship it.
+- **units**: `golconda-health-network.service` and `golconda-loader-update.service`; `dbus.socket`
+  is a file, because dbus-broker does not ship it.
 - **links**:
   - `.wants` links for `dbus.socket`, `systemd-networkd` (service and socket), `systemd-resolved`,
     `systemd-timesyncd`, `systemd-network-generator` and `systemd-networkd-wait-online`, with the
@@ -254,8 +254,7 @@ them first, and a configuration never lists them.
   - `/usr/lib/repart.d/30-root.conf`, the root partition repart makes at first boot (from
     `image/repart.nix`);
   - `/usr/lib/systemd/system-preset/00-golconda.preset`, `disable *`: no preset enables a unit;
-  - `/usr/lib/golconda/golconda-loader-update` and `loader.conf`, and
-    `/usr/libexec/golconda-etc-links`;
+  - `/usr/lib/golconda/golconda-loader-update` and `loader.conf`;
   - fourteen unit drop-ins, `/usr/lib/systemd/system/<unit>.d/golconda.conf` (for example
     `systemd-firstboot.service` runs without prompts, and `ldconfig.service` and `modprobe@.service`
     skip without their binary).

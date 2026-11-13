@@ -216,13 +216,6 @@ in
     touch $out
   '';
 
-  # the /etc/systemd/system link generator: first-boot links with an old store path
-  # become the stable /usr/lib/systemd/system/<unit> path, and other shapes stay
-  etc-systemd-links = run "etc-systemd-links" [ ] ''
-    sh ${src}/tests/etc-systemd-links.sh ${src}/modules/base/golconda-etc-links
-    touch $out
-  '';
-
   # Export at evaluation time; the sandbox cannot fetch module sources.
   schema = schemaFile;
 

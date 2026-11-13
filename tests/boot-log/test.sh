@@ -121,7 +121,7 @@ wait_for_ssh() { BOOT_ID=next-boot; }
 reboot_guest() { BOOT_ID=next-boot; }
 guest_version() { echo 20261110.1; }
 guest_hash() { echo 0; }
-for f in check_unsealed check_no_failed check_hwdb test_etc_links test_certs_after_update \
+for f in check_unsealed check_no_failed check_hwdb check_units_composed test_certs_after_update \
   test_loader test_recovery test_release_index push_admin_vars; do
   eval "$f() { :; }"
 done

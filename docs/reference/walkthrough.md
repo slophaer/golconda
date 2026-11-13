@@ -75,16 +75,15 @@ iets eval --json -E 'builtins.attrNames (import ./examples/golconda.nix { golcon
 
 *(eval.)* For this document:
 
-- `units`: `golconda-etc-links.service`, `golconda-health-network.service`,
-  `golconda-health-sshd.service`, `golconda-loader-update.service`,
-  `golconda-var-sshd-hostkey.service`, `sshd.service`.
+- `units`: `golconda-health-network.service`, `golconda-health-sshd.service`,
+  `golconda-loader-update.service`, `golconda-var-sshd-hostkey.service`, `sshd.service`.
 
-- `files` (36), by origin:
+- `files` (37 on 2026-11-13), by origin:
 
-  - `/base` (22): `/usr/lib/repart.d/30-root.conf`, `/usr/lib/locale.conf`, the timesyncd and
+  - `/base` (23): `/usr/lib/repart.d/30-root.conf`, `/usr/lib/locale.conf`, the timesyncd and
     journald files, `dbus.socket` and `/usr/share/dbus-1/system.conf`, `golconda-loader-update` and
-    `loader.conf`, `/usr/libexec/golconda-etc-links`, and thirteen unit drop-ins named
-    `/usr/lib/systemd/system/<unit>.d/golconda.conf` (for example `systemd-firstboot.service`,
+    `loader.conf`, `/usr/lib/systemd/system-preset/00-golconda.preset`, and fourteen unit drop-ins
+    named `/usr/lib/systemd/system/<unit>.d/golconda.conf` (for example `systemd-firstboot.service`,
     `ldconfig.service`, `modprobe@.service`);
   - `/services/sshd` (4): `/usr/lib/sshd/sshd_config`, `/usr/lib/sshd/authorized_keys/root`, and the
     var's script and manifest `/usr/lib/golconda/vars.d/sshd-hostkey.{sh,json}`;
@@ -312,5 +311,9 @@ PASS: boots-next (20261031.1 -> 20261031.2)
 PASS: etc-links-stable (372 links, 0 naming a store path, 0 dangling)
 PASS: no-failed-units-after-update
 ```
+
+That run predates `00-golconda.preset`. Since then the first boot writes no link under
+`/etc/systemd/system`, and the harness checks `units-composed-only-after-update` in place of
+`etc-links-stable`.
 
 The limits of this test are on [Image artifacts: the update test](image.md#the-update-test).

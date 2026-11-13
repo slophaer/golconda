@@ -50,9 +50,9 @@ a file in place needs a directory of its own, not a link.
 ## Status
 
 Proven in QEMU: `multi-user-reached` and `boot-complete` with `ipe.enforce=1`, so the kernel accepts
-the signature. `sysupdate-installed`, `boots-next` and `etc-links-stable` cover the A/B update.
-`fallback-to-old-slot` and `counter-exhausted` cover the rollback. `state-gone` and `slots-kept`
-cover the factory reset. See [What is proven](../proven.md).
+the signature. `sysupdate-installed`, `boots-next` and `units-composed-only-after-update` cover the
+A/B update. `fallback-to-old-slot` and `counter-exhausted` cover the rollback. `state-gone` and
+`slots-kept` cover the factory reset. See [What is proven](../proven.md).
 
 ## Limits
 

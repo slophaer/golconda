@@ -151,8 +151,8 @@
 #   its own /usr/lib/sysupdate.d/*.transfer (Type=url-file, Path=http://169.254.169.2:PORT/), so it
 #   fetches SHA256SUMS and the artifacts over HTTP; the harness rewrites no definition. Then it
 #   reboots into the release, and checks that golconda-loader-update.service put the new loader on
-#   the ESP, that no /etc/systemd/system link names the old systemd store path or dangles
-#   (golconda-etc-links.service), and that the updated system has no failed unit. Then the
+#   the ESP, that /etc/systemd/system still holds no link (units-composed-only-after-update), and
+#   that the updated system has no failed unit. Then the
 #   recovery checks: bootctl list shows both slots, a damaged loader
 #   is reinstalled by hand, `bootctl set-oneshot` and `bootctl set-default` boot the other slot
 #   and back, and `bootctl reboot-to-firmware` reaches the firmware's menu.

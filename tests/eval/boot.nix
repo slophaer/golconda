@@ -57,7 +57,6 @@
     ))
     (check "boot health: a configuration without /services/sshd still gates the network" (
       attrNames baseOnly.units == [
-        "golconda-etc-links.service"
         "golconda-health-network.service"
         "golconda-loader-update.service"
       ]

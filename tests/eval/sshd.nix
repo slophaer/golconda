@@ -293,7 +293,6 @@ in
   # the units of the fixture, exactly: a new unit is a decision, not an accident
   (check "sshd: the fixture composes exactly these units" (
     attrNames system.units == [
-      "golconda-etc-links.service"
       "golconda-health-network.service"
       "golconda-health-sshd.service"
       "golconda-loader-update.service"
