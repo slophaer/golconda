@@ -1,9 +1,16 @@
 #!/bin/sh
-# make-keys DIR: make a deployment key set for a release (golconda release build).
+# make-keys [--reuse-pk-kek OLD] DIR: make a deployment key set for a release (golconda release
+# build).
 #
 # The layout is the one the signer reads (lib/image/sign.nu) and whose public halves lib.mkImage
 # reads (lib/image/chain.nix, docs/design/trust.md):
 #   secureboot/db.key, secureboot/db.crt   systemd-boot, the UKI and the verity root hash
+#   secureboot/PK.*, secureboot/KEK.*      the firmware's platform key and key exchange key
+#   secureboot/auth/microsoft/*.auth       the Secure Boot variables systemd-boot enrols in Setup
+#   secureboot/auth/golconda/*.auth        Mode, signed by the PK and KEK keys here, once: with
+#                                          Microsoft's KEK, db CAs and dbx, and without them
+#                                          (golconda-enrol-auth, lib/image/enrol.nu); the signer
+#                                          copies one set onto the ESP and reads no PK or KEK key
 #   pcr/pcr.key, pcr/pcr.pub               the PCR 11 policy and its public half
 #   release/index.key, release/index.pgp   SHA256SUMS (OpenPGP: armored secret, binary public)
 #
@@ -19,18 +26,41 @@
 # firmware db entry carries (CA:TRUE, digitalSignature, codeSigning) and lasts
 # 3650 days, as the smoke keys do (lib/image/keys.nu).
 #
+# --reuse-pk-kek OLD: a db rotation. The new set gets copies of OLD's PK.crt and KEK.crt, no PK or
+# KEK key, and its enrolment files are signed by OLD's PK and KEK keys: a machine keeps its PK and
+# KEK, and a new machine enrols the same ones. Without it the set gets a PK and a KEK of its own.
+# The script cannot tell a rotation from a new deployment, so a rotation names the old set.
+#
 # docs/reference/release.md is the procedure around this script.
 
 set -eu
 
 usage() {
-  echo "usage: scripts/make-keys DIR" >&2
+  echo "usage: scripts/make-keys [--reuse-pk-kek OLD] DIR" >&2
 }
 
+old=""
+if [ "${1:-}" = --reuse-pk-kek ]; then
+  [ $# -ge 2 ] || {
+    usage
+    exit 2
+  }
+  old=$2
+  shift 2
+fi
 [ $# -eq 1 ] || {
   usage
   exit 2
 }
+if [ -n "$old" ]; then
+  for f in PK.key PK.crt KEK.key KEK.crt; do
+    [ -f "$old/secureboot/$f" ] || {
+      echo "make-keys: --reuse-pk-kek $old: no secureboot/$f there" >&2
+      exit 2
+    }
+  done
+  old=$(realpath "$old")
+fi
 
 dir=$1
 case $dir in
@@ -43,11 +73,12 @@ case $dir in
 esac
 
 # Golconda's own openssl and gpg (scripts/tools.sh), not the caller's: the gpg is the one systemd-pull
-# uses on the image, so the release key is made and checked by the same GnuPG
+# uses on the image, so the release key is made and checked by the same GnuPG; and
+# golconda-enrol-auth, which signs the enrolment files with Microsoft's objects
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 . "$SCRIPT_DIR/tools.sh"
-TOOLS=$(tools_path "$(dirname "$SCRIPT_DIR")" openssl gnupg) || {
-  echo "make-keys: cannot build the tools (packages: openssl gnupg)" >&2
+TOOLS=$(tools_path "$(dirname "$SCRIPT_DIR")" openssl gnupg golconda-enrol-auth) || {
+  echo "make-keys: cannot build the tools (packages: openssl gnupg golconda-enrol-auth)" >&2
   exit 1
 }
 PATH="$TOOLS:$PATH"
@@ -93,6 +124,28 @@ run_openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 3650 \
   -addext "extendedKeyUsage=codeSigning" \
   -addext "subjectKeyIdentifier=hash" \
   -keyout "$stage/secureboot/db.key" -out "$stage/secureboot/db.crt"
+# the PK and the KEK: self-signed, as the db certificate, without codeSigning; they sign only the
+# Secure Boot variables (PK signs PK and KEK, KEK signs db and dbx). A rotation copies the old
+# set's certificates and leaves their keys there.
+for k in PK KEK; do
+  if [ -n "$old" ]; then
+    cp "$old/secureboot/$k.crt" "$stage/secureboot/$k.crt"
+    continue
+  fi
+  run_openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 3650 \
+    -subj "/CN=golconda deployment $k $(date -u +%Y%m%d)" \
+    -addext "basicConstraints=critical,CA:TRUE" \
+    -addext "keyUsage=critical,digitalSignature,keyCertSign,cRLSign" \
+    -addext "subjectKeyIdentifier=hash" \
+    -keyout "$stage/secureboot/$k.key" -out "$stage/secureboot/$k.crt"
+done
+# the enrolment files, signed now by this set's PK and KEK keys (or the old set's), so that no
+# release needs them; their output on failure only
+if ! golconda-enrol-auth --keys "$stage" ${old:+--signing-keys "$old"} >"$stage/enrol.log" 2>&1; then
+  echo "make-keys: golconda-enrol-auth failed:" >&2
+  cat "$stage/enrol.log" >&2
+  exit 1
+fi
 run_openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$stage/pcr/pcr.key"
 run_openssl pkey -in "$stage/pcr/pcr.key" -pubout -out "$stage/pcr/pcr.pub"
 
@@ -114,20 +167,31 @@ GNUPGHOME="$stage/g" gpgconf --kill gpg-agent 2>/dev/null || true
 mv "$stage/secureboot" "$stage/pcr" "$stage/release" "$dir"
 trap - EXIT HUP INT TERM
 rm -rf "$stage"
-chmod 600 "$dir/secureboot/db.key" "$dir/secureboot/db.crt" \
-  "$dir/pcr/pcr.key" "$dir/pcr/pcr.pub" "$dir/release/index.key" "$dir/release/index.pgp"
-chmod 700 "$dir/secureboot" "$dir/pcr" "$dir/release"
+find "$dir/secureboot" "$dir/pcr" "$dir/release" -type f -exec chmod 600 {} +
+find "$dir/secureboot" "$dir/pcr" "$dir/release" -type d -exec chmod 700 {} +
 
-fingerprint=$(openssl x509 -in "$dir/secureboot/db.crt" -outform der | sha256sum | cut -d ' ' -f 1)
+fp() { openssl x509 -in "$dir/secureboot/$1.crt" -outform der | sha256sum | cut -d ' ' -f 1; }
+fingerprint=$(fp db)
 cat <<EOF
 deployment key set: $dir
   $dir/secureboot/db.key  (0600)  signs systemd-boot, each UKI and each verity root hash
   $dir/secureboot/db.crt  (0600)  the certificate for those signatures; enrol it in the firmware db
+$(if [ -n "$old" ]; then
+  echo "  $dir/secureboot/PK.crt, KEK.crt (0600)  copies of $old's: its keys signed this set"
+else
+  echo "  $dir/secureboot/PK.key  (0600)  signed PK.auth and KEK.auth; later, a new PK or KEK"
+  echo "  $dir/secureboot/KEK.key (0600)  signed db.auth and dbx.auth; later, db and dbx updates"
+  echo "  $dir/secureboot/PK.crt, KEK.crt (0600)  their certificates: firmware PK and KEK"
+fi)
+  $dir/secureboot/auth/microsoft/  PK, KEK, db, dbx with Microsoft's keys (/system.secureBootMicrosoftKeys)
+  $dir/secureboot/auth/golconda/   PK, KEK, db with this set's certificates only
   $dir/pcr/pcr.key        (0600)  signs the PCR 11 policy (.pcrsig) in each UKI
   $dir/pcr/pcr.pub        (0600)  the public half, embedded in each UKI as .pcrpkey
   $dir/release/index.key  (0600)  signs each release's SHA256SUMS (OpenPGP, Ed25519)
   $dir/release/index.pgp  (0600)  the public half, the image's keyring for Verify=yes
 db.crt sha256 (DER): $fingerprint
+PK.crt sha256 (DER): $(fp PK)
+KEK.crt sha256 (DER): $(fp KEK)
 release key fingerprint: $index_fpr
 keep the private keys out of the store: docs/reference/release.md
 EOF

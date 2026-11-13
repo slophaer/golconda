@@ -132,6 +132,8 @@ in
         inherit pkgs;
         buildSystem = system;
         variant = "rotated";
+        # a db rotation keeps the PK and the KEK (scripts/make-keys --reuse-pk-kek)
+        reusePkKek = throwawayKeys;
       };
     in
     {
@@ -162,6 +164,11 @@ in
       # what scripts/make-keys runs (scripts/tools.sh): openssl for the db and PCR keys, and
       # Golconda's gnupg, the gpg that systemd-pull checks the release index with on the image
       inherit (pkgs) openssl gnupg;
+      # and the program that writes a key set's Secure Boot enrolment files (lib/image/enrol.nu)
+      golconda-enrol-auth = imageLib.enrolTool {
+        inherit pkgs;
+        buildSystem = system;
+      };
       # the dev shell's book tools (scripts/docs), and what scripts/tool runs (scripts/tools.sh)
       inherit (pkgs) mdbook mdbook-pele hcloud;
       # scripts/boot-test's virtual machine (scripts/tools.sh): QEMU, the TPM, the Secure Boot key

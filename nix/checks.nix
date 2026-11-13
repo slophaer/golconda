@@ -148,6 +148,8 @@ in
     export OPENSSL_MODULES=${rp.pkcs11-provider}/lib/ossl-modules
     export SOFTHSM_MODULE=${rp.softhsm}/lib/softhsm/libsofthsm2.so
     nu --no-config-file --include-path ${src}/lib/image ${src}/tests/sign/test.nu
+    GOLCONDA_SECUREBOOT_OBJECTS=${rp.secureboot-objects}/share/secureboot-objects \
+      nu --no-config-file --include-path ${src}/lib/image ${src}/tests/sign/enrol-test.nu
     touch $out
   '';
 

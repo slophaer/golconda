@@ -51,6 +51,27 @@ in
       ];
     };
 
+  # enrolTool { pkgs; buildSystem; } → derivation with bin/golconda-enrol-auth
+  #   (lib/image/enrol-main.nu): a key set's enrolment files, secureboot/auth/{microsoft,golconda}
+  #   (lib/image/enrol.nu). scripts/make-keys runs it on the release host with the PK and KEK
+  #   keys; Microsoft's objects are packages/secureboot-objects. No image depends on it.
+  enrolTool =
+    { pkgs, buildSystem }:
+    common.nuDerivation {
+      name = "golconda-enrol-auth";
+      inherit buildSystem;
+      module = "signer";
+      tools = [ pkgs.openssl ];
+      attrs = {
+        program = "golconda-enrol-auth";
+        main = "enrol-main.nu";
+        description = "a key set's Secure Boot enrolment files (lib/image/enrol.nu)";
+        programEnv.GOLCONDA_SECUREBOOT_OBJECTS = "${pkgs.secureboot-objects}/share/secureboot-objects";
+        opensslModules = "";
+      };
+      libs = [ pkgs.openssl ];
+    };
+
   signedWithTestKeys =
     {
       unsigned,
