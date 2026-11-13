@@ -12,9 +12,12 @@ vars() {
 
 # push_admin_vars: the host CA signs the guest's host key once its fingerprint matches the one
 # the first boot printed on the serial console; the host certificate and a revocation list naming
-# cert-revoked are stored and pushed with golconda vars, and both must be sealed. From then on a
-# release with hostCertificate on refuses plain keys, so the harness also offers the certificate
-# cert-admin (GUEST_EXTRA_ID: guest, the vars ssh config, check_unsealed)
+# cert-revoked are stored and pushed with golconda vars, and both must be sealed. With --next the
+# harness runs the steps one by one (vars pub, ssh-keygen -s, vars set, vars push); with --enrol it
+# runs the one command an operator runs, golconda vars enrol, with the console's fingerprint, after
+# a wrong fingerprint was refused. From then on a release with hostCertificate on refuses plain
+# keys, so the harness also offers the certificate cert-admin (GUEST_EXTRA_ID: guest, the vars ssh
+# config, check_unsealed)
 push_admin_vars() {
   echo ""
   echo "=== admin vars: the host certificate and the revocation list, with golconda vars ==="
@@ -36,25 +39,29 @@ EOF
   age-keygen -y "$WORKDIR/age.key" > "$WORKDIR/vars/recipients.txt"
   cp "$REPO_DIR/tests/fixtures/snakeoil-host-ca" "$WORKDIR/ssh/host-ca"
   chmod 600 "$WORKDIR/ssh/host-ca"
-  # the operator's check before signing: the key golconda vars reads over ssh is the key whose
-  # fingerprint the machine printed on its serial console at first boot (modules/services/sshd)
-  RC=0
-  (cd "$WORKDIR" && vars pub boot-test sshd-hostkey key.pub) > "$WORKDIR/ssh/host.pub" || RC=1
-  FP=$(ssh-keygen -l -f "$WORKDIR/ssh/host.pub" 2>/dev/null | cut -d' ' -f2) || FP=""
-  echo "host key fingerprint: ${FP:-none}"
-  grep -a "golconda: ssh host key" "$FIRST_SERIAL_LOG" | tail -1 || true
-  [ -n "$FP" ] && grep -aq "golconda: ssh host key .*$FP" "$FIRST_SERIAL_LOG" || RC=1
-  verdict "hostkey-fingerprint-on-console (the key golconda vars pub reads is the one the console names)" $RC
-  RC=0
-  (
-    cd "$WORKDIR" || exit 1
-    ssh-keygen -q -s ssh/host-ca -h -I boot-test -n localhost ssh/host.pub
-    vars set boot-test sshd-host-cert cert < ssh/host-cert.pub
-    echo "serial: 3" > ssh/krl.spec
-    ssh-keygen -q -k -f ssh/krl -s "$REPO_DIR/tests/fixtures/snakeoil-user-ca.pub" ssh/krl.spec
-    vars set boot-test sshd-revoked-keys krl < ssh/krl
-    vars push -i age.key boot-test
-  ) > "$WORKDIR/push.out" 2>&1 || RC=1
+  echo "serial: 3" > "$WORKDIR/ssh/krl.spec"
+  ssh-keygen -q -k -f "$WORKDIR/ssh/krl" -s "$REPO_DIR/tests/fixtures/snakeoil-user-ca.pub" "$WORKDIR/ssh/krl.spec"
+  if [ "$ENROL" = 1 ]; then
+    enrol_admin_vars
+  else
+    # the operator's check before signing: the key golconda vars reads over ssh is the key whose
+    # fingerprint the machine printed on its serial console at first boot (modules/services/sshd)
+    RC=0
+    (cd "$WORKDIR" && vars pub boot-test sshd-hostkey key.pub) > "$WORKDIR/ssh/host.pub" || RC=1
+    FP=$(ssh-keygen -l -f "$WORKDIR/ssh/host.pub" 2>/dev/null | cut -d' ' -f2) || FP=""
+    echo "host key fingerprint: ${FP:-none}"
+    grep -a "golconda: ssh host key" "$FIRST_SERIAL_LOG" | tail -1 || true
+    [ -n "$FP" ] && grep -aq "golconda: ssh host key .*$FP" "$FIRST_SERIAL_LOG" || RC=1
+    verdict "hostkey-fingerprint-on-console (the key golconda vars pub reads is the one the console names)" $RC
+    RC=0
+    (
+      cd "$WORKDIR" || exit 1
+      ssh-keygen -q -s ssh/host-ca -h -I boot-test -n localhost ssh/host.pub
+      vars set boot-test sshd-host-cert cert < ssh/host-cert.pub
+      vars set boot-test sshd-revoked-keys krl < ssh/krl
+      vars push -i age.key boot-test
+    ) > "$WORKDIR/push.out" 2>&1 || RC=1
+  fi
   cat "$WORKDIR/push.out"
   GUEST_EXTRA_ID="-i $WORKDIR/ssh/cert-admin"
   grep -qx "sealed sshd-host-cert.cert" "$WORKDIR/push.out" || RC=1
@@ -67,6 +74,40 @@ EOF
   echo "$LIST" | grep -qx "sshd-host-cert cert stored sealed" || RC=1
   echo "$LIST" | grep -qx "sshd-revoked-keys krl stored sealed" || RC=1
   verdict "admin-vars-sealed (golconda vars list: stored here, sealed there)" $RC
+}
+
+# enrol_admin_vars: golconda vars enrol, as an operator enrols a machine
+# (docs/features/ssh-login.md): it reads the host key over ssh, compares its fingerprint with the
+# one given (the harness reads it from the first boot's serial console), signs it with the host
+# CA, stores the certificate and the KRL, and pushes them (push.out). A fingerprint that is not
+# the console's must be refused before anything is signed, stored or sealed. Leaves RC, the
+# command's result, for admin-vars-pushed.
+enrol_admin_vars() {
+  CONSOLE_FP=$(grep -a "golconda: ssh host key" "$FIRST_SERIAL_LOG" | tail -1 |
+    grep -o 'SHA256:[A-Za-z0-9+/]*') || CONSOLE_FP=""
+  echo "console: host key ${CONSOLE_FP:-none}"
+  RC=0
+  if (cd "$WORKDIR" && vars enrol -i age.key boot-test --ca-key ssh/host-ca --principal localhost \
+    --krl ssh/krl --fingerprint SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA) \
+    > "$WORKDIR/enrol-wrong.out" 2>&1; then
+    RC=1
+  fi
+  cat "$WORKDIR/enrol-wrong.out"
+  grep -q "nothing is signed, stored or pushed" "$WORKDIR/enrol-wrong.out" || RC=1
+  LIST=$(cd "$WORKDIR" && vars list boot-test 2>&1) || RC=1
+  echo "$LIST"
+  if echo "$LIST" | grep -q -e " stored " -e " sealed$"; then RC=1; fi
+  verdict "enrol-wrong-fingerprint-refused (golconda vars enrol: a fingerprint not the console's stores and seals nothing)" $RC
+  ENROL_RC=0
+  (
+    cd "$WORKDIR" || exit 1
+    vars enrol -i age.key boot-test --ca-key ssh/host-ca --principal localhost --krl ssh/krl \
+      --fingerprint "$CONSOLE_FP"
+  ) > "$WORKDIR/push.out" 2>&1 || ENROL_RC=1
+  RC=0
+  [ -n "$CONSOLE_FP" ] && grep -q "^host key .* $CONSOLE_FP " "$WORKDIR/push.out" || RC=1
+  verdict "hostkey-fingerprint-on-console (golconda vars enrol read the key the console names)" $RC
+  RC=$ENROL_RC
 }
 
 # test_certs LOGIN: the release with hostCertificate and revokedKeys on reads what was pushed:

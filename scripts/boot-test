@@ -61,7 +61,11 @@
 #   second plain key, the bootstrap key, as the SMBIOS credential ssh.authorized_keys.root. Before
 #   anything is pushed, the bootstrap key logs in (bootstrap-key-login) and a good certificate is
 #   refused by the image's fallback list, which names the user CA (cert-refused-before-enrol). The
-#   harness then pushes the host certificate and a KRL, as with --next, and the same release
+#   harness then enrols the guest with one command, `golconda vars enrol`, as an operator does: a
+#   fingerprint that is not the console's is refused and nothing is stored or sealed
+#   (enrol-wrong-fingerprint-refused); with the console's fingerprint it signs the host key with
+#   tests/fixtures/snakeoil-host-ca and pushes the host certificate and a KRL
+#   (hostkey-fingerprint-on-console, admin-vars-pushed, admin-vars-sealed), and the same release
 #   presents the certificate, takes certificates, refuses the revoked one, refuses both plain keys
 #   though the KRL names neither (bootstrap-key-refused-after-enrol), and takes a second KRL. After
 #   the push the harness logs in with its own certificate (cert-admin). Needs the same tools as

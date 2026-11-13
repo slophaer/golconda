@@ -578,17 +578,18 @@ With `--next DIR` ([The update test](#the-update-test)):
 
 With `--enrol` (and `--ssh-test`; instead of `cert-login`):
 
-| marker                                                                     | what it proves                                                                                   |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `bootstrap-key-login`                                                      | the bootstrap key from the SMBIOS credential logs in before anything is pushed                   |
-| `cert-refused-before-enrol`                                                | a good certificate is refused, and sshd's journal says the revocation list refused it            |
-| `hostkey-fingerprint-on-console`, `admin-vars-pushed`, `admin-vars-sealed` | the push of `--next`, in the first boot of the release that reads it                             |
-| `host-cert-presented`, `cert-login-after-enrol`, `cert-revoked-refused`    | the same boot presents the host certificate, takes the good certificate, refuses the revoked one |
-| `bootstrap-key-refused-after-enrol`                                        | the bootstrap key and the image's test key are refused; the KRL names neither                    |
-| `krl-pushed-again`, `krl-rotated`                                          | a second KRL takes effect, as with `--next`                                                      |
-| `enrol-one-release`                                                        | all of it ran in the first boot: the boot id and the version did not change                      |
-| `host-cert-presented-after-reboot`, `cert-revoked-refused-after-reboot`    | with `--tpm`: after the reboot the sealed certificate and the rotated KRL are in force           |
-| `bootstrap-key-refused-after-reboot`                                       | with `--tpm`: after the reboot plain keys are still refused                                      |
+| marker                                                                     | what it proves                                                                                                                                                         |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bootstrap-key-login`                                                      | the bootstrap key from the SMBIOS credential logs in before anything is pushed                                                                                         |
+| `cert-refused-before-enrol`                                                | a good certificate is refused, and sshd's journal says the revocation list refused it                                                                                  |
+| `enrol-wrong-fingerprint-refused`                                          | `golconda vars enrol` with a fingerprint that is not the console's refuses, and nothing is stored or sealed                                                            |
+| `hostkey-fingerprint-on-console`, `admin-vars-pushed`, `admin-vars-sealed` | `golconda vars enrol` with the console's fingerprint signs the host key, stores and pushes the certificate and a KRL, in the first boot of the release that reads them |
+| `host-cert-presented`, `cert-login-after-enrol`, `cert-revoked-refused`    | the same boot presents the host certificate, takes the good certificate, refuses the revoked one                                                                       |
+| `bootstrap-key-refused-after-enrol`                                        | the bootstrap key and the image's test key are refused; the KRL names neither                                                                                          |
+| `krl-pushed-again`, `krl-rotated`                                          | a second KRL takes effect, as with `--next`                                                                                                                            |
+| `enrol-one-release`                                                        | all of it ran in the first boot: the boot id and the version did not change                                                                                            |
+| `host-cert-presented-after-reboot`, `cert-revoked-refused-after-reboot`    | with `--tpm`: after the reboot the sealed certificate and the rotated KRL are in force                                                                                 |
+| `bootstrap-key-refused-after-reboot`                                       | with `--tpm`: after the reboot plain keys are still refused                                                                                                            |
 
 With `--rotate`:
 
