@@ -172,6 +172,9 @@ in
         virt-firmware
         openssh
         ;
+      # Microsoft's Secure Boot objects: scripts/make-keys signs them into the key set's
+      # enrolment files, and boot-test --auto-enrol checks the firmware holds them
+      inherit (pkgs) secureboot-objects;
     }
     # tests-<name>: a package's own test from tests/packages/ (they moved with the packages)
     // import ../tests/packages { inherit sources set; }

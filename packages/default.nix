@@ -109,6 +109,9 @@
   json-glib = ./json-glib;
   # its firmware: OVMF comes with qemu-system; virt-fw-vars enrols the Secure Boot keys
   virt-firmware = ./virt-firmware;
+  # Microsoft's Secure Boot certificates and revocation list, for the variables systemd-boot
+  # enrols (scripts/make-keys, lib/image/enrol.nu; the boot test's --auto-enrol checks)
+  secureboot-objects = ./secureboot-objects;
   python-cryptography = ./python-cryptography;
   python-cffi = ./python-cffi;
   python-pycparser = ./python-pycparser;

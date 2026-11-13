@@ -1,0 +1,11 @@
+[upstream]
+purl = "pkg:github/microsoft/secureboot_objects"
+
+[[source]]
+key = "default"
+url = "https://github.com/microsoft/secureboot_objects/archive/refs/tags/v{version}.tar.gz"
+hash = "sha256-+d1YMA6+NnS3Zo5aCy99Iw9IVZevxYuspL3E95lUcWs="
+
+[pin]
+version = "1.7.2"
+date = "2026-11-02"
