@@ -7,8 +7,10 @@ own copy of any of them:
    systemd-boot and every UKI; the PCR policy key signs the expected PCR 11 values and is what
    TPM2-sealed credentials are bound to. Signed by the signer outside Nix (the test images use
    throwaway keys) and proven in a boot test with `--secure-boot`, where firmware enforces Secure
-   Boot (`secure-boot-enabled`) and refuses a loader whose key is in `dbx` (`old-loader-refused`);
-   enrolment is manual and automatic enrolment is *(later)* ([Deployment keys](#deployment-keys)).
+   Boot (`secure-boot-enabled`) and refuses a loader whose key is in `dbx` (`old-loader-refused`). A
+   machine in Setup Mode enrols the deployment's PK, KEK, `db` and `dbx` from the ESP on its first
+   boot, with Microsoft's keys or without (`auto-enrolled`, `db-enrolled`, `dbx-enrolled`; proven in
+   a virtual machine, hardware *(being built)*: [Boot loader: Enrolment](bootloader.md#enrolment)).
 1. **The verity signing key** decides *what is read*: it signs the root hash of every `/usr` image.
    Today it is the Secure Boot `db` key, and the kernel checks the signature against the firmware
    `db` at every boot; without Secure Boot, against the same certificate built into the kernel
@@ -247,23 +249,32 @@ uses short-lived certificates instead.
 A release is signed with the deployment's keys, not the store's throwaways, and the signing happens
 outside Nix ([Signing outside Nix](#signing-outside-nix)). The procedure, from making the set to
 enrolling the certificate, is in [Making a release](../reference/release.md). A key set is a
-directory of six files (`scripts/make-keys`):
+directory of ten key files and the enrolment files (`scripts/make-keys`):
 
-| file                | used for                                                         | read by       |
-| ------------------- | ---------------------------------------------------------------- | ------------- |
-| `secureboot/db.key` | signs the loader, the UKI and the verity root hash               | the signer    |
-| `secureboot/db.crt` | the certificate for those signatures; firmware `db` must hold it | `lib.mkImage` |
-| `pcr/pcr.key`       | signs the PCR 11 policy of each boot phase (`.pcrsig`)           | the signer    |
-| `pcr/pcr.pub`       | the public half, embedded in the UKI as `.pcrpkey`               | `lib.mkImage` |
-| `release/index.key` | signs each release's `SHA256SUMS` (OpenPGP Ed25519)              | the signer    |
-| `release/index.pgp` | the public half, the image's keyring for `Verify=yes`            | `lib.mkImage` |
+| file                 | used for                                                         | read by       |
+| -------------------- | ---------------------------------------------------------------- | ------------- |
+| `secureboot/db.key`  | signs the loader, the UKI and the verity root hash               | the signer    |
+| `secureboot/db.crt`  | the certificate for those signatures; firmware `db` must hold it | `lib.mkImage` |
+| `secureboot/PK.key`  | signed `PK.auth` and `KEK.auth`; later, a new KEK                | `make-keys`   |
+| `secureboot/PK.crt`  | the platform key's certificate, enrolled as `PK`                 | the signer    |
+| `secureboot/KEK.key` | signed `db.auth` and `dbx.auth`; later, `db` and `dbx` updates   | `make-keys`   |
+| `secureboot/KEK.crt` | the key exchange key's certificate, enrolled as `KEK`            | the signer    |
+| `secureboot/auth/`   | `microsoft/{PK,KEK,db,dbx}.auth` and `golconda/{PK,KEK,db}.auth` | the signer    |
+| `pcr/pcr.key`        | signs the PCR 11 policy of each boot phase (`.pcrsig`)           | the signer    |
+| `pcr/pcr.pub`        | the public half, embedded in the UKI as `.pcrpkey`               | `lib.mkImage` |
+| `release/index.key`  | signs each release's `SHA256SUMS` (OpenPGP Ed25519)              | the signer    |
+| `release/index.pgp`  | the public half, the image's keyring for `Verify=yes`            | `lib.mkImage` |
 
 `lib.mkImage` takes the directory as `publicKeys` and copies the three public files into the store,
 each alone; it reads nothing else of the set. The signer reads the three private files where they
 lie, or has a token sign with the `db` and PCR keys that `secureboot/db.pkcs11` and `pcr/pcr.pkcs11`
-name instead ([Keys on a token](#keys-on-a-token)). Nothing needs a `PK` or `KEK`: they are enrolled
-in firmware and sign nothing a release holds. A `db` rotation keeps the PCR key and the release key
-from the old set (`pcrPublicKeys` and `indexPublicKeys` for `lib.mkImage`, `--pcr-keys` and
+name instead ([Keys on a token](#keys-on-a-token)). The PK and the KEK sign only the Secure Boot
+variables systemd-boot enrols in Setup Mode, and `scripts/make-keys` signs those once, into
+`secureboot/auth/` ([Boot loader: Enrolment](bootloader.md#enrolment)). So no release needs the PK
+or KEK key: the signer copies the files and checks them against `PK.crt`, `KEK.crt` and the image's
+`db` certificate, and `lib.mkImage` reads none of them. The PK and KEK keys can stay offline until
+the next `db` rotation or `dbx` update. A `db` rotation keeps the PCR key and the release key from
+the old set (`pcrPublicKeys` and `indexPublicKeys` for `lib.mkImage`, `--pcr-keys` and
 `--index-keys` for the signer; [Boot loader: Key rotation](bootloader.md#key-rotation),
 [Releases: The signed index](releases.md#the-signed-index)).
 
@@ -298,6 +309,10 @@ half of the public key the image carries, then:
 1. writes the verity hash tree and signs the root hash with the `db` key (PKCS#7);
 1. builds the UKI with `ukify`: the cmdline with `usrhash=` and that signature, the Secure Boot
    signature (`db` key) and `.pcrsig` (PCR key);
+1. for an image with Secure Boot, copies the key set's enrolment files to `loader/keys/auto/`
+   (`secureboot/auth/microsoft` or `golconda`, by `/system.secureBootMicrosoftKeys`) after it checks
+   them against `PK.crt`, `KEK.crt` and the image's `db` certificate (`lib/image/enrol.nu`); it
+   reads no PK or KEK key;
 1. writes the ESP and `disk.raw` with `systemd-repart --offline`;
 1. writes `release/` with `SHA256SUMS` and signs the index with the release key.
 
@@ -322,8 +337,9 @@ a Secure Boot image at their store paths; only the manifest, which holds the new
 changes.
 
 No private key enters the image or the machine either; only the certificates are enrolled in
-firmware. The test outputs (`packages.<system>.image-smoke*`) sign with throwaway keys made in the
-store (`throwawayKeys`) and link only their public halves as `keys/`.
+firmware, and the ESP holds them only inside the signed `.auth` files. The test outputs
+(`packages.<system>.image-smoke*`) sign with throwaway keys made in the store (`throwawayKeys`) and
+link only their public halves as `keys/`.
 
 Rotation and recovery:
 
@@ -601,5 +617,6 @@ signature ([status](#2-verity-key)), so programs on `/usr` run, and a program co
 `Permission denied` with the audit record `rule="DEFAULT op=EXECUTE action=DENY"`. The firmware `db`
 must hold the signer: without it `/usr` is activated unsigned, and PID 1's re-exec after switch-root
 is denied, so the machine stops with "Failed to execute /sbin/init". The boot test therefore needs
-`--secure-boot`, which enrols the `db`. Phase 2 is the BPF LSM for `RestrictFileSystems=`; phase 3
-AppArmor profiles generated from the typed service. SELinux is rejected.
+`--secure-boot`, which enrols the `db` (with `--auto-enrol`, systemd-boot enrols it). Phase 2 is the
+BPF LSM for `RestrictFileSystems=`; phase 3 AppArmor profiles generated from the typed service.
+SELinux is rejected.

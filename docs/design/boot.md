@@ -211,6 +211,8 @@ loader ships in `/usr`, and a machine installs it on the ESP after a good boot; 
 the key rotation and the recovery paths are in [Boot loader](bootloader.md). Firmware starts nothing
 else: with only this certificate enrolled, firmware refuses an unsigned loader.
 
-The image does not enrol the key: nothing writes `loader/keys/auto`, and a release step does not do
-it either. Enrolment is manual, on the variable store (`virt-fw-vars`) or with `sbctl` where
-firmware needs it. Key hierarchy in [Trust](trust.md).
+The signer copies the key set's signed Secure Boot variables (the deployment's PK, KEK and `db`, and
+by default Microsoft's KEK, UEFI CAs and `dbx`) to `loader/keys/auto` on the ESP. In Setup Mode
+systemd-boot enrols them and resets, on hardware after a 15-second warning; firmware that already
+has keys ignores them ([Boot loader: Enrolment](bootloader.md#enrolment)). Key hierarchy in
+[Trust](trust.md).

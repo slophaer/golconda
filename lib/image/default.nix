@@ -6,9 +6,10 @@
 #   index     the release key's public half, the keyring of the signed index (index.nix)
 #   manifest  the unsigned outputs: manifest.json, the public halves, the signer (manifest.nix)
 #   signer    golconda-sign (signer.nix, sign.nu): the loader, mkfs.erofs, verity and its
-#             signature, the UKI with .pcrsig, the disk (systemd-repart), the release directory
-#             and SHA256SUMS.gpg; the steps are erofs.nu, verity.nu, loader.nu, uki.nu, disk.nu,
-#             their parameters erofs.nix, verity.nix, loader.nix, uki.nix, disk.nix
+#             signature, the UKI with .pcrsig, the key set's Secure Boot variables for
+#             loader/keys/auto, the disk (systemd-repart), the release directory and SHA256SUMS.gpg; the steps
+#             are erofs.nu, verity.nu, loader.nu, uki.nu, enrol.nu, disk.nu, their parameters
+#             erofs.nix, verity.nix, loader.nix, uki.nix, disk.nix
 #   signedWithTestKeys  the same signer in a derivation, with throwaway keys (signer.nix)
 # and the smoke's throwaway keys (throwawayKeys). The pure parts (ukiName, repartDefinitions,
 # versionToEpoch) are exported for nix/tests.nix.

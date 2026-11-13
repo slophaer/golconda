@@ -5,14 +5,14 @@ certificate in the firmware. The key layout and the reason for each key are in
 [Trust: Deployment keys](../design/trust.md#deployment-keys); the files a release holds are in
 [Releases](../design/releases.md).
 
-| step                     | needs                                                                                |
-| ------------------------ | ------------------------------------------------------------------------------------ |
-| 1. make the key set      | a build daemon: the script builds its own `openssl` and `gnupg` (`scripts/tools.sh`) |
-| 2. build and sign        | the release host: the daemon of [Build host](build-host.md), `golconda`, git         |
-| 3. publish `release/`    | an update source rclone reaches, and `/system.updateSource` on the machine           |
-| 4. enrol the certificate | firmware setup, or the `KEK` private key for an authenticated `db` append            |
-| 5. rotate                | the old key set, and the same firmware access                                        |
-| 6. keys on a token       | a PKCS#11 token (a YubiKey) and its module, for the `db` and PCR keys                |
+| step                     | needs                                                                                                       |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| 1. make the key set      | a build daemon: the script builds its own `openssl`, `gnupg` and `golconda-enrol-auth` (`scripts/tools.sh`) |
+| 2. build and sign        | the release host: the daemon of [Build host](build-host.md), `golconda`, git                                |
+| 3. publish `release/`    | an update source rclone reaches, and `/system.updateSource` on the machine                                  |
+| 4. enrol the certificate | nothing on a machine in Setup Mode; firmware setup on one that has keys                                     |
+| 5. rotate                | the old key set, and the same firmware access                                                               |
+| 6. keys on a token       | a PKCS#11 token (a YubiKey) and its module, for the `db` and PCR keys                                       |
 
 ## 1. Make the key set
 
@@ -26,25 +26,36 @@ signs and the certificate's SHA-256 fingerprint. It never prints key material. K
 the release host: no build reads the private keys, and no step copies them
 ([Trust: Signing outside Nix](../design/trust.md#signing-outside-nix)).
 
-| file                | what it does                                                         |
-| ------------------- | -------------------------------------------------------------------- |
-| `secureboot/db.key` | signs systemd-boot, each UKI and each verity root hash               |
-| `secureboot/db.crt` | the certificate for those signatures; the firmware `db` must hold it |
-| `pcr/pcr.key`       | signs the PCR 11 policy (`.pcrsig`) in each UKI                      |
-| `pcr/pcr.pub`       | the public half, embedded in each UKI as `.pcrpkey`                  |
-| `release/index.key` | signs each release's `SHA256SUMS` (OpenPGP Ed25519, armored secret)  |
-| `release/index.pgp` | the public half (binary), the image's keyring for `Verify=yes`       |
+| file                 | what it does                                                           |
+| -------------------- | ---------------------------------------------------------------------- |
+| `secureboot/db.key`  | signs systemd-boot, each UKI and each verity root hash                 |
+| `secureboot/db.crt`  | the certificate for those signatures; the firmware `db` must hold it   |
+| `secureboot/PK.key`  | signed `PK.auth` and `KEK.auth`; no release reads it                   |
+| `secureboot/PK.crt`  | the platform key's certificate                                         |
+| `secureboot/KEK.key` | signed `db.auth` and `dbx.auth`; a rotation's new set is signed by it  |
+| `secureboot/KEK.crt` | the key exchange key's certificate                                     |
+| `secureboot/auth/`   | `microsoft/{PK,KEK,db,dbx}.auth`, `golconda/{PK,KEK,db}.auth` (step 4) |
+| `pcr/pcr.key`        | signs the PCR 11 policy (`.pcrsig`) in each UKI                        |
+| `pcr/pcr.pub`        | the public half, embedded in each UKI as `.pcrpkey`                    |
+| `release/index.key`  | signs each release's `SHA256SUMS` (OpenPGP Ed25519, armored secret)    |
+| `release/index.pgp`  | the public half (binary), the image's keyring for `Verify=yes`         |
 
 `db.crt` is a self-signed PEM X.509 certificate, valid for 3650 days, with `CA:TRUE`,
-`digitalSignature`, `keyCertSign`, `cRLSign` and `codeSigning`. `systemd-sbsign` takes a PEM
-certificate (systemd 262, `systemd-sbsign(1)`). The signer checks each private key against its
-public half and each verity root hash signature against the certificate, so a key and certificate
-that do not match fail the release and not the boot. Keep the set: a rotation uses the old `pcr/`
-key and the old release key (step 5).
+`digitalSignature`, `keyCertSign`, `cRLSign` and `codeSigning`. `PK.crt` and `KEK.crt` are the same
+without `codeSigning`; each has a key of its own. The enrolment files are signed once, here, by
+`golconda-enrol-auth` with Microsoft's certificates and revocation list
+(`packages/secureboot-objects`), so a release needs neither the PK key nor the KEK key: keep them
+offline. Run `golconda-enrol-auth --keys DIR` again, with them, for a newer `dbx`. `systemd-sbsign`
+takes a PEM certificate (systemd 262, `systemd-sbsign(1)`). The signer checks each private key
+against its public half and each verity root hash signature against the certificate, so a key and
+certificate that do not match fail the release and not the boot. Keep the set: a rotation uses the
+old `pcr/` key and the old release key (step 5).
 
 `tests/make-keys/run.sh` (run by `scripts/lint`) runs the script into a temporary directory and
-checks the layout, the modes, the certificate's extensions and that each key matches its public
-half.
+checks the layout, the modes, the certificate's extensions, that each key matches its public half,
+that PK, KEK and `db` are three different keys, that each `.auth` enrols its certificate, and that
+`--reuse-pk-kek` keeps the old PK and KEK. `tests/sign/enrol-test.nu` checks the files field by
+field.
 
 ## 2. Build and sign
 
@@ -131,25 +142,42 @@ that the update installed nothing.
 
 Firmware must hold `secureboot/db.crt` in `db`. It verifies the signed loader and UKI with that
 certificate, and the kernel checks each verity root hash signature against the `db` in the platform
-keyring ([Trust: Deployment keys](../design/trust.md#deployment-keys)). Enrol the certificate only;
-the private keys stay on the build host and never enter the image.
+keyring ([Trust: Deployment keys](../design/trust.md#deployment-keys)). Only certificates are
+enrolled; the private keys stay on the build host and never enter the image.
 
-How the variable is written depends on the machine. Firmware setup can enrol a certificate. The
-image cannot change `db` or `dbx` itself, and systemd-boot enrols keys from `loader/keys/` only in
-setup mode ([Boot loader: What is not possible](../design/bootloader.md#what-is-not-possible)). From
-a running machine, `bootctl reboot-to-firmware true` and a reboot reach the firmware menu
-([Boot loader: Recovery](../design/bootloader.md#recovery)). The boot test writes an OVMF variable
-store offline with `virt-fw-vars --add-db` (`scripts/boot-test`).
+**A machine in Setup Mode needs nothing.** The release's ESP carries
+`loader/keys/auto/{PK,KEK,db,dbx}.auth` from the key set: by default with Microsoft's KEK, UEFI CAs
+and revocation list, with `/system.secureBootMicrosoftKeys = false` the set's certificates alone. On
+the first boot of `disk.raw` from firmware without a PK, systemd-boot enrols them, PK last, and
+resets the machine; on hardware it first warns for 15 seconds, and a key aborts. The next boot runs
+with Secure Boot on ([Boot loader: Enrolment](../design/bootloader.md#enrolment)). A new virtual
+machine has an empty variable store; hardware gets one when its keys are cleared in firmware setup.
 
-**Unverified:** this repository has no procedure for a machine's own firmware. A boot of the
-release's `disk.raw` after an enrolment in firmware setup would test it.
+**Firmware with keys.** Firmware that already has a PK ignores the files. Add `secureboot/db.crt` to
+`db` in firmware setup, beside the vendor's keys, or clear the keys there and boot again. The image
+cannot change `db` or `dbx` itself
+([Boot loader: What is not possible](../design/bootloader.md#what-is-not-possible)). From a running
+machine, `bootctl reboot-to-firmware true` and a reboot reach the firmware menu
+([Boot loader: Recovery](../design/bootloader.md#recovery)).
+
+The boot test runs both: `--secure-boot` writes an OVMF variable store offline with
+`virt-fw-vars --add-db`, and `--secure-boot --auto-enrol` boots from the empty store and lets
+systemd-boot enrol, with and without Microsoft's keys (`auto-enrolled`, `db-enrolled`,
+`dbx-enrolled`; `scripts/boot-test`).
+
+**Unverified:** enrolment on a machine's own firmware *(being built)*. Not run: clearing the keys in
+a real firmware's setup, the 15-second warning on its console, that firmware accepting the four
+files, option ROMs running after the enrolment with Microsoft's keys, and adding `db.crt` beside a
+vendor's keys.
 
 ## 5. Rotate a key
 
 A `db` rotation signs the next loader, UKIs and verity root hashes with a new key. The PCR key and
-the release key do not change, so make a second set with `scripts/make-keys` and keep the first:
+the release key do not change, and neither do the PK and the KEK, so make a second set that keeps
+the first set's PK and KEK, and keep the first:
 
 ```sh
+scripts/make-keys --reuse-pk-kek /srv/golconda-keys /srv/golconda-keys-2
 golconda release build -f server.toml --keys /srv/golconda-keys-2 \
   --pcr-keys /srv/golconda-keys --index-keys /srv/golconda-keys
 ```

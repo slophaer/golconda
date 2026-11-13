@@ -20,8 +20,13 @@ policy with keys you make, so a swapped kernel opens nothing.
   `systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11`. sshd loads the result with
   `LoadCredentialEncrypted=`. The key is sealed to the PCR key, not to one PCR value, so a new
   signed image unseals it with no re-enrolment.
-- **Deployment keys.** `scripts/make-keys` writes `secureboot/db.{key,crt}`, `pcr/pcr.{key,pub}` and
-  the release key. The image chain needs no `PK` or `KEK`. The private keys never enter the image.
+- **Deployment keys.** `scripts/make-keys` writes `secureboot/db.{key,crt}`, a `PK` and a `KEK`,
+  `pcr/pcr.{key,pub}`, the release key, and the Secure Boot variables, signed once by the PK and KEK
+  keys. No release needs the PK or KEK key. The private keys never enter the image.
+- **Enrolment.** The ESP carries `loader/keys/auto/{PK,KEK,db,dbx}.auth`: by default with
+  Microsoft's KEK, UEFI CAs and revocation list, so option ROMs run on hardware. A machine in Setup
+  Mode enrols them on its first boot and reboots with Secure Boot on. Firmware with keys ignores
+  them.
 - **Without Secure Boot.** With `/system.secureBoot = false`, the kernel carries the `db`
   certificate itself (`CONFIG_SYSTEM_TRUSTED_KEYS`, a fixed path the build fills) and checks the
   `/usr` signature. Each key set builds its own kernel, with the same config, so with jig's compile
@@ -37,8 +42,8 @@ scripts/make-keys /srv/golconda-keys
 golconda release build -f server.toml --keys /srv/golconda-keys
 ```
 
-Then enrol `secureboot/db.crt` in the firmware. For a host with no Secure Boot, such as Hetzner
-Cloud:
+A machine in Setup Mode enrols the keys on its first boot. On firmware that has keys, clear them or
+enrol `secureboot/db.crt` in firmware setup. For a host with no Secure Boot, such as Hetzner Cloud:
 
 ```toml
 ["/system"]
@@ -52,18 +57,21 @@ mode. The procedure is in [Making a release](../reference/release.md) and the
 ## Status
 
 Proven in QEMU with OVMF: `secure-boot-enabled`, and after a key rotation `old-loader-refused` (a
-loader signed with a key now in `dbx`). No marker boots an unsigned loader.
-`hostkey-sealed-with-tpm2`, `ssh-after-reboot` and `hostkey-unchanged` (`--tpm`) show the seal and
-the unseal, also after an update and after a fallback (`--tpm --next`, with `--fail-health`).
-`boots-after-rotation` and `old-loader-refused` cover a `db` rotation. A deployment key set made by
-`scripts/make-keys` booted on the same markers. The no-Secure-Boot image (`image-smoke-test-nosb`)
-boots and updates. See [What is proven](../proven.md).
+loader signed with a key now in `dbx`). From an empty variable store systemd-boot enrols the keys
+(`auto-enrolled`, `pk-enrolled`, `kek-enrolled`, `db-enrolled`, `dbx-enrolled`), with Microsoft's
+keys and without them. No marker boots an unsigned loader. `hostkey-sealed-with-tpm2`,
+`ssh-after-reboot` and `hostkey-unchanged` (`--tpm`) show the seal and the unseal, also after an
+update and after a fallback (`--tpm --next`, with `--fail-health`). `boots-after-rotation` and
+`old-loader-refused` cover a `db` rotation. A deployment key set made by `scripts/make-keys` booted
+on the same markers. The no-Secure-Boot image (`image-smoke-test-nosb`) boots and updates. See
+[What is proven](../proven.md).
 
 ## Limits
 
-- Enrolment is manual (`virt-fw-vars`, `sbctl` or firmware setup). Automatic enrolment is *(later)*.
-  The harness enrols offline, so real firmware has not run. Hetzner Cloud ran without Secure Boot
-  and without a TPM ([What is proven](../proven.md#on-hetzner-cloud)).
+- Automatic enrolment has run in a virtual machine only; on hardware it is *(being built)*. With
+  `secureBootMicrosoftKeys = false` hardware may refuse option ROMs
+  ([Boot loader: Enrolment](../design/bootloader.md#enrolment)). Hetzner Cloud ran without Secure
+  Boot and without a TPM ([What is proven](../proven.md#on-hetzner-cloud)).
 - Only the sshd host key is sealed. The state partition is not (LUKS2 is *(later)*).
 - Without Secure Boot, nothing checks the UKI before it runs. Whoever can write the ESP can boot a
   kernel that trusts another key. IPE and the `/usr` signature still hold.

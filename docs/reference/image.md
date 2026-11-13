@@ -241,8 +241,11 @@ and gives it the volume ID it derives from the ESP's partition UUID (`-i`). dosf
 `SOURCE_DATE_EPOCH`; Golconda carries the upstream commit that adds it
 (`packages/dosfstools/source-date-epoch.patch`, dosfstools PR #106, merged after 4.2).
 `packages.<system>.disk-reproducible` signs the test image a second time and compares the release
-and `disk.raw` byte for byte; `scripts/verify` builds it after the image. The boot test covers the
-verity certificate in the kernel keyring and TPM sealing ([What is proven](../proven.md)).
+and `disk.raw` byte for byte; `scripts/verify` builds it after the image.
+`packages.<system>.release-without-pk-kek` signs it with a copy of its key set without
+`secureboot/PK.key` and `KEK.key` and compares the same way: the signer copies the enrolment files
+that `scripts/make-keys` signed and reads no PK or KEK key. The boot test covers the verity
+certificate in the kernel keyring and TPM sealing ([What is proven](../proven.md)).
 
 The smoke, the test image and the production image boot the same command line
 ([The kernel command line](#the-kernel-command-line)).
@@ -445,6 +448,17 @@ build (`edk2-x86_64-code.fd`), which has no Secure Boot support. Both pair with 
 store `edk2-i386-vars.fd` (528 KB: together the 4 MB flash). The guest must report
 `Secure Boot: enabled` (the `secure-boot-enabled` marker); the same disk with an unsigned loader on
 the ESP is refused by firmware, which is the negative control for this check.
+
+`--secure-boot --auto-enrol` (with `--ssh-test`) enrols nothing: OVMF starts with its empty variable
+store, in Setup Mode, and QEMU may reboot. systemd-boot must enrol the ESP's `loader/keys/auto` and
+reset ([Boot loader: Enrolment](../design/bootloader.md#enrolment)). `auto-enrolled` reads its
+message in the serial log; `pk-enrolled`, `kek-enrolled`, `db-enrolled` and `dbx-enrolled` read the
+variables from efivarfs over ssh: `PK` is the key set's `secureboot/PK.crt`; `KEK` holds its
+`KEK.crt` and Microsoft's KEK CA 2011 and KEK 2K CA 2023; `db` its `db.crt` and the Microsoft UEFI
+CA 2011, UEFI CA 2023 and Option ROM UEFI CA 2023, and neither Windows CA; `dbx` is Microsoft's list
+(the files of `packages/secureboot-objects`). With `--no-microsoft-keys`, for
+`image-smoke-test-own-keys`, `KEK` and `db` hold none of Microsoft's certificates and `dbx` is
+empty. Then the ssh battery runs as with `--secure-boot`.
 
 The script creates a 40 GiB qcow2 overlay (room for the root partition), copies the OVMF variable
 store, passes the host name `boot-test` as a credential (`-smbios type=11,...`, not with
