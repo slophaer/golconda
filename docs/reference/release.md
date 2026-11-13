@@ -207,40 +207,124 @@ with `--secure-boot --ssh-test --tpm` (`@image=image-smoke-test-pkcs11`;
 
 ### A YubiKey *(being built)*
 
-No run on a real YubiKey has been done, and the YubiKey's PKCS#11 module is not a Golconda package:
-the steps below are the plan, not a tested procedure. A YubiKey 5 holds RSA 2048 keys in its PIV
-applet, the type `scripts/make-keys` makes for both keys.
+**No run on a real YubiKey has been done**, so this is the plan, not a tested procedure, and the
+marker stays until a run is named in [What is proven](../proven.md#signing-outside-nix). What has
+run, without a token: the packages (`pcsc-lite`, `ccid`, `yubico-piv-tool`, `yubikey-tools`) and
+their tests (`packages.<system>.tests-<name>`). They start `pcscd` with ccid's driver directory, run
+`yubico-piv-tool` with and without a daemon, and load `libykcs11.so` through p11-kit and
+pkcs11-provider, which find no slot and no token. The options below are those of yubico-piv-tool
+2.7.3's `--help`; the PKCS#11 ids come from its source (`ykcs11/objects.c`).
 
-1. Make the key set on an offline machine (`scripts/make-keys`) and keep an encrypted copy of
-   `db.key` and `pcr.key` offline: a key made on the token cannot be copied, and a lost token would
-   mean a new `db` certificate in every machine's firmware and a new PCR key for every sealed
-   credential.
+The keys are made offline, backed up, and imported into two YubiKeys, a primary and a spare. A key
+made on a token cannot be copied, and a lost token would mean a new `db` certificate in every
+machine's firmware and a new PCR key for every sealed credential. A YubiKey 5 holds RSA 2048 keys in
+its PIV applet, the type `scripts/make-keys` makes for both keys. The release host holds no private
+key of the two; the `release/` key stays a file there (above).
 
-1. Set the PIV PIN, PUK and management key, then import each key and its certificate into a slot,
-   with the PIN asked once per session rather than for each signature (`ykman`, from
-   yubikey-manager):
+1. **The tools**, on the machine that imports (offline) and on the release host:
 
    ```sh
-   ykman piv access change-pin
-   ykman piv access change-puk
-   ykman piv access change-management-key --generate --protect
-   ykman piv keys import --pin-policy ONCE --touch-policy NEVER 9c secureboot/db.key
-   ykman piv certificates import 9c secureboot/db.crt
-   openssl req -x509 -new -key pcr/pcr.key -subj "/CN=Golconda PCR policy key/" -days 3650 \
-     -out pcr/pcr.crt
-   ykman piv keys import --pin-policy ONCE --touch-policy NEVER 9d pcr/pcr.key
-   ykman piv certificates import 9d pcr/pcr.crt
+   nix-build -A packages.x86_64-linux.yubikey-tools -o yubikey-tools
+   export PATH=$PWD/yubikey-tools/bin:$PATH
    ```
 
-   The PCR key gets a self-signed certificate only so that it is in the slot: yubico-piv-tool's
-   module lists a slot's key with its certificate. Nothing checks the certificate.
+   `yubikey-tools/bin` has `pcscd`, `yubico-piv-tool` and `ykcs11-module`, which prints the path of
+   `libykcs11.so`. Start the daemon as root, in a terminal of its own, and keep it running while a
+   command uses the YubiKey (any local user may then use the card; the package has no polkit):
 
-1. Repeat step 2 on a second YubiKey, the spare.
+   ```sh
+   sudo $PWD/yubikey-tools/bin/pcscd --foreground
+   ```
 
-1. On the release host, list the token's private keys with the module, e.g.
-   `pkcs11-tool --module libykcs11.so --list-objects --type privkey`, and write their URIs (token
-   label and `id`) into `secureboot/db.pkcs11` and `pcr/pcr.pkcs11`. Delete `db.key` and `pcr.key`
-   from the release host.
+   Without a YubiKey, `yubico-piv-tool --help` and `ykcs11-module` run, and
+   `yubico-piv-tool -a status` fails with "PCSC service not available" (no daemon) or "Error in PCSC
+   call" (daemon, no reader).
 
-1. Build with `--pkcs11-module` and the module of yubico-piv-tool (`libykcs11.so`), or OpenSC's
-   `opensc-pkcs11.so`. Both talk to the card through the host's pcscd.
+1. **Make the key set on an offline machine** (it needs the Nix daemon and the tools the script
+   builds, `openssl` and `gnupg`, built beforehand) and keep two encrypted copies of the two private
+   keys on offline media (a passphrase; `age` is `packages.<system>.age`):
+
+   ```sh
+   scripts/make-keys /srv/golconda-keys
+   tar -C /srv/golconda-keys -cf - secureboot/db.key pcr/pcr.key | age -p -o golconda-keys.tar.age
+   ```
+
+   Restore with `age -d golconda-keys.tar.age | tar -xf -`. Check a copy by restoring it into a
+   temporary directory before the keys leave the machine.
+
+1. **Give the PCR key a certificate.** ykcs11 lists a key only with a certificate in its slot. The
+   certificate is self-signed and nothing checks it:
+
+   ```sh
+   openssl req -x509 -new -key pcr/pcr.key -subj "/CN=Golconda PCR policy key/" -days 3650 \
+     -out pcr/pcr.crt
+   ```
+
+1. **Set up and fill one YubiKey** (plug in one at a time). The default PIN is `123456`, the PUK
+   `12345678` and the management key `010203040506070801020304050607080102030405060708`; change all
+   three. The management key is needed only to import or delete keys, not to sign: write it down
+   with the backup. `--key=` takes the value attached; a bare `--key` asks for it.
+
+   ```sh
+   MGM=$(openssl rand -hex 24)
+   yubico-piv-tool -a set-mgm-key --new-key="$MGM" --new-key-algo=AES192
+   yubico-piv-tool -a change-pin
+   yubico-piv-tool -a change-puk
+   yubico-piv-tool --key="$MGM" -a import-key -s 9c --pin-policy=once --touch-policy=never \
+     -i secureboot/db.key
+   yubico-piv-tool --key="$MGM" -a import-certificate -s 9c -i secureboot/db.crt
+   yubico-piv-tool --key="$MGM" -a import-key -s 9d --pin-policy=once --touch-policy=never \
+     -i pcr/pcr.key
+   yubico-piv-tool --key="$MGM" -a import-certificate -s 9d -i pcr/pcr.crt
+   ```
+
+   The `db` key goes to slot 9c and the PCR key to slot 9d. `--new-key-algo=AES192` needs firmware
+   5.4.2 or newer; leave it out on older keys (3DES). `--pin-policy=once` asks for the PIN once per
+   session, not for every signature: the PIV standard's default for 9c is "always", which ykcs11
+   reports as `CKA_ALWAYS_AUTHENTICATE`. **Unverified:** that a YubiKey 5 accepts `once` for an
+   imported key in 9c.
+
+   Check the slots, and that the key in 9c is the one that was made (the two fingerprints must be
+   equal) and signs:
+
+   ```sh
+   yubico-piv-tool -a status
+   yubico-piv-tool -a read-certificate -s 9c | openssl x509 -noout -fingerprint -sha256
+   openssl x509 -in secureboot/db.crt -noout -fingerprint -sha256
+   yubico-piv-tool -a verify-pin -a test-signature -s 9c
+   ```
+
+1. **Repeat step 4 on the second YubiKey**, the spare, with the same files and its own management
+   key. Keep it offline in another place. Then delete the private keys from the offline machine's
+   working copy if the backups restore.
+
+1. **The key set for the release host.** Copy `secureboot/db.crt`, `pcr/pcr.pub` and `release/` to
+   the release host, not `db.key`, `pcr.key` or `pcr.crt`. Write the two URIs. ykcs11 numbers its
+   objects by slot (9a is 1, 9c is 2, 9d is 3, 9e is 4), and the id is in the URI; there is no
+   `token=`, so either YubiKey matches, with one plugged in at a time:
+
+   ```sh
+   echo 'pkcs11:id=%02;type=private?pin-source=file:/run/user/1000/yubikey-pin' \
+     > /srv/golconda-keys/secureboot/db.pkcs11
+   echo 'pkcs11:id=%03;type=private?pin-source=file:/run/user/1000/yubikey-pin' \
+     > /srv/golconda-keys/pcr/pcr.pkcs11
+   ```
+
+   The PIN goes into the file once per sitting, so that the eight programs of one build do not each
+   ask for it; `/run/user/<uid>` is memory:
+
+   ```sh
+   ( umask 077; read -rs PIN && printf '%s' "$PIN" > /run/user/$(id -u)/yubikey-pin )
+   ```
+
+   Delete the file when the build ends. **Unverified:** `pin-source=` has not run (above).
+
+1. **Build with the module**, with `pcscd` running and one YubiKey plugged in:
+
+   ```sh
+   golconda release build -f server.toml --keys /srv/golconda-keys \
+     --pkcs11-module "$(ykcs11-module)"
+   ```
+
+   The signer compares each key on the token with the public half in the key set before it signs
+   (above), so a wrong id or a YubiKey with other keys fails the build, not the boot.

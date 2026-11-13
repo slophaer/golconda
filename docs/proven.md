@@ -259,4 +259,6 @@ same inputs is not compared either.
 - **A boot without the `db` enrolled.** It stops at switch-root; the harness has no marker for it.
 
 - **A key on a real token.** The `db` and PCR keys on a token are proven with SoftHSM only; no run
-  on a YubiKey *(being built)*. The release key on a token *(later)*.
+  on a YubiKey *(being built)*: the YubiKey's packages (`pcsc-lite`, `ccid`, `yubico-piv-tool`,
+  `yubikey-tools`) are tested without a token (`tests-yubikey-tools`: the module loads and finds no
+  slot). The release key on a token *(later)*.
