@@ -238,8 +238,9 @@ them first, and a configuration never lists them.
 - **units**: `golconda-health-network.service`, `golconda-loader-update.service` and
   `golconda-etc-links.service`; `dbus.socket` is a file, because dbus-broker does not ship it.
 - **links**:
-  - `.wants` links for `dbus.socket`, `systemd-networkd` (service and socket), `systemd-resolved`
-    and `systemd-timesyncd`, with the `dbus.service` alias;
+  - `.wants` links for `dbus.socket`, `systemd-networkd` (service and socket), `systemd-resolved`,
+    `systemd-timesyncd`, `systemd-network-generator` and `systemd-networkd-wait-online`, with the
+    `dbus.service` alias;
   - `/usr/bin/sh` → dash, and `/usr/bin` links for the util-linux and e2fsprogs executables that
     mount units, fsck and udev rules exec;
   - `farm` links for systemd's own directories (`/usr/lib/systemd`, `/usr/lib/udev`,
@@ -252,9 +253,10 @@ them first, and a configuration never lists them.
   - `/usr/lib/locale.conf` (`LANG=C.UTF-8`);
   - `/usr/lib/repart.d/30-root.conf`, the root partition repart makes at first boot (from
     `image/repart.nix`);
+  - `/usr/lib/systemd/system-preset/00-golconda.preset`, `disable *`: no preset enables a unit;
   - `/usr/lib/golconda/golconda-loader-update` and `loader.conf`, and
     `/usr/libexec/golconda-etc-links`;
-  - thirteen unit drop-ins, `/usr/lib/systemd/system/<unit>.d/golconda.conf` (for example
+  - fourteen unit drop-ins, `/usr/lib/systemd/system/<unit>.d/golconda.conf` (for example
     `systemd-firstboot.service` runs without prompts, and `ldconfig.service` and `modprobe@.service`
     skip without their binary).
 - **tmpfiles**: `L /bin`, `L /sbin` and `L /lib` (merged `/usr` on the root partition).

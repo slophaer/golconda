@@ -49,6 +49,7 @@ test_ssh() {
 
   check_no_failed no-failed-units
   check_clock clock-not-reset
+  check_units_composed
 
   echo ""
   echo "=== varlinkctl list-interfaces ==="

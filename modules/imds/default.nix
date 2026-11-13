@@ -217,8 +217,7 @@ in
       );
       units.${netUnit} = netUnitText;
       # The generator pulls the early network unit on a cloud only, and it pulls the import, which
-      # pulls the second network generator run.
-      # Not the socket: systemd's preset (no `disable *`) enables it on every machine.
+      # pulls the second network generator run. The import pulls systemd-imdsd.socket itself.
       links = {
         "/usr/lib/systemd/system/systemd-imds-early-network.service.wants/${importUnit}" = {
           target = "../${importUnit}";

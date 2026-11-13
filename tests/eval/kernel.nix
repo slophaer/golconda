@@ -103,6 +103,9 @@ in
     in
     hasInfix "\nCONFIG_DMI_SYSFS=y\n" conf && hasInfix "\nCONFIG_FW_CFG_SYSFS=y\n" conf
   ))
+  (check "systemd: no sysext or confext stack (they would overlay /usr and /etc)" (
+    pkgs.systemd.args.meson.defs.sysext == false
+  ))
   (check "linux-pam: pam_unix reads shadow itself (the set has no unix_chkpwd helper)" (
     pkgs.linux-pam.args.meson.defs."pam_unix-try-getspnam" == true
   ))

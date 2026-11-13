@@ -1,6 +1,8 @@
 # systemd: the IMDS stack (meson `imds`) is built, with its units and its system user. /base's
 # farm links lib/systemd and lib/sysusers.d, so these files reach every image; /base's drop-ins
 # keep the units off unless the configuration has `/imds` (modules/base/parts/imds.nix).
+# Not built: the sysext and confext stack (meson `sysext`), whose units would overlay /usr and
+# /etc with images from /var/lib/extensions and /etc/extensions.
 use checks.nu *
 let p = $env.pkg
 let unit = {|n| $"($p)/lib/systemd/system/($n)" }
@@ -13,4 +15,11 @@ for n in [systemd-imdsd.socket systemd-imdsd@.service systemd-imds-early-network
 }
 let sysuser = $"($p)/lib/sysusers.d/systemd-imds.conf"
 assert "the systemd-imds system user" (($sysuser | path exists) and ((open --raw $sysuser) | str contains "u! systemd-imds"))
+
+# sysext off: neither program, no unit of either (the initrd's and the socket's included)
+for n in [systemd-sysext systemd-confext] {
+  assert $"no ($n) program" (not ($"($p)/bin/($n)" | path exists -n))
+}
+let ext = (ls $"($p)/lib/systemd/system" | get name | path basename | where {|n| ($n | str contains "sysext") or ($n | str contains "confext") })
+assert $"no sysext or confext unit \(($ext | str join ' ')\)" ($ext | is-empty)
 done

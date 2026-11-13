@@ -1,9 +1,8 @@
 # Part of /base (modules/base/default.nix merges it): systemd's IMDS (cloud instance metadata)
 # units stay off unless the configuration has /imds. The systemd farm ships them in every image;
-# systemd-imds-generator pulls them in wherever hwdb names a cloud (40-imds.hwdb), and systemd's
-# preset enables systemd-imdsd.socket on every machine. Without this, the early network file,
-# the prohibit route and the daemon would come to every Hetzner machine without a word in its
-# configuration. So each unit gets a drop-in with a condition on /usr/lib/golconda/imds, a file
+# systemd-imds-generator pulls them in wherever hwdb names a cloud (40-imds.hwdb). Without this,
+# the early network file, the prohibit route and the daemon would come to every Hetzner machine
+# without a word in its configuration. So each unit gets a drop-in with a condition on /usr/lib/golconda/imds, a file
 # only /imds ships. The initrd is /base alone (lib/image/initrd.nix), so they stay off there too:
 # it has no network and no system users (sysusers runs after it). Returns { files; }.
 let

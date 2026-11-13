@@ -59,11 +59,31 @@ Units are enabled by static `.wants` symlinks, not by presets:
 
 The service renderer writes these from `wantedBy`; `[Install]` stays in the unit text so
 `systemctl enable/disable` still works for an administrator's overrides in `/etc`. Static links work
-without a first-boot step, also in the initrd. PID 1 still runs `preset-all` on the first boot when
-`/etc` is empty, and writes absolute store-path links under `/etc/systemd/system`; the initrd unit
-`golconda-etc-links.service` rewrites them to `/usr/lib/systemd/system/<unit>` after `/sysroot/usr`
-is mounted and before switch-root, so a systemd store path change in an update leaves no dangling
-link ([Updates](updates.md#enable-links-and-systemds-store-path)).
+without a first-boot step, also in the initrd.
+
+No preset enables a unit. PID 1 runs `preset-all` on the first boot, when `/etc` is empty, and the
+first line that matches a unit wins, in the order of the file names. `/base` ships
+`/usr/lib/systemd/system-preset/00-golconda.preset`, which says `disable *`, so systemd's own
+`90-systemd.preset` and its default, `enable`, never apply, and the first boot writes no link under
+`/etc/systemd/system`. Before, they enabled every unit with an `[Install]` section that the image
+ships, among them `systemd-sysext.service`, `systemd-tpm2-clear.service`, the pcrlock and report
+units and `systemd-sysupdate-reboot.timer`. The boot test's `units-composed-only` checks that no
+link is in `/etc/systemd/system` and that every enabled unit has a static link in `/usr`.
+
+Two units that systemd's preset enabled are needed, so `/base` links them:
+
+| unit                                   | link                          | why                                                                                                                       |
+| -------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `systemd-network-generator.service`    | `sysinit.target.wants`        | it turns `network.*` credentials into networkd files before networkd starts ([Provisioning](../features/provisioning.md)) |
+| `systemd-networkd-wait-online.service` | `network-online.target.wants` | `network-online.target` waits for a configured network; `systemd-imds-import.service` orders after it                     |
+
+The other units that `systemctl enable systemd-networkd.service` would add are not linked: networkd
+and resolved open their varlink sockets themselves, and they own their D-Bus names while they run.
+
+`golconda-etc-links.service` rewrites an administrator's enable links, which name a store path, to
+`/usr/lib/systemd/system/<unit>` after `/sysroot/usr` is mounted and before switch-root, so a
+systemd store path change in an update leaves no dangling link
+([Updates](updates.md#enable-links-and-systemds-store-path)).
 
 ## State
 

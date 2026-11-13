@@ -13,7 +13,8 @@ test_fail_health() {
   echo ""
   echo "=== the fallback: $NEXT_VERSION fails its health check three times ==="
   RC=0
-  guest "ln -sf /dev/null /etc/systemd/system/golconda-health-network.service" || RC=1
+  # the first boot writes nothing to /etc/systemd/system (00-golconda.preset), so it may not exist
+  guest "mkdir -p /etc/systemd/system && ln -sf /dev/null /etc/systemd/system/golconda-health-network.service" || RC=1
   verdict "health-check-broken (a masked health unit, so boot-complete.target is not reached)" $RC
 
   i=1

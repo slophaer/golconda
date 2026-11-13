@@ -86,8 +86,8 @@ wrong for Golconda in three ways:
 - It runs before `sysinit.target`, so a candidate would install its loader before its health gate.
 - It does nothing unless `EFI/systemd/` exists, and the image does not create that directory.
 
-A drop-in turns it off (`ConditionPathExists=!/usr/lib/golconda/golconda-loader-update`), so the ESP
-has one writer.
+Nothing enables it: only systemd's preset did, and `00-golconda.preset` turns the preset off
+([Layout](layout.md#unit-enablement)). So the ESP has one writer.
 
 ## Enrolment
 

@@ -87,6 +87,10 @@ package {
     bpf-framework = "disabled"; # no BPF
     libidn2 = "disabled"; # no IDN
     polkit = "disabled"; # no run0 yet, root over ssh
+    # no systemd-sysext or systemd-confext: they overlay /usr and /etc with images from
+    # /var/lib/extensions, /etc/extensions and the ESP, which an offline write can plant.
+    # Software comes from modules at build time (docs/design/comparison.md)
+    sysext = false;
 
     # === Enabled features ===
     pam = "enabled";
@@ -281,7 +285,6 @@ package {
     "systemd-cat"
     "systemd-cgls"
     "systemd-cgtop"
-    "systemd-confext"
     "systemd-creds"
     "systemd-cryptenroll"
     "systemd-cryptsetup"
@@ -305,7 +308,6 @@ package {
     "systemd-run"
     "systemd-socket-activate"
     "systemd-stdio-bridge"
-    "systemd-sysext"
     "systemd-sysinstall"
     "systemd-sysusers"
     "systemd-tmpfiles"

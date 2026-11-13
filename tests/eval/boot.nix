@@ -76,7 +76,6 @@
     u = baseOnly.units."golconda-loader-update.service";
     wants = "/usr/lib/systemd/system/systemd-bless-boot.service.wants/golconda-loader-update.service";
     script = baseOnly.files."/usr/lib/golconda/golconda-loader-update";
-    dropIn = baseOnly.files."/usr/lib/systemd/system/systemd-boot-update.service.d/golconda.conf";
   in
   [
     (check "loader: the update runs after a good counted boot and never without one" (
@@ -97,8 +96,10 @@
     (check "loader: /usr carries image/loader.nix's loader.conf" (
       baseOnly.files."/usr/lib/golconda/loader.conf".text == (import ../../image).loader.conf
     ))
-    (check "loader: systemd-boot-update.service stays off" (
-      hasInfix "\nConditionPathExists=!/usr/lib/golconda/golconda-loader-update\n" dropIn.text
+    (check "loader: systemd-boot-update.service stays off (no link enables it)" (
+      # it is enabled only by systemd's preset, which 00-golconda.preset turns off
+      filter (p: hasInfix "systemd-boot-update" p) (attrNames baseOnly.links) == [ ]
+      && hasInfix "\ndisable *\n" baseOnly.files."/usr/lib/systemd/system-preset/00-golconda.preset".text
     ))
   ]
 )

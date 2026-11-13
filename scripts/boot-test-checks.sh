@@ -221,6 +221,45 @@ check_hwdb() {
   verdict "$1 (/usr/lib/udev/hwdb.bin answers for DMI, PCI and USB; none in /etc)" $RC
 }
 
+# check_units_composed [SUFFIX]: every enabled unit is enabled by a static link in /usr, which the
+# configuration composed (docs/design/layout.md, "Unit enablement"). 00-golconda.preset says
+# `disable *`, so the first boot's preset-all writes nothing to /etc/systemd/system, and every unit
+# file systemctl calls enabled has a link in a .wants, .requires or .upholds directory of
+# /usr/lib/systemd/system (a template counts by any instance). The generators' links, in /run, make
+# units enabled-runtime: those are not counted. The sysext and confext stack is not built: no unit
+# file and no program of either. SUFFIX names a later boot (-after-update).
+check_units_composed() {
+  echo ""
+  echo "=== enabled units${1:+ ($1)} ==="
+  RC=0
+  L=$(guest 'for f in /etc/systemd/system/* /etc/systemd/system/*/*; do [ -L "$f" ] && echo "$f -> $(readlink "$f")"; done; true') || L="no answer"
+  echo "links in /etc/systemd/system: ${L:-none}"
+  [ -z "$L" ] || RC=1
+  EN=$(guest systemctl list-unit-files --state=enabled --no-legend --no-pager 2>&1 | cut -d' ' -f1) || EN=""
+  W=$(guest 'for f in /usr/lib/systemd/system/*.wants/* /usr/lib/systemd/system/*.requires/* /usr/lib/systemd/system/*.upholds/*; do echo "${f##*/}"; done') || W=""
+  OUT=""
+  for u in $EN; do
+    case "$u" in
+      *@.*) echo "$W" | grep -q "^${u%%@.*}@.*[.]${u##*.}$" && continue ;;
+      *) echo "$W" | grep -qxF "$u" && continue ;;
+    esac
+    OUT="$OUT $u"
+  done
+  echo "enabled unit files: $(echo "$EN" | tr '\n' ' ')"
+  echo "enabled without a link in /usr:${OUT:- none}"
+  [ -z "$OUT" ] || RC=1
+  verdict "units-composed-only${1:-} (no link in /etc/systemd/system; each enabled unit has a static link in /usr)" $RC
+
+  RC=0
+  X=$(guest systemctl list-unit-files --no-legend --no-pager '*sysext*' '*confext*' 2>&1) || true
+  echo "sysext and confext units: ${X:-none}"
+  [ -z "$X" ] || RC=1
+  P=$(guest 'for f in /usr/bin/systemd-sysext /usr/bin/systemd-confext; do [ -e "$f" ] && echo "$f"; done; true') || P="no answer"
+  echo "sysext and confext programs: ${P:-none}"
+  [ -z "$P" ] || RC=1
+  verdict "no-sysext${1:-} (no sysext or confext unit and no program)" $RC
+}
+
 # check_no_failed NAME: no unit has failed in the running boot
 check_no_failed() {
   echo ""
@@ -333,9 +372,12 @@ test_loader() {
     verdict "enrol-keys-removed (Secure Boot is on: loader/keys/auto is gone from the ESP)" $RC
   fi
 
-  CR=$(guest systemctl show -P ConditionResult systemd-boot-update.service 2>&1) || true
-  RC=0; [ "$CR" = no ] || RC=1
-  verdict "boot-update-off (systemd-boot-update.service ConditionResult=$CR)" $RC
+  # nothing enables it: only systemd's preset did, and 00-golconda.preset turns that off
+  BA=$(guest systemctl show -P ActiveState systemd-boot-update.service 2>&1) || true
+  BT=$(guest systemctl show -P InactiveExitTimestampMonotonic systemd-boot-update.service 2>&1) || true
+  BU="$BA, left inactive at $BT"
+  RC=0; [ "$BA" = inactive ] && [ "$BT" = 0 ] || RC=1
+  verdict "boot-update-off (systemd-boot-update.service never started: $BU)" $RC
 }
 
 # test_release_index: the release directory a server publishes, as docs/design/releases.md states
@@ -398,8 +440,7 @@ test_etc_links() {
 IMDS_UNIT=systemd-imds-import.service
 
 # check_imds_off: without a cloud in DMI, the generator pulls nothing in: neither the early network
-# unit (which only the generator pulls) nor the import it hangs off ever left inactive. The
-# imdsd socket may listen: systemd's preset enables it, and the test image has /imds.
+# unit (which only the generator pulls) nor the import it hangs off ever left inactive.
 check_imds_off() {
   echo ""
   echo "=== /imds without a cloud ==="

@@ -95,10 +95,12 @@ once, on the running machine.
 
 ## Enable links and systemd's store path
 
-PID 1 runs `preset-all` when `/etc` is empty (the first boot). It writes enable links under
-`/etc/systemd/system` with an absolute target,
-`/usr/nix/store/<hash>-systemd/lib/systemd/system/<unit>`. A release that changes systemd's own
-store path would leave those links dangling, and the units they enable would not load.
+`systemctl enable` writes enable links under `/etc/systemd/system` with an absolute target,
+`/usr/nix/store/<hash>-systemd/lib/systemd/system/<unit>`: the unit files in `/usr` are links into
+the store. The first boot writes none (`00-golconda.preset`, [Layout](layout.md#unit-enablement)),
+but an administrator's `systemctl enable` does, and so did the first boot of a release before that
+preset. A release that changes systemd's own store path would leave those links dangling, and the
+units they enable would not load.
 
 The unit `golconda-etc-links.service` runs `/usr/libexec/golconda-etc-links /sysroot` in the initrd,
 after `/sysroot/usr` is mounted and before switch-root. It rewrites each link whose target is an

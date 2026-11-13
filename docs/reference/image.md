@@ -497,21 +497,23 @@ firstboot ran.
 
 With `--ssh-test` (the harness logs in as root with `tests/fixtures/snakeoil-ssh`):
 
-| marker                         | what it proves                                                                                                                                                             |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ssh-login`                    | an ssh login with the test key works                                                                                                                                       |
-| `hostname`                     | `hostname` prints `boot-test`: PID 1 applied the `system.hostname` credential (not with `--imds`)                                                                          |
-| `imds-import-inactive`         | without `--imds`: no cloud in DMI, so `systemd-imds-early-network.service` and `systemd-imds-import.service` never started                                                 |
-| `esp-authorized-keys`          | with `--esp-creds`: `/root/.ssh/authorized_keys` holds the generated key                                                                                                   |
-| `no-failed-units`              | `systemctl --failed` lists no unit                                                                                                                                         |
-| `varlinkctl-list-interfaces`   | `io.systemd.Manager` answers on its varlink socket                                                                                                                         |
-| `secure-boot-enabled`          | `bootctl status` says `Secure Boot: enabled` (with `--secure-boot`)                                                                                                        |
-| `hwdb`                         | `/usr/lib/udev/hwdb.bin` answers for DMI, PCI and USB; none in `/etc`                                                                                                      |
-| `clock-not-reset`              | this boot's journal (`journalctl -b`) has no "further ahead than" reset message from PID 1, and no entry is older than the year of systemd's built-in epoch (`time-epoch`) |
-| `ipe-denies-copy`              | a copy of `/usr/bin/sh` in `/var/tmp` gets EACCES, and IPE logs the denial                                                                                                 |
-| `cert-login`                   | a certificate from the test user CA (`tests/fixtures/snakeoil-user-ca`) logs in as root for the principal `boot-test-admin`                                                |
-| `cert-wrong-principal-refused` | a certificate for another principal is refused                                                                                                                             |
-| `index-keyring`                | `/usr/lib/systemd/import-pubring.pgp` is the key set's `release/index.pgp`                                                                                                 |
+| marker                         | what it proves                                                                                                                                                                |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ssh-login`                    | an ssh login with the test key works                                                                                                                                          |
+| `hostname`                     | `hostname` prints `boot-test`: PID 1 applied the `system.hostname` credential (not with `--imds`)                                                                             |
+| `imds-import-inactive`         | without `--imds`: no cloud in DMI, so `systemd-imds-early-network.service` and `systemd-imds-import.service` never started                                                    |
+| `esp-authorized-keys`          | with `--esp-creds`: `/root/.ssh/authorized_keys` holds the generated key                                                                                                      |
+| `no-failed-units`              | `systemctl --failed` lists no unit                                                                                                                                            |
+| `varlinkctl-list-interfaces`   | `io.systemd.Manager` answers on its varlink socket                                                                                                                            |
+| `secure-boot-enabled`          | `bootctl status` says `Secure Boot: enabled` (with `--secure-boot`)                                                                                                           |
+| `hwdb`                         | `/usr/lib/udev/hwdb.bin` answers for DMI, PCI and USB; none in `/etc`                                                                                                         |
+| `clock-not-reset`              | this boot's journal (`journalctl -b`) has no "further ahead than" reset message from PID 1, and no entry is older than the year of systemd's built-in epoch (`time-epoch`)    |
+| `ipe-denies-copy`              | a copy of `/usr/bin/sh` in `/var/tmp` gets EACCES, and IPE logs the denial                                                                                                    |
+| `units-composed-only`          | `/etc/systemd/system` holds no link, and every unit systemctl calls enabled has a static link in a `.wants`, `.requires` or `.upholds` directory of `/usr/lib/systemd/system` |
+| `no-sysext`                    | no unit file and no program of `systemd-sysext` or `systemd-confext`                                                                                                          |
+| `cert-login`                   | a certificate from the test user CA (`tests/fixtures/snakeoil-user-ca`) logs in as root for the principal `boot-test-admin`                                                   |
+| `cert-wrong-principal-refused` | a certificate for another principal is refused                                                                                                                                |
+| `index-keyring`                | `/usr/lib/systemd/import-pubring.pgp` is the key set's `release/index.pgp`                                                                                                    |
 
 With `--imds` (instead of `hostname`):
 
@@ -539,7 +541,7 @@ update, and after a rotation:
 | `loader-conf-in-effect` | `bootctl status` reads `loader/loader.conf`, and it is `/usr/lib/golconda/loader.conf`  |
 | `enrol-disarmed`        | that `loader.conf` says `secure-boot-enroll off`: the first disk's `force` is replaced  |
 | `enrol-keys-removed`    | with `--secure-boot`: the ESP has no `loader/keys/auto`                                 |
-| `boot-update-off`       | `systemd-boot-update.service` was skipped by its condition                              |
+| `boot-update-off`       | `systemd-boot-update.service` never started: nothing enables it                         |
 
 With `--tpm` (and `--ssh-test`):
 
