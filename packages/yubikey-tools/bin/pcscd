@@ -1,0 +1,4 @@
+#!/bin/sh
+# pcscd with ccid's driver directory (PCSCLITE_HP_DROPDIR, set by this package's launcher). Run it
+# as root: it opens the USB device and makes /run/pcscd.
+exec pcscd "$@"

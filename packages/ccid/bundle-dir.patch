@@ -1,0 +1,29 @@
+--- a/meson.build	2026-09-20 13:05:37.000000000 +0000
++++ b/meson.build	2026-11-13 10:48:17.120212477 +0000
+@@ -66,6 +66,8 @@
+ 
+ conf_data.set_quoted('PCSCLITE_HP_DROPDIR', pcsc_dep.get_variable('usbdropdir'))
+ conf_data.set_quoted('BUNDLE', bundle_id)
++# the bundle goes under this package's libdir: pcscd finds it by PCSCLITE_HP_DROPDIR
++bundle_dropdir = join_paths(get_option('libdir'), 'pcsc', 'drivers')
+ 
+ # libccid
+ libccid_src = [
+@@ -96,7 +98,7 @@
+   include_directories : ['src'],
+   dependencies : [libusb_dep, pcsc_cflags],
+   install : true,
+-  install_dir : join_paths(pcsc_dep.get_variable('usbdropdir'), bundle_id, 'Contents', pcsc_arch))
++  install_dir : join_paths(bundle_dropdir, bundle_id, 'Contents', pcsc_arch))
+ 
+ if get_option('serial')
+ # libccidtwin
+@@ -200,7 +202,7 @@
+   capture : true,
+   command : command,
+   install : true,
+-  install_dir : join_paths(pcsc_dep.get_variable('usbdropdir'), bundle_id, 'Contents'))
++  install_dir : join_paths(bundle_dropdir, bundle_id, 'Contents'))
+ 
+ # udev rules
+ if get_option('udev-rules')

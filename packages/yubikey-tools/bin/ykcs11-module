@@ -1,0 +1,4 @@
+#!/bin/sh
+# Prints the path of the YubiKey's PKCS#11 module, for `golconda release build --pkcs11-module`
+# and PKCS11_PROVIDER_MODULE. YKCS11_MODULE is set by this package's launcher.
+printf '%s\n' "$YKCS11_MODULE"

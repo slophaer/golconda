@@ -1,0 +1,36 @@
+--- a/lib/CMakeLists.txt
++++ b/lib/CMakeLists.txt
+@@ -113,4 +113,3 @@
+ 
+ install(FILES ykpiv.pc DESTINATION ${YKPIV_INSTALL_PKGCONFIG_DIR})
+ 
+-add_subdirectory(tests)
+--- a/ykcs11/CMakeLists.txt
++++ b/ykcs11/CMakeLists.txt
+@@ -104,4 +104,3 @@
+ 
+ install(FILES ykcs11.pc DESTINATION ${YKPIV_INSTALL_PKGCONFIG_DIR})
+ 
+-add_subdirectory(tests)
+--- a/tool/CMakeLists.txt
++++ b/tool/CMakeLists.txt
+@@ -46,10 +46,10 @@
+ 
+     set(LINK_LIBS_WIN ${GETOPT})
+ else(WIN32)
+-    include(${CMAKE_SOURCE_DIR}/cmake/gengetopt.cmake)
+-    find_gengetopt()
+-    add_gengetopt_files(cmdline)
+-    set(SOURCE ${SOURCE} ${GGO_C})
++    # the tarball has the cmdline.c and cmdline.h that gengetopt made from cmdline.ggo
++    add_definitions (-DPACKAGE="yubico-piv-tool")
++    add_definitions (-DVERSION="${yubico_piv_tool_VERSION_MAJOR}.${yubico_piv_tool_VERSION_MINOR}.${yubico_piv_tool_VERSION_PATCH}")
++    set(SOURCE ${SOURCE} cmdline.c)
+ endif(WIN32)
+ 
+ include_directories (
+@@ -97,4 +97,3 @@
+     install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/yubico-piv-tool.1" DESTINATION "${YKPIV_INSTALL_MAN_DIR}/man1")
+ endif(MAN_PAGE)
+ 
+-add_subdirectory(tests)

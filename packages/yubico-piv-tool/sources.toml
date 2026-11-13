@@ -1,0 +1,10 @@
+[upstream]
+purl = "pkg:github/Yubico/yubico-piv-tool"
+
+[[source]]
+key = "default"
+url = "https://developers.yubico.com/yubico-piv-tool/Releases/yubico-piv-tool-{version}.tar.gz"
+hash = "sha256-BJwfT7jp8uN2hdKj0em/J4+K0Pj5pfOaevVUMwI/32I="
+
+[pin]
+version = "2.7.3"

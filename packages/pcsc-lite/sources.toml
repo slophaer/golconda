@@ -1,0 +1,10 @@
+[upstream]
+purl = "pkg:generic/pcsc-lite?url=https://pcsclite.apdu.fr/files/"
+
+[[source]]
+key = "default"
+url = "https://pcsclite.apdu.fr/files/pcsc-lite-{version}.tar.xz"
+hash = "sha256-+1NtseRHYJmNoth1WhiamKsBjbytTKsUB7/U4g6KkGI="
+
+[pin]
+version = "2.5.3"

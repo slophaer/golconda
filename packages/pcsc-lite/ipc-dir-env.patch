@@ -1,0 +1,158 @@
+--- a/src/pcscd.h.in
++++ b/src/pcscd.h.in
+@@ -36,6 +36,9 @@
+ #ifndef __pcscd_h__
+ #define __pcscd_h__
+ 
++#include <stdio.h>
++#include <stdlib.h>
++
+ #define TIME_BEFORE_SUICIDE 60
+ 
+ #define SCARD_RESET			0x0001	/**< Card was reset */
+@@ -44,10 +47,33 @@
+ 
+ #define PCSCLITE_CONFIG_DIR		"@PCSCLITE_CONFIG_DIR@"
+ 
+-#define PCSCLITE_IPC_DIR		"@ipcdir@"
+-#define PCSCLITE_RUN_PID		PCSCLITE_IPC_DIR "/pcscd.pid"
++/* PCSCLITE_IPC_DIR in the environment names the directory of the socket and the pid file in
++ * place of the compiled-in one: a daemon that is not root's (a test, a debugging session) has no
++ * /run/pcscd. PCSCLITE_CSOCK_NAME in the environment still names the socket for a client. */
++static inline const char *pcscd_ipc_dir(void)
++{
++	const char *d = getenv("PCSCLITE_IPC_DIR");
++	return d ? d : "@ipcdir@";
++}
++
++static inline const char *pcscd_run_pid(void)
++{
++	static char path[256];
++	(void)snprintf(path, sizeof path, "%s/pcscd.pid", pcscd_ipc_dir());
++	return path;
++}
++
++static inline const char *pcscd_csock_name(void)
++{
++	static char path[256];
++	(void)snprintf(path, sizeof path, "%s/pcscd.comm", pcscd_ipc_dir());
++	return path;
++}
++
++#define PCSCLITE_IPC_DIR		pcscd_ipc_dir()
++#define PCSCLITE_RUN_PID		pcscd_run_pid()
+ 
+-#define PCSCLITE_CSOCK_NAME		PCSCLITE_IPC_DIR "/pcscd.comm"
++#define PCSCLITE_CSOCK_NAME		pcscd_csock_name()
+ 
+ #define PCSCLITE_VERSION_NUMBER		"@VERSION@"	/**< Current version */
+ #define PCSCLITE_STATUS_POLL_RATE	400000		/**< Status polling rate */
+--- a/src/pcscdaemon.c
++++ b/src/pcscdaemon.c
+@@ -485,8 +485,8 @@
+ 			rv = kill(pid, 0);
+ 			if (0 == rv)
+ 			{
+-				Log1(PCSC_LOG_CRITICAL,
+-					"file " PCSCLITE_CSOCK_NAME " already exists.");
++				Log2(PCSC_LOG_CRITICAL,
++					"file %s already exists.", PCSCLITE_CSOCK_NAME);
+ 				Log2(PCSC_LOG_CRITICAL,
+ 					"Another pcscd (pid: %ld) seems to be running.", (long)pid);
+ 				return EXIT_FAILURE;
+@@ -508,7 +508,7 @@
+ 		{
+ 			if (HotPlug)
+ 			{
+-				Log1(PCSC_LOG_CRITICAL, "file " PCSCLITE_RUN_PID " do not exist");
++				Log2(PCSC_LOG_CRITICAL, "file %s do not exist", PCSCLITE_RUN_PID);
+ 				Log1(PCSC_LOG_CRITICAL, "Hotplug failed");
+ 				return EXIT_FAILURE;
+ 			}
+@@ -626,8 +626,8 @@
+ 		rv = mkdir(PCSCLITE_IPC_DIR, mode);
+ 		if ((rv != 0) && (errno != EEXIST))
+ 		{
+-			Log2(PCSC_LOG_CRITICAL,
+-				"cannot create " PCSCLITE_IPC_DIR ": %s", strerror(errno));
++			Log3(PCSC_LOG_CRITICAL,
++				"cannot create %s: %s", PCSCLITE_IPC_DIR, strerror(errno));
+ 			return EXIT_FAILURE;
+ 		}
+ 
+@@ -688,9 +688,9 @@
+ 			rr = write(f, pid, strlen(pid) + 1);
+ 			if (rr < 0)
+ 			{
+-				Log2(PCSC_LOG_CRITICAL,
+-					"writing " PCSCLITE_RUN_PID " failed: %s",
+-					strerror(errno));
++				Log3(PCSC_LOG_CRITICAL,
++					"writing %s failed: %s",
++					PCSCLITE_RUN_PID, strerror(errno));
+ 			}
+ 
+ 			/* set mode so that the file is world readable even is umask is
+@@ -701,8 +701,8 @@
+ 			(void)close(f);
+ 		}
+ 		else
+-			Log2(PCSC_LOG_CRITICAL, "cannot create " PCSCLITE_RUN_PID ": %s",
+-				strerror(errno));
++			Log3(PCSC_LOG_CRITICAL, "cannot create %s: %s",
++				PCSCLITE_RUN_PID, strerror(errno));
+ 	}
+ 
+ 	/*
+@@ -800,7 +800,7 @@
+ 
+ static void at_exit(void)
+ {
+-	Log1(PCSC_LOG_INFO, "cleaning " PCSCLITE_IPC_DIR);
++	Log2(PCSC_LOG_INFO, "cleaning %s", PCSCLITE_IPC_DIR);
+ 
+ 	clean_temp_files();
+ 
+@@ -830,14 +830,14 @@
+ 	{
+ 		rv = remove(PCSCLITE_CSOCK_NAME);
+ 		if (rv != 0)
+-			Log2(PCSC_LOG_ERROR, "Cannot remove " PCSCLITE_CSOCK_NAME ": %s",
+-				strerror(errno));
++			Log3(PCSC_LOG_ERROR, "Cannot remove %s: %s",
++				PCSCLITE_CSOCK_NAME, strerror(errno));
+ 	}
+ 
+ 	rv = remove(PCSCLITE_RUN_PID);
+ 	if (rv != 0)
+-		Log2(PCSC_LOG_ERROR, "Cannot remove " PCSCLITE_RUN_PID ": %s",
+-			strerror(errno));
++		Log3(PCSC_LOG_ERROR, "Cannot remove %s: %s",
++			PCSCLITE_RUN_PID, strerror(errno));
+ }
+ 
+ static void signal_trap(int sig)
+--- a/src/utils.c
++++ b/src/utils.c
+@@ -68,8 +68,8 @@
+ 		r = read(fd, pid_ascii, sizeof pid_ascii);
+ 		if (r < 0)
+ 		{
+-			Log2(PCSC_LOG_CRITICAL, "Reading " PCSCLITE_RUN_PID " failed: %s",
+-				strerror(errno));
++			Log3(PCSC_LOG_CRITICAL, "Reading %s failed: %s",
++				PCSCLITE_RUN_PID, strerror(errno));
+ 			pid = -1;
+ 		}
+ 		else
+@@ -79,8 +79,8 @@
+ 	}
+ 	else
+ 	{
+-		Log2(PCSC_LOG_CRITICAL, "Can't open " PCSCLITE_RUN_PID ": %s",
+-			strerror(errno));
++		Log3(PCSC_LOG_CRITICAL, "Can\'t open %s: %s",
++			PCSCLITE_RUN_PID, strerror(errno));
+ 		return -1;
+ 	}
+ 

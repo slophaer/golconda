@@ -24,6 +24,12 @@
   # the token the signer's tests put throwaway keys on
   pkcs11-provider = ./pkcs11-provider;
   softhsm = ./softhsm;
+  # the YubiKey's side of that, on a release host: pcscd with its USB driver, the PIV tool and the
+  # PKCS#11 module, as one package for PATH (yubikey-tools)
+  pcsc-lite = ./pcsc-lite;
+  ccid = ./ccid;
+  yubico-piv-tool = ./yubico-piv-tool;
+  yubikey-tools = ./yubikey-tools;
   # the signed update index: gpg verifies SHA256SUMS.gpg (systemd-pull's argv); gpg-agent signs it
   gnupg = ./gnupg;
   libgpg-error = ./libgpg-error;

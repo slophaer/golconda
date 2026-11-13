@@ -144,6 +144,9 @@ in
       inherit (pkgs) age;
       # copies a release to its update source (golconda release publish), on PATH beside golconda
       inherit (pkgs) rclone;
+      # pcscd, yubico-piv-tool and the YubiKey's PKCS#11 module on one PATH, for a release host
+      # that signs from a YubiKey (docs/reference/release.md, "A YubiKey"). Never in an image.
+      inherit (pkgs) yubikey-tools;
       # repkgs' update tool: the packages' upstream check runs it
       inherit (pkgs) uptrack;
       # an S3-compatible store for the release tool's tests

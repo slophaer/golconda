@@ -1,0 +1,10 @@
+[upstream]
+purl = "pkg:generic/ccid?url=https://ccid.apdu.fr/files/"
+
+[[source]]
+key = "default"
+url = "https://ccid.apdu.fr/files/ccid-{version}.tar.xz"
+hash = "sha256-DzmNGIa26p0MqcTljGgHdz0+JlMvszqmviMbZPAfXbk="
+
+[pin]
+version = "1.8.4"
