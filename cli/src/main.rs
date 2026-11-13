@@ -4,6 +4,7 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 use std::env::{self, consts};
 use std::error;
 use std::fmt::Write as _;
+use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -14,8 +15,8 @@ mod vars;
 
 /// Push a Golconda system's admin vars, and check, build and publish its releases.
 ///
-/// git, gpgv, rclone, nix-build, ssh and age come from PATH, or GOLCONDA_<NAME>
-/// (GOLCONDA_SSH="ssh -p 2222").
+/// git, gpgv, rclone, nix-build, ssh, ssh-keygen and age come from PATH, or GOLCONDA_<NAME>
+/// (GOLCONDA_SSH="ssh -p 2222", GOLCONDA_SSH_KEYGEN).
 #[derive(Parser)]
 #[command(version, verbatim_doc_comment)]
 struct Cli {
@@ -147,6 +148,42 @@ enum Vars {
         host: String,
         var: String,
         file: String,
+    },
+    /// Enrol HOST in its first boot: read its host key, show the fingerprint to compare with
+    /// the console's line (or compare it with --fingerprint), sign it as a host certificate with
+    /// ssh-keygen, store the certificate and the KRL, and push both (the KRL first)
+    Enrol {
+        #[command(flatten)]
+        store: VarStore,
+        /// The age identity that decrypts the stored vars (or GOLCONDA_AGE_IDENTITY)
+        #[arg(short = 'i', long)]
+        identity: Option<PathBuf>,
+        host: String,
+        /// The host CA's private key file; with --pkcs11-module its public key file (ca.pub),
+        /// whose private half is on the token
+        #[arg(long, value_name = "FILE")]
+        ca_key: PathBuf,
+        /// The PKCS#11 module of the token that holds the CA key (ssh-keygen -D), e.g. a
+        /// YubiKey's libykcs11.so
+        #[arg(long, value_name = "FILE")]
+        pkcs11_module: Option<PathBuf>,
+        /// A name clients reach HOST by (repeat it; default: HOST)
+        #[arg(long = "principal", value_name = "NAME")]
+        principals: Vec<String>,
+        /// How long the certificate is valid, as ssh-keygen -V takes it
+        #[arg(
+            long,
+            value_name = "INTERVAL",
+            default_value = "-5m:+52w",
+            allow_hyphen_values = true
+        )]
+        validity: String,
+        /// The current KRL; without it, the one stored for HOST (enrol refuses when there is none)
+        #[arg(long, value_name = "FILE")]
+        krl: Option<PathBuf>,
+        /// The fingerprint on HOST's console (SHA256:…): compare with it instead of asking
+        #[arg(long, value_name = "SHA256:…")]
+        fingerprint: Option<String>,
     },
 }
 
@@ -344,6 +381,47 @@ fn run_release(command: Releases) -> Result<String, Box<dyn error::Error>> {
     }
 }
 
+/// `-i`, or GOLCONDA_AGE_IDENTITY; without either a usage error (2). An empty variable names none.
+fn age_identity(given: Option<PathBuf>, command: &str) -> PathBuf {
+    given
+        .or_else(|| {
+            env::var_os("GOLCONDA_AGE_IDENTITY")
+                .filter(|v| !v.is_empty())
+                .map(PathBuf::from)
+        })
+        .unwrap_or_else(|| {
+            Cli::command()
+                .error(
+                    clap::error::ErrorKind::MissingRequiredArgument,
+                    format!("vars {command} needs -i IDENTITY (or GOLCONDA_AGE_IDENTITY)"),
+                )
+                .exit()
+        })
+}
+
+/// The lines `sealed ID` and `restarted UNIT` of a push.
+fn pushed(p: &vars::Pushed) -> String {
+    let mut out = String::new();
+    for id in &p.sealed {
+        out.push_str(&format!("sealed {id}\n"));
+    }
+    for unit in &p.restarted {
+        out.push_str(&format!("restarted {unit}\n"));
+    }
+    out
+}
+
+/// The operator's check: the fingerprint, and a line on standard input that says yes.
+fn ask(host: &str, line: &str) -> bool {
+    eprintln!("{host}'s host key: {line}");
+    eprint!(
+        "Is this the fingerprint on {host}'s console or journal (golconda: ssh host key …)? \
+         Type yes to sign it: "
+    );
+    let mut answer = String::new();
+    io::stdin().read_line(&mut answer).is_ok() && answer.trim() == "yes"
+}
+
 fn run_vars(command: Vars) -> Result<String, Box<dyn error::Error>> {
     let store = |s: VarStore| Store::new(&s.dir, Program::from_env("GOLCONDA_AGE", "age"));
     let remote = |host: &str| Remote::new(Program::from_env("GOLCONDA_SSH", "ssh"), host);
@@ -365,30 +443,63 @@ fn run_vars(command: Vars) -> Result<String, Box<dyn error::Error>> {
             host,
             vars: only,
         } => {
-            // an empty GOLCONDA_AGE_IDENTITY names none; without one it is a usage error (2)
-            let identity = identity
-                .or_else(|| {
-                    env::var_os("GOLCONDA_AGE_IDENTITY")
-                        .filter(|v| !v.is_empty())
-                        .map(PathBuf::from)
-                })
-                .unwrap_or_else(|| {
-                    Cli::command()
-                        .error(
-                            clap::error::ErrorKind::MissingRequiredArgument,
-                            "vars push needs -i IDENTITY (or GOLCONDA_AGE_IDENTITY)",
-                        )
-                        .exit()
-                });
-            let p = vars::push(&store(s), &identity, &remote(&host)?, &host, &only)?;
-            let mut out = String::new();
-            for id in &p.sealed {
-                out.push_str(&format!("sealed {id}\n"));
+            let identity = age_identity(identity, "push");
+            pushed(&vars::push(
+                &store(s),
+                &identity,
+                &remote(&host)?,
+                &host,
+                &only,
+            )?)
+        }
+        Vars::Enrol {
+            store: s,
+            identity: id,
+            host,
+            ca_key,
+            pkcs11_module,
+            principals,
+            validity,
+            krl,
+            fingerprint,
+        } => {
+            let id = age_identity(id, "enrol");
+            if ca_key.to_string_lossy().starts_with("pkcs11:") {
+                return Err(
+                    "ssh-keygen finds a token's key by its public half, not by a URI: \
+                     give --ca-key CA.pub and --pkcs11-module MODULE \
+                     (ssh-keygen -D MODULE lists the token's keys)"
+                        .into(),
+                );
             }
-            for unit in &p.restarted {
-                out.push_str(&format!("restarted {unit}\n"));
+            let krl = krl
+                .map(|f| fs::read(&f).map_err(|e| format!("{}: {e}", f.display())))
+                .transpose()?;
+            let signer = vars::Signer {
+                keygen: Program::from_env("GOLCONDA_SSH_KEYGEN", "ssh-keygen"),
+                ca: ca_key,
+                module: pkcs11_module,
+            };
+            let req = vars::Enrol {
+                host: &host,
+                principals: &principals,
+                validity: &validity,
+                krl: krl.as_deref(),
+                fingerprint: fingerprint.as_deref(),
+            };
+            let e = vars::enrol(
+                &store(s),
+                &id,
+                &remote(&host)?,
+                &signer,
+                &req,
+                &mut |line| ask(&host, line),
+            )?;
+            let mut out = format!("host key {}\n", e.fingerprint);
+            for p in &e.stored {
+                out.push_str(&format!("stored {}\n", p.display()));
             }
-            out
+            out + &pushed(&e.pushed)
         }
         Vars::List { store: s, host } => vars::list(&store(s), &remote(&host)?, &host)?,
         Vars::Pub { host, var, file } => String::from_utf8(remote(&host)?.public(&var, &file)?)?,

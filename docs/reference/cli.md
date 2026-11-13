@@ -14,7 +14,7 @@ the `golconda` command line has two commands, `vars` and `release`.
 | `iets build -A checks.<system>`                                                                                                                                             | the sandboxed checks ([Outputs](outputs.md#outputs))                                                                                        |
 | `iets eval --expr 'import ./nix/tests.nix { }'`                                                                                                                             | the module tests alone                                                                                                                      |
 | `./scripts/lint`                                                                                                                                                            | strict iets lint of the whole evaluation, the module tests, then the checks                                                                 |
-| `golconda vars set\|push\|list\|pub HOST …`                                                                                                                                 | the admin vars of a machine, from the deploy host ([below](#golconda-vars))                                                                 |
+| `golconda vars set\|push\|list\|pub\|enrol HOST …`                                                                                                                          | the admin vars of a machine, from the deploy host ([below](#golconda-vars))                                                                 |
 | `golconda release check\|publish\|build\|list …`                                                                                                                            | the release directory of an image: build, check, publish, list ([below](#golconda-release))                                                 |
 | `nix fmt`                                                                                                                                                                   | treefmt (the formatter output, built by repkgs): format in place and run the linters                                                        |
 | `scripts/docs serve`                                                                                                                                                        | check the module list in `docs/SUMMARY.md`, generate the module pages, then serve the book                                                  |
@@ -42,7 +42,8 @@ image. The source is `cli/` (`cli/README.md` is for developers). It calls other 
 | ----------------------- | ----------------------------------------------- | -------------------------------------------------- |
 | `GOLCONDA_AGE`          | `age` (or `rage`)                               | `vars`                                             |
 | `GOLCONDA_SSH`          | `ssh`                                           | `vars`                                             |
-| `GOLCONDA_AGE_IDENTITY` | the age identity file that `vars push -i` names | `vars push`                                        |
+| `GOLCONDA_SSH_KEYGEN`   | `ssh-keygen`                                    | `vars enrol`                                       |
+| `GOLCONDA_AGE_IDENTITY` | the age identity file that `vars push -i` names | `vars push`, `vars enrol`                          |
 | `GOLCONDA_NIX_BUILD`    | `nix-build`                                     | `release build`                                    |
 | `GOLCONDA_GIT`          | `git`                                           | `release build`, `release list`, `release publish` |
 | `GOLCONDA_GPGV`         | `gpgv`                                          | `release check`, `release publish`                 |
@@ -75,6 +76,44 @@ golconda vars list web1                              # stored here? sealed there
   `GOLCONDA_AGE_IDENTITY`) names the identity that decrypts.
 - `list HOST` says, for each file, whether it is stored here and sealed there.
 - `pub HOST VAR FILE` prints the public file of a local var, such as the host key that a CA signs.
+- `enrol HOST --ca-key FILE` enrols a machine in one command ([below](#golconda-vars-enrol)).
+
+#### `golconda vars enrol`
+
+```sh
+golconda vars enrol -i ~/.config/age/key.txt web1 --ca-key host_ca --krl fleet.krl
+golconda vars enrol -i ~/.config/age/key.txt web1 --ca-key host_ca.pub \
+  --pkcs11-module "$(ykcs11-module)" --principal web1.example.com --fingerprint SHA256:…
+```
+
+It does what the six steps of [Certificate login](../features/ssh-login.md#using-it) did, in this
+order, and stops at the first failure:
+
+1. Checks the request before it touches anything: each principal is one name, a KRL is given with
+   `--krl` or already stored for HOST, and HOST declares both admin vars, `sshd-host-cert` and
+   `sshd-revoked-keys`. Without any KRL it refuses: a certificate with no KRL would end plain-key
+   login while the image's fallback list still refuses every user certificate.
+1. Reads the host key over ssh, as `vars pub HOST sshd-hostkey key.pub` does, and prints its SHA-256
+   fingerprint. Without `--fingerprint` it asks: type `yes` if it is the fingerprint on the console
+   or in the journal (`golconda: ssh host key …`); any other answer, or none, stops it. With
+   `--fingerprint SHA256:…` it compares and refuses a mismatch without a question.
+1. Signs the key as a host certificate with `ssh-keygen -s CA -h -I HOST -n PRINCIPALS -V VALIDITY`.
+   The key id is HOST; the principals are the `--principal` names (repeat it), or HOST; the validity
+   is `--validity` (default `-5m:+52w`, ssh-keygen's `-V` syntax). With `--pkcs11-module MODULE`,
+   `--ca-key` is the CA's public key file and the token holds the private half
+   (`ssh-keygen -D MODULE -s CA.pub`): ssh-keygen finds a token's key by its public half, not by a
+   `pkcs11:` URI, and `ssh-keygen -D MODULE` prints the token's public keys. It asks for the token's
+   PIN itself.
+1. Stores the KRL (when `--krl` is given) and the certificate, as `vars set` does.
+1. Pushes both, as `vars push HOST sshd-revoked-keys sshd-host-cert` does: the KRL first and the
+   certificate last, then one restart of sshd.
+
+Nothing is stored before the key is confirmed and signed, and nothing is pushed before both are
+stored. The certificate is the last thing sealed, and a sealed certificate is what ends plain-key
+login on the machine, at sshd's restart after both. So when the push fails, sshd has not restarted
+and the machine still takes plain keys; what it sealed takes effect at sshd's next start: at most a
+new KRL, or both when only the restart failed. The error says how to push again. Renewal is the same
+command before the certificate expires.
 
 To rotate a var, `set` and `push` again. A pushed value goes to whichever machine answers for the
 host name, so ssh's own host-key check is what makes it the right one. Keep that check on

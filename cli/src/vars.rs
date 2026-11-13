@@ -438,6 +438,238 @@ pub fn push(
     Ok(pushed)
 }
 
+/// The admin vars an enrolment pushes, in the order it seals them: the KRL first, the host
+/// certificate last. A sealed certificate is what ends plain-key login on the machine
+/// (`golconda-sshd-enrolled.service`), so it is sealed only once the KRL is.
+pub const ENROL_VARS: [(&str, &str); 2] =
+    [("sshd-revoked-keys", "krl"), ("sshd-host-cert", "cert")];
+/// The local var whose public file is the host key the CA signs.
+pub const HOSTKEY: (&str, &str) = ("sshd-hostkey", "key.pub");
+
+/// The CA key that signs host certificates, through `ssh-keygen` (`GOLCONDA_SSH_KEYGEN`).
+pub struct Signer {
+    pub keygen: Program,
+    /// The CA's private key file; with `module`, its public key file, whose private half the
+    /// token holds (ssh-keygen finds a token's key by its public half)
+    pub ca: PathBuf,
+    /// The token's PKCS#11 module (`ssh-keygen -D`)
+    pub module: Option<PathBuf>,
+}
+
+/// What `golconda vars enrol` is asked to do.
+pub struct Enrol<'a> {
+    pub host: &'a str,
+    /// The certificate's principals, the names clients reach the machine by (empty: `host`)
+    pub principals: &'a [String],
+    /// ssh-keygen's `-V`
+    pub validity: &'a str,
+    /// The current KRL; `None` keeps the one stored for the host
+    pub krl: Option<&'a [u8]>,
+    /// The fingerprint the console printed (`SHA256:…`); `None` asks the operator
+    pub fingerprint: Option<&'a str>,
+}
+
+/// What [`enrol`] did.
+#[derive(Debug)]
+pub struct Enrolled {
+    /// ssh-keygen's fingerprint line of the host key
+    pub fingerprint: String,
+    /// the encrypted files written, the KRL (when given) and the certificate
+    pub stored: Vec<PathBuf>,
+    pub pushed: Pushed,
+}
+
+/// Enrols `req.host`: reads its host key, has the operator confirm the fingerprint (`confirm`
+/// gets ssh-keygen's fingerprint line and says yes or no) or compares it with
+/// `req.fingerprint`, signs it as a host certificate, stores the certificate and the KRL, and
+/// pushes both.
+pub fn enrol(
+    store: &Store,
+    identity: &Path,
+    remote: &Remote,
+    signer: &Signer,
+    req: &Enrol,
+    confirm: &mut dyn FnMut(&str) -> bool,
+) -> Result<Enrolled> {
+    let host = word(req.host)?;
+    let default = [host.to_owned()];
+    let principals = if req.principals.is_empty() {
+        &default[..]
+    } else {
+        req.principals
+    };
+    enrol_checks(store, remote, req, host, principals)?;
+
+    // the host key, in a directory of its own: ssh-keygen writes the certificate beside it
+    let scratch = Builder::new()
+        .prefix("golconda-enrol-")
+        .tempdir()
+        .map_err(|e| Error(format!("a scratch directory: {e}")))?;
+    let key = scratch.path().join("host.pub");
+    let public = remote.public(HOSTKEY.0, HOSTKEY.1)?;
+    fs::write(&key, &public).map_err(|e| Error(format!("{}: {e}", key.display())))?;
+    let line = signer.fingerprint(&key)?;
+    check_key(host, &line, req.fingerprint, confirm)?;
+
+    let cert = signer
+        .sign(&key, host, principals, req.validity)
+        .map_err(|e| Error(format!("{e}: nothing is stored or pushed")))?;
+    let mut stored = Vec::new();
+    if let Some(krl) = req.krl {
+        let (krl_var, krl_file) = ENROL_VARS[0];
+        stored.push(
+            store
+                .set(host, krl_var, krl_file, krl)
+                .map_err(|e| Error(format!("{e}: nothing is pushed")))?,
+        );
+    }
+    let (cert_var, cert_file) = ENROL_VARS[1];
+    stored.push(
+        store
+            .set(host, cert_var, cert_file, &cert)
+            .map_err(|e| Error(format!("{e}: nothing is pushed")))?,
+    );
+    // the KRL first: the certificate is sealed last, and sshd restarts after both
+    let only: Vec<String> = ENROL_VARS.iter().map(|(v, _)| (*v).to_owned()).collect();
+    let pushed = push(store, identity, remote, host, &only).map_err(|e| {
+        Error(format!(
+            "{e}\nthe certificate and the KRL are stored here. {host} seals the certificate \
+             last and restarts sshd after it, so plain keys log in there until a push \
+             finishes. Push again with: golconda vars push -i IDENTITY {host} {}",
+            only.join(" ")
+        ))
+    })?;
+    Ok(Enrolled {
+        fingerprint: line.trim().to_owned(),
+        stored,
+        pushed,
+    })
+}
+
+/// What [`enrol`] checks before it reads the host key: the principals are names, a KRL is
+/// given or stored, and the machine declares both admin vars.
+fn enrol_checks(
+    store: &Store,
+    remote: &Remote,
+    req: &Enrol,
+    host: &str,
+    principals: &[String],
+) -> Result<()> {
+    for p in principals {
+        if p.is_empty()
+            || p.chars()
+                .any(|c| c == ',' || c.is_whitespace() || c.is_control())
+        {
+            return err(format!(
+                "'{p}' is not a principal (one name, no commas or spaces)"
+            ));
+        }
+    }
+    // sshd needs a KRL: a certificate sealed without one ends plain-key login while the
+    // fallback list still refuses every user certificate, and nobody could log in
+    let (krl_var, krl_file) = ENROL_VARS[0];
+    if req.krl.is_none() && !store.has(host, krl_var, krl_file) {
+        return err(format!(
+            "no KRL for {host}: give --krl FILE, the deployment's current revocation list \
+             (an empty one is `ssh-keygen -k -f FILE`); nothing is signed, stored or pushed"
+        ));
+    }
+    let declared = remote.manifests()?;
+    for (var, _) in ENROL_VARS {
+        if !declared
+            .iter()
+            .any(|m| m.name == var && m.class == Class::Admin)
+        {
+            return err(format!(
+                "{host} declares no admin var {var} (its release has no /services/sshd): \
+                 nothing is signed, stored or pushed"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The host key is the one on the console: the fingerprint in `line` (ssh-keygen's) is `want`,
+/// or, without one, the operator says so.
+fn check_key(
+    host: &str,
+    line: &str,
+    want: Option<&str>,
+    confirm: &mut dyn FnMut(&str) -> bool,
+) -> Result<()> {
+    let fingerprint = line.split_whitespace().nth(1).unwrap_or_default();
+    match want {
+        Some(want) => {
+            let bare = |f: &str| f.trim().trim_start_matches("SHA256:").to_owned();
+            if bare(want) != bare(fingerprint) {
+                return err(format!(
+                    "{host}'s host key is {fingerprint}, not {want}: nothing is signed, stored \
+                     or pushed. Compare with the console's line `golconda: ssh host key …`: a \
+                     different key is another machine, or one in the middle"
+                ));
+            }
+        }
+        None => {
+            if !confirm(line.trim()) {
+                return err("not confirmed: nothing is signed, stored or pushed");
+            }
+        }
+    }
+    Ok(())
+}
+
+impl Signer {
+    /// ssh-keygen's fingerprint line of the public key file `key`: `256 SHA256:… comment (TYPE)`.
+    pub fn fingerprint(&self, key: &Path) -> Result<String> {
+        let out = self.keygen.run(
+            &[
+                OsStr::new("-l"),
+                OsStr::new("-E"),
+                OsStr::new("sha256"),
+                OsStr::new("-f"),
+                key.as_os_str(),
+            ],
+            None,
+        )?;
+        let line = String::from_utf8_lossy(&out).trim().to_owned();
+        if line.lines().count() != 1 || !line.contains(" SHA256:") {
+            return err(format!("the host key is not one public key: {line}"));
+        }
+        Ok(line)
+    }
+
+    /// Signs the public key file `key` as a host certificate (`ssh-keygen -s CA -h`, with the
+    /// token's module `-D`), key id `id`; the certificate.
+    pub fn sign(
+        &self,
+        key: &Path,
+        id: &str,
+        principals: &[String],
+        validity: &str,
+    ) -> Result<Vec<u8>> {
+        let mut args: Vec<OsString> = Vec::new();
+        if let Some(m) = &self.module {
+            args.extend(["-D".into(), m.into()]);
+        }
+        args.extend([
+            "-s".into(),
+            self.ca.clone().into(),
+            "-h".into(),
+            "-I".into(),
+            id.into(),
+            "-n".into(),
+            principals.join(",").into(),
+            "-V".into(),
+            validity.into(),
+            key.into(),
+        ]);
+        self.keygen.run(&args, None)?;
+        let stem = key.file_stem().unwrap_or_default().to_string_lossy();
+        let cert = key.with_file_name(format!("{stem}-cert.pub"));
+        fs::read(&cert).map_err(|e| Error(format!("ssh-keygen wrote no {}: {e}", cert.display())))
+    }
+}
+
 /// One line per file of each admin var: stored here, sealed there.
 pub fn list(store: &Store, remote: &Remote, host: &str) -> Result<String> {
     let sealed = remote.sealed()?;
@@ -739,6 +971,292 @@ esac
             let e = push(&store, &id, &remote, "web1", &[v.into()]).unwrap_err();
             assert!(e.0.contains(v), "{e}");
         }
+    }
+
+    /// A stand-in for ssh-keygen: logs its arguments to keygen.log; `-l` prints a fingerprint
+    /// line; a signing run writes `<key>-cert.pub` = "CERT(" + the key + ")", or with `fail`
+    /// exits 1.
+    fn fake_keygen(dir: &Path, fail: bool) -> Program {
+        let log = dir.join("keygen.log");
+        script(
+            dir,
+            "ssh-keygen",
+            &format!(
+                r#"set -eu
+printf '%s\n' "$*" >> {log}
+case $1 in
+  -l) echo "256 SHA256:fakefp root@web1 (ED25519)" ;;
+  *) [ {fail} = 0 ] || {{ echo 'no CA here' >&2; exit 1; }}
+     for a; do last=$a; done
+     {{ printf 'CERT('; cat "$last"; printf ')'; }} > "${{last%.pub}}-cert.pub" ;;
+esac
+"#,
+                log = log.display(),
+                fail = u8::from(fail),
+            ),
+        )
+    }
+
+    fn signer(dir: &Path, fail: bool, module: Option<&str>) -> Signer {
+        Signer {
+            keygen: fake_keygen(dir, fail),
+            ca: dir.join("ca"),
+            module: module.map(PathBuf::from),
+        }
+    }
+
+    fn request<'a>(krl: Option<&'a [u8]>, fingerprint: Option<&'a str>) -> Enrol<'a> {
+        Enrol {
+            host: "web1",
+            principals: &[],
+            validity: "-5m:+52w",
+            krl,
+            fingerprint,
+        }
+    }
+
+    fn log(dir: &Path, name: &str) -> String {
+        fs::read_to_string(dir.join(name)).unwrap_or_default()
+    }
+
+    /// Nothing is stored and nothing is sealed on the machine.
+    fn untouched(s: &TempDir, store: &Store) {
+        for (var, file) in ENROL_VARS {
+            assert!(!store.has("web1", var, file), "{var} is stored");
+        }
+        let ssh = log(s.path(), "ssh.log");
+        assert!(!ssh.contains("--admin"), "something was sealed: {ssh}");
+        assert!(!ssh.contains("systemctl"), "something restarted: {ssh}");
+    }
+
+    #[test]
+    fn enrol_confirmed() {
+        let (s, store, remote, id) = setup("enrol");
+        let mut asked = Vec::new();
+        let e = enrol(
+            &store,
+            &id,
+            &remote,
+            &signer(s.path(), false, None),
+            &request(Some(b"KRL"), None),
+            &mut |line| {
+                asked.push(line.to_owned());
+                true
+            },
+        )
+        .unwrap();
+        // the operator saw the fingerprint once, before anything was signed
+        assert_eq!(asked, ["256 SHA256:fakefp root@web1 (ED25519)"]);
+        assert_eq!(e.fingerprint, "256 SHA256:fakefp root@web1 (ED25519)");
+        // a host certificate, named for the machine, its name the principal
+        let keygen = log(s.path(), "keygen.log");
+        let ca = s.path().join("ca");
+        assert!(
+            keygen.contains(&format!(
+                "-s {} -h -I web1 -n web1 -V -5m:+52w ",
+                ca.display()
+            )),
+            "{keygen}"
+        );
+        assert!(!keygen.contains("-D"), "{keygen}");
+        assert_eq!(
+            store.get(&id, "web1", "sshd-host-cert", "cert").unwrap(),
+            b"CERT(ssh-ed25519 AAAA host)"
+        );
+        assert_eq!(
+            store.get(&id, "web1", "sshd-revoked-keys", "krl").unwrap(),
+            b"KRL"
+        );
+        assert_eq!(e.stored.len(), 2);
+        // the KRL is sealed before the certificate, and sshd restarts once, last
+        assert_eq!(
+            e.pushed,
+            Pushed {
+                sealed: vec!["sshd-revoked-keys.krl".into(), "sshd-host-cert.cert".into()],
+                restarted: vec!["sshd.service".into()],
+            }
+        );
+        let ssh = log(s.path(), "ssh.log");
+        let krl = ssh.find("--admin sshd-revoked-keys krl").unwrap();
+        let cert = ssh.find("--admin sshd-host-cert cert").unwrap();
+        let restart = ssh.find("systemctl try-restart").unwrap();
+        assert!(krl < cert && cert < restart, "{ssh}");
+    }
+
+    #[test]
+    fn enrol_not_confirmed() {
+        let (s, store, remote, id) = setup("enrolno");
+        let e = enrol(
+            &store,
+            &id,
+            &remote,
+            &signer(s.path(), false, None),
+            &request(Some(b"KRL"), None),
+            &mut |_| false,
+        )
+        .unwrap_err();
+        assert!(e.0.contains("not confirmed"), "{e}");
+        assert!(e.0.contains("nothing"), "{e}");
+        assert!(!log(s.path(), "keygen.log").contains("-s "), "signed");
+        untouched(&s, &store);
+    }
+
+    #[test]
+    fn enrol_fingerprint_given() {
+        let (s, store, remote, id) = setup("enrolfp");
+        let mut never = |_: &str| -> bool { panic!("asked though --fingerprint was given") };
+        let e = enrol(
+            &store,
+            &id,
+            &remote,
+            &signer(s.path(), false, None),
+            &request(Some(b"KRL"), Some("SHA256:otherfp")),
+            &mut never,
+        )
+        .unwrap_err();
+        assert!(
+            e.0.contains("SHA256:otherfp") && e.0.contains("SHA256:fakefp"),
+            "{e}"
+        );
+        assert!(!log(s.path(), "keygen.log").contains("-s "), "signed");
+        untouched(&s, &store);
+        // the right one goes through without a question
+        let e = enrol(
+            &store,
+            &id,
+            &remote,
+            &signer(s.path(), false, None),
+            &request(Some(b"KRL"), Some("SHA256:fakefp")),
+            &mut never,
+        )
+        .unwrap();
+        assert_eq!(e.pushed.sealed.len(), 2);
+    }
+
+    #[test]
+    fn enrol_with_a_token() {
+        let (s, store, remote, id) = setup("enroltoken");
+        enrol(
+            &store,
+            &id,
+            &remote,
+            &signer(s.path(), false, Some("/lib/libykcs11.so")),
+            &request(Some(b"KRL"), None),
+            &mut |_| true,
+        )
+        .unwrap();
+        let keygen = log(s.path(), "keygen.log");
+        let ca = s.path().join("ca");
+        assert!(
+            keygen.contains(&format!("-D /lib/libykcs11.so -s {} -h ", ca.display())),
+            "{keygen}"
+        );
+    }
+
+    #[test]
+    fn enrol_principals() {
+        let (s, store, remote, id) = setup("enrolnames");
+        let names = ["web1.example.com".to_owned(), "10.0.0.1".to_owned()];
+        let req = Enrol {
+            principals: &names,
+            ..request(Some(b"KRL"), None)
+        };
+        let sign = signer(s.path(), false, None);
+        enrol(&store, &id, &remote, &sign, &req, &mut |_| true).unwrap();
+        let keygen = log(s.path(), "keygen.log");
+        assert!(
+            keygen.contains("-I web1 -n web1.example.com,10.0.0.1 "),
+            "{keygen}"
+        );
+        // a principal is one name: ssh-keygen splits -n at commas
+        for bad in ["a,b", "a b", ""] {
+            let names = [bad.to_owned()];
+            let req = Enrol {
+                principals: &names,
+                ..request(Some(b"KRL"), None)
+            };
+            assert!(
+                enrol(&store, &id, &remote, &sign, &req, &mut |_| true).is_err(),
+                "{bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn enrol_needs_a_krl() {
+        let (s, store, remote, id) = setup("enrolkrl");
+        let e = enrol(
+            &store,
+            &id,
+            &remote,
+            &signer(s.path(), false, None),
+            &request(None, None),
+            &mut |_| true,
+        )
+        .unwrap_err();
+        assert!(e.0.contains("--krl"), "{e}");
+        assert!(!log(s.path(), "keygen.log").contains("-s "), "signed");
+        untouched(&s, &store);
+        // a stored KRL is kept and pushed
+        store
+            .set("web1", "sshd-revoked-keys", "krl", b"OLD-KRL")
+            .unwrap();
+        let e = enrol(
+            &store,
+            &id,
+            &remote,
+            &signer(s.path(), false, None),
+            &request(None, None),
+            &mut |_| true,
+        )
+        .unwrap();
+        assert_eq!(e.stored.len(), 1, "only the certificate is written");
+        assert_eq!(
+            store.get(&id, "web1", "sshd-revoked-keys", "krl").unwrap(),
+            b"OLD-KRL"
+        );
+        assert!(
+            log(s.path(), "ssh.log").contains("--admin sshd-revoked-keys krl\n  stdin: OLD-KRL")
+        );
+    }
+
+    #[test]
+    fn enrol_signing_fails() {
+        let (s, store, remote, id) = setup("enrolfail");
+        let e = enrol(
+            &store,
+            &id,
+            &remote,
+            &signer(s.path(), true, None),
+            &request(Some(b"KRL"), None),
+            &mut |_| true,
+        )
+        .unwrap_err();
+        assert!(e.0.contains("no CA here"), "{e}");
+        assert!(e.0.contains("nothing"), "{e}");
+        untouched(&s, &store);
+    }
+
+    #[test]
+    fn enrol_needs_the_vars_declared() {
+        let (s, store, remote, id) = setup("enrolundeclared");
+        fs::remove_file(
+            s.path()
+                .join(format!("machine{VARS_D}/sshd-host-cert.json")),
+        )
+        .unwrap();
+        let e = enrol(
+            &store,
+            &id,
+            &remote,
+            &signer(s.path(), false, None),
+            &request(Some(b"KRL"), None),
+            &mut |_| true,
+        )
+        .unwrap_err();
+        assert!(e.0.contains("sshd-host-cert"), "{e}");
+        assert!(!log(s.path(), "keygen.log").contains("-s "), "signed");
+        untouched(&s, &store);
     }
 
     #[test]
