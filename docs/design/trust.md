@@ -349,9 +349,10 @@ link only their public halves as `keys/`.
 Nothing private in a checkout enters the store either. Nix reads a checkout's files where they lie,
 and a store path is world-readable, so a key or a token beside the source would leak with it. The
 checks' source is the files git tracks, with their working-tree contents (`nix/source.nix`): an
-untracked or ignored file stays out. An image reads modules and packages where they lie, so
-`golconda release build` and `scripts/verify` refuse a file no commit holds there: an untracked
-file, and an ignored one in the directories of modules and packages
+untracked or ignored file stays out. `scripts/make-keys` refuses a key directory inside a git work
+tree. An image reads modules and packages where they lie, so `golconda release build` and
+`scripts/verify` refuse a file no commit holds there: an untracked file, and an ignored one in the
+directories of modules and packages
 ([Making a release: 2](../reference/release.md#2-build-and-sign)).
 
 Rotation and recovery:

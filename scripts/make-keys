@@ -17,7 +17,8 @@
 #
 # DIR must be absolute: lib.mkImage takes the key directory as a string path and
 # refuses a relative one. No private key enters the store: Nix copies the public halves
-# alone, and the signer reads the private keys here. DIR must not exist with anything in it, and is made
+# alone, and the signer reads the private keys here. DIR must not be in a git work tree, where a
+# file can reach the store with the checkout. DIR must not exist with anything in it, and is made
 # 0700. Every file is 0600. The script prints the paths, what each key signs and
 # the certificate's fingerprint; it never prints key material.
 #
@@ -88,6 +89,15 @@ case $dir in
     exit 2
     ;;
 esac
+# Not in a git work tree: Nix reads a checkout's files where they lie, and a file there that
+# reaches the store is world-readable. The nearest directory that exists decides.
+at=$dir
+while [ ! -d "$at" ]; do at=$(dirname "$at"); done
+if command -v git >/dev/null && [ "$(git -C "$at" rev-parse --is-inside-work-tree 2>/dev/null)" = true ]; then
+  echo "make-keys: $dir is in the git work tree $(git -C "$at" rev-parse --show-toplevel);" >&2
+  echo "make-keys: keep the key set outside any checkout (for example /srv/golconda-keys)" >&2
+  exit 2
+fi
 
 # Golconda's own openssl and gpg (scripts/tools.sh), not the caller's: the gpg is the one systemd-pull
 # uses on the image, so the release key is made and checked by the same GnuPG; and

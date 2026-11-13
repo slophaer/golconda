@@ -20,11 +20,12 @@ certificate in the firmware. The key layout and the reason for each key are in
 scripts/make-keys /srv/golconda-keys
 ```
 
-The script refuses a relative directory and a directory that exists and is not empty, creates the
-directory with mode `0700` and every file with mode `0600`, and prints the paths, what each key
-signs and the certificate's SHA-256 fingerprint. It never prints key material. Keep the directory on
-the release host: no build reads the private keys, and no step copies them
-([Trust: Signing outside Nix](../design/trust.md#signing-outside-nix)).
+The script refuses a relative directory, a directory inside a git work tree (Nix reads a checkout's
+files where they lie, and the store is world-readable; `--auth-only` refuses a set there too), and a
+directory that exists and is not empty, creates the directory with mode `0700` and every file with
+mode `0600`, and prints the paths, what each key signs and the certificate's SHA-256 fingerprint. It
+never prints key material. Keep the directory on the release host: no build reads the private keys,
+and no step copies them ([Trust: Signing outside Nix](../design/trust.md#signing-outside-nix)).
 
 | file                 | what it does                                                           |
 | -------------------- | ---------------------------------------------------------------------- |

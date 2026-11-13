@@ -2,7 +2,7 @@
 # scripts/make-keys: run it into a temporary directory and check what lib.mkImage and the
 # firmware need: the layout in the script header, mode 0600 on every file and 0700 on every
 # directory, the db certificate's extensions and validity, the key pairs matching, and the
-# OpenPGP files. The refusals (relative path, non-empty directory) too. Run from anywhere with
+# OpenPGP files. The refusals (relative path, non-empty directory, a git work tree) too. Run from anywhere with
 # nix on PATH and a Nix daemon; scripts/lint runs it.
 set -u
 repo=$(dirname "$(dirname "$(dirname "$(realpath "$0")")")")
@@ -185,6 +185,16 @@ grep -qF -- "--reuse-pk-kek" "$tmp/stderr6" || fail "--auth-only without the key
 "$repo/scripts/make-keys" relative/dir >/dev/null 2>&1 && fail "relative DIR is refused"
 "$repo/scripts/make-keys" "$keys" >/dev/null 2>&1 && fail "non-empty DIR is refused"
 "$repo/scripts/make-keys" >/dev/null 2>&1 && fail "no argument is refused"
+# a directory in a git work tree: a file there can reach the store with the checkout, so a set
+# made there, or kept there (--auth-only reads its PK and KEK keys), is refused; nothing is made
+git init -q "$tmp/checkout"
+"$repo/scripts/make-keys" "$tmp/checkout/site/keys" >/dev/null 2>"$tmp/stderr-git" &&
+  fail "DIR in a git work tree is refused"
+grep -q 'git work tree' "$tmp/stderr-git" || fail "the refusal names the git work tree: $(cat "$tmp/stderr-git")"
+[ -e "$tmp/checkout/site" ] && fail "nothing is made in the git work tree"
+cp -R "$keys" "$tmp/checkout/keys"
+"$repo/scripts/make-keys" --auth-only "$tmp/checkout/keys" >/dev/null 2>&1 &&
+  fail "--auth-only refuses a set in a git work tree"
 
 if [ "$failures" -ne 0 ]; then
   echo "make-keys test: $failures failed" >&2
