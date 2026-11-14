@@ -26,6 +26,14 @@
 #! usable network therefore does not reach boot-complete.target and is not
 #! blessed (docs/design/boot.md).
 #!
+#! Trial boot (`parts/trial-boot.nix`): a kernel panic (`panic=` on the
+#! cmdline), a PID 1 crash (`CrashAction=reboot`) and an initrd that fails or
+#! hangs reboot on every boot. `golconda-trial-boot-generator` recognises a
+#! trial boot (a counted entry that had a try left, from `LoaderBootCountPath`)
+#! and links a drop-in for boot-complete.target there: a deadline
+#! (`/base.trialBootDeadline`) and `OnFailure=` a unit that reboots. A blessed
+#! entry, or one with no try left, stays up when its health check fails.
+#!
 #! Boot loader: `golconda-loader-update.service` runs
 #! `/usr/lib/golconda/golconda-loader-update` once a counted boot is blessed
 #! (wanted by and Requisite= `systemd-bless-boot.service`). It copies the
@@ -68,7 +76,8 @@
 #! exists, so the factory cannot provide it).
 #!
 #! Options: `/base.ntp` (NTP servers for timesyncd), `/base.journalMaxUse`
-#! (journal retention).
+#! (journal retention), `/base.trialBootDeadline` (how long a trial boot may take
+#! to reach boot-complete.target).
 { types, ... }:
 let
   inherit (builtins) concatStringsSep;
@@ -101,6 +110,11 @@ in
       default = "512M";
       description = "SystemMaxUse= for journald: maximum disk space the journal may use.";
     };
+    trialBootDeadline = {
+      type = string;
+      default = "15min";
+      description = "JobTimeoutSec= of boot-complete.target on a trial boot (a counted boot entry with a try left): a systemd time span. A trial boot that has not reached boot-complete.target by then reboots, and systemd-boot takes the next try or the other slot (docs/design/boot.md, \"Trial boot\").";
+    };
   };
 
   impl =
@@ -115,6 +129,8 @@ in
       dbus = import ./parts/dbus.nix { inherit p; }; # the system bus on dbus-broker
       dropIns = import ./parts/drop-ins.nix; # conditions for units the systemd farm ships
       imds = import ./parts/imds.nix; # systemd's IMDS units: off without /imds
+      # what reboots a failed boot: panic, crash, initrd, and a trial boot's boot-complete.target
+      trialBoot = import ./parts/trial-boot.nix { deadline = options.trialBootDeadline; };
       usrLinks = import ./parts/links.nix { inherit p; }; # the /usr links into the packages
 
       # timesyncd drop-in
@@ -206,12 +222,13 @@ in
         p.linux-kernel # kernel; UKI builder consumes it
       ];
 
-      inherit (boot) units;
+      units = boot.units // trialBoot.units;
 
       files =
         dropIns.files
         // imds.files
         // boot.files
+        // trialBoot.files
         // dbus.files
         // {
           "/usr/lib/systemd/timesyncd.conf.d/golconda.conf" = timesyncdConf;
@@ -222,7 +239,7 @@ in
         };
 
       # path -> { target; kind; }, the shape the composer takes
-      links = wantsLinks // boot.links // dbus.links // usrLinks.links;
+      links = wantsLinks // boot.links // trialBoot.links // dbus.links // usrLinks.links;
 
       inherit (dbus) sysusers;
 

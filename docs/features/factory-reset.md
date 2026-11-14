@@ -21,7 +21,7 @@ flowchart TD
   start[something is wrong] --> ssh{does ssh as root work?}
   ssh -->|yes, the state is broken| reset[factory-reset.target: state is lost, slots and ESP stay]
   ssh -->|no| fresh{is a new, unblessed release running?}
-  fresh -->|yes, and the other slot is filled| reboot[power-cycle until its tries run out]
+  fresh -->|yes, and the other slot is filled| reboot[it reboots itself until its tries run out]
   reboot --> other[systemd-boot starts the other slot]
   fresh -->|no| menu{firmware console or serial redirection?}
   menu -->|yes| pick[hold a key at power-on, pick the other entry]
@@ -64,7 +64,9 @@ counting has markers too (`fallback-to-old-slot`).
 ## Limits
 
 - No local login and no rescue shell. A machine without working ssh has no console session.
-- No automatic reboot of a failed candidate, and no remote recovery channel.
+- No remote recovery channel. A failed candidate reboots by itself only on a trial boot
+  ([Boot: Trial boot](../design/boot.md#trial-boot)); a kernel that hangs without a panic needs a
+  hardware watchdog, which the image does not set up.
 - The reset test ran on the test image: one `/usr` slot, QEMU. A reset after an update, the TPM
   clear and sealed credentials, real firmware, and the case where ssh is down are manual steps.
 - The boot test does not exercise the menu. A headless machine needs serial redirection in its

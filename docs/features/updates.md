@@ -41,7 +41,10 @@ A boot is good only if it reaches `boot-complete.target`. Two health units gate 
 - `golconda-health-network.service` needs a routable link within 60 seconds.
 - `golconda-health-sshd.service` needs `sshd.service` active.
 
-When both pass, `systemd-bless-boot` removes the suffix. After a good boot,
+When both pass, `systemd-bless-boot` removes the suffix. When one fails, or the target is not
+reached within 15 minutes (`/base.trialBootDeadline`), the machine reboots by itself and the next
+try starts; a kernel panic, a PID 1 crash and an initrd failure reboot it too
+([Boot: Trial boot](../design/boot.md#trial-boot)). After a good boot,
 `golconda-loader-update.service` copies this release's signed systemd-boot to the ESP. A release
 that fails its health gate never touches the loader.
 
@@ -67,17 +70,19 @@ The boot test proves this in QEMU with OVMF ([What is proven](../proven.md)):
 - `release-index`, `sysupdate-installed`, `boots-next`, `units-composed-only-after-update` and
   `no-failed-units-after-update`: the update installs and the new version boots (`--next`).
 - `http-source`, `http-fetch`, `index-signed`: the guest fetches over HTTP with its own definition.
-- `health-check-broken`, `attempt-[1-3]-unblessed`, `fallback-to-old-slot`, `counter-exhausted`: a
-  failed health check costs one try each, and the old release boots after the third
-  (`--next --fail-health`).
+- `health-check-broken`, `trial-boot-counted`, `trial-hang-rebooted`, `trial-fail-rebooted`,
+  `fallback-to-old-slot`, `counter-exhausted`: a health unit that hangs or fails costs one try each,
+  the machine reboots itself after each, and the old release boots after the third
+  (`--next --fail-health`). `blessed-no-trial-policy` and `exhausted-entry-stays-up`: on the blessed
+  old release, and on the candidate with no try left, the failed check reboots nothing.
 - `loader-update-ran` and `loader-update-not-run`: the loader updates after a good boot only.
 
 ## Limits
 
-- A failed health check does not reboot the machine. The counter falls at the next boot, which the
-  operator starts.
-- A fresh disk has one slot. There the loader still boots the exhausted entry, so the machine stays
-  up and unblessed until you fill the other slot.
+- A fresh disk has one slot. There the loader still boots the exhausted entry, so after three
+  reboots the machine stays up and unblessed until you fill the other slot.
+- The reboots after a kernel panic, a PID 1 crash and an initrd failure have no test of their own. A
+  kernel that hangs without a panic is not caught: that needs a hardware watchdog.
 - The machine supports no downgrade except the boot-counting fallback. `golconda release` refuses a
   version that does not increase before it is built or published.
 - Nothing stops an older image signed by the same key from booting. Rollback protection is

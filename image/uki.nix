@@ -29,6 +29,10 @@
   # root and failed. `rw` is an ordinary kernel parameter (gpt-auto passes it to the root mount),
   # not a workaround. /usr stays read-only by dm-verity whatever is said. Nothing about
   # volatility either (/var is on the root partition, systemd's default).
+  # panic=10: a kernel panic reboots after 10 s instead of hanging, so a release whose kernel
+  # panics loses a try and systemd-boot falls back (the trial boot policy, modules/base/parts/
+  # trial-boot.nix; docs/design/boot.md). A cmdline value, not CONFIG_PANIC_TIMEOUT, so the
+  # policy is in one place with the rest of the boot's parameters.
   # Security parameters (see docs/design/kernel.md):
   #   lsm=lockdown,yama,ipe,bpf   LSM stack order (capability is always first)
   #   lockdown=integrity          kernel lockdown level (blocks kexec, /dev/mem, etc.)
@@ -40,7 +44,7 @@
   # default pulls it into the initrd, which has no network here; /imds pulls it into the host
   # instead, on a cloud only (modules/imds), and without /imds it never runs.
   # The builder appends rdinit= (lib/image/initrd.nix says why)
-  cmdlineTemplate = "usrhash={usrhash} systemd.verity_usr_options=root-hash-signature=base64:{usrhashSig} rw lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=1 systemd.imds.import=0 console=tty0 console=ttyS0,115200";
+  cmdlineTemplate = "usrhash={usrhash} systemd.verity_usr_options=root-hash-signature=base64:{usrhashSig} rw panic=10 lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=1 systemd.imds.import=0 console=tty0 console=ttyS0,115200";
 
   # PCR policy signing (for measured boot and credential decryption): the phase paths to
   # sign. A phase path is the colon-separated chain of words systemd has measured into

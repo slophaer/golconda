@@ -4,51 +4,81 @@
 # shellcheck disable=SC2154 # the globals are set by scripts/boot-test and the other parts
 # shellcheck disable=SC2034 # and read there
 
-# test_fail_health: the three-boot fallback of docs/design/boot.md. A masked health unit keeps
-# boot-complete.target from being reached, so the candidate is never blessed and every boot of it
-# loses a try. The mask is in /etc on the state partition, so it applies to every slot until it is
-# removed; the harness removes it at the end. A mask keeps the boots clean and ssh reachable, so
-# the counter can be read after each one.
+# The drop-ins --fail-health writes in /etc on the state partition, so they hold for every slot:
+# the health unit hangs on the first boot that runs it and fails at once on every later one (the
+# file in /var says which), and boot-complete.target's deadline is 90 s instead of the image's
+HEALTH_DROPIN=/etc/systemd/system/golconda-health-network.service.d/zz-boot-test.conf
+DEADLINE_DROPIN=/etc/systemd/system/boot-complete.target.d/zz-boot-test.conf
+HUNG_FILE=/var/lib/boot-test-health-hung
+
+# trial_trace MARK: the trial boot policy's lines in the serial log after byte MARK, one per line:
+# the generator's verdict on each boot, the health unit's, the reboot
+trial_trace() {
+  tail -c +"$(($1 + 1))" "$SERIAL_LOG" | tr -d '\033\r' \
+    | grep -ao "golconda-trial-boot: [^ ]* is on trial\|golconda-trial-boot: [^ ]* had no try left\|boot-test: health [a-z]*\|golconda-trial-boot: boot-complete.target failed\|golconda-trial-boot: the initrd failed" || true
+}
+
+# wait_for_old: wait, without a reboot of the harness's own, until the old release answers; a boot of
+# the candidate that answers before it fails is passed over
+wait_for_old() {
+  PREV=$1
+  while wait_for_ssh "$PREV"; do
+    V=$(guest_version)
+    echo "boot $BOOT_ID: $V"
+    [ "$V" != "$OLD_VERSION" ] || return 0
+    PREV=$BOOT_ID
+  done
+  return 1
+}
+
+# test_fail_health: the trial boot policy and the three-boot fallback of docs/design/boot.md. A
+# drop-in in /etc breaks golconda-health-network.service: the candidate's first try hangs until the
+# deadline, its second and third fail at once. The harness starts the first try; after that it
+# only watches. The policy must reboot each try by itself, systemd-boot must count it, and the
+# fourth boot must be the old release, blessed, where the broken unit does not run and nothing
+# reboots. Then the candidate, with no try left, is started once more by hand: it fails its health
+# check and must stay up.
 test_fail_health() {
   echo ""
   echo "=== the fallback: $NEXT_VERSION fails its health check three times ==="
   RC=0
-  # the first boot writes nothing to /etc/systemd/system (00-golconda.preset), so it may not exist
-  guest "mkdir -p /etc/systemd/system && ln -sf /dev/null /etc/systemd/system/golconda-health-network.service" || RC=1
-  verdict "health-check-broken (a masked health unit, so boot-complete.target is not reached)" $RC
+  guest "mkdir -p ${HEALTH_DROPIN%/*} ${DEADLINE_DROPIN%/*} && rm -f $HUNG_FILE && cat > $HEALTH_DROPIN" <<EOF || RC=1
+[Service]
+StandardOutput=file:/dev/kmsg
+TimeoutStartSec=infinity
+ExecStart=
+ExecStart=/usr/bin/sh -c 'if [ -e $HUNG_FILE ]; then echo "boot-test: health fails"; exit 1; fi; touch $HUNG_FILE; echo "boot-test: health hangs"; exec sleep infinity'
+EOF
+  printf '[Unit]\nJobTimeoutSec=90s\n' | guest "cat > $DEADLINE_DROPIN" || RC=1
+  guest systemctl daemon-reload || RC=1
+  verdict "health-check-broken (golconda-health-network.service hangs once, then fails; the deadline is 90 s)" $RC
 
-  i=1
-  while [ "$i" -le 3 ]; do
-    echo "--- attempt $i of 3: boot $NEXT_VERSION ---"
-    if ! reboot_guest; then
-      verdict "boots-next-attempt-$i (no login before the timeout)" 1
-      return 1
-    fi
-    V=$(guest_version)
-    BC=$(guest systemctl is-active boot-complete.target 2>&1 || true)
-    TRIES=$(guest bootctl list --no-pager 2>/dev/null | grep -o "tries: [0-9]* left; [0-9]* done" | head -1)
-    LU=$(guest systemctl is-active golconda-loader-update.service 2>&1 || true)
-    echo "$V, boot-complete.target: $BC, $TRIES, loader update: $LU"
-    RC=0
-    [ "$V" = "$NEXT_VERSION" ] || RC=1
-    [ "$BC" != "active" ] || RC=1
-    [ "$TRIES" = "tries: $((3 - i)) left; $i done" ] || RC=1
-    [ "$LU" != "active" ] || RC=1
-    verdict "attempt-$i-unblessed ($NEXT_VERSION, $TRIES, boot-complete $BC, loader $LU)" $RC
-    i=$((i + 1))
-  done
-
-  echo "--- attempt 4: the counter is exhausted ---"
-  # lift the mask, so the fallback boot is a normal one and the checks below mean what they say
-  guest "rm -f /etc/systemd/system/golconda-health-network.service" || true
-  if ! reboot_guest; then
-    verdict "fallback-to-old-slot (no login after the fourth boot)" 1
+  MARK=$(wc -c < "$SERIAL_LOG")
+  echo "--- the operator activates $NEXT_VERSION; from here on the harness only watches ---"
+  guest systemctl reboot 2>&1 || true
+  if ! wait_for_old "$BOOT_ID"; then
+    verdict "fallback-to-old-slot (no login of $OLD_VERSION before the timeout)" 1
+    trial_trace "$MARK"
     return 1
   fi
-  V=$(guest_version)
-  echo "running $V"
-  RC=0; [ "$V" = "$OLD_VERSION" ] || RC=1
-  verdict "fallback-to-old-slot ($NEXT_VERSION failed 3 times, $V boots)" $RC
+  echo "the trial boot policy's lines on the serial console:"
+  T=$(trial_trace "$MARK")
+  echo "$T"
+  verdict "fallback-to-old-slot ($NEXT_VERSION failed 3 times, $V boots, the harness rebooted nothing)" 0
+  RC=0
+  for c in 2-1 1-2 0-3; do
+    echo "$T" | grep -qxF "golconda-trial-boot: ${IMAGE_ID}_$NEXT_VERSION+$c.efi is on trial" || RC=1
+  done
+  verdict "trial-boot-counted (the generator saw +2-1, +1-2 and +0-3: each try counted)" $RC
+  REBOOTS=$(echo "$T" | grep -cxF "golconda-trial-boot: boot-complete.target failed" || true)
+  RC=0
+  echo "$T" | grep -A1 -xF "boot-test: health hangs" | grep -qxF "golconda-trial-boot: boot-complete.target failed" || RC=1
+  verdict "trial-hang-rebooted (a hung health unit: the deadline ended the try with a reboot)" $RC
+  RC=0
+  [ "$(echo "$T" | grep -cxF "boot-test: health fails")" = 2 ] || RC=1
+  [ "$REBOOTS" = 3 ] || RC=1
+  verdict "trial-fail-rebooted (two failed health units, each try rebooted: $REBOOTS reboots by the policy)" $RC
+
   check_unsealed "after the fallback to $V"
   check_clock clock-not-reset-after-fallback
   L=$(guest bootctl list --no-pager 2>&1) || true
@@ -57,6 +87,42 @@ test_fail_health() {
   verdict "counter-exhausted (the candidate has tries: 0 left; 3 done)" $RC
   RC=0; echo "$L" | grep "$OLD_VERSION" | grep -q "(selected)" || RC=1
   verdict "old-slot-selected ($OLD_VERSION is the entry systemd-boot picked)" $RC
+
+  # the old release is blessed: no LoaderBootCountPath, so no boot-complete.target, no health unit
+  # and no trial drop-in; the broken unit cannot reboot it
+  G=$(guest "ls /run/systemd/generator/boot-complete.target.d 2>/dev/null; systemctl is-active golconda-health-network.service boot-complete.target" 2>&1) || true
+  echo "$G"
+  RC=0
+  ! echo "$G" | grep -q golconda-trial-boot || RC=1
+  [ "$(echo "$G" | grep -c '^inactive$')" = 2 ] || RC=1
+  verdict "blessed-no-trial-policy (the blessed entry runs no health unit and has no trial drop-in)" $RC
+
+  echo "--- the candidate once more, with no try left (bootctl set-oneshot) ---"
+  MARK=$(wc -c < "$SERIAL_LOG")
+  guest bootctl set-oneshot "${IMAGE_ID}_$NEXT_VERSION.efi" || true
+  reboot_guest || return 1
+  V=$(guest_version)
+  EXHAUSTED_BOOT=$BOOT_ID
+  # the health unit fails at once (the file in /var is there); give a reboot time to happen
+  sleep 20
+  T=$(trial_trace "$MARK")
+  echo "$T"
+  H=$(guest "systemctl is-failed golconda-health-network.service; cat /proc/sys/kernel/random/boot_id" 2>&1) || true
+  echo "$H"
+  RC=0
+  [ "$V" = "$NEXT_VERSION" ] || RC=1
+  echo "$T" | grep -qxF "golconda-trial-boot: ${IMAGE_ID}_$NEXT_VERSION+0-4.efi had no try left" || RC=1
+  echo "$T" | grep -qxF "boot-test: health fails" || RC=1
+  ! echo "$T" | grep -qxF "golconda-trial-boot: boot-complete.target failed" || RC=1
+  echo "$H" | grep -qx failed || RC=1
+  echo "$H" | grep -qxF "$EXHAUSTED_BOOT" || RC=1
+  verdict "exhausted-entry-stays-up ($V, no try left: its health check failed and nothing rebooted it)" $RC
+  reboot_guest || return 1
+  V=$(guest_version)
+  RC=0; [ "$V" = "$OLD_VERSION" ] || RC=1
+  verdict "oneshot-exhausted-is-once (running $V)" $RC
+
+  guest "rm -f $HEALTH_DROPIN $DEADLINE_DROPIN $HUNG_FILE && rmdir ${HEALTH_DROPIN%/*} ${DEADLINE_DROPIN%/*} && systemctl daemon-reload" || true
 }
 
 # refusal_evidence JOURNAL: true when sysupdate's journal shows the index check failing (a bad
@@ -185,7 +251,6 @@ test_next() {
   fi
   [ "$RC" != 0 ] || test_verity_keyring
 
-  echo "Rebooting into $NEXT_VERSION..."
   if [ "$FAIL_HEALTH" = 1 ]; then
     # no blessed boot of the candidate, so no loader and no recovery checks here
     test_fail_health || return 1
@@ -193,6 +258,7 @@ test_next() {
     check_no_failed no-failed-units-after-update
     return 0
   fi
+  echo "Rebooting into $NEXT_VERSION..."
   reboot_guest || return 1
   V=$(guest_version)
   RC=0; [ "$V" = "$NEXT_VERSION" ] || RC=1

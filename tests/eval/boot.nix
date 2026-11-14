@@ -3,7 +3,9 @@
 {
   check,
   compose,
+  composeWith,
   hasInfix,
+  hasPrefix,
   system,
   ...
 }:
@@ -58,7 +60,9 @@
     (check "boot health: a configuration without /services/sshd still gates the network" (
       attrNames baseOnly.units == [
         "golconda-health-network.service"
+        "golconda-initrd-failed.service"
         "golconda-loader-update.service"
+        "golconda-trial-boot-failed.service"
       ]
       && linksNaming baseOnly "golconda-health-sshd" == [ ]
     ))
@@ -99,6 +103,87 @@
       # it is enabled only by systemd's preset, which 00-golconda.preset turns off
       filter (p: hasInfix "systemd-boot-update" p) (attrNames baseOnly.links) == [ ]
       && hasInfix "\ndisable *\n" baseOnly.files."/usr/lib/systemd/system-preset/00-golconda.preset".text
+    ))
+  ]
+)
+++ (
+  # The trial boot policy (docs/design/boot.md, "Trial boot"): a failure before the machine can be
+  # reached reboots on every boot (a kernel panic, a PID 1 crash, an initrd failure or hang); a
+  # failure after it (boot-complete.target failed or late) reboots only on a trial boot, a counted
+  # boot with a try left, which the generator recognises at boot.
+  let
+    inherit (builtins)
+      attrNames
+      filter
+      readFile
+      replaceStrings
+      ;
+    baseOnly = compose [ ];
+    later = composeWith { "/base".trialBootDeadline = "7min"; };
+    file = sys: p: sys.files.${p}.text;
+    generatorPath = "/usr/lib/systemd/system-generators/golconda-trial-boot-generator";
+    counting = (import ../../image).bootCounting;
+    initrdFailed = baseOnly.units."golconda-initrd-failed.service";
+    trialFailed = baseOnly.units."golconda-trial-boot-failed.service";
+  in
+  [
+    (check "trial boot: a kernel panic reboots (panic= on the UKI cmdline)" (
+      hasInfix " panic=10 " (import ../../image).uki.cmdlineTemplate
+    ))
+    (check "trial boot: PID 1 reboots when it crashes, also in the initrd" (
+      hasInfix "\n[Manager]\nCrashAction=reboot\n" (
+        file baseOnly "/usr/lib/systemd/system.conf.d/golconda-crash.conf"
+      )
+    ))
+    (check "trial boot: an initrd failure reboots, in the initrd only" (
+      hasInfix "\nConditionPathExists=/etc/initrd-release\n" initrdFailed
+      && hasInfix "\nDefaultDependencies=no\n" initrdFailed
+      && hasInfix "\nSuccessAction=reboot\n" initrdFailed
+      && hasInfix "\nFailureAction=reboot\n" initrdFailed
+      # the serial console shows it: the kernel log, not the journal's console (tty1)
+      && hasInfix "\nStandardOutput=file:/dev/kmsg\n" initrdFailed
+      &&
+        baseOnly.links."/usr/lib/systemd/system/emergency.target.wants/golconda-initrd-failed.service" == {
+          target = "../golconda-initrd-failed.service";
+          kind = "explicit";
+        }
+    ))
+    (check "trial boot: an initrd that hangs reboots" (
+      let
+        t = file baseOnly "/usr/lib/systemd/system/initrd.target.d/golconda-trial-boot.conf";
+      in
+      hasInfix "\nJobTimeoutSec=10min\n" t && hasInfix "\nJobTimeoutAction=reboot\n" t
+    ))
+    (check "trial boot: the generator is executable and knows the tries a release starts with" (
+      baseOnly.files.${generatorPath}.mode == "0755"
+      && hasInfix "\ntries=${toString (counting.triesLeft + counting.triesDone)}\n" (
+        file baseOnly generatorPath
+      )
+      &&
+        file baseOnly generatorPath
+        == replaceStrings [ "@tries@" ] [ "3" ] (readFile ../../modules/base/golconda-trial-boot-generator)
+      # /bin is a tmpfiles link, made after the generators run on the first boot
+      && hasPrefix "#!/usr/bin/sh\n" (file baseOnly generatorPath)
+    ))
+    (check "trial boot: the drop-in the generator links sets a deadline and reboots on a failure" (
+      let
+        t = file baseOnly "/usr/lib/golconda/trial-boot.conf";
+      in
+      hasInfix "\n[Unit]\n" t
+      && hasInfix "\nJobTimeoutSec=15min\n" t
+      && hasInfix "\nOnFailure=golconda-trial-boot-failed.service\n" t
+      && hasInfix "\nJobTimeoutSec=7min\n" (file later "/usr/lib/golconda/trial-boot.conf")
+      # nothing applies it statically: only the generator links it, on a trial boot
+      && !(baseOnly.files ? "/usr/lib/systemd/system/boot-complete.target.d/golconda-trial-boot.conf")
+      && filter (p: hasInfix "boot-complete.target.d" p) (attrNames baseOnly.files) == [ ]
+    ))
+    (check "trial boot: the failure unit reboots and is started by OnFailure= alone" (
+      hasInfix "\nSuccessAction=reboot\n" trialFailed
+      && hasInfix "\nFailureAction=reboot\n" trialFailed
+      && hasInfix "\nStandardOutput=file:/dev/kmsg\n" trialFailed
+      && hasInfix "\nDefaultDependencies=no\n" trialFailed
+      && !(hasInfix "WantedBy=" trialFailed)
+      && filter (p: hasInfix "golconda-trial-boot-failed" p) (attrNames baseOnly.links) == [ ]
     ))
   ]
 )

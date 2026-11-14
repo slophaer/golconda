@@ -295,7 +295,9 @@ in
     attrNames system.units == [
       "golconda-health-network.service"
       "golconda-health-sshd.service"
+      "golconda-initrd-failed.service"
       "golconda-loader-update.service"
+      "golconda-trial-boot-failed.service"
       "golconda-var-sshd-hostkey.service"
       "sshd.service"
     ]

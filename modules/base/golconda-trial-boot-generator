@@ -1,0 +1,64 @@
+#!/usr/bin/sh
+# golconda-trial-boot-generator: turn on the trial boot policy when this boot is a trial
+# (docs/design/boot.md, "Trial boot").
+#
+# A trial boot is a counted boot that had a try left: systemd-boot renamed its UKI from
+# <id>_<version>+L-D.efi to +(L-1)-(D+1) and put the new path in the LoaderBootCountPath EFI
+# variable. On such a boot the generator links one drop-in for boot-complete.target into the
+# generator directory: a deadline (JobTimeoutSec=) and OnFailure=golconda-trial-boot-failed.service,
+# which reboots. A failed health unit fails the target's job, and so does the deadline: either
+# way the machine reboots and systemd-boot takes the next try, or the other slot once the
+# tries are used up.
+#
+# No drop-in, so a failure leaves the machine up for its operator:
+# - a blessed entry, or a boot without boot counting: no LoaderBootCountPath. Nothing would count
+#   the reboots, so a failure that repeats would reboot the machine forever;
+# - an entry with no try left before this boot (left + done above the tries a release starts
+#   with, image/boot-counting.nix): systemd-boot starts a bad entry only when no other entry is
+#   left, and a reboot would only start it again;
+# - the initrd: an initrd failure reboots by golconda-initrd-failed.service on every boot.
+#
+# It runs before the root partition's /bin link exists (tmpfiles makes it), hence /usr/bin/sh.
+# GOLCONDA_TRIAL_BOOT_ROOT prefixes every path it reads and the kernel log it writes, for the
+# test (tests/trial-boot); PID 1 runs generators with an empty environment.
+set -eu
+
+root=${GOLCONDA_TRIAL_BOOT_ROOT:-}
+normal=${1:?usage: golconda-trial-boot-generator NORMAL_DIR [EARLY_DIR LATE_DIR]}
+# the tries a release starts with: image/boot-counting.nix (triesLeft + triesDone)
+tries=@tries@
+var=$root/sys/firmware/efi/efivars/LoaderBootCountPath-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f
+
+# the kernel log reaches the serial console and the journal; a generator's stderr reaches neither
+# for sure
+log() {
+  printf '<5>golconda-trial-boot: %s\n' "$*" >"$root/dev/kmsg" 2>/dev/null ||
+    printf 'golconda-trial-boot: %s\n' "$*" >&2
+}
+
+[ ! -e "$root/etc/initrd-release" ] || exit 0
+[ -e "$var" ] || exit 0
+
+# the variable: 4 bytes of attributes, then the path in UTF-16LE (ASCII here: drop the zero bytes)
+path=$(tail -c +5 "$var" | tr -d '\000')
+name=${path##*\\}
+counter=${name##*+}
+left=${counter%%-*}
+done=${counter#*-}
+done=${done%%[!0-9]*}
+nocounter() {
+  log "LoaderBootCountPath '$path' names no counter +LEFT-DONE: no trial boot policy"
+  exit 0
+}
+case $name in *+*) ;; *) nocounter ;; esac
+case $left in '' | *[!0-9]*) nocounter ;; esac
+case $done in '' | *[!0-9]*) nocounter ;; esac
+
+if [ $((left + done)) -gt "$tries" ]; then
+  log "$name had no try left: no trial boot policy, a failed boot stays up"
+  exit 0
+fi
+
+mkdir -p "$normal/boot-complete.target.d"
+ln -sf /usr/lib/golconda/trial-boot.conf "$normal/boot-complete.target.d/golconda-trial-boot.conf"
+log "$name is on trial: a failed boot-complete.target, or none by the deadline, reboots"

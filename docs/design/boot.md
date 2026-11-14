@@ -89,14 +89,54 @@ network, reachability from outside the machine (firewall, NAT, the client side),
 login (authentication, the host key credential, `/etc/pam.d/sshd`, the listening socket).
 `is-active` proves that the sshd process runs, not that a login would succeed.
 
-What happens after a failure: the machine stays up but is not blessed, and nothing reboots it yet,
-so the counter falls only at the next boot. systemd-boot counts down `+3-0` → `+2-1` → `+1-2`; at
-`+0-3` the entry is bad and is no longer preferred. A second deployment entry on the ESP (the other
-`/usr` slot) is selected instead, which is the point of boot counting. Before the first update the
-image carries one slot only: there systemd-boot still boots the exhausted entry, and a failed health
-check leaves the machine unblessed until it is repaired or the other slot is filled. The health
-units run only on a counted boot: `systemd-bless-boot-generator` adds `boot-complete.target` only
-when the entry has a counter, so a blessed entry boots without them.
+What happens after a failure is the [trial boot](#trial-boot) policy: on a counted boot that had a
+try left, the machine reboots, and systemd-boot counts down `+3-0` → `+2-1` → `+1-2`. At `+0-3` the
+entry is bad, and systemd-boot selects a second deployment entry on the ESP (the other `/usr` slot)
+instead, which is the point of boot counting. Before the first update the image carries one slot
+only: there systemd-boot still boots the exhausted entry, and a failed health check leaves it up and
+unblessed until it is repaired or the other slot is filled. The health units run only on a counted
+boot: `systemd-bless-boot-generator` adds `boot-complete.target` only when the entry has a counter,
+so a blessed entry boots without them. Masking a health unit turns the gate off: the target's job is
+then never queued, so the boot is neither blessed nor rebooted.
+
+### Trial boot
+
+A trial boot is a counted boot whose entry had a try left before systemd-boot started it. Boot
+counting needs a reboot to count, so `/base` reboots a boot that fails
+(`modules/base/parts/trial-boot.nix`), except where a reboot cannot help:
+
+| failure                                                                     | what reboots it                                                                                                                                                            | when              |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| a kernel panic                                                              | `panic=10` on the UKI cmdline: the kernel reboots after 10 s                                                                                                               | every boot        |
+| PID 1 crashes, or cannot execute the host's (IPE denies an unsigned `/usr`) | `CrashAction=reboot` (`system.conf.d/golconda-crash.conf`): PID 1 reboots after 10 s                                                                                       | every boot        |
+| the initrd fails (a unit fails into `emergency.target`)                     | `golconda-initrd-failed.service`, wanted by `emergency.target`, runs only in the initrd: `SuccessAction=reboot`                                                            | every boot        |
+| the initrd hangs                                                            | `initrd.target`: `JobTimeoutSec=10min`, `JobTimeoutAction=reboot`                                                                                                          | every boot        |
+| a health unit fails, or `boot-complete.target` is not reached in time       | the generator's drop-in for `boot-complete.target`: `JobTimeoutSec=` (`/base.trialBootDeadline`, 15 min) and `OnFailure=golconda-trial-boot-failed.service`, which reboots | a trial boot only |
+
+The first four rows end a boot that nobody can reach: no getty runs, and sshd is not up. On a
+counted entry the reboot is the next try; on a blessed one it is a retry that may succeed (a disk
+that was slow to appear). A crash at every boot of a blessed entry reboots at every boot: nothing
+counts a blessed entry's boots, and the machine is down either way.
+
+The last row judges a machine that may answer ssh, so it reboots only when that moves the counter.
+`golconda-trial-boot-generator` (`/usr/lib/systemd/system-generators/`) reads `LoaderBootCountPath`
+at every boot: the EFI variable in which systemd-boot names the file it has just renamed
+(`<id>_<version>+L-D.efi`). It links the drop-in only when the variable is set and `L + D` is at
+most the tries a release starts with (3, `image/boot-counting.nix`). systemd-boot renames an entry
+that had no try left from `+0-3` to `+0-4`, so a sum above 3 means it started an exhausted entry
+because nothing better was left. On a blessed entry, and on an exhausted one, a failed health check
+leaves the machine up and unblessed for its operator, with no reboot loop. The generator logs its
+verdict to the kernel log (`golconda-trial-boot: <entry> is on trial`, or `had no try left`), so it
+is on the serial console and in the journal.
+
+`OnFailure=` of `boot-complete.target` fires both for a job that failed on a dependency and for one
+that timed out (systemd's `job.c`), so one unit covers both. The deadline counts from the start of
+the host's PID 1; the initrd has its own. A kernel that hangs without a panic, and firmware that
+never starts the loader, need a hardware watchdog; the image sets none up.
+
+`--next --fail-health` proves the health row in QEMU, with no reboot from the harness
+([What is proven](../proven.md)). The panic, crash and initrd rows have no test of their own *(being
+built)*.
 
 systemd-sysupdate tells the slots apart by GPT label: an installed slot carries its version
 (`usr_20261031.1`, `usr-verity_…`, `usr-verity-sig_…`), a free one `_empty`, which gpt-auto also

@@ -274,7 +274,7 @@ This section is the only copy of the command line in the documentation. Other pa
 `cmdlineTemplate` in `image/uki.nix` is:
 
 ```text
-usrhash={usrhash} systemd.verity_usr_options=root-hash-signature=base64:{usrhashSig} rw lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=1 systemd.imds.import=0 console=tty0 console=ttyS0,115200
+usrhash={usrhash} systemd.verity_usr_options=root-hash-signature=base64:{usrhashSig} rw panic=10 lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=1 systemd.imds.import=0 console=tty0 console=ttyS0,115200
 ```
 
 The UKI step (`lib/image/uki.nu`) fills `{usrhash}` and `{usrhashSig}`, appends `rdinit=/init`
@@ -288,6 +288,7 @@ output.
 | `usrhash={usrhash}`                                | the verity root hash; the generators derive the two `/usr` partition UUIDs from it, which is how a UKI finds its own slot                                 |
 | `systemd.verity_usr_options=root-hash-signature=…` | the base64 PKCS#7 signature of that hash; the kernel checks it against its built-in db certificate, and IPE trusts only such volumes                      |
 | `rw`                                               | the root partition carries the state; without it the initrd mounts root read-only and the host key var fails to seal. `/usr` stays read-only by dm-verity |
+| `panic=10`                                         | a kernel panic reboots after 10 s, so a release whose kernel panics loses a try ([Boot: Trial boot](../design/boot.md#trial-boot))                        |
 | `lsm=lockdown,yama,ipe,bpf`                        | the LSM stack order (capability is always first)                                                                                                          |
 | `lockdown=integrity`                               | kernel lockdown level: blocks kexec, `/dev/mem` and similar                                                                                               |
 | `ipe.enforce=1`                                    | IPE runs only the initramfs and verity volumes whose signature the kernel verified                                                                        |
@@ -338,10 +339,10 @@ nix-build -A packages.x86_64-linux.image-smoke-test-rotated -o next-rotated
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --next next-rotated \
   --rotate --timeout 480
 
-# With --fail-health the candidate never passes its health check: three unblessed
-# boots, then the old release boots again (see the update test below)
+# With --fail-health the candidate never passes its health check: three tries that
+# reboot by themselves, then the old release boots again (see the update test below)
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --next next \
-  --fail-health --timeout 480
+  --fail-health --timeout 900
 
 # Factory reset: the reset request, the reset boot, and the state checks (two boots)
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-test \
@@ -587,6 +588,12 @@ With `--next DIR` ([The update test](#the-update-test)):
 | `no-failed-units-after-update`                                         | the updated system has no failed unit                                                                                                                       |
 | `clock-not-reset-after-update`                                         | `clock-not-reset` on the updated release's first boot                                                                                                       |
 | `clock-not-reset-after-fallback`                                       | with `--fail-health`, `clock-not-reset` on the fallback boot of the old release                                                                             |
+| `health-check-broken`                                                  | with `--fail-health`, the drop-ins that hang and then fail `golconda-health-network.service`, and the 90 s deadline, are in place                           |
+| `trial-boot-counted`                                                   | with `--fail-health`, the generator logged each try of the candidate (`+2-1`, `+1-2`, `+0-3`) as on trial                                                   |
+| `trial-hang-rebooted`, `trial-fail-rebooted`                           | with `--fail-health`, the hung try reboots at the deadline and the two failed ones at once, three reboots by the policy and none by the harness             |
+| `fallback-to-old-slot`, `counter-exhausted`, `old-slot-selected`       | with `--fail-health`, the fourth boot runs the old release, the candidate has `tries: 0 left; 3 done`, the old entry is selected                            |
+| `blessed-no-trial-policy`                                              | with `--fail-health`, the blessed old release runs no health unit and has no trial drop-in                                                                  |
+| `exhausted-entry-stays-up`, `oneshot-exhausted-is-once`                | with `--fail-health`, the candidate started with no try left fails its health check and is not rebooted; the next boot is the old release                   |
 | `hwdb-after-update`                                                    | the updated release's `/usr/lib/udev/hwdb.bin` answers for DMI, PCI and USB; none in `/etc`                                                                 |
 | `loader-replaced`                                                      | when the loader bytes differ, the new loader is on the ESP and the old one is `systemd-boot-fallbackx64.efi`                                                |
 | `bootctl-list-both-slots`                                              | `bootctl list` shows the entries of both versions                                                                                                           |
@@ -692,17 +699,26 @@ QEMU, sets db to the new certificate alone, adds the old one to dbx (`virt-fw-va
 checks that the kernel loaded only the new db certificate, and boots the original disk under the
 rotated store, which firmware must refuse.
 
-`--next DIR --fail-health` proves the fallback instead of the good update boot. It masks a health
-unit (`/etc/systemd/system/golconda-health-network.service` → `/dev/null`), so
-`boot-complete.target` cannot be reached and the candidate is never blessed. It then reboots three
-times and checks after each one that the counter fell (`tries: 2 left; 1 done`, then
-`1 left; 2 done`, then `0 left; 3 done`), that `boot-complete.target` is inactive and that the
-loader update did not run. It lifts the mask and checks the fourth boot: the previous release runs,
-the candidate is at `tries: 0 left; 3 done`, the old entry is the one systemd-boot selected, and PID
-1 kept the clock (`clock-not-reset-after-fallback`). A mask keeps every boot clean and ssh
-reachable, so the counter can be read after each one; cutting the link would need a QMP `set_link`
-call and a hard reset. `--fail-health` and `--rotate` are alternatives, and `--fail-health` skips
-the loader and recovery checks, because no boot of the candidate is blessed.
+`--next DIR --fail-health` proves the [trial boot](../design/boot.md#trial-boot) policy and the
+fallback instead of the good update boot. A drop-in in `/etc` replaces the `ExecStart=` of
+`golconda-health-network.service`: on the first boot that runs it, it hangs; on every later one it
+fails at once (a file in `/var` tells them apart). Another drop-in sets `boot-complete.target`'s
+deadline to 90 s instead of the image's 15 minutes. The harness reboots once, into the candidate,
+and from there on only watches: it logs in whenever ssh answers and waits for the old release. The
+serial console holds the evidence of the three tries: the generator's line for `+2-1`, `+1-2` and
+`+0-3` (`trial-boot-counted`), the hung unit followed by the reboot of
+`golconda-trial-boot-failed.service` (`trial-hang-rebooted`), and two failed units followed by
+reboots, three in all (`trial-fail-rebooted`). On the fourth boot the previous release runs
+(`fallback-to-old-slot`), the candidate is at `tries: 0 left; 3 done` (`counter-exhausted`), the old
+entry is the one systemd-boot selected (`old-slot-selected`), PID 1 kept the clock
+(`clock-not-reset-after-fallback`), and the blessed entry ran no health unit and got no trial
+drop-in (`blessed-no-trial-policy`). Then `bootctl set-oneshot` starts the candidate once more: its
+counter goes from `+0-3` to `+0-4`, the generator says it had no try left, its health unit fails,
+and 20 seconds later the same boot still answers (`exhausted-entry-stays-up`); the next boot is the
+old release (`oneshot-exhausted-is-once`). The drop-ins are on the state partition, so they hold for
+every slot; the harness removes them at the end. `--fail-health` and `--rotate` are alternatives,
+and `--fail-health` skips the loader and recovery checks, because no boot of the candidate is
+blessed.
 
 What this test does not prove:
 

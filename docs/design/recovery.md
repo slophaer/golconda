@@ -11,7 +11,7 @@ flowchart TD
   start[something is wrong] --> ssh{does ssh as root work?}
   ssh -->|yes, the state is broken| reset[factory-reset.target: state is lost, slots and ESP stay]
   ssh -->|no| fresh{is a new, unblessed release running?}
-  fresh -->|yes, and the other slot is filled| reboot[power-cycle until its tries run out]
+  fresh -->|yes, and the other slot is filled| reboot[it reboots itself until its tries run out]
   reboot --> other[systemd-boot starts the other slot]
   fresh -->|no| menu{firmware console or serial redirection?}
   menu -->|yes| pick[hold a key at power-on, pick the other entry]
@@ -30,9 +30,10 @@ the health units pass: `golconda-health-network.service` needs a routable link a
 ([Boot: Boot health](boot.md#boot-health)). `systemd-bless-boot-generator` adds the target only when
 the entry has a counter, so a blessed entry boots without them. A candidate that fails one of the
 health units is not blessed: `systemd-bless-boot.service` requires the target and never runs, the
-boot-counting suffix stays, and one of the three tries is used. Nothing reboots a machine whose
-health check failed, so the counter falls only at the next boot, and that boot is the operator's
-decision, not the system's.
+boot-counting suffix stays, and one of the three tries is used. The [trial boot](boot.md#trial-boot)
+policy then reboots it, also when the target is not reached by the deadline. A blessed entry, and an
+entry that had no try left, stay up after a failed health check: a reboot would start the same entry
+again.
 
 systemd-boot decrements `+3-0` → `+2-1` → `+1-2` on each attempt. At `+0-3` the entry has no tries
 left and systemd-boot prefers another entry that has. This is the fallback that boot counting exists
@@ -95,13 +96,12 @@ image is written to the disk directly ([Image artifacts](../reference/image.md))
 
 ## What is missing
 
-| not available                   | consequence                                                                                                                                               |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| local login, rescue shell       | no getty, no password; a machine without working ssh has no console session                                                                               |
-| automatic reboot of a candidate | a failed health check leaves the machine up; an operator must reboot it                                                                                   |
-| a remote recovery channel       | no out-of-band agent; if sshd or the network is the failing unit, ssh cannot be used                                                                      |
-| loader repair without a boot    | the loader is updated after a good boot; one that no longer starts needs the firmware menu or a reflash ([Boot loader: Recovery](bootloader.md#recovery)) |
-| LUKS recovery                   | no encrypted state yet, so no unlock prompt to recover                                                                                                    |
+| not available                | consequence                                                                                                                                               |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| local login, rescue shell    | no getty, no password; a machine without working ssh has no console session                                                                               |
+| a remote recovery channel    | no out-of-band agent; if sshd or the network is the failing unit, ssh cannot be used                                                                      |
+| loader repair without a boot | the loader is updated after a good boot; one that no longer starts needs the firmware menu or a reflash ([Boot loader: Recovery](bootloader.md#recovery)) |
+| LUKS recovery                | no encrypted state yet, so no unlock prompt to recover                                                                                                    |
 
 Recovery that needs the machine to answer is designed around the one channel that exists, ssh as
 root with a certificate ([Identity](trust.md#identity)). Everything else is local or a reflash.

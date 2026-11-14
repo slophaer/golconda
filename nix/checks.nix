@@ -157,6 +157,12 @@ in
     touch $out
   '';
 
+  # the trial boot generator on fake efivars: a drop-in on a trial boot only (tests/trial-boot)
+  trial-boot = run "trial-boot" [ rp.coreutils ] ''
+    sh ${src}/tests/trial-boot/generator.sh
+    touch $out
+  '';
+
   # the var runner's two modes on a scratch tree, with a stub systemd-creds (tests/vars)
   vars-runner = run "vars-runner" [ rp.coreutils ] ''
     sh ${src}/tests/vars/runner.sh

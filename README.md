@@ -9,7 +9,8 @@ does the work on the machine: boot, logging, networking and updates, with no sec
 these jobs. Nix builds the image but is not installed on the machine.
 
 Golconda suits Linux servers and appliances that should all run the same reproducible image. A
-machine cannot drift from that image, and a failed update rolls back on its own.
+machine cannot drift from that image. A failed update reboots itself until boot counting starts the
+previous release again.
 
 Terms used on this page: a **UKI** (unified kernel image) is one signed file that holds the kernel,
 the initrd and the kernel command line. **erofs** is a read-only file system, and **dm-verity**
@@ -35,7 +36,8 @@ limits.
   check `/usr`.
 - **[A/B updates with health-checked rollback](docs/features/updates.md).** systemd-sysupdate writes
   the next release to the other slot. The new entry is blessed only when the network is routable and
-  sshd is up; after three failed boots the previous slot boots again.
+  sshd is up. A try that fails, hangs or panics reboots by itself; after three the previous slot
+  boots again.
 - **[Reproducible, signed releases](docs/features/signed-releases.md).** The same inputs give the
   same image, the same root hash and the same file names. The machine installs only what the release
   key signed.
