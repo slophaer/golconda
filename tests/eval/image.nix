@@ -245,6 +245,29 @@ in
     && (params true false).enrolSet == "golconda"
     && !(params false true).enrol
   ))
+  # the removable-media name is bootctl's rule, "BOOT" and the EFI arch upper-cased
+  # (bootctl-install.c), on both sides: the signer's ESP and golconda-loader-update, with no table
+  (check "image: the removable-media path is BOOT<ARCH>.EFI for every EFI arch, by one rule" (
+    let
+      removable =
+        uefi:
+        builtins.elemAt
+          (imageLib.loaderParams {
+            platform.names.uefi = uefi;
+            pkgs.systemd = "/systemd";
+            secureBoot = true;
+            microsoftKeys = true;
+          }).espPaths
+          1;
+      script = builtins.readFile ../../modules/base/golconda-loader-update;
+    in
+    removable "x64" == "EFI/BOOT/BOOTX64.EFI"
+    && removable "aa64" == "EFI/BOOT/BOOTAA64.EFI"
+    && removable "riscv64" == "EFI/BOOT/BOOTRISCV64.EFI"
+    && removable "ia32" == "EFI/BOOT/BOOTIA32.EFI"
+    && !(hasInfix "BOOTX64.EFI" script)
+    && hasInfix "tr '[:lower:]' '[:upper:]'" script
+  ))
   (check "image: the signer's parameters come from the version, not from a key" (
     let
       a = {

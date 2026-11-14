@@ -27,16 +27,9 @@ name=${src##*/}
 name=${name%.signed} # systemd-bootx64.efi
 arch=${name#systemd-boot}
 arch=${arch%.efi} # x64
-# the removable-media name (lib/image/disk.nix removableMediaName)
-case $arch in
-  x64) removable=BOOTX64.EFI ;;
-  aa64) removable=BOOTAA64.EFI ;;
-  riscv64) removable=BOOTRISCV64.EFI ;;
-  *)
-    echo "no removable-media name for $arch" >&2
-    exit 1
-    ;;
-esac
+# the removable-media name: bootctl's rule, BOOT, the arch upper-cased, .EFI; the image builder
+# names it the same way (lib/image/loader.nix removableMediaName)
+removable=BOOT$(printf %s "$arch" | tr '[:lower:]' '[:upper:]').EFI
 esp=$(bootctl --print-esp-path)
 
 same() {

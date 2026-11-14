@@ -34,7 +34,9 @@ The ESP has the layout `bootctl install` makes:
 | `EFI/Linux/<id>_<version>[+N-M].efi`       | one UKI per slot                                                                                                                                                                                                  |
 
 Firmware starts `EFI/BOOT/BOOTX64.EFI`: Golconda writes no `Boot####` variable, and OVMF falls back
-to the removable-media path. `aa64` and `riscv64` use their own names (`removableMediaName`).
+to the removable-media path. Other architectures follow bootctl's rule, `BOOT` and the EFI arch
+upper-cased (`BOOTAA64.EFI`, `BOOTRISCV64.EFI`): the image builder (`removableMediaName`) and
+`golconda-loader-update` both apply it, and neither keeps a table.
 
 `loader.conf` is at the root of the ESP because systemd-boot reads `\loader\loader.conf` and nothing
 else (`src/boot/boot.c`, systemd 262.1). A file at `EFI/loader/loader.conf` is never read:

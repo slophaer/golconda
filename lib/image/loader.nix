@@ -26,17 +26,14 @@
 _:
 let
   image = import ../../image;
+  lower = builtins.genList (i: builtins.substring i 1 "abcdefghijklmnopqrstuvwxyz") 26;
+  upper = builtins.genList (i: builtins.substring i 1 "ABCDEFGHIJKLMNOPQRSTUVWXYZ") 26;
   fileName = platform: "systemd-boot${platform.names.uefi}.efi.signed";
   usrPath = platform: "/usr/lib/systemd/boot/efi/${fileName platform}";
-  # The UEFI removable-media boot path's file name, by the platform's uefi name
-  removableMediaName =
-    uefi:
-    {
-      x64 = "BOOTX64.EFI";
-      aa64 = "BOOTAA64.EFI";
-      riscv64 = "BOOTRISCV64.EFI";
-    }
-    .${uefi} or (throw "golconda: no removable-media boot name for uefi arch ${uefi}");
+  # The UEFI removable-media boot path's file name, by the platform's uefi name: bootctl's rule,
+  # "BOOT" and the EFI arch upper-cased (src/bootctl/bootctl-install.c). golconda-loader-update
+  # applies the same rule to the name of the loader in /usr.
+  removableMediaName = uefi: "BOOT${builtins.replaceStrings lower upper uefi}.EFI";
 in
 {
   # the signed loader's file name and its path in /usr, by platform
