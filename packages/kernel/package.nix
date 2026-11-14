@@ -43,10 +43,6 @@ package {
       "HOSTCC=cc"
       "HOSTCXX=c++"
       "HOSTLD=ld.lld"
-      # buildDependencies are tools on PATH, not include/library paths: point HOSTCC at the host
-      # libraries (objtool: libelf; extract-cert: openssl; sorttable: libunwind)
-      "HOSTCFLAGS=-I${buildPkgs.elfutils}/include -I${buildPkgs.openssl}/include"
-      "HOSTLDFLAGS=-L${buildPkgs.elfutils}/lib -L${buildPkgs.openssl}/lib -L${buildPkgs.libunwind}/lib -Wl,-rpath,${buildPkgs.elfutils}/lib -Wl,-rpath,${buildPkgs.openssl}/lib -Wl,-rpath,${buildPkgs.libunwind}/lib"
       "HOSTAR=llvm-ar"
       # Reproducibility
       "KBUILD_BUILD_TIMESTAMP=@315532800"
@@ -60,21 +56,21 @@ package {
   cc.hardening = false;
 
   # Everything here runs or links on the build machine (kconfig, objtool, sorttable, extract-cert),
-  # so a cross build needs it for the build platform: buildDependencies, not dependencies.
+  # so a cross build needs it for the build platform: buildDependencies (tools on PATH) and
+  # buildLibraries (libraries for the build machine's compiler), not dependencies.
   # kconfig needs flex and bison; timeconst.h needs bc; oid_registry needs perl.
-  # objtool needs elfutils headers/libs via pkg-config.
-  # extract-cert needs openssl headers.
-  # sorttable needs libunwind for pthread_exit at runtime.
-  # These only affect HOSTCC (jig) via -isystem, which the kernel's own code ignores
-  # (it uses jig in passthrough, CC=env JIG_PASSTHROUGH=1 cc).
   buildDependencies = [
     buildPkgs.flex
     buildPkgs.bison
     buildPkgs.bc
     buildPkgs.perl
+  ];
+  # objtool links libelf, extract-cert libcrypto: the builder gives HOSTCC (jig) their headers
+  # (-isystem), libraries (-L) and RUNPATH, which the kernel's own code ignores (it uses jig in
+  # passthrough, CC=env JIG_PASSTHROUGH=1 cc)
+  buildLibraries = [
     buildPkgs.elfutils
     buildPkgs.openssl
-    buildPkgs.libunwind
   ];
 
   # No version test: kernel has no --version flag
