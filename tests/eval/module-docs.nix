@@ -20,6 +20,16 @@ let
     ;
 in
 [
+  # the walker enters a module's directory when adios loads children from it, whatever the
+  # module's text looks like: /group's children come through `inherit`, and /plain only has a
+  # line that reads like a declaration in a string
+  (check "module-docs: the walker finds the modules adios loads, and only those" (
+    map (m: m.path) ((import ../../lib/tree.nix { }).modulePathsAt "" ../fixtures/module-tree) == [
+      "/group"
+      "/group/child"
+      "/plain"
+    ]
+  ))
   (check "module-docs: sshd page has the principals row and its default" (
     hasInfix "| `principals` | object of array of string | `{}` |" docs.pages."/services/sshd"
   ))

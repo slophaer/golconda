@@ -11,17 +11,17 @@
 #
 # `modulePaths` mirrors `adios.lib.importModules`. A directory with a default.nix, and a
 # `<name>.nix` file, is a module of the directory that is entered. The root is entered
-# always; a module's own directory is entered only when its file declares `modules =`
-# (the way /services imports its children). A file beside a module that no module
-# declares, such as modules/base/foo.nix, is not a module and is not listed. A directory
-# without a default.nix (modules/lib, shared types) is skipped.
+# always; a module's own directory is entered only when the module, loaded as adios loads
+# it, has `modules` (the way /services imports its children). A file beside a module that
+# no module declares, such as modules/base/foo.nix, is not a module and is not listed. A
+# directory without a default.nix (modules/lib, shared types) is skipped. adios keeps no
+# file of a loaded module, so the walker pairs what adios loads with the directory.
 #
 # Usage:
 #   let t = import ./lib/tree.nix { }; in t.modulePaths ../modules
 _:
 let
   inherit (builtins)
-    any
     attrNames
     concatMap
     filter
@@ -31,9 +31,11 @@ let
     match
     pathExists
     readDir
-    readFile
     split
     ;
+
+  # the argument adios.lib.importModules calls a module file with
+  inherit (import (import ../pins).adios) adios;
 
   # The components of a module path: "/services/sshd" -> [ "services" "sshd" ].
   pathComponents = p: filter (c: isString c && c != "") (split "/" p);
@@ -59,12 +61,9 @@ let
     in
     go "" (tree.modules or { });
 
-  # Does this module file declare children (`modules = ...;` on a line of its own)?
-  declaresModules =
-    file:
-    any (l: isString l && match "[[:space:]]*modules[[:space:]]*=.*" l != null) (
-      split "\n" (readFile file)
-    );
+  # Does this module file declare children? Loaded as importModules loads it: a module
+  # with `modules` has them, in its own directory.
+  declaresModules = file: (import file adios) ? modules;
 
   # The module files of directory `dir`, whose modules sit under `prefix`.
   walk =
