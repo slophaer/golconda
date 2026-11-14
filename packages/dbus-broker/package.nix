@@ -38,23 +38,9 @@ package {
   ];
 
   # Copy all wrap subprojects before meson configure. Meson's wrap_mode=nodownload
-  # cannot fetch them; we provide them as extra sources.
-  # Also set up env for bindgen (libclang needs header paths that cc knows about).
+  # cannot fetch them; we provide them as extra sources. bindgen gets the toolchain's target,
+  # sysroot and headers from the builder (BINDGEN_EXTRA_CLANG_ARGS).
   phases.before."meson.configure" = [
-    {
-      name = "bindgen-env";
-      run = ''
-        # bindgen invokes libclang directly, bypassing our cc wrapper. Tell it
-        # where to find headers via CPATH (which libclang respects).
-        # The sysroot contains both libc headers and Linux headers.
-        let cc_dir = (which cc | first | get path | path dirname | path dirname)
-        let jig = (open $"($cc_dir)/etc/jig.json")
-        # Extract sysroot from the --sysroot flag
-        let sysroot = ($jig.flags | where ($it | str starts-with "--sysroot=") | first | split row "=" | last)
-        $env.CPATH = $"($sysroot)/include"
-        note bindgen-env $"CPATH=($env.CPATH)"
-      '';
-    }
     {
       name = "populate-wraps";
       run = ''
