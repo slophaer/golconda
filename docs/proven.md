@@ -133,6 +133,16 @@ switch-root PID 1 logs "System cannot boot: Missing /etc/machine-id and /etc/ is
 `systemd-pcrmachine.service` fails, and its `FailureAction=reboot-force` reboots the machine, at
 every boot. This is a manual run, not a `scripts/boot-test` mode.
 
+The fork's RUNPATH reaches every library a program dlopens: the image has `dlopen` links only for
+glibc's NSS modules, and the image steps set no `LD_LIBRARY_PATH`. `disk-reproducible` runs the
+signer, whose tools dlopen libcrypto, libtss2 and libfdisk; `hostkey-sealed-with-tpm2` and
+`hostkey-unchanged` (`--secure-boot --ssh-test --tpm`) seal and unseal through the TPM libraries
+systemd dlopens. lvm2 as a farm package, dbus-broker's own bus files, uutils' links from
+`coreutils --list` and the removable-media name by rule pass the same `scripts/verify` sets as the
+rest of the image: `initrd-reproducible`, `disk-reproducible`, the default set, `--next`,
+`--next --fail-health`, `--imds` and `--auto-enrol` (all with `--secure-boot --tpm`), and the nosb
+sets `--esp-creds` and `--next`. `loader-reinstall` passes in both `--next` sets that update.
+
 ## On Hetzner Cloud
 
 On 2026-11-09 the [Hetzner guide](reference/hetzner-cloud.md) ran step by step on one `cpx12` in
