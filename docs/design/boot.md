@@ -159,12 +159,14 @@ cmdline) and `timeout 0` (the menu does not wait); see [Boot loader](bootloader.
 change the unsigned configuration ([Trust](trust.md)). The cmdline carries `rw` and neither `ro` nor
 `systemd.volatile=` (`/` is the state partition; the initrd mounts it read-only unless the cmdline
 says `rw`, and gpt-auto's remount-rw drop-in takes effect only when `systemd-remount-fs.service`
-runs, late in boot). A debug image with other parameters is a separate build *(later)*.
+runs, after switch-root). A debug image with other parameters is a separate build *(later)*.
 
-The ssh host key var unit seals its key in `/etc/credstore.encrypted` before
-`systemd-remount-fs.service` runs, so without `rw` it fails and sshd starts without a host key. `rw`
-is an ordinary kernel parameter, and the test image boots the same cmdline. Libraries need no such
-flag: the fork's RUNPATH reaches every dlopen soname.
+PID 1 needs the root writable before that: on the first boot `/etc` is empty, and on a read-only
+root it cannot write `/etc/machine-id` ("System cannot boot: Missing /etc/machine-id and /etc/ is
+read-only"). On a measured boot `systemd-pcrmachine.service` then fails to measure the machine ID,
+and its `FailureAction=reboot-force` reboots the machine at every boot
+([What is proven](../proven.md)). `rw` is an ordinary kernel parameter, and the test image boots the
+same cmdline. Libraries need no such flag: the fork's RUNPATH reaches every dlopen soname.
 
 gpt-auto-generator mounts the root partition (writable), the ESP and `/usr` by `usrhash=`. systemd
 finds the libraries it dlopens through the RUNPATH the fork gives it. IPE enforces from the first

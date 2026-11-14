@@ -25,10 +25,13 @@
   # console=tty0,ttyS0: the local console and the serial line, output only (no getty)
   # rw: the root partition carries the state (/var, /etc), and the initrd mounts it read-only
   # unless the cmdline says rw; gpt-auto's remount-rw drop-in reaches systemd-remount-fs.service
-  # only late in boot, after the ssh host key var unit has tried to seal its key on a read-only
-  # root and failed. `rw` is an ordinary kernel parameter (gpt-auto passes it to the root mount),
-  # not a workaround. /usr stays read-only by dm-verity whatever is said. Nothing about
-  # volatility either (/var is on the root partition, systemd's default).
+  # only after switch-root. PID 1 needs /etc writable before that: on the first boot /etc is
+  # empty, it cannot write /etc/machine-id on a read-only root ("System cannot boot: Missing
+  # /etc/machine-id and /etc/ is read-only"), systemd-pcrmachine.service then fails to measure
+  # the machine ID, and its FailureAction=reboot-force reboots the machine, at every boot
+  # (docs/proven.md). `rw` is an ordinary kernel parameter (gpt-auto passes it to the root mount),
+  # not a workaround. /usr stays read-only by dm-verity whatever is said. Nothing about volatility
+  # either (/var is on the root partition, systemd's default).
   # panic=10: a kernel panic reboots after 10 s instead of hanging, so a release whose kernel
   # panics loses a try and systemd-boot falls back (the trial boot policy, modules/base/parts/
   # trial-boot.nix; docs/design/boot.md). A cmdline value, not CONFIG_PANIC_TIMEOUT, so the

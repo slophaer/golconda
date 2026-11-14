@@ -127,6 +127,12 @@ the kernel had no `CONFIG_IPV6_MULTIPLE_TABLES`, IPv6 stayed "Network is unreach
 succeeded). With the option set, all six addresses give "Permission denied" in both sets, and
 `imds-endpoint-locked` passes. Not run: imdsd itself reaching an IPv6 endpoint, as QEMU serves none.
 
+The cmdline needs `rw` ([Boot](design/boot.md#kernel-command-line)). A copy of the test image
+without it, booted with `--secure-boot --ssh-test --tpm`, never reaches `multi-user.target`: after
+switch-root PID 1 logs "System cannot boot: Missing /etc/machine-id and /etc/ is read-only",
+`systemd-pcrmachine.service` fails, and its `FailureAction=reboot-force` reboots the machine, at
+every boot. This is a manual run, not a `scripts/boot-test` mode.
+
 ## On Hetzner Cloud
 
 On 2026-11-09 the [Hetzner guide](reference/hetzner-cloud.md) ran step by step on one `cpx12` in

@@ -124,9 +124,9 @@
       # The mount points and top-level directories. /dev /proc /sys /run must exist:
       # switch-root chases them in the new root without creating them
       # (systemd src/shared/switch-root.c, chase() without CHASE_NONEXISTENT). /usr is the
-      # verity slot's mount point. The cmdline's rw makes the root writable in the initrd, but
-      # making every directory here keeps the first boot working on a root mounted read-only
-      # (a cmdline without rw), where sysroot-usr.mount and tmp.mount could not mkdir. There is
+      # verity slot's mount point. The cmdline's rw makes the root writable in the initrd (the
+      # first boot needs it for /etc/machine-id, image/uki.nix); making every directory here
+      # also lets sysroot-usr.mount and tmp.mount find theirs on a root mounted read-only. There is
       # no /srv: service state lives in /var/lib. /bin /sbin /lib are tmpfiles links (/base).
       MakeDirectories = "/usr /etc /var /home /root /tmp /run /dev /proc /sys";
     };

@@ -288,8 +288,8 @@ in
     let
       t = (import ../../image).uki.cmdlineTemplate;
     in
-    # rw: the initrd mounts the root partition read-only without it, and the ssh host key
-    # var unit runs before systemd-remount-fs (docs/design/boot.md)
+    # rw: the initrd mounts the root partition read-only without it, and PID 1 must write
+    # /etc/machine-id before systemd-remount-fs runs (docs/design/boot.md)
     hasInfix "usrhash={usrhash}" t && hasInfix " rw " t && !hasInfix " ro " t && !hasInfix "volatile" t
   ))
   # without the option, veritysetup activates /usr unsigned and IPE's dmverity_signature is
