@@ -10,29 +10,28 @@ package {
   uses = [ "make" ];
   # configure is not autoconf: it writes config.mk, and only --prefix/--libdir feed the compiled-in
   # paths. They name the ambient directories the programs read (rt_tables & co. in
-  # /usr/share/iproute2, tc and ip plugins in /usr/lib), never the scratch prefix
-  make.configureFlags = [
-    "--prefix=/usr"
-    "--libdir=/usr/lib"
-  ];
+  # /usr/share/iproute2, tc and ip plugins in /usr/lib), never the scratch prefix. The declared
+  # prefix gives configure --prefix and make PREFIX=, and the install goes through DESTDIR; the
+  # output is what lands in /usr
+  prefix = "/usr";
+  make.configureFlags = [ "--libdir=/usr/lib" ];
   make.flags = [
-    "PREFIX=/usr"
     "SBINDIR=/usr/bin"
     "NETNS_RUN_DIR=/run/netns"
     "CC=cc"
     "HOSTCC=cc"
     "AR=llvm-ar"
   ];
-  # the Makefile installs below $(DESTDIR)$(PREFIX): /usr is the ambient prefix, the package is
-  # what lands in it
-  phases.replace."make.install" = {
-    name = "install";
-    run = ''
-      with-env {DESTDIR: $"($c.build)/dest"} { x make ...(options make | get flags) install }
-      ^cp -r $"($c.build)/dest/usr/." $c.out
-      rm $"($c.out)/bin/routel" # a python script
-    '';
+  stagedRoots = {
+    "/etc" = null;
+    "/var" = null;
   };
+  phases.after."make.install" = [
+    {
+      name = "drop-routel";
+      run = ''rm $"($c.out)/bin/routel" # a python script'';
+    }
+  ];
   buildDependencies = [
     buildPkgs.bison
     buildPkgs.flex

@@ -32,21 +32,25 @@ package {
   meson.skipTests = [
     "tst-pam_(start|end|fail_delay|get_item|set_item|getenvlist|get_user|get_data|set_data)$"
   ];
-  # Everything is compiled in as /usr/..., /etc/...: install into a scratch tree and take /usr
-  phases.replace."meson.install" = {
-    name = "install";
-    run = ''
-      with-env {DESTDIR: $"($c.build)/dest"} { x meson install --no-rebuild }
-      ^cp -r $"($c.build)/dest/usr/." $c.out
-      # prefix=/usr is where the files will be linked, not where this package is
-      for f in (glob $"($c.out)/lib/pkgconfig/*.pc") { edit $f { str replace "prefix=/usr" "prefix=''${pcfiledir}/../.." } }
-      rm -rf $"($c.out)/lib/systemd" # pam_namespace.service
-      # The image has no setuid binaries: pam_unix's helper for callers that may not read
-      # /etc/shadow is not installed (unix_update is only built with SELinux). pam_unix.so reads
-      # the shadow entry itself (pam_unix-try-getspnam above)
-      rm $"($c.out)/bin/unix_chkpwd"
-    '';
+  # Everything is compiled in as /usr/..., /etc/...: the builder installs into a scratch tree and
+  # takes /usr. The sample configuration it installs below /etc (security/*.conf) is not shipped:
+  # PAM reads the image's own
+  stagedRoots = {
+    "/etc" = null;
+    "/var" = null;
   };
+  phases.after."meson.install" = [
+    {
+      name = "drop";
+      run = ''
+        rm -rf $"($c.out)/lib/systemd" # pam_namespace.service
+        # The image has no setuid binaries: pam_unix's helper for callers that may not read
+        # /etc/shadow is not installed (unix_update is only built with SELinux). pam_unix.so reads
+        # the shadow entry itself (pam_unix-try-getspnam above)
+        rm $"($c.out)/bin/unix_chkpwd"
+      '';
+    }
+  ];
   dependencies = [ pkgs.libxcrypt ];
   bin = [ "faillock" ];
   tests.version = false;

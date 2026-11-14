@@ -192,30 +192,26 @@ package {
   # finish's dlopen-check holds every binary to it
   cc.ldflags = map (d: "-Wl,-rpath,${d}/lib") deps;
 
-  # Override install to handle /etc and /var: meson installs them but finish rejects $out/etc.
-  # These are sample configuration files; the image's tmpfiles C copies them.
-  phases.replace."meson.install" = {
-    name = "install";
-    run = ''
-      let destdir = $"($c.build)/dest"
-      with-env {DESTDIR: $destdir} { x meson install --no-rebuild }
-      # Copy /usr subtree to $out
-      ^cp -r $"($destdir)/usr/." $c.out
-      # systemd's vendor keyring holds image vendors' OpenPGP keys, and systemd-pull trusts it
-      # beside every other keyring: the image ships its release key at that path instead
-      # (lib/image/index.nix), so only that key signs an index the machine accepts
-      rm -f $"($c.out)/lib/systemd/import-pubring.pgp"
-      # systemd-ssh-generator binds a second sshd, with sshd_config's defaults and an
-      # AuthorizedKeysFile of its own, to AF_UNIX /run/ssh-unix-local/socket, to AF_VSOCK and
-      # to any address an ssh.listen credential or systemd.ssh_listen= names. meson has no
-      # option for it; Golconda's sshd.service (/services/sshd) is the one ssh server
-      rm $"($c.out)/lib/systemd/system-generators/systemd-ssh-generator"
-      # Move /etc to share/factory/etc (sample configs, tmpfiles C copies them)
-      # These become sources for tmpfiles C directive in the image.
-      if ($"($destdir)/etc" | path exists) {
-        mkdir $"($c.out)/share/factory"
-        ^cp -r $"($destdir)/etc" $"($c.out)/share/factory/"
-        note factory-etc "copied DESTDIR/etc to share/factory/etc"
+  # meson installs below /usr, /etc and /var. The builder's staged install takes /usr as the
+  # output and makes the .pc files relative; /etc holds sample configuration files, which become
+  # share/factory/etc, the source of the image's tmpfiles C lines. /var is not shipped
+  stagedRoots = {
+    "/etc" = "share/factory/etc";
+    "/var" = null;
+  };
+  phases.after."meson.install" = [
+    {
+      name = "factory-cleanup";
+      run = ''
+        # systemd's vendor keyring holds image vendors' OpenPGP keys, and systemd-pull trusts it
+        # beside every other keyring: the image ships its release key at that path instead
+        # (lib/image/index.nix), so only that key signs an index the machine accepts
+        rm -f $"($c.out)/lib/systemd/import-pubring.pgp"
+        # systemd-ssh-generator binds a second sshd, with sshd_config's defaults and an
+        # AuthorizedKeysFile of its own, to AF_UNIX /run/ssh-unix-local/socket, to AF_VSOCK and
+        # to any address an ssh.listen credential or systemd.ssh_listen= names. meson has no
+        # option for it; Golconda's sshd.service (/services/sshd) is the one ssh server
+        rm $"($c.out)/lib/systemd/system-generators/systemd-ssh-generator"
         # Remove symlinks that point outside (to /usr or other system paths):
         # they're only valid at /etc at runtime, not in the package
         for f in (glob $"($c.out)/share/factory/etc/**/*") {
@@ -228,33 +224,24 @@ package {
             }
           }
         }
-      }
-      # Remove /var if present
-      if ($"($destdir)/var" | path exists) {
-        rm -rf $"($destdir)/var"
-        note factory-etc "removed DESTDIR/var"
-      }
-      # .pc files: make prefix relative so pkg-config finds includes/libs
-      for f in (files $"($c.out)/lib/pkgconfig/*.pc") {
-        edit $f { str replace "prefix=/usr" "prefix=''${pcfiledir}/../.." }
-      }
-      # Remove dangling symlink: 99-environment.conf -> ../../../etc/environment
-      # This points to /etc/environment which is a runtime config, not part of the package.
-      # The image creates /etc/environment; environment.d reads it directly.
-      let envlink = $"($c.out)/lib/environment.d/99-environment.conf"
-      if ($envlink | path exists -n) {
-        rm $envlink
-        note factory-etc "removed dangling 99-environment.conf symlink"
-      }
-      # Remove systemd-update-helper: it's a bash script for rpm/deb scriptlets,
-      # not needed for Golconda (immutable image). Its shebang pulls in bash.
-      let helper = $"($c.out)/lib/systemd/systemd-update-helper"
-      if ($helper | path exists) {
-        rm $helper
-        note factory-etc "removed systemd-update-helper (rpm/deb scriptlet, pulls bash)"
-      }
-    '';
-  };
+        # Remove dangling symlink: 99-environment.conf -> ../../../etc/environment
+        # This points to /etc/environment which is a runtime config, not part of the package.
+        # The image creates /etc/environment; environment.d reads it directly.
+        let envlink = $"($c.out)/lib/environment.d/99-environment.conf"
+        if ($envlink | path exists -n) {
+          rm $envlink
+          note factory-etc "removed dangling 99-environment.conf symlink"
+        }
+        # Remove systemd-update-helper: it's a bash script for rpm/deb scriptlets,
+        # not needed for Golconda (immutable image). Its shebang pulls in bash.
+        let helper = $"($c.out)/lib/systemd/systemd-update-helper"
+        if ($helper | path exists) {
+          rm $helper
+          note factory-etc "removed systemd-update-helper (rpm/deb scriptlet, pulls bash)"
+        }
+      '';
+    }
+  ];
 
   # All executables installed in bin/: finish warns about any it finds that is not listed.
   bin = [

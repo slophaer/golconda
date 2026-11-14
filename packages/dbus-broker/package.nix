@@ -92,21 +92,6 @@ package {
     }
   ];
 
-  # Custom install: farm package with prefix=/usr
-  phases.replace."meson.install" = {
-    name = "install";
-    run = ''
-      let destdir = $"($c.build)/dest"
-      with-env {DESTDIR: $destdir} { x meson install --no-rebuild }
-      # Copy /usr subtree to $out
-      ^cp -r $"($destdir)/usr/." $c.out
-      # .pc files: make prefix relative
-      for f in (files $"($c.out)/lib/pkgconfig/*.pc") {
-        edit $f { str replace "prefix=/usr" "prefix=''${pcfiledir}/../.." }
-      }
-    '';
-  };
-
   bin = [
     "dbus-broker"
     "dbus-broker-launch"
