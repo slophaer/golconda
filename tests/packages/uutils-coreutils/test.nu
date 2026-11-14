@@ -6,6 +6,11 @@ let t = $"($env.TMPDIR? | default /tmp)/uutils-smoke"
 mkdir $t
 
 assert "ls is a link to coreutils" ((^readlink $"($bin)/ls" | str trim) == "coreutils")
+# every tool the multicall binary has is a link to it, and bin/ holds nothing else
+let tools = (^$"($bin)/coreutils" --list | lines | where { $in != "[" })
+let links = (ls $bin | where type == symlink | get name | path basename)
+assert "every tool of coreutils --list is a link" (($tools | sort) == ($links | sort))
+assert "bin holds coreutils and the links" ((ls -a $bin | get name | path basename | sort) == ($links | append coreutils | sort))
 assert "version is the pin" ((^$"($bin)/coreutils" --version | str trim) | str contains "0.12.0")
 assert "ls -la / lists the root" ((^$"($bin)/ls" -la / | lines | length) > 3)
 

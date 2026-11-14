@@ -133,6 +133,11 @@ in
   (check "tpm2-tss: the device TCTI exports Tss2_Tcti_Info for systemd (no --enable-nodl)" (
     !(elem "--enable-nodl" pkgs.tpm2-tss.args.autotools.flags)
   ))
+  # the multicall binary says which tools it has (`coreutils --list`): the build links them, so
+  # no list of names is kept by hand, and the image links what bin/ holds (exports.json)
+  (check "uutils-coreutils: the build links the tools, the spec names none" (
+    !(pkgs.uutils-coreutils.args ? links) && pkgs.uutils-coreutils.bin == null
+  ))
   # kernel code through jig in passthrough: no jig policy flags (hardening, sysroot, RUNPATH),
   # but the compile cache; host tools through jig's normal policy (they need the sysroot)
   (check "kernel: kernel code compiles through jig's cache in passthrough, host tools with its policy"
