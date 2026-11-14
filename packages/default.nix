@@ -112,6 +112,8 @@
   # Microsoft's Secure Boot certificates and revocation list, for the variables systemd-boot
   # enrols (scripts/make-keys, lib/image/enrol.nu; the boot test's --auto-enrol checks)
   secureboot-objects = ./secureboot-objects;
+  # cert-to-efi-sig-list and sign-efi-sig-list, which write those variables (lib/image/enrol.nu)
+  efitools = ./efitools;
   python-cryptography = ./python-cryptography;
   python-cffi = ./python-cffi;
   python-pycparser = ./python-pycparser;

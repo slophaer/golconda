@@ -182,6 +182,9 @@ in
       # Microsoft's Secure Boot objects: scripts/make-keys signs them into the key set's
       # enrolment files, and boot-test --auto-enrol checks the firmware holds them
       inherit (pkgs) secureboot-objects;
+      # cert-to-efi-sig-list and sign-efi-sig-list: they write the enrolment files
+      # (lib/image/enrol.nu, golconda-enrol-auth)
+      inherit (pkgs) efitools;
     }
     # tests-<name>: a package's own test from tests/packages/ (they moved with the packages)
     // import ../tests/packages { inherit sources set; }

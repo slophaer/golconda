@@ -122,8 +122,9 @@ in
   # the signer's key checks and signatures (tests/sign): a signature by the right key verifies
   # with the public half, one by another key does not, a mismatched key set is refused, for keys
   # in files and on a PKCS#11 token (SoftHSM, test-only, through pkcs11-provider). The Nu
-  # functions the signer runs (lib/image), under the seed's nu, with Golconda's openssl and gpg
-  image-signer = run "image-signer" [ rp.openssl rp.gnupg rp.softhsm ] ''
+  # functions the signer runs (lib/image), under the seed's nu, with Golconda's openssl and gpg,
+  # and efitools for the Secure Boot enrolment files
+  image-signer = run "image-signer" [ rp.openssl rp.gnupg rp.softhsm rp.efitools ] ''
     export HOME=$TMPDIR
     export OPENSSL_MODULES=${rp.pkcs11-provider}/lib/ossl-modules
     export SOFTHSM_MODULE=${rp.softhsm}/lib/softhsm/libsofthsm2.so

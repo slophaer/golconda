@@ -98,8 +98,11 @@ certificate, built in, and never against the firmware's `db`
 the disk on its first boot; a machine that already has keys gets it in firmware setup.
 
 **The files.** `scripts/make-keys` writes the Secure Boot variables into the key set once, signed by
-its PK and KEK keys (`secureboot/auth/`, `lib/image/enrol.nu`). They depend on the certificates
-only, not on an image, so no release needs the PK or KEK key. There are two sets:
+its PK and KEK keys (`secureboot/auth/`, `lib/image/enrol.nu`). efitools writes them
+(`cert-to-efi-sig-list` for each certificate's signature list, `sign-efi-sig-list` for the signed
+variable, `packages/efitools`); `enrol.nu` takes each file apart with code of its own and has
+openssl check its signature before it keeps it. They depend on the certificates only, not on an
+image, so no release needs the PK or KEK key. There are two sets:
 
 | set                                            | PK   | KEK                                                     | db                                                                                                  | dbx                                  |
 | ---------------------------------------------- | ---- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------ |

@@ -60,6 +60,7 @@ in
         pkgs.openssl
         pkgs.openssh # ssh-keygen for the test CA
         pkgs.gnupg # the release key (release/index.key, .pgp)
+        pkgs.efitools # the enrolment files (enrol.nu)
       ];
       modules = [
         "keys.nu"

@@ -17,8 +17,14 @@
 # series of EFI_SIGNATURE_LISTs. The chain is the usual one: the PK key signs PK and KEK, the KEK
 # key signs db and dbx. The signature covers the variable name (UTF-16, no NUL), its vendor GUID,
 # the attributes, the EFI_TIME and the payload. The SignedData has no signed attributes and no
-# ContentInfo around it (the form sbvarsign and sign-efi-sig-list write); RSA PKCS#1 v1.5 draws
-# no random numbers, so the same keys and time give the same files.
+# ContentInfo around it; RSA PKCS#1 v1.5 draws no random numbers, so the same keys and time give
+# the same files.
+#
+# efitools writes them (packages/efitools): cert-to-efi-sig-list makes the signature list of each
+# certificate, sign-efi-sig-list the authenticated variable around a series of them. This file
+# checks each one with code of its own, not efitools': `verify` takes the file apart, rebuilds the
+# data the signature covers and has openssl check the signature; the boot test's --auto-enrol has
+# firmware enrol them.
 
 use common.nu *
 
@@ -68,13 +74,6 @@ def ucs2 [name: string]: nothing -> binary {
   $name | split chars | each {|c| $c | encode utf-8 | bytes add 0x[00] --end } | bytes collect
 }
 
-# EFI_TIME of a Unix time in UTC: Year (2), Month, Day, Hour, Minute, Second, Pad1, Nanosecond
-# (4), TimeZone (2), Daylight, Pad2; the fields after Second are zero
-def efi-time [epoch: int]: nothing -> binary {
-  let t = ($epoch * 1_000_000_000 | into datetime | format date "%Y %m %d %H %M %S" | split row " " | each { into int })
-  [(le $t.0 2) (le $t.1 1) (le $t.2 1) (le $t.3 1) (le $t.4 1) (le $t.5 1) (le 0 8) (le 0 1)] | bytes collect
-}
-
 # The DER of a certificate file, PEM or DER
 def der [cert: string]: nothing -> binary {
   let f = (mktemp -t "golconda-der-XXXXXX")
@@ -85,13 +84,31 @@ def der [cert: string]: nothing -> binary {
   $b
 }
 
-# esl CERT [OWNER]: an EFI_SIGNATURE_LIST with CERT (PEM or DER) as its one EFI_CERT_X509 entry:
-# SignatureType, SignatureListSize, SignatureHeaderSize (0), SignatureSize, then the entry
-# (SignatureOwner, the DER)
+# esl CERT [OWNER]: an EFI_SIGNATURE_LIST with CERT (PEM or DER) as its one EFI_CERT_X509 entry,
+# owned by OWNER, as efitools' cert-to-efi-sig-list writes it
 export def esl [cert: string, owner: string = $owner_guid]: nothing -> binary {
-  let d = (der $cert)
-  let entry = (16 + ($d | bytes length))
-  [(guid $x509_guid) (le (28 + $entry) 4) (le 0 4) (le $entry 4) (guid $owner) $d] | bytes collect
+  let work = (mktemp -d -t "golconda-esl-XXXXXX")
+  der $cert | save -f --raw $"($work)/cert.der"
+  ^openssl x509 -inform DER -in $"($work)/cert.der" -outform PEM -out $"($work)/cert.pem"
+  ^cert-to-efi-sig-list -g $owner $"($work)/cert.pem" $"($work)/list.esl" | ignore
+  let b = (open --raw $"($work)/list.esl" | into binary)
+  rm -rf $work
+  $b
+}
+
+# first-x509 LISTS: the DER of the first signature list's one entry, when that list is
+# EFI_CERT_X509 with no header and one entry (what `esl` writes), else null; read without efitools
+def first-x509 [lists: binary]: nothing -> any {
+  if ($lists | bytes length) < 44 or ($lists | bytes at 0..<16) != (guid $x509_guid) {
+    return null
+  }
+  let size = ($lists | bytes at 16..<20 | into int -e little)
+  let header = ($lists | bytes at 20..<24 | into int -e little)
+  let each = ($lists | bytes at 24..<28 | into int -e little)
+  if $header != 0 or $each < 16 or $size != 28 + $each or $size > ($lists | bytes length) {
+    return null
+  }
+  $lists | bytes at 44..<$size
 }
 
 # auth-payload FILE: the signature lists of an authenticated variable (Microsoft's dbx update)
@@ -99,22 +116,6 @@ export def auth-payload [file: string]: nothing -> binary {
   let b = (open --raw $file | into binary)
   let len = ($b | bytes at 16..<20 | into int -e little)
   $b | bytes at (16 + $len)..
-}
-
-# signed-data NAME GUID EPOCH PAYLOAD: what the signature of an authenticated write covers
-export def signed-data [name: string, vendor: string, epoch: int, payload: binary]: nothing -> binary {
-  [(ucs2 $name) (guid $vendor) (le $attributes 4) (efi-time $epoch) $payload] | bytes collect
-}
-
-# The length of the DER element at OFF of B, and the size of its tag and length bytes
-def der-element [b: binary, off: int]: nothing -> record {
-  let first = ($b | bytes at ($off + 1)..($off + 1) | into int)
-  if $first < 0x80 {
-    {hdr: 2 len: $first}
-  } else {
-    let n = ($first - 0x80)
-    {hdr: (2 + $n) len: ($b | bytes at ($off + 2)..<($off + 2 + $n) | into int -e big)}
-  }
 }
 
 # The DER length bytes of N
@@ -130,19 +131,6 @@ def der-length [n: int]: nothing -> binary {
   }
 }
 
-# signed-data-of P7: the SignedData inside the ContentInfo that openssl writes
-def signed-data-of [p7: binary]: nothing -> binary {
-  let outer = (der-element $p7 0)
-  let oid_at = $outer.hdr
-  if ($p7 | bytes at $oid_at..<($oid_at + 11)) != $signed_data_oid {
-    error make {msg: "openssl wrote a PKCS#7 that is not signedData"}
-  }
-  let explicit = (der-element $p7 ($oid_at + 11))
-  let start = ($oid_at + 11 + $explicit.hdr)
-  let inner = (der-element $p7 $start)
-  $p7 | bytes at $start..<($start + $inner.hdr + $inner.len)
-}
-
 # content-info SIGNED: the SignedData wrapped in a ContentInfo again, which openssl reads
 export def content-info [signed: binary]: nothing -> binary {
   let explicit = ([0x[a0] (der-length ($signed | bytes length)) $signed] | bytes collect)
@@ -150,18 +138,17 @@ export def content-info [signed: binary]: nothing -> binary {
   [0x[30] (der-length ($body | bytes length)) $body] | bytes collect
 }
 
-# auth NAME GUID EPOCH PAYLOAD KEY CERT: the authenticated variable for an enrolment of PAYLOAD
-# (signature lists), signed by KEY whose certificate CERT goes into the SignedData
-export def auth [name: string, vendor: string, epoch: int, payload: binary, key: string, cert: string]: nothing -> binary {
+# auth NAME EPOCH PAYLOAD KEY CERT: the authenticated variable for an enrolment of PAYLOAD
+# (signature lists), signed by KEY whose certificate CERT goes into the SignedData: efitools'
+# sign-efi-sig-list, which knows the vendor GUID of PK, KEK, db and dbx and sets the attributes
+export def auth [name: string, epoch: int, payload: binary, key: string, cert: string]: nothing -> binary {
   let work = (mktemp -d -t "golconda-auth-XXXXXX")
-  signed-data $name $vendor $epoch $payload | save -f --raw $"($work)/data"
-  ^openssl smime -sign -binary -noattr -md sha256 -in $"($work)/data" -signer $cert -inkey $key -outform DER -out $"($work)/p7"
-  let sig = (signed-data-of (open --raw $"($work)/p7" | into binary))
+  $payload | save -f --raw $"($work)/payload.esl"
+  let time = ($epoch * 1_000_000_000 | into datetime | format date "%Y-%m-%d %H:%M:%S")
+  ^sign-efi-sig-list -t $time -c $cert -k $key $name $"($work)/payload.esl" $"($work)/var.auth" | ignore
+  let b = (open --raw $"($work)/var.auth" | into binary)
   rm -rf $work
-  # WIN_CERTIFICATE_UEFI_GUID: dwLength (the header, CertType and CertData), wRevision 0x0200,
-  # wCertificateType WIN_CERT_TYPE_EFI_GUID (0x0EF1), CertType EFI_CERT_TYPE_PKCS7_GUID
-  let len = (8 + 16 + ($sig | bytes length))
-  [(efi-time $epoch) (le $len 4) (le 0x0200 2) (le 0x0ef1 2) (guid $pkcs7_guid) $sig $payload] | bytes collect
+  $b
 }
 
 # verify FILE NAME GUID CERT: FILE is an authenticated variable NAME whose signature is by the
@@ -228,7 +215,7 @@ export def write [dir: string, certs: record, signers: record, ms: string, epoch
     for v in ($variables | where {|v| $v.name in ($p | columns) }) {
       let s = ($key | get $v.signer)
       let file = $"($out)/($v.name).auth"
-      auth $v.name $v.guid $epoch ($p | get $v.name) $s.key $s.cert | save -f --raw $file
+      auth $v.name $epoch ($p | get $v.name) $s.key $s.cert | save -f --raw $file
       if (verify $file $v.name $v.guid $s.cert) != ($p | get $v.name) {
         error make {msg: $"($file): the payload is not what was signed"}
       }
@@ -275,8 +262,7 @@ export def check-set [dir: string, certs: record]: nothing -> list<string> {
     let payload = (verify $"($dir)/($v.name).auth" $v.name $v.guid ($signer | get $v.signer))
     let first = ({PK: $certs.pk KEK: $certs.kek db: $certs.db} | get -o $v.name)
     if $first != null {
-      let want = (esl $first)
-      if ($payload | bytes at 0..<($want | bytes length)) != $want {
+      if (first-x509 $payload) != (der $first) {
         error make {msg: $"($dir)/($v.name).auth does not enrol ($first | path basename) first"}
       }
     }
