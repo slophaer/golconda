@@ -14,8 +14,6 @@ package {
   name = "uptrack";
   version = "0-git.${builtins.substring 0 9 rev}";
   source = repkgs;
-  # branch heads (`?branch=`, `{rev}`), which pins/ tracks: Mic92/repkgs#204, open upstream
-  patches = [ ./upstream-204-unstable-versions.patch ];
   # bin/uptrack runs nu: the interpreter, found via the launcher. apply unpacks with bsdtar and
   # formats the files it writes with taplo, as treefmt does
   dependencies = [

@@ -64,11 +64,10 @@ in
         "libgpg-error"
         "p11-kit"
         "systemd"
-        "uptrack"
       ];
       patches = builtins.concatMap (n: sbomPatches.of fixturePkgs.${n}) golcondaPatched;
     in
-    builtins.length patches == 8
+    builtins.length patches == 7
     && builtins.all (p: p ? resolves) patches
     &&
       (builtins.head (sbomPatches.of fixturePkgs.dosfstools)).resolves == [
@@ -79,14 +78,6 @@ in
             "https://reproducible-builds.org/specs/source-date-epoch/"
             "https://github.com/dosfstools/dosfstools/pull/106"
           ];
-        }
-      ]
-    &&
-      (builtins.head (sbomPatches.of fixturePkgs.uptrack)).resolves == [
-        {
-          type = "enhancement";
-          name = "uptrack: support unstable versions (branch heads, ?branch=), from the open upstream pull request.";
-          references = [ "https://github.com/Mic92/repkgs/pull/204" ];
         }
       ]
   ))
