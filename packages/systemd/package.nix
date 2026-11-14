@@ -61,10 +61,13 @@ package {
     ./hwdb-imds-hetzner-ssh-keys.patch
   ];
 
-  # Hardening disabled: the EFI stub/boot code cannot use hardened flags (no libc, no stack
-  # protector runtime). cc.hardening = false applies to the whole build. Trade-off documented:
-  # EFI code is signed later by the image builder.
-  cc.hardening = false;
+  # The set-wide hardening flags (repkgs builder/hardening.nu) stay on for every userspace binary,
+  # except RELR: jig puts the package's link flags after the build system's, so
+  # -Wl,-z,pack-relative-relocs overrides src/boot's -Wl,-z,nopack-relative-relocs, and elf2efi
+  # refuses the EFI stub and systemd-boot ("Unsupported relocation type RELR"). RELR only packs
+  # relocations smaller; it guards nothing. The EFI code overrides the compile flags it cannot
+  # take itself (efi_c_args: -ffreestanding, -fcf-protection=none, its own stack protector guard)
+  cc.hardening.relr = false;
 
   meson.defs = {
     # === Build mode ===

@@ -283,6 +283,13 @@ default image with `--secure-boot --ssh-test --tpm`: both passed with 27 checks,
 `secure-boot-enabled`, `hostkey-sealed-with-tpm2` and `ipe-denies-copy` (#776). A YubiKey has not
 been used.
 
+## Compiler hardening
+
+| claim                                                                                                                      | evidence                                                                                                                                                                        |
+| -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| systemd's PID 1 and `libsystemd-shared` are built with repkgs' hardening flags: fortified, `BIND_NOW`, no executable stack | `packages.<system>.tests-systemd`: both import `__*_chk` functions besides `__stack_chk_fail`, have `BIND_NOW` in `FLAGS`, and have a `GNU_STACK` header that is not executable |
+| the EFI stub and systemd-boot build with every other flag on; RELR is the one they cannot take, as `elf2efi` refuses it    | the same test: the three EFI binaries are PE images; every boot test starts them                                                                                                |
+
 ## Reproducible builds
 
 | claim                                                                    | evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |

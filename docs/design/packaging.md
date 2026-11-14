@@ -31,6 +31,18 @@ relocation fixes: PT_INTERP via libc with relative sysroot links, and glibc `$OR
 - Evaluation is cheap and typed, so iets lints the whole set on every change.
 - Debug info is split by build-id into `debug` outputs where `systemd-coredump` looks.
 
+## Compiler hardening
+
+repkgs turns its hardening flags on for every package (`builder/hardening.nu`: `_FORTIFY_SOURCE=3`,
+the stack protector, stack-clash protection, zeroed call-used registers, `-fwrapv`, `-fno-plt`,
+RELRO, `BIND_NOW`, a non-executable stack and more). A package turns off only the flag it cannot
+take, by name (`cc.hardening.<name> = false`), never the whole set. systemd turns off `relr` alone:
+jig puts a package's link flags after the build system's, so `-z pack-relative-relocs` would
+override the `-z nopack-relative-relocs` of systemd's EFI binaries, and `elf2efi` refuses RELR
+relocations. The EFI code turns off the compile flags it cannot take itself. `tests-systemd` checks
+that PID 1 and `libsystemd-shared` are fortified, bound now and have no executable stack, and that
+the EFI binaries are PE images.
+
 ## The build host
 
 Every repkgs output is content-addressed, and the lock-file fetchers are dynamic derivations, so the

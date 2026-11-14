@@ -27,4 +27,25 @@ assert $"no sysext or confext unit \(($ext | str join ' ')\)" ($ext | is-empty)
 # no ssh generator: it binds sshd to AF_UNIX, AF_VSOCK and any ssh.listen address with an
 # AuthorizedKeysFile of its own
 assert "no systemd-ssh-generator" (not ($"($p)/lib/systemd/system-generators/systemd-ssh-generator" | path exists -n))
+
+# userspace hardening: the set-wide flags (repkgs builder/hardening.nu) reach PID 1 and the
+# shared library every program links; only the flags the EFI code cannot take are off
+# (packages/systemd/package.nix). _FORTIFY_SOURCE shows as glibc's checked variants
+# (__memcpy_chk, __snprintf_chk, …; __stack_chk_fail is the stack protector, which systemd's
+# own meson adds), BIND_NOW as the dynamic FLAGS, noexecstack as a GNU_STACK without E
+for f in [lib/systemd/systemd lib/systemd/libsystemd-shared-262.so] {
+  let path = $"($p)/($f)"
+  let chk = (^llvm-nm -D --undefined-only $path | lines | parse -r '\s(?<s>__\w+_chk)@' | get s | where { $in != "__stack_chk_fail" })
+  assert $"($f): fortified \(__*_chk imports\)" ($chk | is-not-empty)
+  assert $"($f): BIND_NOW" (^llvm-readelf -dW $path | lines | any { $in =~ '\(FLAGS\)\s.*BIND_NOW' })
+  let stack = (^llvm-readelf -lW $path | lines | where { $in =~ GNU_STACK })
+  assert $"($f): a GNU_STACK header, not executable" (($stack | length) == 1 and not ($stack.0 =~ 'RWE'))
+}
+
+# the EFI binaries still build as PE images (elf2efi), with the flags they cannot take off
+let efi = (ls $"($p)/lib/systemd/boot/efi" | get name)
+assert "systemd-boot, the UKI stub and the addon stub" (($efi | length) == 3)
+for f in $efi {
+  assert $"($f | path basename): a PE image" ((open --raw $f | first 2 | decode) == "MZ")
+}
 done
