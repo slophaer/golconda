@@ -130,8 +130,8 @@ package takes is also an error, so the list says exactly what the repository rep
 applies to everything that uses the package: the image, the initrd, the loader and the keyring, and
 the build host's tools when the build host and the target are the same platform. `modules.json`
 records each package under `packages`: `{ "openssh": { "replaces": "golconda" } }` (`"repkgs"` for
-one of the fork's, null for a new name). A package that takes the name of a repkgs alias is refused:
-repkgs applies its aliases last, so the alias would win.
+one of the fork's, null for a new name). repkgs refuses a package that takes the name of one of its
+aliases: it applies its aliases last, so the alias would win.
 
 When a downstream package enters the runtime closure, its SBOM component has
 `golconda:origin = downstream`. A replacement also names the package it replaced in CycloneDX

@@ -56,7 +56,7 @@ let
     foldl'
     groupBy
     head
-    isAttrs
+    isList
     isString
     mapAttrs
     tail
@@ -79,11 +79,17 @@ let
 
   pkgName = p: p.name or "${p.pname}-${p.version}";
 
-  # The `bin` list a repkgs package declares in its package.nix (`args.bin`),
-  # or null. What a build installs is known only at build time, in its
-  # exports.json `bin`, so an undeclared package has no list here. A plain
-  # derivation (a signed loader) has `args`, its builder's argv, as a list.
-  declaredBin = p: if isAttrs (p.args or null) then p.args.bin or null else null;
+  # The `bin` list a repkgs package declares (`pkgs.<name>.bin`, after
+  # overrides), or null. What a build installs is known only at build time,
+  # in its exports.json `bin`, so an undeclared package has no list here. A
+  # plain derivation (a signed loader) has none, or an output named bin,
+  # which is no list.
+  declaredBin =
+    p:
+    let
+      b = p.bin or null;
+    in
+    if isList b then b else null;
 
   # A package's identity: its store path; a stand-in without one goes by name.
   pkgId = p: p.outPath or (pkgName p);

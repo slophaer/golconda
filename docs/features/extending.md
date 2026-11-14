@@ -63,7 +63,7 @@ has a downstream package. See [What is proven](../proven.md).
 ## Limits
 
 - A package option names a target package. A build-host tool cannot be named.
-- Golconda refuses a package that takes the name of a repkgs alias: repkgs applies aliases last, so
+- repkgs refuses a package that takes the name of one of its aliases: it applies aliases last, so
   the alias would win.
 - Golconda reviews no replacement. A replacement can drop the IPE policy, the verity key or the boot
   checks.

@@ -85,10 +85,6 @@ let
         attrNames (readDir (root + "/${shard}"))
       )
     ) (filter (s: (readDir root).${s} == "directory") (attrNames (readDir root)));
-  # repkgs merges its aliases (pkgs/aliases.toml: cpython -> cpython314) after every package,
-  # so a downstream package with an alias's name would be silently ignored: refuse it
-  aliases = builtins.fromTOML (builtins.readFile (sources.repkgs + "/pkgs/aliases.toml"));
-  aliasTaken = filter (n: aliases ? ${n}) (attrNames downstreamPackages);
   downstreamInfo = mapAttrs (n: _: {
     replaces =
       if golcondaPackages ? ${n} then
@@ -124,14 +120,9 @@ let
 
   set = import (sources.repkgs + "/nix/set.nix") {
     inherit system platform;
-    packages =
-      if aliasTaken != [ ] then
-        let
-          n = builtins.head aliasTaken;
-        in
-        throw "golconda: downstream package ${n} has the name of a repkgs alias (${n} -> ${aliases.${n}}), which repkgs applies after every package; name the package itself (${aliases.${n}})"
-      else
-        checked (golcondaPackages // downstreamPackages);
+    # a package with the name of a repkgs alias (pkgs/aliases.toml: cpython -> cpython314) would
+    # be hidden by it: repkgs refuses the set
+    packages = checked (golcondaPackages // downstreamPackages);
     overrides = {
       # The system's required options and the policy fragment, read by packages/kernel/kbuild.nu.
       # The package owns its base config and make flags; this replaces only these three fields.

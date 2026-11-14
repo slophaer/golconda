@@ -356,29 +356,24 @@ in
     && (compose [ ]).programs == [ ]
     && fr.fragment.verify { programs = [ "a/b" ]; } != null
   ))
-  # a package without the eval-time `bin` attribute (repkgs bf721c4): only `args.bin`, what
-  # package.nix declares, is known before the build
-  (check "app.program: only a declared args.bin is checked at evaluation" (
+  # only what a package declares (`pkg.bin`, null when it declares nothing) is known before the
+  # build
+  (check "app.program: only a declared bin is checked at evaluation" (
     let
-      noBinAttr = p: builtins.removeAttrs p [ "bin" ];
-      declared = noBinAttr openssh;
-      undeclared = noBinAttr standIn // {
-        args = builtins.removeAttrs (standIn.args or { }) [ "bin" ];
+      declared = openssh;
+      undeclared = standIn // {
+        bin = null;
       };
-      empty = noBinAttr (withBin "lib-1" [ ]) // {
+      empty = withBin "lib-1" [ ] // {
         pname = "lib";
       };
     in
     a.binName { package = declared; } == "ssh"
     && a.binName { package = undeclared; } == "jq"
-    # a plain derivation: `args` is its builder's argv, a list, and declares nothing
-    &&
-      a.binName {
-        package = undeclared // {
-          args = [ "-c" ];
-        };
-      } == "jq"
-    && a.declaredBin (undeclared // { args = [ "-c" ]; }) == null
+    # a plain derivation declares nothing: it has no `bin`, or an output named bin, no list
+    && a.binName { package = standIn; } == "jq"
+    && a.declaredBin standIn == null
+    && a.declaredBin (standIn // { bin = standIn; }) == null
     && a.binName { package = empty; } == "lib"
     &&
       a.app.verify {

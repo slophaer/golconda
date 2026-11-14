@@ -60,13 +60,14 @@ let
     pname = "jq";
   };
 
-  # stand-ins for repkgs packages that declare `bin` in their package.nix (`args.bin`); no
-  # eval-time `pkg.bin` (repkgs drops it): what a build installs is in its exports.json
+  # stand-ins for repkgs packages that declare `bin` in their package.nix: repkgs exposes the
+  # list as `pkg.bin` (and package.nix's `args`); what a build installs is in its exports.json
   withBin =
     name: bin:
     stub name
     // {
       args.bin = bin;
+      inherit bin;
       outPath = "/nix/store/${name}";
     };
   # openssh as repkgs declares it: `bin` lists the client tools first

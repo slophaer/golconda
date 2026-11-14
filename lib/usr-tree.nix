@@ -5,7 +5,7 @@
 #   nix/store/<hash>-* for the runtime closure of composerOutput.packages
 #   bin/<name> = a symlink into nix/store for each executable of each package: the names
 #     in its exports.json `bin` (what bin/ holds after the build), or only the names it
-#     declares (`args.bin`) when it declares them. Read at build time: evaluation cannot see
+#     declares (`pkg.bin`) when it declares them. Read at build time: evaluation cannot see
 #     what a build installs. A name from two sources (two packages, or a package and a link)
 #     stops the build, and the message names the path and both sources.
 #   bin/, lib/, share/... = symlinks into nix/store (composerOutput.links; a link of kind

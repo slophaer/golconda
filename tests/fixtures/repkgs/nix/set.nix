@@ -1,7 +1,8 @@
 # A stand-in for repkgs' nix/set.nix in the eval tests (tests/eval/harness.nix passes this tree
 # as `sources.repkgs`). It reads every package as data and makes no derivation: a record has
-# what package.nix wrote (`args`), its directory, a version from that or the directory's
-# sources.toml, the patches, and a fixed fake store path. So the eval tests never touch a real
+# what package.nix wrote (`args`), the programs it declares (`bin`), its directory, a version
+# from that or the directory's sources.toml, the patches, and a fixed fake store path. A
+# package under an alias's name (pkgs/aliases.toml) is refused, as repkgs refuses it. So the eval tests never touch a real
 # package, the store or repkgs' build graph; what needs the real set is in checks.* (nix/checks.nix
 # real-packages).
 #
@@ -93,6 +94,8 @@ let
           supported
           ;
         platform = platformRecord.name;
+        # the programs it declares, or null, as repkgs exposes them
+        bin = args.bin or null;
         patches = args.patches or [ ];
         # what repkgs' builders read: the arguments, with the set's overrides merged into env
         spec = args // {
@@ -126,10 +129,19 @@ let
     in
     fn (intersectAttrs (functionArgs fn) given);
 
+  # repkgs puts its aliases (pkgs/aliases.toml) over every package, so it refuses a package with
+  # an alias's name; this stand-in has no aliases otherwise
+  aliases = fromTOML (readFile ../pkgs/aliases.toml);
+  aliasTaken = filter (n: aliases ? ${n}) (attrNames packages);
   pkgs = mapAttrs load (own // packages);
 in
 {
-  inherit pkgs features;
+  pkgs =
+    if aliasTaken != [ ] then
+      throw "repkgs stand-in: packages: ${builtins.head aliasTaken} is an alias"
+    else
+      pkgs;
+  inherit features;
   buildPkgs = pkgs;
   platform = platformRecord;
   sbom =

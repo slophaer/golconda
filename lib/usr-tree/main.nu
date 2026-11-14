@@ -7,7 +7,7 @@
 #     directory to expand file by file, kind "dlopen" is verified to resolve
 #   packageBins: list of { package, path, declared, origins }, one per package: bin/<name>
 #     links for each name in <path>/exports.json `bin`, or only the `declared` names
-#     (args.bin) when the package declares them
+#     (pkg.bin) when the package declares them
 #   attribution: { files, links, ... } for lib/golconda/attribution.json; the bin/ links
 #     are added here, with their package's origins
 #   programs: list of { name, origins }: /usr/bin/<name> that a unit runs; it must exist
@@ -112,7 +112,7 @@ def from-origins [origins: list<string>]: nothing -> string {
 }
 
 # The executable names one package puts in /usr/bin: its exports.json `bin` (what bin/
-# holds after the build, no hidden launchers), or only the names it declares (args.bin).
+# holds after the build, no hidden launchers), or only the names it declares (pkg.bin).
 # A declared name must be in exports.json too. A derivation repkgs did not build (a
 # signed loader, a keyring) has no exports.json and no args: it puts nothing there.
 export def package-bin-names [pkg: record]: nothing -> list<string> {
