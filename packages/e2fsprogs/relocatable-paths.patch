@@ -1,0 +1,89 @@
+Description: relocatable paths: /etc for the configuration, the rest relative
+ The binaries read mke2fs.conf, e2fsck.conf and e2scrub.conf from /etc, not
+ from the store path configure would compile in. compile_et and mk_cmds find
+ their share/ files next to themselves, and e2scrub runs e2fsck, tune2fs and
+ e2scrub from PATH: the package is relocatable and has no prefix.
+Forwarded: not-needed
+
+--- a/lib/dirpaths.h.in
++++ b/lib/dirpaths.h.in
+@@ -7,4 +7,4 @@
+ #define LOCALEDIR		"@datadir@/locale"
+ 
+ /* Where to find the mke2fs.conf and e2fsck.conf files */
+-#define ROOT_SYSCONFDIR		"@root_sysconfdir@"
++#define ROOT_SYSCONFDIR "/etc"
+--- a/lib/et/compile_et.sh.in
++++ b/lib/et/compile_et.sh.in
+@@ -3,7 +3,7 @@
+ #
+ 
+ AWK=@AWK@
+-DIR=@datadir@/et
++DIR="${0%/*}/../share/et"
+ 
+ if test "$1" = "--build-tree" ; then
+     shift;
+--- a/lib/ss/mk_cmds.sh.in
++++ b/lib/ss/mk_cmds.sh.in
+@@ -2,7 +2,7 @@
+ #
+ #
+ 
+-DIR=@datadir@/ss
++DIR="${0%/*}/../share/ss"
+ AWK=@AWK@
+ SED=sed
+ 
+--- a/scrub/e2scrub_all.in
++++ b/scrub/e2scrub_all.in
+@@ -29,7 +29,7 @@
+ scrub_all=0
+ snap_size_mb=256
+ reap=0
+-conffile="@root_sysconfdir@/e2scrub.conf"
++conffile="/etc/e2scrub.conf"
+ 
+ test -f "${conffile}" && . "${conffile}"
+ 
+@@ -171,7 +171,7 @@
+ 	fi
+ 
+ 	# Otherwise use direct invocation
+-	${DBG} "@root_sbindir@/e2scrub" ${scrub_args} "${tgt}"
++	${DBG} "e2scrub" ${scrub_args} "${tgt}"
+ done
+ 
+ exitcode 0
+--- a/scrub/e2scrub.in
++++ b/scrub/e2scrub.in
+@@ -34,7 +34,7 @@
+ fstrim=0
+ reap=0
+ e2fsck_opts=""
+-conffile="@root_sysconfdir@/e2scrub.conf"
++conffile="/etc/e2scrub.conf"
+ 
+ test -f "${conffile}" && . "${conffile}"
+ 
+@@ -194,16 +194,16 @@
+ 	# non-zero status (errors fixed or remaining) then this fs is bad.
+ 	E2FSCK_FIXES_ONLY=1
+ 	export E2FSCK_FIXES_ONLY
+-	${DBG} "@root_sbindir@/e2fsck" -E journal_only -p ${e2fsck_opts} "${snap_dev}" || return $?
+-	${DBG} "@root_sbindir@/e2fsck" -f -y ${e2fsck_opts} "${snap_dev}"
++	${DBG} "e2fsck" -E journal_only -p ${e2fsck_opts} "${snap_dev}" || return $?
++	${DBG} "e2fsck" -f -y ${e2fsck_opts} "${snap_dev}"
+ }
+ 
+ mark_clean() {
+-	${DBG} "@root_sbindir@/tune2fs" -C 0 -T "${start_time}" "${dev}"
++	${DBG} "tune2fs" -C 0 -T "${start_time}" "${dev}"
+ }
+ 
+ mark_corrupt() {
+-	${DBG} "@root_sbindir@/tune2fs" -E force_fsck "${dev}"
++	${DBG} "tune2fs" -E force_fsck "${dev}"
+ }
+ 
+ setup() {

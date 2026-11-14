@@ -6,27 +6,9 @@
 package {
   name = "e2fsprogs";
   uses = [ "autotools" ];
-  # Make config paths relocatable (absolute /etc or relative to binary)
-  phases.before."autotools.configure" = [
-    {
-      name = "fix-hardcoded-paths";
-      run = ''
-        cd $c.src
-        # Use /etc for runtime config lookup instead of store path
-        sed -i 's|ROOT_SYSCONFDIR.*"@root_sysconfdir@"|ROOT_SYSCONFDIR "/etc"|' lib/dirpaths.h.in
-        # Scripts: use relative paths for share/ dirs
-        sed -i 's|DIR=@datadir@/ss|DIR="''${0%/*}/../share/ss"|' lib/ss/mk_cmds.sh.in
-        sed -i 's|DIR=@datadir@/et|DIR="''${0%/*}/../share/et"|' lib/et/compile_et.sh.in
-        # e2scrub scripts: use /etc for config, commands on PATH
-        sed -i 's|@root_sysconfdir@|/etc|g' scrub/e2scrub.in scrub/e2scrub_all.in
-        sed -i 's|@root_sbindir@/e2fsck|e2fsck|g' scrub/e2scrub.in
-        sed -i 's|@root_sbindir@/e2scrub|e2scrub|g' scrub/e2scrub_all.in
-        # e2scrub also calls tune2fs, e2image
-        sed -i 's|@root_sbindir@/tune2fs|tune2fs|g' scrub/e2scrub.in
-        sed -i 's|@root_sbindir@/e2image|e2image|g' scrub/e2scrub.in
-      '';
-    }
-  ];
+  # Relocatable paths: /etc for the configuration files, share/ relative to compile_et and
+  # mk_cmds, the e2scrub helpers from PATH
+  patches = [ ./relocatable-paths.patch ];
   autotools.flags = [
     "--disable-libuuid" # use util-linux's libuuid
     "--disable-libblkid" # use util-linux's libblkid
@@ -35,8 +17,10 @@ package {
     "--disable-fuse2fs" # no FUSE support
     "--disable-nls" # no translations
     "--disable-defrag" # no online defrag (needs -ldl for dlopen)
-    # Note: don't set --sysconfdir=/etc, it causes install to /etc which fails.
-    # mke2fs.conf installs to $prefix/etc; the composer symlinks /etc/mke2fs.conf
+    # No --sysconfdir=/etc: without a declared prefix the install would write to /etc. The
+    # binaries read /etc/mke2fs.conf (the patch); the image has none, and mke2fs then uses its
+    # compiled-in copy of the same file (misc/default_profile.c, made from mke2fs.conf at build
+    # time). The etc/mke2fs.conf the install leaves in the package is linked nowhere.
   ];
   dependencies = [
     pkgs.util-linux # for libuuid and libblkid
