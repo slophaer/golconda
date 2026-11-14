@@ -236,11 +236,13 @@ them first, and a configuration never lists them.
 - **packages**: systemd, dbus-broker, dash, uutils-coreutils, e2fsprogs (`mkfs.ext4` for the root
   partition), tzdata, hwdb and linux-kernel.
 - **units**: `golconda-health-network.service` and `golconda-loader-update.service`; `dbus.socket`
-  is a file, because dbus-broker does not ship it.
+  is a link to the dbus-broker package, which installs it (upstream does not ship it).
 - **links**:
   - `.wants` links for `dbus.socket`, `systemd-networkd` (service and socket), `systemd-resolved`,
     `systemd-timesyncd`, `systemd-network-generator` and `systemd-networkd-wait-online`, with the
     `dbus.service` alias;
+  - `dbus.socket` and the bus policy `/usr/share/dbus-1/system.conf` → `packages/dbus-broker`'s
+    copies (dbus's `system.conf` policy; upstream dbus-broker ships neither);
   - `/usr/bin/sh` → dash, and `/usr/bin` links for the util-linux and e2fsprogs executables that
     mount units, fsck and udev rules exec;
   - `farm` links for systemd's own directories (`/usr/lib/systemd`, `/usr/lib/udev`,

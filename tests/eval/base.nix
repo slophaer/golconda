@@ -12,7 +12,15 @@
   ...
 }:
 let
-  inherit (builtins) all any elem;
+  inherit (builtins)
+    all
+    any
+    elem
+    readFile
+    ;
+  # the files packages/dbus-broker installs (the bus belongs to dbus-broker)
+  dbusSystemConf = readFile ../../packages/dbus-broker/system.conf;
+  dbusSocket = readFile ../../packages/dbus-broker/dbus.socket;
 in
 [
   # 11. /base: the implicit base system
@@ -36,19 +44,26 @@ in
     && hasInfix "dash" result.links."/usr/bin/sh".target
     && !(any (p: hasPrefix "bash" p.name) result.packages)
   ))
-  (check "base: dbus.socket is a file (not a link, since dbus-broker lacks it)" (
+  (check "base: dbus.socket and the bus config are dbus-broker's (packages/dbus-broker)" (
     let
       result = compose [ ];
+      broker = path: {
+        target = "${stubSet.pkgs.dbus-broker}/${path}";
+        kind = "explicit";
+      };
     in
-    result.files ? "/usr/lib/systemd/system/dbus.socket"
-    && hasInfix "[Socket]" result.files."/usr/lib/systemd/system/dbus.socket".text
+    result.links."/usr/lib/systemd/system/dbus.socket" == broker "lib/systemd/system/dbus.socket"
+    && result.links."/usr/share/dbus-1/system.conf" == broker "share/dbus-1/system.conf"
+    && !(result.files ? "/usr/lib/systemd/system/dbus.socket")
+    && !(result.files ? "/usr/share/dbus-1/system.conf")
+    && hasInfix "ListenStream=/run/dbus/system_bus_socket" dbusSocket
   ))
   (check
     "base: the bus config names the activation directory (timedated and the other on-demand services)"
     (
       let
         result = compose [ ];
-        conf = result.files."/usr/share/dbus-1/system.conf".text;
+        conf = dbusSystemConf;
       in
       hasInfix "<servicedir>/usr/share/dbus-1/system-services</servicedir>" conf
       # the directory it names is the farm link to systemd's own activation files
@@ -141,7 +156,7 @@ in
   (check "base: the D-Bus system policy is default-deny and takes systemd's service policies" (
     let
       c = compose [ ];
-      conf = c.files."/usr/share/dbus-1/system.conf".text;
+      conf = dbusSystemConf;
       farm = dir: {
         target = "${stubSet.pkgs.systemd}/share/dbus-1/${dir}";
         kind = "farm";

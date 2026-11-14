@@ -14,8 +14,9 @@
 #! Units enabled: dbus.socket (wanted by sockets.target), dbus-broker.service
 #! (as the dbus.service alias), systemd-networkd, systemd-resolved,
 #! systemd-timesyncd, systemd-network-generator (network.* credentials) and
-#! systemd-networkd-wait-online (for network-online.target). The `dbus.socket`
-#! unit is written as a file, not as a typed unit: dbus-broker does not ship it.
+#! systemd-networkd-wait-online (for network-online.target). `dbus.socket` and
+#! the bus policy `/usr/share/dbus-1/system.conf` are links to the dbus-broker
+#! package, which installs both (upstream ships neither).
 #! No preset enables a unit: `/usr/lib/systemd/system-preset/00-golconda.preset`
 #! says `disable *`, so the first boot's preset-all writes nothing to /etc.
 #!
@@ -235,7 +236,6 @@ in
         // boot.files
         // trialBoot.files
         // espCredentials.files
-        // dbus.files
         // {
           "/usr/lib/systemd/timesyncd.conf.d/golconda.conf" = timesyncdConf;
           "/usr/lib/systemd/journald.conf.d/golconda.conf" = journaldConf;

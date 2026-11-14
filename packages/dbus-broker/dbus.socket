@@ -1,0 +1,13 @@
+# D-Bus system bus socket for dbus-broker
+[Unit]
+Description=D-Bus System Message Bus Socket
+Documentation=man:dbus-broker-launch(1)
+DefaultDependencies=no
+Before=sockets.target
+
+[Socket]
+ListenStream=/run/dbus/system_bus_socket
+SocketMode=0666
+
+[Install]
+WantedBy=sockets.target

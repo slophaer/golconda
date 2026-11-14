@@ -78,12 +78,12 @@ iets eval --json -E 'builtins.attrNames (import ./examples/golconda.nix { golcon
 - `units`: `golconda-health-network.service`, `golconda-health-sshd.service`,
   `golconda-loader-update.service`, `golconda-var-sshd-hostkey.service`, `sshd.service`.
 
-- `files` (37 on 2026-11-13), by origin:
+- `files` (35 on 2026-11-14), by origin:
 
-  - `/base` (23): `/usr/lib/repart.d/30-root.conf`, `/usr/lib/locale.conf`, the timesyncd and
-    journald files, `dbus.socket` and `/usr/share/dbus-1/system.conf`, `golconda-loader-update` and
-    `loader.conf`, `/usr/lib/systemd/system-preset/00-golconda.preset`, and fourteen unit drop-ins
-    named `/usr/lib/systemd/system/<unit>.d/golconda.conf` (for example `systemd-firstboot.service`,
+  - `/base` (21): `/usr/lib/repart.d/30-root.conf`, `/usr/lib/locale.conf`, the timesyncd and
+    journald files, `golconda-loader-update` and `loader.conf`,
+    `/usr/lib/systemd/system-preset/00-golconda.preset`, and fourteen unit drop-ins named
+    `/usr/lib/systemd/system/<unit>.d/golconda.conf` (for example `systemd-firstboot.service`,
     `ldconfig.service`, `modprobe@.service`);
   - `/services/sshd` (4): `/usr/lib/sshd/sshd_config`, `/usr/lib/sshd/authorized_keys/root`, and the
     var's script and manifest `/usr/lib/golconda/vars.d/sshd-hostkey.{sh,json}`;
