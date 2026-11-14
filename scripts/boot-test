@@ -90,6 +90,14 @@
 #   /root/.ssh/authorized_keys in the guest holds the new key. With --secure-boot and --tpm the
 #   null-key credentials are refused (creds-util.c, relaxed policy): the run is expected to fail.
 #   BOOT_TEST_ESP_NO_KEY=1 leaves the key out of the ESP (a negative control: the login must fail).
+#   The credentials hold for one boot (docs/design/boot.md): esp-credentials-removed (the first boot's
+#   golconda-esp-credentials.service removed the three, no *.cred left) and esp-hostname-persisted
+#   (/etc/hostname from firstboot.hostname); then the harness reboots, and esp-key-after-reboot,
+#   esp-hostname-after-reboot and esp-credentials-once (no ESP credential imported) hold. With
+#   --factory-reset as well, the harness logs in with its user certificate after the reset:
+#   esp-key-refused-after-reset (the generated key no longer logs in, authorized_keys is absent) and
+#   esp-hostname-gone-after-reset. Without --esp-creds, esp-credentials-none: the remover ran and
+#   left no credential.
 #   Both with and without --imds, the ssh checks also check imds-lock-endpoints: ssh, a process that
 #   is not imdsd, is refused with EACCES at every endpoint 40-imds.hwdb lists, IPv6 ones too (QEMU
 #   serves none of them, but the lock is a routing decision).
@@ -564,8 +572,16 @@ main() {
         test_enrol_after_reboot
       fi
     fi
+    if [ "$ESP_CREDS" = 1 ] && [ "$RESULT" = 0 ]; then
+      test_esp_reboot || RESULT=1
+      # after the reset only the harness's user certificate logs in
+      GUEST_EXTRA_ID="-i $SSH_DIR/cert-admin"
+    fi
     if [ "$FACTORY_RESET" = 1 ] && [ "$RESULT" = 0 ]; then
       test_factory_reset || RESULT=1
+      if [ "$ESP_CREDS" = 1 ] && [ "$RESULT" = 0 ]; then
+        test_esp_after_reset || RESULT=1
+      fi
     elif [ -n "$NEXT" ] && [ "$RESULT" = 0 ]; then
       test_next || RESULT=1
     fi

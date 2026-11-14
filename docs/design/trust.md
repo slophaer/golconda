@@ -137,7 +137,8 @@ keys is an error. What is lost is the check before the kernel: no firmware verif
 the UKI, so whoever can write the ESP can boot a kernel that trusts another key. IPE and the `/usr`
 signature still hold against a changed `/usr`, and the vars still seal (to the host key alone,
 without a TPM). The bootstrap credentials on the ESP are accepted there because Secure Boot is off
-([Boot: Bootstrap credentials](boot.md#bootstrap-credentials)).
+([Boot: Bootstrap credentials](boot.md#bootstrap-credentials)); they hold for one boot, and whoever
+can write the ESP can plant one ([The ESP](#the-esp)).
 
 The certificate is an input of the kernel derivation, but not of its config: every key set has the
 same config, so a new certificate compiles only the certificate object and the compressed kernel's
@@ -578,6 +579,30 @@ The signer is `ssh-keygen`, with the host CA key in a file or on a token: a host
 signed once per machine and per renewal, offline like the release keys, and needs no CA service. The
 CLI tests sign with a real `ssh-keygen` from a key file and from a key on a SoftHSM token; no run
 with a YubiKey has been done. Signing host certificates through step-ca's API is *(later)*.
+
+## The ESP
+
+The ESP is a FAT partition that no key protects. What on it is signed is checked where it is used:
+systemd-boot and each UKI by firmware (with Secure Boot), the enrolment files by firmware in Setup
+Mode, and the UKI's cmdline and `usrhash=` with the UKI. The rest is not: `loader/loader.conf` (menu
+policy only, [Boot: Kernel command line](boot.md#kernel-command-line)) and the bootstrap credentials
+in `loader/credentials/` and a UKI's `.extra.d/`.
+
+A bootstrap credential is encrypted with the null key, because the machine has no key of its own
+before its first boot. PID 1 accepts such a credential when Secure Boot is off or no TPM2 is present
+(`systemd.credentials_boot_policy=relaxed`); with both, it refuses it. So on a host without Secure
+Boot, such as Hetzner Cloud, whoever can write the ESP can make the next boot apply a credential of
+their choice as root: an `ssh.authorized_keys.root`, a `tmpfiles.extra` line, a `network.*` file.
+Writing the ESP takes the disk in hand, the cloud's disk API, or root on the running machine, which
+owns the machine already.
+
+`golconda-esp-credentials.service` removes every ESP credential at every boot, once the units that
+apply the first boot's credentials have run, and logs each one
+([Boot: Bootstrap credentials](boot.md#bootstrap-credentials)). So the provisioning key does not
+grant root again after a factory reset, nor on a machine whose configuration refuses plain keys. A
+planted credential works for one boot and leaves a journal line, unless the planter also removes the
+journal. Removal does not prevent the planting: on such a host the ESP's integrity is the integrity
+of whoever holds the disk. With Secure Boot and a TPM2, use SMBIOS or fw_cfg for bootstrap values.
 
 ## TPM2 credential decryption
 

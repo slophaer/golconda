@@ -50,8 +50,10 @@ From a running machine, `bootctl set-oneshot <id>_<version>.efi` boots the other
 ssh root@web1 systemctl start factory-reset.target
 ```
 
-The machine reboots and comes back with new state. Credentials on the ESP stay, so the host name and
-the root key from [provisioning](provisioning.md) apply again on the new first boot.
+The machine reboots and comes back with new state. The ESP holds no credentials from
+[provisioning](provisioning.md): the first boot removed them. So the reset machine boots with the
+fallback host name and no plain root key. Log in with a certificate, or provision it again (SMBIOS,
+`/imds`, or `scripts/provision-esp` on the disk).
 
 ## Status
 

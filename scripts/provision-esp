@@ -9,7 +9,13 @@
 # credentials"). The machine has no host key before its first boot, so the files are encrypted
 # with the null key (systemd-creds encrypt --with-key=null): PID 1 accepts them in
 # /run/credentials/@encrypted unless Secure Boot is on and a TPM2 is present.
-#   --hostname NAME          the system.hostname credential
+#
+# The credentials hold for one boot: golconda-esp-credentials.service removes them from the ESP once
+# the first boot applied them, so a factory reset or a later boot does not apply them again. The
+# ESP is neither encrypted nor signed, so whoever can write it can put a credential there too.
+#   --hostname NAME          the system.hostname credential (the first boot's host name) and the
+#                            firstboot.hostname credential (systemd-firstboot writes /etc/hostname
+#                            from it, so later boots keep the name)
 #   --authorized-keys FILE   the ssh.authorized_keys.root credential
 #   --credential NAME=FILE   any other credential, its value read from FILE
 #
@@ -54,6 +60,7 @@ while [ $# -gt 0 ]; do
       printf %s "$2" > "$HN_FILE"
       TMP_FILES="${TMP_FILES:-} $HN_FILE"
       add_cred system.hostname "$HN_FILE"
+      add_cred firstboot.hostname "$HN_FILE"
       shift 2 ;;
     --authorized-keys)
       [ $# -ge 2 ] || usage

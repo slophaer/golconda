@@ -165,6 +165,13 @@ in
     touch $out
   '';
 
+  # the ESP's bootstrap credentials go after one boot: the remover on a scratch ESP
+  # (tests/esp-credentials)
+  esp-credentials = run "esp-credentials" [ rp.coreutils ] ''
+    sh ${src}/tests/esp-credentials/remove.sh
+    touch $out
+  '';
+
   # the var runner's two modes on a scratch tree, with a stub systemd-creds (tests/vars)
   vars-runner = run "vars-runner" [ rp.coreutils ] ''
     sh ${src}/tests/vars/runner.sh

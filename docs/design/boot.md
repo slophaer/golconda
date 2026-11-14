@@ -217,6 +217,24 @@ measured boot chain never vouched for. On such a machine use SMBIOS or fw_cfg.
 The ESP is not encrypted, and SMBIOS strings are readable by every process: a bootstrap credential
 carries no secret. Secrets are vars ([Trust: Secrets and vars](trust.md#secrets-and-vars)).
 
+An ESP credential holds for one boot. systemd-stub passes every `loader/credentials/*.cred` (and
+every `*.cred` in a UKI's `.extra.d/`) at every boot, so a file left there would grant its value
+again: root's ssh key after a factory reset, or on a machine whose pushed configuration refuses
+plain keys. `golconda-esp-credentials.service` (`/base`, wanted by `multi-user.target`) runs at
+every boot after `systemd-firstboot`, `systemd-sysusers` and `systemd-tmpfiles-setup`, the units
+that apply the first boot's credentials. It removes every such file and logs a journal line for
+each. A first boot that crashes before them keeps the files for its next try. What must outlast the
+boot is then on the state partition: `/root/.ssh/authorized_keys`, and `/etc/hostname`, which
+systemd-firstboot writes from `firstboot.hostname` (`scripts/provision-esp --hostname` writes that
+credential beside `system.hostname`). A credential that applies at every boot, such as `network.*`,
+holds for the first boot only when it comes from the ESP; give a lasting one by SMBIOS or in the
+image. After a factory reset the machine has no ESP credential, so it boots with the fallback host
+name and no plain root key: it needs provisioning again, or a certificate login.
+
+Removal does not make the ESP trusted. Where PID 1 accepts a null-key credential, whoever can write
+the ESP can still plant one for the next boot; removal makes that a single, logged use
+([Trust: The ESP](trust.md#the-esp)).
+
 ## First boot
 
 What happens once, on the first boot of a disk:
@@ -230,6 +248,7 @@ What happens once, on the first boot of a disk:
 1. The var units generate the machine-local secrets and seal them to the TPM
    ([Trust: Secrets and vars](trust.md#secrets-and-vars)).
 1. The services start; the health units must pass before `boot-complete.target` blesses the entry.
+   `golconda-esp-credentials.service` removes the ESP's bootstrap credentials.
 
 Every later boot runs the same units; `ConditionNeedsUpdate=` and the vars' `done` markers make them
 no-ops ([Updates: Versions](updates.md#versions)).

@@ -45,9 +45,17 @@ test_ssh() {
     echo "$AK"
     RC=0; echo "$AK" | grep -qF "$(cut -d' ' -f1,2 "$WORKDIR/ssh/user.pub")" || RC=1
     verdict "esp-authorized-keys (ssh.authorized_keys.root credential written to /root/.ssh)" $RC
+    check_esp_credentials_removed esp-credentials-removed \
+      ssh.authorized_keys.root.cred system.hostname.cred firstboot.hostname.cred
+    HF=$(guest cat /etc/hostname 2>&1) || true
+    RC=0; [ "$HF" = esp-test ] || RC=1
+    verdict "esp-hostname-persisted (/etc/hostname: ${HF:-none}, from the firstboot.hostname credential)" $RC
   fi
 
   check_no_failed no-failed-units
+  if [ "$ESP_CREDS" = 0 ]; then
+    check_esp_credentials_removed esp-credentials-none
+  fi
   check_clock clock-not-reset
   check_units_composed
   check_sshd_sockets
@@ -198,6 +206,65 @@ test_reboot() {
 # FactoryResetRequest EFI variable, and systemd-repart deletes and recreates the FactoryReset=
 # root partition on the next boot (systemd-factory-reset(8), systemd-repart(8)). The ESP and the
 # /usr slots must stay, and first boot must run again.
+# check_esp_credentials_removed NAME [FILE...]: golconda-esp-credentials.service ran, the ESP holds
+# no credential, and the service's journal names each FILE it removed from loader/credentials
+check_esp_credentials_removed() {
+  NAME=$1
+  shift
+  N=0
+  while [ "$N" -lt 15 ] && [ "$(guest systemctl is-active golconda-esp-credentials.service 2>/dev/null)" != active ]; do
+    sleep 2
+    N=$((N + 1))
+  done
+  E=$(guest "systemctl is-active golconda-esp-credentials.service; ls -A /boot/loader/credentials 2>/dev/null; journalctl -b -u golconda-esp-credentials.service -o cat --no-pager" 2>&1) || true
+  echo "$E"
+  RC=0
+  echo "$E" | grep -qx active || RC=1
+  ! echo "$E" | grep -q '^[^ ]*\.cred$' || RC=1
+  for f in "$@"; do
+    echo "$E" | grep -qxF "removed loader/credentials/$f from the ESP" || RC=1
+  done
+  verdict "$NAME (golconda-esp-credentials.service ran, no *.cred left on the ESP${1:+, it removed $*})" $RC
+}
+
+# test_esp_reboot: --esp-creds. The ESP credentials held for the first boot only: after a reboot the
+# ESP passes none, and what the first boot wrote holds: the host name and root's key
+test_esp_reboot() {
+  echo ""
+  echo "=== --esp-creds: the second boot ==="
+  reboot_guest || return 1
+  verdict "esp-key-after-reboot (the key the first boot wrote to /root/.ssh logs in)" 0
+  HN=$(guest hostname 2>&1) || true
+  RC=0; [ "$HN" = esp-test ] || RC=1
+  verdict "esp-hostname-after-reboot (${HN:-no answer}, from /etc/hostname)" $RC
+  C=$(guest "ls -A /run/credentials/@encrypted /run/credentials/@system 2>/dev/null" 2>&1) || true
+  echo "this boot's system credentials: $(echo "$C" | tr '\n' ' ')"
+  RC=0
+  ! echo "$C" | grep -qx 'ssh.authorized_keys.root\|system.hostname\|firstboot.hostname' || RC=1
+  verdict "esp-credentials-once (the second boot imported none of the ESP's credentials)" $RC
+  check_esp_credentials_removed esp-credentials-removed-after-reboot
+}
+
+# test_esp_after_reset: --esp-creds --factory-reset. The reset boot has a new state partition, and
+# the ESP no longer holds the credential: the key it granted no longer logs in, and nothing wrote a
+# host name. The harness logs in with its user certificate (the test image trusts the user CA)
+test_esp_after_reset() {
+  echo ""
+  echo "=== --esp-creds: after the factory reset ==="
+  RC=0
+  # shellcheck disable=SC2086
+  if ssh $SSH_OPTS $NO_HOSTKEY_CHECK -o IdentitiesOnly=yes -i "$WORKDIR/ssh/user" root@localhost true 2>/dev/null; then
+    RC=1
+  fi
+  AK=$(guest "if [ -e /root/.ssh/authorized_keys ]; then cat /root/.ssh/authorized_keys; else echo absent; fi" 2>&1) || AK="no answer"
+  echo "/root/.ssh/authorized_keys: $AK"
+  [ "$AK" = absent ] || RC=1
+  verdict "esp-key-refused-after-reset (the ESP's old key no longer logs in, and nothing wrote it again)" $RC
+  HN=$(guest hostname 2>&1) || true
+  RC=0; { [ -n "$HN" ] && [ "$HN" != esp-test ]; } || RC=1
+  verdict "esp-hostname-gone-after-reset (${HN:-no answer}: the reset machine needs provisioning again)" $RC
+}
+
 test_factory_reset() {
   echo ""
   echo "=== factory reset ==="

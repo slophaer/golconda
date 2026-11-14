@@ -328,10 +328,10 @@ start_qemu() {
     qemu-img create -q -f qcow2 -b "$DISK" -F raw "$OVERLAY" 40G
   fi
 
-  # the --tpm, --next and --factory-reset runs reboot the guest in the same QEMU, and so does
-  # systemd-boot after it enrols the keys (--auto-enrol)
+  # the --tpm, --next, --esp-creds and --factory-reset runs reboot the guest in the same QEMU, and
+  # so does systemd-boot after it enrols the keys (--auto-enrol)
   NO_REBOOT=-no-reboot
-  if [ "$TPM" = 1 ] || [ -n "$NEXT" ] || [ "$FACTORY_RESET" = 1 ] || [ "$AUTO_ENROL" = 1 ]; then
+  if [ "$TPM" = 1 ] || [ -n "$NEXT" ] || [ "$ESP_CREDS" = 1 ] || [ "$FACTORY_RESET" = 1 ] || [ "$AUTO_ENROL" = 1 ]; then
     NO_REBOOT=""
   fi
 

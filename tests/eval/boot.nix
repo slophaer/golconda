@@ -59,6 +59,7 @@
     ))
     (check "boot health: a configuration without /services/sshd still gates the network" (
       attrNames baseOnly.units == [
+        "golconda-esp-credentials.service"
         "golconda-health-network.service"
         "golconda-initrd-failed.service"
         "golconda-loader-update.service"
@@ -184,6 +185,41 @@
       && hasInfix "\nDefaultDependencies=no\n" trialFailed
       && !(hasInfix "WantedBy=" trialFailed)
       && filter (p: hasInfix "golconda-trial-boot-failed" p) (attrNames baseOnly.links) == [ ]
+    ))
+  ]
+)
+++ (
+  # The ESP's bootstrap credentials hold for one boot (docs/design/boot.md, "Bootstrap
+  # credentials"): golconda-esp-credentials.service removes every *.cred systemd-stub would pass
+  # on, once this boot's consumers ran, so a later boot, also after a factory reset, imports none.
+  let
+    inherit (builtins) attrNames filter;
+    baseOnly = compose [ ];
+    u = baseOnly.units."golconda-esp-credentials.service";
+    program = "/usr/lib/golconda/golconda-esp-credentials";
+    wants = "/usr/lib/systemd/system/multi-user.target.wants/golconda-esp-credentials.service";
+  in
+  [
+    (check "esp credentials: the unit runs the program after the first boot's consumers" (
+      hasInfix "\nExecStart=${program}\n" u
+      && hasInfix "\nType=oneshot\n" u
+      && hasInfix "\nRemainAfterExit=yes\n" u
+      && hasInfix "\nConditionPathExists=!/etc/initrd-release\n" u
+      && hasInfix "\nConditionFirmware=uefi\n" u
+      # firstboot writes /etc/hostname from firstboot.hostname, sysusers the passwd.* ones, tmpfiles
+      # /root/.ssh/authorized_keys; a crash before they finish keeps the ESP's copy for the next boot
+      && hasInfix "\nAfter=systemd-firstboot.service systemd-sysusers.service systemd-tmpfiles-setup.service\n" u
+    ))
+    (check "esp credentials: multi-user.target wants it, nothing else" (
+      baseOnly.links.${wants} == {
+        target = "../golconda-esp-credentials.service";
+        kind = "explicit";
+      }
+      && filter (p: hasInfix "golconda-esp-credentials" p) (attrNames baseOnly.links) == [ wants ]
+    ))
+    (check "esp credentials: the program is /base's file, executable" (
+      baseOnly.files.${program}.mode == "0755"
+      && baseOnly.files.${program}.text == builtins.readFile ../../modules/base/golconda-esp-credentials
     ))
   ]
 )

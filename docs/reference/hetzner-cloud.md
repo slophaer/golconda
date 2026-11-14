@@ -74,13 +74,16 @@ cp --sparse=always <out>/disk.raw web1.raw
 scripts/provision-esp web1.raw --hostname web1 --authorized-keys ~/.ssh/id_ed25519.pub
 ```
 
-`scripts/provision-esp` writes `loader/credentials/system.hostname.cred` and
-`loader/credentials/ssh.authorized_keys.root.cred`, each in the `systemd-creds` envelope with the
-null key: the machine has no key of its own yet. systemd-stub passes them to the initrd; PID 1 takes
-the host name from them at every boot, and `systemd-tmpfiles` writes `/root/.ssh/authorized_keys`
-from the key at first boot. systemd accepts a null-key credential when Secure Boot is off or there
-is no TPM ([Boot: Bootstrap credentials](../design/boot.md#bootstrap-credentials)); both hold here.
-The ESP is not encrypted: put no secret in a credential.
+`scripts/provision-esp` writes `loader/credentials/system.hostname.cred`, `firstboot.hostname.cred`
+and `ssh.authorized_keys.root.cred`, each in the `systemd-creds` envelope with the null key: the
+machine has no key of its own yet. systemd-stub passes them to the initrd; PID 1 takes the host name
+from them, systemd-firstboot writes it to `/etc/hostname`, and `systemd-tmpfiles` writes
+`/root/.ssh/authorized_keys` from the key, all at first boot. Then
+`golconda-esp-credentials.service` removes the three files from the ESP: they hold for one boot.
+systemd accepts a null-key credential when Secure Boot is off or there is no TPM
+([Boot: Bootstrap credentials](../design/boot.md#bootstrap-credentials)); both hold here, so whoever
+can write the disk can plant one ([Trust: The ESP](../design/trust.md#the-esp)). The ESP is not
+encrypted: put no secret in a credential.
 
 Or with `["/imds"]` in the document, nothing on the ESP: the host name and the ssh keys the server
 was created with come from Hetzner's metadata, and the user data can carry more credentials, such as

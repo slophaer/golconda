@@ -34,6 +34,11 @@
 #! (`/base.trialBootDeadline`) and `OnFailure=` a unit that reboots. A blessed
 #! entry, or one with no try left, stays up when its health check fails.
 #!
+#! Bootstrap credentials: `golconda-esp-credentials.service` removes the ESP's
+#! `loader/credentials/*.cred` (and a UKI's `.extra.d/*.cred`) at every boot,
+#! after firstboot, sysusers and tmpfiles applied them, so an ESP credential
+#! holds for one boot (docs/design/boot.md).
+#!
 #! Boot loader: `golconda-loader-update.service` runs
 #! `/usr/lib/golconda/golconda-loader-update` once a counted boot is blessed
 #! (wanted by and Requisite= `systemd-bless-boot.service`). It copies the
@@ -131,6 +136,7 @@ in
       imds = import ./parts/imds.nix; # systemd's IMDS units: off without /imds
       # what reboots a failed boot: panic, crash, initrd, and a trial boot's boot-complete.target
       trialBoot = import ./parts/trial-boot.nix { deadline = options.trialBootDeadline; };
+      espCredentials = import ./parts/esp-credentials.nix; # the ESP's credentials hold for one boot
       usrLinks = import ./parts/links.nix { inherit p; }; # the /usr links into the packages
 
       # timesyncd drop-in
@@ -222,13 +228,14 @@ in
         p.linux-kernel # kernel; UKI builder consumes it
       ];
 
-      units = boot.units // trialBoot.units;
+      units = boot.units // trialBoot.units // espCredentials.units;
 
       files =
         dropIns.files
         // imds.files
         // boot.files
         // trialBoot.files
+        // espCredentials.files
         // dbus.files
         // {
           "/usr/lib/systemd/timesyncd.conf.d/golconda.conf" = timesyncdConf;
@@ -239,7 +246,8 @@ in
         };
 
       # path -> { target; kind; }, the shape the composer takes
-      links = wantsLinks // boot.links // trialBoot.links // dbus.links // usrLinks.links;
+      links =
+        wantsLinks // boot.links // trialBoot.links // espCredentials.links // dbus.links // usrLinks.links;
 
       inherit (dbus) sysusers;
 

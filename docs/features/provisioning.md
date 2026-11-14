@@ -29,8 +29,13 @@ present, PID 1 refuses it. Anyone who can write the ESP could otherwise plant a 
 measured boot never vouched for. On such a machine use SMBIOS or fw_cfg.
 
 PID 1 takes the host name from `systemd.hostname=` on the command line, then `/etc/hostname`, then
-the credential, then the fallback `golconda`. Nothing writes `/etc/hostname`, so the credential
-wins.
+the credential, then the fallback `golconda`. Nothing writes `/etc/hostname` from `system.hostname`,
+so an SMBIOS credential wins at every boot. systemd-firstboot writes it from `firstboot.hostname`,
+which `scripts/provision-esp --hostname` adds.
+
+An ESP credential holds for one boot: `golconda-esp-credentials.service` removes it from the ESP
+once the first boot applied it, so a factory reset or a later boot does not apply it again
+([Boot: Bootstrap credentials](../design/boot.md#bootstrap-credentials)).
 
 On first boot, `systemd-repart` makes the root partition, PID 1 sets the host name, and
 `systemd-firstboot` runs with `--mute-console=yes`, so it never prompts. tmpfiles writes the root
@@ -148,7 +153,12 @@ The boot test proves this in QEMU ([What is proven](../proven.md)):
 
 - `hostname` and `ssh-login` with the SMBIOS credential (`--ssh-test`).
 - `hostname`, `esp-authorized-keys` and `ssh-login` with a key only the ESP holds
-  (`--ssh-test --esp-creds`).
+  (`--ssh-test --esp-creds`). `esp-credentials-removed` and `esp-hostname-persisted`: the first boot
+  removed the credentials from the ESP and wrote `/etc/hostname`; `esp-key-after-reboot`,
+  `esp-hostname-after-reboot` and `esp-credentials-once`: the second boot imports none and keeps
+  both. With `--factory-reset`, `esp-key-refused-after-reset` and `esp-hostname-gone-after-reset`:
+  the reset machine refuses the old key. `esp-credentials-none`: every other run's remover finds
+  nothing and does not fail.
 - `no-firstboot-prompt`: first boot finishes without a prompt.
 - `imds-hostname`, `imds-hetzner-layout`, `imds-ssh-keys-json`, `imds-ssh-key-precedence`,
   `imds-userdata-credential`, `imds-ipv6`, `imds-endpoint-locked`, `imds-lock-endpoints` and
@@ -173,6 +183,10 @@ again after `systemctl reboot` and after a power cycle, with the clock right fro
 - A credential carries no secret. The ESP is not encrypted, and every process reads SMBIOS strings.
   Secrets are [vars](vars.md).
 - With Secure Boot on and a TPM2, the guest refuses ESP credentials. That run fails.
+- An ESP credential holds for the first boot only. A `network.*` credential from the ESP configures
+  that boot alone; a lasting network configuration belongs in the image or in SMBIOS.
+- Whoever can write the ESP can still plant a credential where Secure Boot is off or no TPM2 is
+  present; removal makes it a single, logged use.
 - No marker covers a cloud's own OEM strings, or fw_cfg on real hardware.
 - A user data `ssh.authorized_keys.root` is skipped where the metadata has a key. A bad entry in
   Hetzner's array has run in QEMU only.
