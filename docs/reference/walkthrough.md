@@ -183,13 +183,13 @@ the public halves of the throwaway keys. A release signs the same way, outside N
 
 ## 6. First boot
 
-Do not start the disk with a bare `qemu-system-x86_64` and a plain OVMF. The image enforces IPE: the
-kernel trusts the verity signature only from the platform keyring, which the firmware fills from the
-Secure Boot `db`. A plain OVMF has no Secure Boot, so the boot stops at switch-root with
-`Failed to execute /sbin/init` ([Image artifacts](image.md#boot-test-scriptsboot-test)). The harness
-does what is needed: it enrols the throwaway db key into the variable store of OVMF's Secure Boot
-build (`qemu-system`'s `share/qemu`), starts QEMU with SMM and a 40 GiB overlay (room for `root`),
-and passes the host name `boot-test` as an SMBIOS credential.
+Do not start the disk with a bare `qemu-system-x86_64` and a plain OVMF. A plain OVMF has no Secure
+Boot, so nothing checks the loader or the UKI; the kernel still checks `/usr` against the `db`
+certificate built into it, and IPE enforces
+([Image artifacts](image.md#boot-test-scriptsboot-test)). The harness does what is needed: it enrols
+the throwaway db key into the variable store of OVMF's Secure Boot build (`qemu-system`'s
+`share/qemu`), starts QEMU with SMM and a 40 GiB overlay (room for `root`), and passes the host name
+`boot-test` as an SMBIOS credential.
 
 ```sh
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --timeout 120

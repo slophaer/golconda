@@ -69,9 +69,9 @@ flowchart LR
   db["Secure Boot db key"] --> vsig["PKCS#7 of the hex root hash"]
   vsig --> part["usr-verity-sig partition"]
   vsig --> cmdline["UKI cmdline: systemd.verity_usr_options=root-hash-signature=base64:"]
-  fw["firmware db"] --> keyring["kernel .platform keyring"]
+  cert["db certificate"] --> keyring["kernel built-in keyring"]
   cmdline --> veritysetup[systemd-veritysetup]
-  veritysetup --> dm["dm-verity: signature checked against .platform"]
+  veritysetup --> dm["dm-verity: signature checked against the built-in key"]
   keyring --> dm
   dm --> ipe["IPE: dmverity_signature=TRUE for /usr"]
 ```
@@ -81,10 +81,11 @@ Secure Boot `db` key, as PKCS#7 without certificates (`lib/image/verity.nu`). Th
 two places: the `usr-verity-sig` partition, systemd's JSON, for tools that dissect the disk; and the
 UKI cmdline as `systemd.verity_usr_options=root-hash-signature=base64:<sig>` (`image/uki.nix`). The
 generator passes the option to `systemd-veritysetup@usr.service`, which activates `/usr` with
-`crypt_activate_by_signed_key`; dm-verity checks the signature against the secondary keyring and
-then the platform keyring, which the kernel fills from the firmware `db` (`CONFIG_LOAD_UEFI_KEYS`,
-`CONFIG_DM_VERITY_VERIFY_ROOTHASH_SIG_PLATFORM_KEYRING`). IPE's `dmverity_signature` is true only
-for a volume whose signature the kernel verified.
+`crypt_activate_by_signed_key`; dm-verity checks the signature against the secondary keyring
+(`CONFIG_DM_VERITY_VERIFY_ROOTHASH_SIG_SECONDARY_KEYRING`), which holds the keys built into the
+kernel: the `db` certificate of the image's key set, and nothing else. IPE's `dmverity_signature` is
+true only for a volume whose signature the kernel verified, and an IPE policy update must be signed
+by a key of the same keyring (`CONFIG_IPE_POLICY_SIG_SECONDARY_KEYRING`).
 
 Why the cmdline and not the partition: systemd reads the partition's signature only on the gpt-auto
 path (`root-hash-signature=auto`, from the udev property `ID_DISSECT_PART_ROOTHASH_SIG` that the
@@ -94,30 +95,49 @@ signed UKI and measured into PCR 11, so it is as trusted as `usrhash=` itself. T
 about 550 base64 characters; the cmdline is about 1250 bytes of the kernel's 2048
 (`COMMAND_LINE_SIZE`), and `lib/image/uki.nu` fails the build at 2048.
 
-Why the `db` key: the platform keyring holds the firmware `db` and nothing else, so no import step
-is needed, and a second key would add nothing: whoever holds the `db` key can already sign a UKI
-with any `usrhash=`. A rotated `db` key needs new images, as it does for the UKI
+Why the `db` key: a second key would add nothing, because whoever holds the `db` key can already
+sign a UKI with any `usrhash=`. A rotated `db` key needs new images, as it does for the UKI
 ([Boot loader: Key rotation](bootloader.md#key-rotation)).
+
+Why not the firmware's `db`: `db` is not Golconda's alone. With `secureBootMicrosoftKeys = true`,
+the default, it also holds Microsoft's UEFI CAs. The kernel accepts a PKCS#7 signature whose signer
+certificate chains to any key in the keyring it checks (`crypto/asymmetric_keys/pkcs7_trust.c`, with
+no key usage check for dm-verity). If dm-verity trusted the `.platform` keyring, which the kernel
+fills from `db` (`CONFIG_LOAD_UEFI_KEYS`), a root hash signed by a certificate that Microsoft's CA
+issued would activate `/usr` as signed, and IPE would run it. So Golconda turns off
+`CONFIG_DM_VERITY_VERIFY_ROOTHASH_SIG_PLATFORM_KEYRING` and
+`CONFIG_IPE_POLICY_SIG_PLATFORM_KEYRING`, and the kernel trusts only the `db` certificate built into
+it. The kernel still loads `db` into `.platform` and logs each certificate, but nothing checks a
+signature against that keyring.
+
+What this costs: each key set builds its own kernel, with the same config (below). A `db` rotation
+needs no other step: the next release's kernel carries the new certificate, its `/usr` is signed
+with the new key, and the UKI pairs them (`usrhash=`). The running kernel does not trust the new
+key, even while `db` holds both certificates. It does not need to: it never activates the next
+release's `/usr`.
 
 A signature that does not verify does not stop `systemd-veritysetup`: it logs "Unable to activate
 verity device ... with root hash signature ..., retrying without" at info level and activates `/usr`
 unsigned. The boot then stops at switch-root, where IPE denies PID 1's re-exec from `/usr`
 ([Execution policy](#execution-policy)). So `lib/image/uki.nu` checks the signature against the
 UKI's own signing certificate at build time and fails on a mismatch. On the machine, the firmware
-`db` must hold that certificate; the boot test enrols it only with `--secure-boot`.
+`db` must hold that certificate to start the UKI; the boot test enrols it only with `--secure-boot`.
+
+**The built-in certificate.** `lib.mkImage` passes the `db` certificate of its `publicKeys` to
+`mkSystem`. The kernel build copies it to a fixed path in the kernel tree,
+`certs/golconda-verity.pem`, and `CONFIG_SYSTEM_TRUSTED_KEYS` names that path
+(`packages/kernel/kbuild.nu`, `GOLCONDA_KERNEL_FILES`); the kernel loads it into
+`.builtin_trusted_keys`, which the secondary keyring includes. The kernel of the set changes, so
+`/usr` and the UKI carry the same one. A system that no image signs (`lib.mkSystem` alone, for a
+`/usr` tree) has no certificate, and its kernel verifies no `/usr`.
 
 **Without Secure Boot** (`/system.secureBoot = false`, for a host whose firmware has none, such as
-Hetzner Cloud): no firmware fills the platform keyring, so the kernel carries the certificate
-itself. `lib.mkImage` passes the `db` certificate of its `publicKeys` to `mkSystem`. The kernel
-build copies it to a fixed path in the kernel tree, `certs/golconda-verity.pem`, and
-`CONFIG_SYSTEM_TRUSTED_KEYS` names that path (`packages/kernel/kbuild.nu`, `GOLCONDA_KERNEL_FILES`);
-the kernel loads it into `.builtin_trusted_keys`, which the secondary keyring that dm-verity checks
-first includes. The kernel of the set changes, so `/usr` and the UKI carry the same one, and each
-key set builds its own kernel. What is lost is the check before the kernel: no firmware verifies the
-loader or the UKI, so whoever can write the ESP can boot a kernel that trusts another key. IPE and
-the `/usr` signature still hold against a changed `/usr`, and the vars still seal (to the host key
-alone, without a TPM). The bootstrap credentials on the ESP are accepted there because Secure Boot
-is off ([Boot: Bootstrap credentials](boot.md#bootstrap-credentials)).
+Hetzner Cloud): the kernel trusts the same built-in certificate, and `mkSystem` without the image's
+keys is an error. What is lost is the check before the kernel: no firmware verifies the loader or
+the UKI, so whoever can write the ESP can boot a kernel that trusts another key. IPE and the `/usr`
+signature still hold against a changed `/usr`, and the vars still seal (to the host key alone,
+without a TPM). The bootstrap credentials on the ESP are accepted there because Secure Boot is off
+([Boot: Bootstrap credentials](boot.md#bootstrap-credentials)).
 
 The certificate is an input of the kernel derivation, but not of its config: every key set has the
 same config, so a new certificate compiles only the certificate object and the compressed kernel's
@@ -134,22 +154,25 @@ does an empty one (`extract-cert` needs at least one certificate): the keyring i
 empty. The kernel package installs the certificate as `lib/modules/<version>/trusted-keys.pem`, so
 `/usr` records which key its kernel trusts; the config names only the path.
 
-**Status.** Proven by boot with `--secure-boot`: the kernel loads the `db` certificate into the
-platform keyring, and with `/sys/kernel/security/ipe/success_audit` on, IPE logs
+**Status.** Proven by boot with `--secure-boot`: the kernel's built-in key verifies the signature,
+and with `/sys/kernel/security/ipe/success_audit` on, IPE logs
 `rule="op=EXECUTE dmverity_signature=TRUE action=ALLOW"` for files on `/usr` (`dm-0`). With
-`ipe.enforce=1` the boot passes every check and logs no IPE denial; the same image without the `db`
-enrolled stops at switch-root.
+`ipe.enforce=1` the boot passes every check and logs no IPE denial. `verity-sig-builtin-accepted`
+checks that the built-in key activates the next release's `/usr` as signed. In one boot of
+`--rotate`, with the new certificate in `db`, `verity-sig-db-only-refused` checks that the running
+kernel refuses the next release's signature, and `boots-after-rotation` that the next release boots
+under the new key ([What is proven](../proven.md)).
 
 Without Secure Boot, proven by boot on OVMF with neither Secure Boot nor a TPM:
 `image-smoke-test-nosb` logs `Secure boot disabled` and
 `Loaded X.509 cert 'Golconda smoke Secure Boot db: …'`, reaches `multi-user.target` with
-`ipe.enforce=1`, and passes the update test (`--next`, over HTTP). On the same firmware the default
-image (`secureBoot = true`) stops at switch-root: IPE logs
+`ipe.enforce=1`, and passes the update test (`--next`, over HTTP). A kernel that holds another
+certificate refuses the signature: the same image with the rotated throwaway certificate in its
+kernel (a manual run, not a `scripts/boot-test` mode) logs
+`Loaded X.509 cert 'Golconda smoke Secure Boot db rotated: …'`, then
+`verity: Root hash verification failed (-ENOKEY)`, and stops at switch-root: IPE logs
 `ipe_op=EXECUTE … comm="systemd" … dev="dm-0" … rule="DEFAULT op=EXECUTE action=DENY"` for PID 1's
-re-exec from `/usr`. A kernel that holds another certificate refuses the signature: the same image
-with the rotated throwaway certificate in its kernel (a manual run, not a `scripts/boot-test` mode)
-logs `Loaded X.509 cert 'Golconda smoke Secure Boot db rotated: …'`, then
-`verity: Root hash verification failed (-ENOKEY)`, and stops at switch-root with that IPE denial.
+re-exec from `/usr`.
 
 ### 3. CA store
 
@@ -285,12 +308,12 @@ key and the release key from the old set (`pcrPublicKeys` and `indexPublicKeys` 
 
 The `db` key signs both the UKI (`ukify --secureboot-private-key`, `lib/image/uki.nu`) and the
 verity root hash (`lib/image/verity.nu`), and the same key signs the loader (`lib/image/loader.nu`).
-The kernel checks the root hash signature against the platform keyring, which holds the firmware
-`db` ([Verity key](#2-verity-key)). The signer checks each private key against the public half the
-image carries before it signs, and the root hash signature against the `db` certificate before it
-writes the disk (`lib/image/sign.nu`, `lib/image/uki.nu`), so a mismatched key fails the release
-rather than the boot. A rotated `db` key needs new images: the UKI, the root hash signature and the
-loader are all signed with it.
+The kernel checks the root hash signature against the `db` certificate built into it, not against
+the firmware's `db` ([Verity key](#2-verity-key)). The signer checks each private key against the
+public half the image carries before it signs, and the root hash signature against the `db`
+certificate before it writes the disk (`lib/image/sign.nu`, `lib/image/uki.nu`), so a mismatched key
+fails the release rather than the boot. A rotated `db` key needs new images: the UKI, the root hash
+signature and the loader are all signed with it.
 
 ### Signing outside Nix
 
@@ -634,9 +657,9 @@ Phase 1 is IPE (execute only from dm-verity volumes with a signed root hash, not
 the policy avoids per-image kernel rebuilds) with `lockdown=integrity` and Yama, all fixed in the
 kernel config and the UKI cmdline. IPE enforces (`ipe.enforce=1`): the kernel verifies the `/usr`
 signature ([status](#2-verity-key)), so programs on `/usr` run, and a program copied to `/var` gets
-`Permission denied` with the audit record `rule="DEFAULT op=EXECUTE action=DENY"`. The firmware `db`
-must hold the signer: without it `/usr` is activated unsigned, and PID 1's re-exec after switch-root
-is denied, so the machine stops with "Failed to execute /sbin/init". The boot test therefore needs
-`--secure-boot`, which enrols the `db` (with `--auto-enrol`, systemd-boot enrols it). Phase 2 is the
-BPF LSM for `RestrictFileSystems=`; phase 3 AppArmor profiles generated from the typed service.
-SELinux is rejected.
+`Permission denied` with the audit record `rule="DEFAULT op=EXECUTE action=DENY"`. The kernel must
+carry the signer's certificate (`lib.mkImage` builds it in): a `/usr` signed by another key, also
+one that the firmware `db` holds, is activated unsigned, and PID 1's re-exec after switch-root is
+denied, so the machine stops with "Failed to execute /sbin/init". Phase 2 is the BPF LSM for
+`RestrictFileSystems=`; phase 3 AppArmor profiles generated from the typed service. SELinux is
+rejected.

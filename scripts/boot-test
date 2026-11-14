@@ -58,6 +58,10 @@
 #   key, the harness finds the key's fingerprint on the serial console, as an operator would
 #   (hostkey-fingerprint-on-console). After the push it also offers its own user certificate
 #   (cert-admin), because a release with the host certificate enrolled refuses plain keys.
+#   Once sysupdate has filled the other slot, the running kernel checks that slot's signed root
+#   hash with systemd-veritysetup (verity-sig-builtin-accepted: the signature activates it);
+#   with --rotate the signer is the new db key, in db but not in the running kernel, and the
+#   kernel must refuse it (verity-sig-db-only-refused).
 # With --enrol (needs --ssh-test; not with --next, --esp-creds, --imds or --factory-reset): one
 #   release from first boot to certificates (docs/design/trust.md, "Identity"). Boot an image that
 #   has hostCertificate and revokedKeys on from its first boot (image-smoke-test-next), with a
@@ -136,7 +140,7 @@
 #   none of Microsoft's certificates and dbx is empty. Last, no-reenrol: the harness puts the
 #   enrolment files back on the ESP over ssh, empties the variable store (Setup Mode again) and
 #   boots: systemd-boot must enrol nothing (the loader.conf in effect says off) and start the UKI
-#   with Secure Boot off. That boot stops at switch-root, so the run ends there.
+#   with Secure Boot off. The harness stops QEMU there, so the run ends there.
 # With --ssh-test: also checks the boot loader (docs/design/bootloader.md): the ESP's two
 #   copies of systemd-boot are the signed file in /usr, loader/loader.conf is the one
 #   systemd-boot reads and the copy in /usr, golconda-loader-update.service ran after the boot

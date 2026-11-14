@@ -66,7 +66,7 @@ def pcr-key-args [keys: record, out: string]: nothing -> list<string> {
 
 # roothash-signature PARTITION ROOTHASH CERT: the base64 signature from the usr-verity-sig
 # partition (lib/image/verity.nu's JSON, NUL-padded), checked here against the root hash and
-# CERT. The kernel checks it against the platform keyring, which holds the firmware db only; a
+# CERT. The kernel checks it against the db certificate built into it (lib/system.nix); a
 # signature by another key makes systemd-veritysetup retry unsigned and log at info level, and
 # boot goes on, so a mismatch fails the build instead.
 export def roothash-signature [partition: string, roothash: string, cert: string] {

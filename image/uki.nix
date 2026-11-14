@@ -20,8 +20,8 @@
   # {usrhash} is substituted with the verity root hash at build time
   # {usrhashSig}: the base64 PKCS#7 signature of that hash, from the usr-verity-sig partition.
   #   systemd-veritysetup hands it to the kernel (root-hash-signature=base64:), which checks it
-  #   against the platform keyring (the firmware db); IPE's dmverity_signature is true only for
-  #   a volume the kernel verified. Without it /usr activates unsigned, silently.
+  #   against its built-in db certificate, never the firmware db; IPE's dmverity_signature is
+  #   true only for a volume the kernel verified. Without it /usr activates unsigned, silently.
   # console=tty0,ttyS0: the local console and the serial line, output only (no getty)
   # rw: the root partition carries the state (/var, /etc), and the initrd mounts it read-only
   # unless the cmdline says rw; gpt-auto's remount-rw drop-in reaches systemd-remount-fs.service

@@ -286,7 +286,7 @@ output.
 | parameter                                          | meaning                                                                                                                                                   |
 | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `usrhash={usrhash}`                                | the verity root hash; the generators derive the two `/usr` partition UUIDs from it, which is how a UKI finds its own slot                                 |
-| `systemd.verity_usr_options=root-hash-signature=…` | the base64 PKCS#7 signature of that hash; the kernel checks it against the platform keyring (firmware db), and IPE trusts only such volumes               |
+| `systemd.verity_usr_options=root-hash-signature=…` | the base64 PKCS#7 signature of that hash; the kernel checks it against its built-in db certificate, and IPE trusts only such volumes                      |
 | `rw`                                               | the root partition carries the state; without it the initrd mounts root read-only and the host key var fails to seal. `/usr` stays read-only by dm-verity |
 | `lsm=lockdown,yama,ipe,bpf`                        | the LSM stack order (capability is always first)                                                                                                          |
 | `lockdown=integrity`                               | kernel lockdown level: blocks kexec, `/dev/mem` and similar                                                                                               |
@@ -311,9 +311,9 @@ flags and what that trusts); building edk2 from source stays a later step. Usage
 # Build the test image
 nix-build -A packages.x86_64-linux.image-smoke-test
 
-# Run the boot test (basic markers). --secure-boot is required: the image
-# enforces IPE and the kernel trusts the verity signature only from the
-# platform keyring, which the firmware fills from db.
+# Run the boot test (basic markers). --secure-boot enrols the throwaway db
+# certificate, so firmware checks the loader and the UKI; the kernel checks
+# the verity signature against the db certificate built into it.
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --timeout 120
 
 # With TPM (starts swtpm); the db must be enrolled too. The host key checks need --ssh-test.
@@ -404,10 +404,14 @@ and the lock goes away when the run dies. Each run needs about 2 GiB of RAM and 
 follows a `/nix/store` symlink under it.
 
 The image enforces IPE (`ipe.enforce=1`): `/usr` executes only from a dm-verity mapping whose root
-hash signature the kernel verified. The signature is signed with the Secure Boot db key and its
-certificate reaches the kernel through the platform keyring, which the firmware loads from db. A
-boot without the db enrolled stops at switch-root with `Failed to execute /sbin/init`; this is the
-negative control for the mechanism, not a harness defect.
+hash signature the kernel verified. The signature is signed with the Secure Boot db key, and the
+kernel checks it against the db certificate built into it, never against the firmware's db
+([Trust: Verity key](../design/trust.md#2-verity-key)). `verity-sig-builtin-accepted` (`--next`) and
+`verity-sig-db-only-refused` (`--next --rotate`) check that keyring: after sysupdate fills the other
+slot, the harness activates that slot's `/usr` with its signature through `systemd-veritysetup`. A
+signature by the running kernel's key activates it signed; under `--rotate` the next release is
+signed by the new db key, which db holds in that boot but the running kernel does not, and the
+kernel must log `verity: Root hash verification failed (-ENOKEY)`.
 
 `--esp-creds` (with `--ssh-test`) provisions through the ESP. The harness copies the disk into its
 work directory, generates an ssh key pair there, and runs `scripts/provision-esp` on the copy with
@@ -467,8 +471,7 @@ CA 2011, UEFI CA 2023 and Option ROM UEFI CA 2023, and neither Windows CA; `dbx`
 empty. Then the ssh battery runs as with `--secure-boot`. Last, `no-reenrol`: the harness writes the
 enrolment files back to `loader/keys/auto` over ssh, stops QEMU, empties the variable store (Setup
 Mode again, as after a CMOS clear) and boots: the serial log must have no enrolment message, the
-kernel's line, and `Secure boot disabled`. That boot stops at switch-root, as any boot without the
-`db` does, so it is the run's last.
+kernel's line, and `Secure boot disabled`. The harness stops QEMU there, so it is the run's last.
 
 The script creates a 40 GiB qcow2 overlay (room for the root partition), copies the OVMF variable
 store, passes the host name `boot-test` as a credential (`-smbios type=11,...`, not with
@@ -568,6 +571,7 @@ With `--next DIR` ([The update test](#the-update-test)):
 | `http-source`                                                          | the guest's own `10-usr.transfer` has `Type=url-file` and `Path=http://169.254.169.2:<port>/`                                                               |
 | `http-fetch`                                                           | the sysupdate journal names the release over `http`, so the guest fetched it, not a local file                                                              |
 | `sysupdate-installed`                                                  | `systemd-sysupdate-update.service` installed the release                                                                                                    |
+| `verity-sig-builtin-accepted`                                          | without `--rotate`: the running kernel activates the newly filled slot's `/usr` with its root hash signature, with no unsigned retry                        |
 | `sysupdate-refused`                                                    | with `--tamper-index`: the service failed, its journal names the index signature and no install, and the next release is on no partition or ESP entry       |
 | `boots-old`                                                            | with `--tamper-index`, after the reboot `IMAGE_VERSION` is still the old version                                                                            |
 | `no-failed-units-after-refused-update`                                 | with `--tamper-index`, the system has no failed unit after the refused update                                                                               |
@@ -608,14 +612,15 @@ With `--enrol` (and `--ssh-test`; instead of `cert-login`):
 
 With `--rotate`:
 
-| marker                                                       | what it proves                                                                   |
-| ------------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| `loader-signed-again`                                        | a new db key gives new loader bytes                                              |
-| `boots-after-rotation`, `secure-boot-enabled-after-rotation` | the guest boots the new chain with db = the new certificate alone                |
-| `kernel-db-rotated`                                          | the kernel loaded only the new db certificate                                    |
-| `no-failed-units-after-rotation`                             | no failed unit after the rotation                                                |
-| `clock-not-reset-after-rotate`                               | `clock-not-reset` on the journal of the boot after the rotation                  |
-| `old-loader-refused`                                         | the original disk under the rotated store gets "Access Denied"; no kernel starts |
+| marker                                                       | what it proves                                                                                                                                            |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `loader-signed-again`                                        | a new db key gives new loader bytes                                                                                                                       |
+| `verity-sig-db-only-refused`                                 | before the reboot, with both certificates in db, the running kernel refuses the next release's root hash signature (the new key, not built in): `-ENOKEY` |
+| `boots-after-rotation`, `secure-boot-enabled-after-rotation` | the guest boots the new chain with db = the new certificate alone                                                                                         |
+| `kernel-db-rotated`                                          | the kernel loaded only the new db certificate                                                                                                             |
+| `no-failed-units-after-rotation`                             | no failed unit after the rotation                                                                                                                         |
+| `clock-not-reset-after-rotate`                               | `clock-not-reset` on the journal of the boot after the rotation                                                                                           |
+| `old-loader-refused`                                         | the original disk under the rotated store gets "Access Denied"; no kernel starts                                                                          |
 
 With `--factory-reset --ssh-test` ([The factory reset test](#the-factory-reset-test)):
 

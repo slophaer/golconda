@@ -1,4 +1,4 @@
-# Checks of /system.secureBoot = false: the db certificate in the kernel's built-in keyring.
+# Checks of the db certificate in the kernel's built-in keyring, with Secure Boot and without.
 # A function of the harness (./harness.nix); it returns a list of checks.
 {
   check,
@@ -7,10 +7,10 @@
   sources,
   ...
 }:
-# /system.secureBoot = false: a host without Secure Boot. The kernel carries the db
-# certificate in its built-in keyring, so dm-verity checks the /usr signature without the
-# firmware's db; the kernel of the set changes, so /usr and the UKI carry the same one
-# (docs/design/trust.md).
+# Every kernel of an image carries the db certificate in its built-in keyring, the one key
+# dm-verity and IPE trust: the firmware's db (the platform keyring) holds Microsoft's UEFI CAs by
+# default, and a host without Secure Boot (/system.secureBoot = false) has none. The kernel of the
+# set changes, so /usr and the UKI carry the same one (docs/design/trust.md).
 let
   inherit (builtins) deepSeq filter tryEval;
   sysWith =
@@ -47,10 +47,13 @@ let
     };
 in
 [
-  (check "secureBoot: on by default, and the kernel has no built-in key" (
-    trusted (sysWith { } cert) == null
-    && trusted mkSystemFixture == null
-    && filesOf (kernelOf (sysWith { } cert)).spec.env == { }
+  (check "secureBoot: on by default, and the kernel carries the db certificate" (
+    let
+      sys = sysWith { } cert;
+    in
+    trusted sys == fixed
+    && (extraOf sys.pkgs.linux-kernel.spec.env).SYSTEM_TRUSTED_KEYS == fixed
+    && filesOf (kernelOf sys).spec.env == { ${fixed} = cert; }
   ))
   (check "secureBoot: false puts the db certificate into the kernel's built-in keyring" (
     let
@@ -59,6 +62,10 @@ in
     trusted sys == fixed
     && (extraOf sys.pkgs.linux-kernel.spec.env).SYSTEM_TRUSTED_KEYS == fixed
     && filesOf (kernelOf sys).spec.env == { ${fixed} = cert; }
+  ))
+  # one kernel per key set, Secure Boot or not: the config is the same for both, the file differs
+  (check "secureBoot: on and off give the same kernel config" (
+    configOf (sysWith { } storeCert) == configOf (sysWith { secureBoot = false; } storeCert)
   ))
   (check "secureBoot: false with a store certificate keeps it an input of the kernel" (
     let
@@ -94,5 +101,12 @@ in
   ))
   (check "secureBoot: false without the image's keys is an error" (
     !(tryEval (deepSeq (kernelOf (sysWith { secureBoot = false; } null)).spec.env true)).success
+  ))
+  # a system that no image signs (lib.mkSystem alone: a /usr tree, the SBOM) has no db
+  # certificate: its kernel trusts no key, so no /usr signature would verify
+  (check "secureBoot: a system without the image's keys has a kernel with no built-in key" (
+    trusted (sysWith { } null) == null
+    && trusted mkSystemFixture == null
+    && filesOf (kernelOf (sysWith { } null)).spec.env == { }
   ))
 ]

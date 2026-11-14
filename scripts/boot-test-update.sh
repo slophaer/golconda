@@ -94,6 +94,45 @@ test_update_refused() {
   check_clock clock-not-reset-after-refused-update
 }
 
+# test_verity_keyring: the running kernel checks the signed root hash of the slot sysupdate just
+# filled. dm-verity trusts the kernel's built-in certificate only, never the firmware's db
+# (docs/design/trust.md): the next release of a plain --next is signed with the running kernel's
+# key, so the signature activates the volume; under --rotate it is signed with the new db key,
+# which db holds in this boot beside the old one but the running kernel does not carry, so the
+# kernel refuses it (ENOKEY) and systemd-veritysetup activates the volume unsigned. A signed
+# activation shows no "retrying without"; the volume is detached again before the reboot.
+test_verity_keyring() {
+  echo ""
+  echo "=== the kernel's verity keyring: the signature of $NEXT_VERSION's /usr ==="
+  SIG_JSON=$(guest "cat /dev/disk/by-partlabel/usr-verity-sig_$NEXT_VERSION" | tr -d '\000') || true
+  # shellcheck disable=SC2016 # python's own text
+  FIELDS=$(printf %s "$SIG_JSON" | python3 -c '
+import json, sys
+d, _ = json.JSONDecoder().raw_decode(sys.stdin.read())
+print(d["rootHash"], d["signature"])' 2>&1) || true
+  RH=${FIELDS%% *}
+  SIG=${FIELDS#* }
+  case $RH in
+    *[!0-9a-f]* | "") echo "usr-verity-sig_$NEXT_VERSION: no root hash ($FIELDS)"; verdict verity-sig-read 1; return 0 ;;
+  esac
+  VS=/usr/lib/systemd/systemd-veritysetup
+  OUT=$(guest "$VS attach golconda-sigcheck /dev/disk/by-partlabel/usr_$NEXT_VERSION /dev/disk/by-partlabel/usr-verity_$NEXT_VERSION $RH root-hash-signature=base64:$SIG 2>&1; echo attach=\$?; $VS detach golconda-sigcheck 2>&1") || true
+  # the image has no grep: filter the kernel's messages here
+  KLOG=$(guest journalctl -k -b -o cat --no-pager 2>&1 | grep -i 'verity' | tail -5) || true
+  echo "$OUT"
+  echo "$KLOG"
+  RC=0
+  echo "$OUT" | grep -q '^attach=0$' || RC=1
+  if [ "$ROTATE" = 1 ]; then
+    echo "$OUT" | grep -q "with root hash signature (.*), retrying without" || RC=1
+    echo "$KLOG" | grep -q "verity: Root hash verification failed (-ENOKEY)" || RC=1
+    verdict "verity-sig-db-only-refused (a root hash signed by a db certificate the kernel does not carry is refused)" $RC
+  else
+    ! echo "$OUT" | grep -q "retrying without" || RC=1
+    verdict "verity-sig-builtin-accepted (the next release's root hash signature activates its /usr)" $RC
+  fi
+}
+
 # --- --next: install the next release, boot it, check its loader, then recovery ---
 test_next() {
   echo ""
@@ -144,6 +183,7 @@ test_next() {
     echo "sysupdate journal (gpg lines):"
     echo "$JOURNAL" | grep -i "gpg\|signature\|verif" | tail -10 || true
   fi
+  [ "$RC" != 0 ] || test_verity_keyring
 
   echo "Rebooting into $NEXT_VERSION..."
   if [ "$FAIL_HEALTH" = 1 ]; then
@@ -297,8 +337,8 @@ test_rotate() {
   echo "$SB"
   RC=0; echo "$SB" | grep -q "enabled" || RC=1
   verdict "secure-boot-enabled-after-rotation" $RC
-  # the kernel loads db into its .platform keyring, which the verity signature is checked
-  # against, and logs each certificate
+  # the kernel loads db into its .platform keyring and logs each certificate ("integrity:"); the
+  # verity signature is checked against the kernel's built-in key, not that keyring
   BEFORE=$(db_certs "$FIRST_SERIAL_LOG")
   AFTER=$(db_certs "$SERIAL_LOG")
   echo "db certificates the kernel loaded before the rotation:"

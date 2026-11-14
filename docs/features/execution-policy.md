@@ -13,7 +13,9 @@ the signed boot image, so a service cannot switch it off.
   needs no new kernel. The same policy denies firmware, kernel modules, kexec images and X.509
   loads.
 - **It enforces from the first boot.** The kernel command line sets `ipe.enforce=1`. The kernel has
-  checked the `/usr` signature against the firmware `db` before IPE marks the volume.
+  checked the `/usr` signature against the `db` certificate built into it before IPE marks the
+  volume. A certificate that only the firmware `db` holds does not count
+  ([Trust: Verity key](../design/trust.md#2-verity-key)).
 - **Lockdown.** `lockdown=integrity` blocks `/dev/mem` writes, unsigned kexec and unsigned module
   loads. The kernel has no modules and no kexec.
 - **Yama.** It restricts ptrace.
@@ -39,17 +41,19 @@ A denial is an audit record in the kernel log (`type=1420`):
 
 ## Status
 
-The firmware `db` must hold the signing certificate. Without it `/usr` activates unsigned, IPE
-denies PID 1's re-exec after switch-root, and the machine stops with "Failed to execute /sbin/init".
-So the boot test needs `--secure-boot`.
+The kernel must carry the signing certificate, which `lib.mkImage` builds into it. Without it `/usr`
+activates unsigned, IPE denies PID 1's re-exec after switch-root, and the machine stops with "Failed
+to execute /sbin/init".
 
 A boot that reaches `multi-user.target` with `ipe.enforce=1` proves that the kernel accepts the
 signature and runs `/usr`. The proof table has no marker of its own for this
-([What is proven](../proven.md)). The same holds without Secure Boot (`image-smoke-test-nosb`),
-where the kernel's built-in key replaces the firmware `db`. `ipe-denies-copy` (`--ssh-test`, with
-and without Secure Boot) copies `/usr`'s shell to `/var/tmp` and runs it: the exec fails with
-`Permission denied`, and the kernel logs IPE's `DEFAULT op=EXECUTE action=DENY` for that path. Eval
-tests check the command line, the kernel options and the policy text.
+([What is proven](../proven.md)). The same holds without Secure Boot (`image-smoke-test-nosb`).
+`verity-sig-builtin-accepted` (`--next`) and `verity-sig-db-only-refused` (`--next --rotate`) check
+the keyring: a root hash signed by the kernel's key activates as signed, one signed by a key that
+only `db` holds is refused. `ipe-denies-copy` (`--ssh-test`, with and without Secure Boot) copies
+`/usr`'s shell to `/var/tmp` and runs it: the exec fails with `Permission denied`, and the kernel
+logs IPE's `DEFAULT op=EXECUTE action=DENY` for that path. Eval tests check the command line, the
+kernel options and the policy text.
 
 ## Limits
 

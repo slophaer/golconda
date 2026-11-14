@@ -92,9 +92,10 @@ Nothing enables it: only systemd's preset did, and `00-golconda.preset` turns th
 ## Enrolment
 
 Firmware must hold the `db` certificate before a Secure Boot image runs: it checks the loader and
-the UKI against `db`, and the kernel checks the `/usr` signature against the `db` in its platform
-keyring ([Trust: Verity key](trust.md#2-verity-key)). A machine in Setup Mode (no PK enrolled) gets
-it from the disk on its first boot; a machine that already has keys gets it in firmware setup.
+the UKI against `db`. The kernel checks the `/usr` signature against its own copy of the
+certificate, built in, and never against the firmware's `db`
+([Trust: Verity key](trust.md#2-verity-key)). A machine in Setup Mode (no PK enrolled) gets it from
+the disk on its first boot; a machine that already has keys gets it in firmware setup.
 
 **The files.** `scripts/make-keys` writes the Secure Boot variables into the key set once, signed by
 its PK and KEK keys (`secureboot/auth/`, `lib/image/enrol.nu`). They depend on the certificates

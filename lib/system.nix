@@ -24,8 +24,8 @@
 # `platform` defaults to the build host's (builtins.currentSystem).
 # `sources` defaults to ../pins (pins/default.nix).
 # `verityCert` is the certificate that signs /usr (lib.mkImage passes the db certificate of
-# its publicKeys). With `/system.secureBoot = false` the kernel carries it in its built-in keyring;
-# without Secure Boot nothing else would put it in a keyring (docs/design/trust.md).
+# its publicKeys). The kernel carries it in its built-in keyring, the only keyring dm-verity and
+# IPE trust; `/system.secureBoot = false` requires it (docs/design/trust.md).
 #
 # Usage:
 #   let sys = import ./lib/system.nix { config = ./server.toml; };
@@ -91,24 +91,28 @@ let
       x: if builtins.isString x then (import ../modules/lib/fingerprint.nix).normalise x else x
     ) ((loadedOptions."/trust" or { }).distrust or [ ]);
   };
-  # Without Secure Boot the kernel's built-in keyring holds the verity certificate. The config
-  # names a fixed path in the kernel tree, and the build copies the certificate there
+  # The kernel's built-in keyring holds the verity certificate, the one key dm-verity and IPE
+  # trust (packages/kernel/golconda.config). With Secure Boot too: the firmware's db, the
+  # platform keyring, holds Microsoft's UEFI CAs by default, and a signature that chains to one
+  # must not pass (docs/design/trust.md). So each key set has its own kernel. The config names a
+  # fixed path in the kernel tree, and the build copies the certificate there
   # (packages/kernel/kbuild.nu): a store path in the config would change autoconf.h, which every
   # object includes, so each certificate would recompile the whole kernel past jig's cache.
   # The certificate stays an input of the kernel through GOLCONDA_KERNEL_FILES.
+  # A system that no image signs (no verityCert: lib.mkSystem alone, for a /usr tree or the
+  # SBOM) gets a kernel with no built-in key, which verifies no /usr signature; without Secure
+  # Boot that is an error, as nothing else could check one.
   trustedKeysFile = "certs/golconda-verity.pem";
-  kernelConfig = if secureBoot != false then { } else { SYSTEM_TRUSTED_KEYS = trustedKeysFile; };
-  kernelFiles =
-    if secureBoot != false then
-      { }
-    else
-      {
-        ${trustedKeysFile} =
-          if verityCert == null then
-            throw "golconda: /system.secureBoot = false needs the image's keys: the kernel carries the db certificate, so build it with lib.mkImage"
-          else
-            "${verityCert}";
-      };
+  builtinKey = verityCert != null || secureBoot == false;
+  on = import ../modules/lib/on.nix;
+  kernelConfig = on builtinKey { SYSTEM_TRUSTED_KEYS = trustedKeysFile; };
+  kernelFiles = on builtinKey {
+    ${trustedKeysFile} =
+      if verityCert == null then
+        throw "golconda: /system.secureBoot = false needs the image's keys: the kernel carries the db certificate, so build it with lib.mkImage"
+      else
+        "${verityCert}";
+  };
 
   # The TOML loader: a document in, checked options out (lib/config.nix).
   configLib = import ./config.nix { tree = unloaded; };

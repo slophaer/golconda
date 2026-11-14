@@ -188,8 +188,10 @@ in
     && hasInfix "lockdown=integrity" uki.cmdlineTemplate
     && hasInfix "ipe.enforce=1" uki.cmdlineTemplate
   ))
-  # kernel config: IPE and platform keyring options
-  (check "kernel: config has IPE, lockdown and platform keyring options" (
+  # kernel config: IPE and lockdown; the /usr signature and IPE policies trust the kernel's
+  # built-in key (the secondary keyring), never the platform keyring: that is the firmware db,
+  # which holds Microsoft's UEFI CAs by default (docs/design/trust.md)
+  (check "kernel: config has IPE and lockdown, and verity and IPE trust no platform key" (
     let
       config = readFile ../../packages/kernel/golconda.config;
     in
@@ -199,9 +201,10 @@ in
     && hasInfix "CONFIG_SECURITY_LOCKDOWN_LSM=y" config
     && hasInfix "CONFIG_SECURITY_LOCKDOWN_LSM_EARLY=y" config
     && hasInfix "CONFIG_SECURITY_YAMA=y" config
-    && hasInfix "CONFIG_INTEGRITY_PLATFORM_KEYRING=y" config
-    && hasInfix "CONFIG_LOAD_UEFI_KEYS=y" config
-    && hasInfix "CONFIG_DM_VERITY_VERIFY_ROOTHASH_SIG_PLATFORM_KEYRING=y" config
+    && hasInfix "CONFIG_DM_VERITY_VERIFY_ROOTHASH_SIG_SECONDARY_KEYRING=y" config
+    && hasInfix "CONFIG_IPE_POLICY_SIG_SECONDARY_KEYRING=y" config
+    && hasInfix "# CONFIG_DM_VERITY_VERIFY_ROOTHASH_SIG_PLATFORM_KEYRING is not set" config
+    && hasInfix "# CONFIG_IPE_POLICY_SIG_PLATFORM_KEYRING is not set" config
   ))
   (check "kernel: IPE boot policy allows initramfs and signed verity" (
     let

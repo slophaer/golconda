@@ -32,19 +32,21 @@ other source, including `/var`, `/tmp`, and unsigned verity volumes.
 
 The cmdline sets `ipe.enforce=1`. Every denial is an audit record (`type=1420`) in the kernel log,
 with `rule="DEFAULT op=EXECUTE action=DENY"`; `/sys/kernel/security/ipe/success_audit` logs the
-allowed ones too, with the rule that matched. The firmware `db` must hold the key that signed the
-root hash, or `/usr` is unsigned and nothing on it runs: see
-[Trust: Verity key](trust.md#2-verity-key).
+allowed ones too, with the rule that matched. The kernel must carry the key that signed the root
+hash, or `/usr` is unsigned and nothing on it runs: see [Trust: Verity key](trust.md#2-verity-key).
 
 ### Verity signature trust
 
 The verity root hash is signed; dm-verity verifies the signature when `/usr` is set up, before IPE
-marks the volume `dmverity_signature`. dm-verity tries two keyrings, in order:
-
-- **Secondary keyring**: certificates signed by a key built into the kernel
-  (`SECONDARY_TRUSTED_KEYRING_SIGNED_BY_BUILTIN`). Golconda adds none.
-- **Platform keyring**: populated from the UEFI Secure Boot `db` at boot. Golconda uses this one:
-  the `db` key that signs the UKI also signs the verity root hash.
+marks the volume `dmverity_signature`. It trusts the secondary keyring alone
+(`DM_VERITY_VERIFY_ROOTHASH_SIG_SECONDARY_KEYRING`): the keys built into the kernel, and keys a
+built-in key signed (`SECONDARY_TRUSTED_KEYRING_SIGNED_BY_BUILTIN`). Golconda builds in one key, the
+`db` certificate of the image's key set (`SYSTEM_TRUSTED_KEYS`, a fixed path the build fills), and
+adds none. The `db` key that signs the UKI also signs the verity root hash. Neither dm-verity nor
+IPE policy updates trust the platform keyring, which the kernel fills from the firmware `db`
+(`DM_VERITY_VERIFY_ROOTHASH_SIG_PLATFORM_KEYRING` and `IPE_POLICY_SIG_PLATFORM_KEYRING` off). So
+each key set has its own kernel; why, and what that costs:
+[Trust: Verity key](trust.md#2-verity-key).
 
 The signature reaches dm-verity through the UKI cmdline
 (`systemd.verity_usr_options=root-hash-signature=base64:`); why is in

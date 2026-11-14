@@ -28,10 +28,13 @@ policy with keys you make, so a swapped kernel opens nothing.
   Mode enrols them on its first boot and reboots with Secure Boot on. Firmware with keys ignores
   them. Only a new disk enrols: its first good boot puts a `loader.conf` that enrols nothing on the
   ESP and removes the files once Secure Boot is on.
-- **Without Secure Boot.** With `/system.secureBoot = false`, the kernel carries the `db`
-  certificate itself (`CONFIG_SYSTEM_TRUSTED_KEYS`, a fixed path the build fills) and checks the
-  `/usr` signature. Each key set builds its own kernel, with the same config, so with jig's compile
-  cache only two objects compile again. Vars seal to the host key alone, with no TPM.
+- **The verity key in the kernel.** The kernel carries the `db` certificate itself
+  (`CONFIG_SYSTEM_TRUSTED_KEYS`, a fixed path the build fills) and checks the `/usr` signature
+  against it alone, never against the firmware `db`
+  ([Trust: Verity key](../design/trust.md#2-verity-key)). Each key set builds its own kernel, with
+  the same config, so with jig's compile cache only two objects compile again.
+- **Without Secure Boot.** With `/system.secureBoot = false` the same built-in certificate checks
+  `/usr`; nothing checks the UKI. Vars seal to the host key alone, with no TPM.
 
 ## Using it
 

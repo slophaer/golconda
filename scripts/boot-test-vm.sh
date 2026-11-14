@@ -190,8 +190,7 @@ check_auto_enrol() {
 # at loader/keys/auto (here the key set's own, which the guest gets over ssh), and the firmware is
 # in Setup Mode again (the empty variable store, as after a CMOS clear). systemd-boot must enrol
 # nothing: /usr's loader.conf, on the ESP since the first good boot, says secure-boot-enroll off.
-# It starts the UKI, and the kernel reports Secure Boot off; that boot then stops at switch-root,
-# as every boot without the db does (docs/proven.md, Not proven).
+# It starts the UKI, and the kernel reports Secure Boot off; the harness stops QEMU there.
 test_no_reenrol() {
   echo ""
   echo "=== Setup Mode again, enrolment files back on the ESP ==="
