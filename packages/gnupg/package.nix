@@ -12,9 +12,9 @@ package {
   # Upstream finds gpg-agent (bindir) and the helpers (libexecdir) by compiled-in paths, with
   # gpgconf.ctl as the one override, which needs an absolute rootdir. The patch makes the
   # directory above the running executable the root, so gpg starts bin/gpg-agent from wherever
-  # the package is, and keeps /usr paths only for a system without /proc. It also gives a spawned
-  # helper its full path as argv[0]: bin/ holds launchers (the libraries' bin/ dirs go on PATH),
-  # and a launcher looks itself up by argv[0], which upstream cut down to "gpg-agent"
+  # the package is, and keeps /usr paths only for a system without /proc. A helper is spawned by
+  # its full path with a bare argv[0] ("gpg-agent"): bin/ holds launchers, and repkgs' launcher
+  # finds its record from the path it was run as (AT_EXECFN), not from PATH
   patches = [ ./relocatable.patch ];
   autotools.flags = [
     "--sysconfdir=/etc" # /etc/gnupg holds gpg.conf and the system trust settings

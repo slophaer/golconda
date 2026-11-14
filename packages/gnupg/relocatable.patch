@@ -1,6 +1,5 @@
 Find gpg-agent and the helpers next to the running executable, not by
-compiled-in paths, so the package can move; give a spawned helper its
-full path as argv[0], so a launcher can find itself.
+compiled-in paths, so the package can move.
 
 --- a/common/homedir.c
 +++ b/common/homedir.c
@@ -89,21 +88,3 @@ full path as argv[0], so a launcher can find itself.
  #endif /*!HAVE_W32_SYSTEM*/
  }
  
---- a/common/exechelp-posix.c
-+++ b/common/exechelp-posix.c
-@@ -298,11 +298,10 @@
-     while (argv[i])
-       i++;
-   arg_list = xcalloc (i+2, sizeof *arg_list);
--  arg_list[0] = strrchr (pgmname, '/');
--  if (arg_list[0])
--    arg_list[0]++;
--  else
--    arg_list[0] = xstrdup (pgmname);
-+  /* Pass the program name as it was given, not its last component:
-+   * a launcher script or stub looks itself up by argv[0], and a bare
-+   * "gpg-agent" would be searched on PATH.  */
-+  arg_list[0] = (char*)pgmname;
-   if (argv)
-     for (i=0,j=1; argv[i]; i++, j++)
-       arg_list[j] = (char*)argv[i];
