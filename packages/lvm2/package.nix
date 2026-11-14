@@ -1,16 +1,15 @@
-# lvm2: device-mapper library and tools
+# lvm2: the device-mapper library and dmsetup, nothing of LVM itself.
 #
-# Configure flags for dm udev synchronization:
-# - --enable-udev_rules: install 10-dm.rules, 13-dm-disk.rules, 95-dm-notify.rules
-# - --with-udevdir=$out/lib/udev: relocatable udev rules path
-# - --disable-udev_sync: disabled because libudev requires systemd (WP4)
-# - --disable-udev-systemd-background-jobs: no systemd integration
+# A farm package (prefix = "/usr"): its udev rules (10-dm, 13-dm-disk, 95-dm-notify) exec
+# dmsetup as /usr/bin/dmsetup, and the initrd farms lib/udev/rules.d as it is
+# (lib/image/initrd.nix). cryptsetup links libdevmapper; the initrd needs the rules and dmsetup
+# for /dev/mapper/usr.
 #
-# LIMITATION: Without --enable-udev_sync, dmsetup lacks the udevcomplete command.
-# When systemd/libudev is available (WP4), rebuild with --enable-udev_sync.
-# The semaphore-based dm_udev_wait/dm_udev_complete will then work with the rules.
-#
-# For initrd: include lib/udev/rules.d/{10-dm,13-dm-disk,95-dm-notify}.rules and dmsetup.
+# udev_sync is off: libdevmapper would link libudev, which is systemd's, and systemd depends on
+# cryptsetup, which depends on lvm2: systemd -> cryptsetup -> lvm2 -> libudev is a cycle. Without
+# it, libdevmapper does not wait on udev cookies and dmsetup has no udevcomplete; systemd's
+# device units do the waiting, and the rules work as they are (`13-dm-disk` needs /usr/bin/blkid,
+# modules/base/parts/links.nix). Breaking the cycle needs a libudev built apart from systemd.
 {
   package,
   pkgs,
@@ -18,6 +17,7 @@
 package {
   name = "lvm2";
   uses = [ "autotools" ];
+  prefix = "/usr";
   dependencies = [
     pkgs.util-linux # libuuid, libblkid
     pkgs.libaio # async I/O for device-mapper
@@ -29,14 +29,14 @@ package {
       "--enable-cmdlib" # libdm, dmsetup
       "--enable-pkgconfig" # install devmapper.pc for libcryptsetup
 
-      # udev rules: install for future udev_sync when systemd exists
+      # the dm udev rules, in the prefix's lib/udev/rules.d
       "--enable-udev_rules"
-      "--with-udevdir=\${prefix}/lib/udev/rules.d"
+      "--with-udevdir=/usr/lib/udev/rules.d"
 
-      # Disable features requiring libudev (systemd not yet available)
-      "--disable-udev_sync" # requires libudev >= 143
+      # no libudev: it would close the cycle systemd -> cryptsetup -> lvm2 -> libudev
+      "--disable-udev_sync"
       "--disable-udev-systemd-background-jobs"
-      "--without-udev" # don't link libudev
+      "--without-udev"
 
       # Disable LVM features we don't need
       "--disable-selinux"
@@ -57,21 +57,6 @@ package {
     buildTarget = [ "device-mapper" ];
     installTarget = [ "install_device-mapper" ];
   };
-  # udev rules have absolute paths by design; make them use {prefix} placeholder
-  # so initrd/system install can substitute the actual path
-  phases.after."autotools.install" = [
-    {
-      name = "fix-udev-rules";
-      run = ''
-        let c = (ctx)
-        cd $c.out
-        for f in (glob lib/udev/rules.d/*.rules) {
-          ^chmod u+w $f
-          open --raw $f | str replace -a $c.out '{prefix}' | save -f $f
-        }
-      '';
-    }
-  ];
   # Tests need root and devices
   tests.run = false;
   # dmsetup --version fails without /dev/mapper/control (kernel device-mapper)

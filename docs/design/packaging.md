@@ -83,7 +83,7 @@ Some packages compile absolute paths into their binaries: systemd looks for gene
 privilege-separation directory. Their recipes set the relevant prefix or configure flags to `/usr`;
 not every build system uses a `prefix` attribute. The image supplies those paths through explicit
 links and directory farms ([Layout: The symlink map](layout.md#the-symlink-map)). Examples include
-systemd, dbus-broker, openssh, linux-pam, and GnuPG.
+systemd, dbus-broker, openssh, linux-pam, lvm2 (its udev rules exec `/usr/bin/dmsetup`), and GnuPG.
 
 Everything else is relocatable and lives only in the store. A package that cannot be relocated and
 cannot take a prefix is not packaged.

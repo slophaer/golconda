@@ -1,6 +1,6 @@
 # initrd.nu: the zstd cpio around the initrd's /usr tree (lib/image/initrd.nix).
 #
-# Structured attrs: usrTree, dmRules.
+# Structured attrs: usrTree.
 
 use common.nu *
 
@@ -31,14 +31,9 @@ export def build [] {
   ^ln -s usr/lib $"($root)/lib"
   for d in [proc sys dev run tmp var sysroot] { mkdir $"($root)/($d)" }
 
-  # lvm2's device-mapper rules call dmsetup by absolute path: {prefix} is /usr here
-  let rules = $"($root)/usr/lib/udev/rules.d"
-  mkdir $rules
-  for f in (ls ($"($a.dmRules)/*.rules" | into glob) | get name) {
-    let dest = $"($rules)/($f | path basename)"
-    if ($dest | path exists -n) { error make {msg: $"($dest) exists: two sources for a dm rule"} }
-    open --raw $f | str replace -a "{prefix}" "/usr" | save -f $dest
-    log $"dm rule ($f | path basename)"
+  # lvm2's device-mapper rules: the tree has them (a farm link of the initrd's fragment)
+  for r in [10-dm.rules 13-dm-disk.rules 95-dm-notify.rules] {
+    if not ($"($root)/usr/lib/udev/rules.d/($r)" | path exists) { error make {msg: $"lvm2's ($r) missing from the initrd"} }
   }
 
   # what the kernel execs (rdinit=) must lead to a real file in the cpio, through its links

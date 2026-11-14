@@ -2,9 +2,11 @@
 # A function of the harness (./harness.nix); it returns a list of checks.
 {
   check,
+  fixturePkgs,
   hasInfix,
   hasPrefix,
   imageLib,
+  sources,
   usrTreeLib,
   ...
 }:
@@ -18,6 +20,26 @@ let
     ;
 in
 [
+  # lvm2's device-mapper rules exec dmsetup by its compiled-in path, so lvm2 is a farm package
+  # (prefix /usr): the initrd farms the rules as they are, with nothing to substitute
+  (check "initrd: lvm2 is a farm package and the initrd farms its dm rules" (
+    let
+      initrd = imageLib.initrdSystem {
+        imageId = "t";
+        version = "20261031.1";
+        pkgs = fixturePkgs;
+        inherit sources;
+        platform.name = "x86_64-linux";
+        buildSystem = "x86_64-linux";
+      };
+    in
+    fixturePkgs.lvm2.args.prefix == "/usr"
+    &&
+      initrd.composed.links."/usr/lib/udev/rules.d" == {
+        target = "${fixturePkgs.lvm2}/lib/udev/rules.d";
+        kind = "farm";
+      }
+  ))
   # 8. usr-tree library: pure helpers
   (check "usr-tree: stripUsrPrefix strips /usr/ prefix" (
     usrTreeLib.stripUsrPrefix "/usr/lib/foo" == "lib/foo"

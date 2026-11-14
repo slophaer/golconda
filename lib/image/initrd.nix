@@ -14,8 +14,8 @@
 #
 # The cpio holds: /usr (the tree), /init -> usr/lib/systemd/systemd, /etc/initrd-release ->
 # ../usr/lib/os-release (systemd knows it runs in an initrd by it) with /etc/os-release pointing
-# at it, the merged-/usr links /bin /sbin /lib, the empty mount points, and lvm2's
-# device-mapper udev rules with {prefix} replaced by /usr (they call dmsetup by absolute path,
+# at it, the merged-/usr links /bin /sbin /lib and the empty mount points. lvm2's device-mapper
+# udev rules are in the tree: a farm link of the initrd's fragment (they exec /usr/bin/dmsetup,
 # and systemd's libcryptsetup needs them for /dev/mapper/usr). No machine-id, no shadow, no
 # static /init: systemd itself is PID 1 and finds the /usr partition by usrhash= (its
 # veritysetup and gpt-auto generators).
@@ -68,9 +68,14 @@ let
         {
           name = "/image/initrd";
           packages = [
-            pkgs.lvm2 # dmsetup and the dm udev rules (initrd.nu substitutes {prefix})
+            pkgs.lvm2 # dmsetup and the dm udev rules
             pkgs.cryptsetup # veritysetup, for the initrd's own checks
           ];
+          # lvm2 is a farm package (prefix /usr): its rules, file by file, beside systemd's
+          links."/usr/lib/udev/rules.d" = {
+            target = "${pkgs.lvm2}/lib/udev/rules.d";
+            kind = "farm";
+          };
           # The initrd reaches sockets.target and sysinit.target, which pull networkd (its
           # socket) and timesyncd through /base's .wants links. sysusers does not run in the
           # initrd, so /base gives those units ConditionPathExists=!/etc/initrd-release.
@@ -122,7 +127,6 @@ in
       ];
       attrs = {
         inherit usrTree;
-        dmRules = "${pkgs.lvm2}/lib/udev/rules.d";
       };
     };
 }
