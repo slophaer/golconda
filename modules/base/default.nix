@@ -5,8 +5,7 @@
 #! Its table only configures it; a configuration need not have one.
 #!
 #! Packages: systemd, dbus-broker, dash (linked as /usr/bin/sh; the image
-#! has no bash), uutils-coreutils, tpm2-tss (only systemd's dlopen reaches
-#! it), e2fsprogs (mkfs.ext4 and fsck.ext4 for the root partition systemd-repart
+#! has no bash), uutils-coreutils, e2fsprogs (mkfs.ext4 and fsck.ext4 for the root partition systemd-repart
 #! makes at first boot), tzdata
 #! (/usr/share/zoneinfo), hwdb (systemd's hardware database, compiled, at
 #! /usr/lib/udev/hwdb.bin) and the kernel (consumed later by the UKI builder).
@@ -51,7 +50,8 @@
 #! Links, besides the `/usr/bin` links the image builder makes for the packages:
 #! - farm links for systemd's own directories (`/usr/lib/systemd`,
 #!   `/usr/lib/udev`, `/usr/lib/sysusers.d`, `/usr/lib/tmpfiles.d`);
-#! - dlopen links: every soname systemd opens at run time, in `/usr/lib`;
+#! - dlopen links: glibc's NSS modules (`libnss_systemd`, `libnss_myhostname`) in
+#!   `/usr/lib`; the libraries systemd dlopens it finds through its RUNPATH;
 #! - `/usr/bin` links for the util-linux and e2fsprogs executables that mount
 #!   units, systemd-fsck and udev rules exec (the whole packages would bring
 #!   100 more tools).
@@ -221,7 +221,6 @@ in
         p.dbus-broker
         p.dash
         p.uutils-coreutils
-        p.tpm2-tss # dlopen only (see parts/links.nix): nothing else brings it into the closure
         p.e2fsprogs # mkfs.ext4 and fsck.ext4: repart makes the root partition at first boot
         p.tzdata # the zone database: /usr/share/zoneinfo
         p.hwdb # the compiled hardware database: /usr/lib/udev/hwdb.bin

@@ -43,12 +43,6 @@ in
       ];
       # OpenSSL's provider for keys on a PKCS#11 token: the tools load it by name from here
       attrs.opensslModules = "${pkgs.pkcs11-provider}/lib/ossl-modules";
-      libs = [
-        pkgs.openssl # systemd-sbsign, systemd-measure, systemd-repart: libcrypto
-        pkgs.tpm2-tss # systemd-measure: libtss2-mu for the PCR policy
-        pkgs.util-linux # systemd-repart: libfdisk, libblkid, libmount
-        pkgs.cryptsetup # libcryptsetup, opened when a definition has Verity=
-      ];
     };
 
   # enrolTool { pkgs; buildSystem; } → derivation with bin/golconda-enrol-auth
@@ -73,7 +67,6 @@ in
         programEnv.GOLCONDA_SECUREBOOT_OBJECTS = "${pkgs.secureboot-objects}/share/secureboot-objects";
         opensslModules = "";
       };
-      libs = [ pkgs.openssl ];
     };
 
   signedWithTestKeys =

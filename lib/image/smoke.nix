@@ -32,10 +32,6 @@ in
         pkgs.ukify
         pkgs.systemd
       ];
-      libs = [
-        pkgs.openssl
-        pkgs.tpm2-tss
-      ];
       attrs = {
         inherit unsigned signed keys;
       };

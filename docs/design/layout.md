@@ -35,8 +35,10 @@ tree builder makes them:
 - **`farm`**: a directory expanded file by file, for a package compiled with `prefix = "/usr"`
   ([Packaging](packaging.md#prefixed-packages)):
   `"/usr/lib/udev/rules.d" = { target = "${systemd}/lib/udev/rules.d"; kind = "farm"; }`.
-- **`dlopen`**: `/usr/lib/<soname>` for a library systemd opens by name; the builder checks that it
-  resolves.
+- **`dlopen`**: `/usr/lib/<soname>` for a library glibc opens by name: the NSS modules
+  `libnss_systemd.so.2` and `libnss_myhostname.so.2`, which no caller's RUNPATH reaches. The builder
+  checks that it resolves. The libraries systemd dlopens need no link: the fork's RUNPATH reaches
+  them.
 - **`explicit`**: anything else, such as `/usr/bin/sh` → dash and the `.wants` links below.
 
 One rule covers the map: a path with two sources is an error naming both, whatever their kinds, and

@@ -105,11 +105,11 @@ iets eval --json -E 'builtins.attrNames (import ./examples/golconda.nix { golcon
   (`/usr/share/zoneinfo/UTC`); `L /etc/os-release`.
 
 - `packageOrigins`: `openssh` from `/services/sshd`; `ca-bundle` from `/trust`; `dash`,
-  `dbus-broker`, `e2fsprogs`, `hwdb`, `linux-kernel`, `systemd`, `tpm2-tss`, `tzdata` and
-  `uutils-coreutils` from `/base`.
+  `dbus-broker`, `e2fsprogs`, `hwdb`, `linux-kernel`, `systemd`, `tzdata` and `uutils-coreutils`
+  from `/base`.
 
 - `links`: not quoted (see above). It holds every `bin` name of the packages as `/usr/bin/<name>`,
-  systemd's directories as `farm` links, one link per dlopen soname, and the `.wants` links.
+  systemd's directories as `farm` links, the NSS modules as `dlopen` links, and the `.wants` links.
 
 The service unit, as
 `iets eval --raw -E '(import ./examples/golconda.nix { golconda = import ./default.nix; }).composed.units."sshd.service"'`

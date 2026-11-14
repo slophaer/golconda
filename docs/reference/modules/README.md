@@ -233,8 +233,8 @@ them first, and a configuration never lists them.
 
 `/base` returns:
 
-- **packages**: systemd, dbus-broker, dash, uutils-coreutils, tpm2-tss (only systemd's dlopen
-  reaches it), e2fsprogs (`mkfs.ext4` for the root partition), tzdata, hwdb and linux-kernel.
+- **packages**: systemd, dbus-broker, dash, uutils-coreutils, e2fsprogs (`mkfs.ext4` for the root
+  partition), tzdata, hwdb and linux-kernel.
 - **units**: `golconda-health-network.service` and `golconda-loader-update.service`; `dbus.socket`
   is a file, because dbus-broker does not ship it.
 - **links**:
@@ -245,7 +245,8 @@ them first, and a configuration never lists them.
     mount units, fsck and udev rules exec;
   - `farm` links for systemd's own directories (`/usr/lib/systemd`, `/usr/lib/udev`,
     `/usr/lib/sysusers.d`, `/usr/lib/tmpfiles.d`);
-  - one `dlopen` link per soname systemd opens at run time.
+  - `dlopen` links for glibc's NSS modules, `libnss_systemd.so.2` and `libnss_myhostname.so.2` (the
+    libraries systemd dlopens it finds through its RUNPATH);
   - `/usr/lib/udev/hwdb.bin` → the hwdb package's compiled database (systemd ships none).
 - **files**:
   - `timesyncd.conf.d/golconda.conf` from `ntp` and `journald.conf.d/golconda.conf` from

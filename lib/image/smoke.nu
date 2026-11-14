@@ -9,7 +9,6 @@ export def build [] {
   let a = (attrs)
   let out = $a.outputs.out
   $env.PATH = $a.PATH
-  $env.LD_LIBRARY_PATH = $a.LD_LIBRARY_PATH
   mkdir $out
   ^ln -s $a.unsigned $"($out)/unsigned"
   ^ln -s $a.signed $"($out)/disk"

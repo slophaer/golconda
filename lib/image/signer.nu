@@ -28,7 +28,6 @@ export def build [] {
     # module needs no variable
     $"exec ($nu_exe | path dirname | path join env) -i HOME=\"$HOME\" TMPDIR=\"${TMPDIR:-/tmp}\" OPENSSL_CONF=/dev/null ${SOFTHSM2_CONF:+\"SOFTHSM2_CONF=$SOFTHSM2_CONF\"} \\"
     $"  PATH='($a.PATH)' OPENSSL_MODULES='($a.opensslModules)' ($extra)\\"
-    $"  LD_LIBRARY_PATH='($a.LD_LIBRARY_PATH)' \\"
     $"  ($nu_exe) --no-config-file '--include-path=($tree)' '--experimental-options=[cell-path-types]' \\"
     $"  ($tree)/($main) \"$@\""
   ] | str join "\n" | $"($in)\n" | save -f $program

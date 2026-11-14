@@ -1,6 +1,6 @@
 # Part of /base (modules/base/default.nix merges it): the /usr links into the
 # packages. /usr/bin/sh, the util-linux and e2fsprogs tools, systemd's farm
-# directories, the dlopen sonames, the PAM module directories, the zone database and the
+# directories, the NSS modules, the PAM module directories, the zone database and the
 # compiled hwdb. (The CA bundle and its /etc links are /trust's.)
 # `p` is the package set. Returns { links; }.
 { p }:
@@ -81,35 +81,15 @@ let
     };
   };
 
-  # dlopen: libraries systemd opens by soname (its ELF .note.dlopen, every one the fork
-  # enables; libbz2 is static there); the builder checks they resolve. Their packages are
-  # in the closure as systemd's dependencies, except tpm2-tss, which only dlopen reaches
-  # (modules/base/default.nix lists it in packages for that reason).
+  # dlopen: glibc's NSS modules, which glibc opens by soname from its default directories
+  # (nsswitch.conf names `systemd` and `myhostname`); a caller's RUNPATH does not reach
+  # them. The builder checks they resolve. The libraries systemd itself dlopens (its ELF
+  # .note.dlopen) need no link: dlopen searches the caller's RUNPATH, the fork's RUNPATH
+  # names every dependency's lib/, and the fork fails a package's build when a noted
+  # soname that a dependency has is out of its reach (builder/finish.nu dlopen-check).
   dlopenSonames = {
-    "libsystemd.so.0" = p.systemd;
-    "libnss_systemd.so.2" = p.systemd; # glibc NSS modules, by name too
+    "libnss_systemd.so.2" = p.systemd;
     "libnss_myhostname.so.2" = p.systemd;
-    "libacl.so.1" = p.acl;
-    "libarchive.so.13" = p.libarchive;
-    "libblkid.so.1" = p.util-linux;
-    "libfdisk.so.1" = p.util-linux;
-    "libmount.so.1" = p.util-linux;
-    "libcrypto.so.3" = p.openssl;
-    "libssl.so.3" = p.openssl;
-    "libcryptsetup.so.12" = p.cryptsetup;
-    "libcurl.so.4" = p.curl;
-    "liblz4.so.1" = p.lz4;
-    "liblzma.so.5" = p.xz;
-    "libzstd.so.1" = p.zstd;
-    "libz.so.1" = p.zlib;
-    "libp11-kit.so.0" = p.p11-kit;
-    "libpam.so.0" = p.linux-pam;
-    "libpcre2-8.so.0" = p.pcre2;
-    "libseccomp.so.2" = p.libseccomp;
-    "libtss2-esys.so.0" = p.tpm2-tss;
-    "libtss2-mu.so.0" = p.tpm2-tss;
-    "libtss2-rc.so.0" = p.tpm2-tss;
-    "libtss2-tcti-device.so.0" = p.tpm2-tss;
   };
   dlopenLinks = listToAttrs (
     map (so: {

@@ -33,20 +33,17 @@ in
 {
   inherit (usrTreeLib) versionToEpoch;
 
-  # nuDerivation { name; buildSystem; module; tools; libs; attrs; modules ? null; }: runs
+  # nuDerivation { name; buildSystem; module; tools; attrs; modules ? null; }: runs
   # `use <module>.nu; <module> build` with every package in `tools` on PATH (bin/, plus
-  # lib/systemd for systemd's libexec tools) and every package in `libs` on LD_LIBRARY_PATH.
-  # `libs` stands in for the farm: systemd's tools dlopen libcrypto, libcryptsetup, libtss2
-  # and the compression libraries by soname (modules/base/parts/links.nix dlopenSonames), and the fork's
-  # RUNPATH does not reach them; in the image /usr/lib does. `modules`, a list of file names, puts
-  # only those .nu files in the builder's tree (default: all of them).
+  # lib/systemd for systemd's libexec tools). The libraries systemd's tools dlopen (libcrypto,
+  # libcryptsetup, libtss2, libfdisk) they find through the fork's RUNPATH. `modules`, a list of
+  # file names, puts only those .nu files in the builder's tree (default: all of them).
   nuDerivation =
     {
       name,
       buildSystem,
       module,
       tools ? [ ],
-      libs ? [ ],
       attrs ? { },
       modules ? null,
     }:
@@ -60,7 +57,6 @@ in
       path = concatStringsSep ":" (
         map (t: "${t}/bin") (tools ++ [ bootstrap.seed ]) ++ map (t: "${t}/lib/systemd") tools
       );
-      libraryPath = concatStringsSep ":" (map (l: "${l}/lib") libs);
     in
     derivation (
       {
@@ -80,7 +76,6 @@ in
         ];
         outputs = [ "out" ];
         PATH = path;
-        LD_LIBRARY_PATH = libraryPath;
       }
       // attrs
     );

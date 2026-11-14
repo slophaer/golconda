@@ -94,12 +94,18 @@ in
     && result.links."/usr/bin/mount".kind == "explicit"
     && map (b: elem "systemd-tmpfiles" b.declared) (binsFor [ ] stubSystemd) == [ true ]
   ))
-  (check "base: dlopen link for libsystemd.so.0" (
+  # systemd's own dlopen reaches its libraries through its RUNPATH (the fork's build fails
+  # when a .note.dlopen soname of a dependency is out of reach); glibc's NSS does not use the
+  # caller's RUNPATH, so only the NSS modules are /usr/lib links
+  (check "base: the only dlopen links are the NSS modules" (
     let
       result = compose [ ];
+      dlopen = builtins.filter (p: result.links.${p}.kind == "dlopen") (builtins.attrNames result.links);
     in
-    result.links ? "/usr/lib/libsystemd.so.0"
-    && result.links."/usr/lib/libsystemd.so.0".kind == "dlopen"
+    dlopen == [
+      "/usr/lib/libnss_myhostname.so.2"
+      "/usr/lib/libnss_systemd.so.2"
+    ]
   ))
   (check "base: tzdata, /usr/share/zoneinfo, and /etc/localtime at UTC" (
     let
