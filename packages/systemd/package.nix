@@ -177,14 +177,8 @@ package {
     sysconfdir = "/etc";
   };
 
-  # PYTHONPATH for meson's python3 module checks (jinja2, pyelftools)
-  # The builder doesn't automatically propagate Python site-packages yet.
-  env.PYTHONPATH = builtins.concatStringsSep ":" [
-    "${buildPkgs.python-jinja2}/lib/python3.14/site-packages"
-    "${buildPkgs.python-markupsafe}/lib/python3.14/site-packages"
-    "${buildPkgs.python-pyelftools}/lib/python3.14/site-packages"
-  ];
-
+  # meson's python3 module checks import jinja2 and pyelftools: the builder puts the build
+  # dependencies' site-packages on PYTHONPATH, with what they propagate (markupsafe)
   buildDependencies = [
     buildPkgs.gperf
     buildPkgs.cpython
