@@ -105,6 +105,11 @@ in
   # in under /etc/ssh (moduli, sshrc, ssh_config) are optional and the image ships none,
   # so an empty /etc/ssh would answer as a missing one does
   (check "factory: makes no empty directory" (!any (hasPrefix "d ") factory.tmpfiles))
+  # nor an empty file to hold one: p11-kit reads /etc/pkcs11 when it is there and skips it when
+  # it is not (p11-kit/conf.c, CONF_IGNORE_MISSING), so an empty one changes nothing
+  (check "factory: seeds no placeholder file for a directory" (
+    !any (p: baseNameOf p == ".keep") (attrNames factory.files)
+  ))
   (check "factory: knows no service (no sshd user, no /var/empty)" (
     !(factory ? sysusers)
     && !any (hasInfix "/var/empty") factory.tmpfiles

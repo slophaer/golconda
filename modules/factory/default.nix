@@ -145,8 +145,6 @@ in
           "session optional linux-pam/pam_umask.so silent"
           "session optional systemd/pam_systemd.so"
         ];
-        # PKCS#11 module configuration (docs/design/trust.md)
-        "pkcs11/.keep" = "";
       };
 
       clash = builtins.filter (p: builtIn ? ${p}) (attrNames options.extraFiles);

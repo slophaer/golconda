@@ -321,7 +321,10 @@ Built-in seeds:
 - `pam.d/other` (every type `linux-pam/pam_deny.so`);
 - `pam.d/sshd` (`account linux-pam/pam_unix.so`; `session systemd/pam_systemd.so` optional,
   `session linux-pam/pam_unix.so`; no `auth` line, so an auth request falls through to `other`);
-- `pkcs11/.keep`.
+- `pam.d/systemd-user` (systemd `--user`, which `pam_systemd` starts at a login).
+
+No empty directory: p11-kit reads `/etc/pkcs11` when an administrator makes it, and skips it when it
+is missing.
 
 Never seeded: `passwd`, `group`, `shadow` (systemd-sysusers writes them on first boot), `machine-id`
 (PID 1) and `hostname` (PID 1 sets it from the bootstrap credential).

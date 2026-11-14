@@ -78,7 +78,7 @@ iets eval --json -E 'builtins.attrNames (import ./examples/golconda.nix { golcon
 - `units`: `golconda-health-network.service`, `golconda-health-sshd.service`,
   `golconda-loader-update.service`, `golconda-var-sshd-hostkey.service`, `sshd.service`.
 
-- `files` (35 on 2026-11-14), by origin:
+- `files` (34 on 2026-11-14), by origin:
 
   - `/base` (21): `/usr/lib/repart.d/30-root.conf`, `/usr/lib/locale.conf`, the timesyncd and
     journald files, `golconda-loader-update` and `loader.conf`,
@@ -90,8 +90,8 @@ iets eval --json -E 'builtins.attrNames (import ./examples/golconda.nix { golcon
   - `/network` (1): `99-default-dhcp.network`; `/security` (1):
     `/usr/lib/sysctl.d/50-golconda.conf`;
   - the var runner `/usr/lib/golconda/golconda-var-run` (1);
-  - `/factory` (5): `pam.d/other`, `pam.d/sshd`, `pam.d/systemd-user`, `shells` and one `.keep`
-    file, under `/usr/share/factory/etc`.
+  - `/factory` (4): `pam.d/other`, `pam.d/sshd`, `pam.d/systemd-user` and `shells`, under
+    `/usr/share/factory/etc`.
 
   There is no `ca.pub`, no `principals/` and no `/usr/lib/sysupdate.d/`: the example sets none of
   them.
