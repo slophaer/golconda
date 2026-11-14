@@ -1,6 +1,8 @@
 Backport of upstream commit fc8820cf (libtpms master, 2026-01-02, after 0.10.2): strstr on a
 const string returns a const pointer with C23 glibc, and libtpms builds with -Werror.
 
+Origin: upstream
+
 From fc8820cfaa8b5e17328f731df93911f6ab92443b Mon Sep 17 00:00:00 2001
 From: Stefan Berger <stefanb@linux.ibm.com>
 Date: Fri, 2 Jan 2026 11:37:31 -0500

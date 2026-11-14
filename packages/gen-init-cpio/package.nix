@@ -7,12 +7,16 @@
 #
 # The source is the kernel tree packages/kernel pins, so there is no second pin to keep in step:
 # a kernel update updates this too. One C file with only libc headers; no sources.toml, so the
-# SBOM purl is the kernel's plus a subpath (lib/sbom-sources.nix). Not part of an image.
+# SBOM purl is the kernel's plus a subpath (sourceOf). Not part of an image.
 { package, pkgs }:
 package {
   name = "gen-init-cpio";
   inherit (pkgs.linux-kernel) version;
   source = "${pkgs.linux-kernel.src}/usr";
+  sourceOf = {
+    package = pkgs.linux-kernel;
+    subpath = "usr/gen_init_cpio.c";
+  };
   phases = [
     {
       name = "build";

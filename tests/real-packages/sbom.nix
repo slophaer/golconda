@@ -1,8 +1,7 @@
-# The system SBOM, as repkgs' generator writes it (moved from tests/eval; tests/eval/sbom-patches.nix
-# checks the patch entries on the packages as data): every component says where it comes from (golconda:origin), a downstream
-# replacement names the package it replaced (CycloneDX pedigree.ancestors), a patched package
-# lists its patches (pedigree.patches), and a sources.toml CPE becomes the component's cpe.
-# Identities, not guessed display names.
+# The system SBOM, as repkgs' generator writes it: every component says where it comes from
+# (golconda:origin), a downstream replacement names the package it replaced (CycloneDX
+# pedigree.ancestors), a patched package lists its patches (pedigree.patches, the generator's), and
+# a sources.toml CPE becomes the component's cpe. Identities, not guessed display names.
 {
   check,
   sources,
@@ -60,16 +59,23 @@ let
         roots = fixture.composed.packages;
         name = "${fixture.name}-${fixture.version}";
       };
+  # a component without what Golconda adds: the golconda: properties, and a replacement's
+  # pedigree.ancestors and notes (the generator's pedigree.patches stay)
   withoutProvenance =
     c:
     let
       kept = builtins.filter (p: !isProvenance p) (c.properties or [ ]);
+      pedigree = builtins.removeAttrs (c.pedigree or { }) [
+        "ancestors"
+        "notes"
+      ];
     in
     builtins.removeAttrs c [
       "properties"
       "pedigree"
     ]
-    // (if kept == [ ] then { } else { properties = kept; });
+    // (if kept == [ ] then { } else { properties = kept; })
+    // (if pedigree == { } then { } else { inherit pedigree; });
   ordinary = mkSystem {
     config = {
       "/system" = {
@@ -80,7 +86,16 @@ let
   };
   plain = name: builtins.head (builtins.filter (c: c.name == name) ordinary.sbom.bom.components);
   patchesOf = c: c.pedigree.patches or [ ];
-  sbomPatches = import ../../lib/sbom-patches.nix { };
+  # one package's own component, as the generator writes it for the set without a document
+  ownComponent =
+    n:
+    builtins.head (
+      builtins.filter (c: c.name == n)
+        (base.set.sbom {
+          roots = [ base.pkgs.${n} ];
+          name = "own";
+        }).bom.components
+    );
   # a patch as the SBOM carries it: the file (relative to the package directory) and its text
   patchFile = pkg: file: {
     url = file;
@@ -190,11 +205,82 @@ in
     && !((c.pedigree or { }) ? ancestors)
     && c == plain "systemd"
   ))
-  (check "sbom: a patched package lists its patches in pedigree.patches (lib/sbom-patches.nix)" (
+  (check "sbom: a patched package lists its patches, in order, with its header's subject" (
     let
-      c = component "systemd";
+      file = patchFile fixture.pkgs.systemd;
     in
-    builtins.length (patchesOf c) == 3 && patchesOf c == sbomPatches.of fixture.pkgs.systemd
+    patchesOf (component "systemd") == [
+      {
+        type = "unofficial";
+        diff = file "hwdb-imds-hetzner.patch";
+        resolves = [
+          {
+            type = "defect";
+            name = "hwdb: fix the IMDS paths for Hetzner Cloud";
+          }
+        ];
+      }
+      {
+        type = "unofficial";
+        diff = file "imds-ssh-key-json.patch";
+        resolves = [
+          {
+            type = "enhancement";
+            name = "imds: import SSH keys provided as a JSON array";
+          }
+        ];
+      }
+      {
+        type = "unofficial";
+        diff = file "hwdb-imds-hetzner-ssh-keys.patch";
+        resolves = [
+          {
+            type = "enhancement";
+            name = "hwdb: import the SSH keys on Hetzner Cloud";
+            references = [ "https://docs.hetzner.cloud/reference/cloud#server-metadata" ];
+          }
+        ];
+      }
+    ]
+  ))
+  (check "sbom: each Golconda patch says why in its header" (
+    let
+      patched = [
+        "dosfstools"
+        "gnupg"
+        "libgpg-error"
+        "libtpms"
+        "p11-kit"
+        "systemd"
+      ];
+      patches = builtins.concatMap (n: patchesOf (ownComponent n)) patched;
+    in
+    builtins.length patches == 8 && builtins.all (p: p ? resolves) patches
+  ))
+  (check "sbom: a patch marked Origin: upstream is a backport, linked to its upstream commit" (
+    let
+      dosfstools = builtins.head (patchesOf (ownComponent "dosfstools"));
+      libtpms = builtins.head (patchesOf (ownComponent "libtpms"));
+    in
+    dosfstools.type == "backport"
+    &&
+      dosfstools.diff.url
+      == "https://github.com/dosfstools/dosfstools/commit/8da7bc93315cb0c32ad868f17808468b81fa76ec"
+    &&
+      dosfstools.resolves == [
+        {
+          type = "enhancement";
+          name = "Honor the SOURCE_DATE_EPOCH variable";
+          references = [
+            "https://reproducible-builds.org/specs/source-date-epoch/"
+            "https://github.com/dosfstools/dosfstools/pull/106"
+          ];
+        }
+      ]
+    && libtpms.type == "backport"
+    &&
+      libtpms.diff.url
+      == "https://github.com/stefanberger/libtpms/commit/fc8820cfaa8b5e17328f731df93911f6ab92443b"
   ))
   (check "sbom: a repkgs patch is listed too; one with no header resolves nothing" (
     patchesOf (component "attr") == [
@@ -257,11 +343,8 @@ in
       (component "openssh").pedigree.ancestors
       == [ (ancestorOf (component "openssh").type base.pkgs.openssh) ]
   ))
-  (check "sbom: only golconda:origin and pedigree change the generator's BOM" (
+  (check "sbom: only golconda:origin and a replacement's ancestors change the generator's BOM" (
     fixture.sbom.bom // { components = map withoutProvenance components; } == baseline.bom
-    // {
-      components = map (c: builtins.removeAttrs c [ "pedigree" ]) baseline.bom.components;
-    }
   ))
   (check "sbom: /usr gets the generator's sbom.json for this document" (
     fixture.usrTree.drvAttrs.sbomPath == "${fixture.sbom}/sbom.json"
@@ -270,18 +353,9 @@ in
     "sbom: hwdb, gen-init-cpio and ca-bundle name the source they are built from, as a purl with a subpath"
     (
       let
-        of =
-          n:
-          builtins.head (
-            builtins.filter (c: c.name == n)
-              (base.set.sbom {
-                roots = [ base.pkgs.${n} ];
-                name = "source";
-              }).bom.components
-          );
-        hwdb = of "hwdb";
-        cpio = of "gen-init-cpio";
-        bundle = of "ca-bundle";
+        hwdb = ownComponent "hwdb";
+        cpio = ownComponent "gen-init-cpio";
+        bundle = ownComponent "ca-bundle";
       in
       hwdb.purl == "pkg:github/systemd/systemd@${base.pkgs.systemd.version}#hwdb.d"
       && cpio.purl == "pkg:generic/linux@${base.pkgs.linux-kernel.version}#usr/gen_init_cpio.c"

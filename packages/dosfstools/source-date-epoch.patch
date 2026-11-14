@@ -2,6 +2,8 @@ Backport of upstream commit 8da7bc93 (dosfstools PR #106, merged 2021-08-19, aft
 last release): mkfs.fat takes its clock from SOURCE_DATE_EPOCH, so the ESP that systemd-repart
 makes for disk.raw is the same bytes on every run (lib/image/disk.nu).
 
+Origin: upstream
+
 From 8da7bc93315cb0c32ad868f17808468b81fa76ec Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Bj=C3=B8rn=20Forsman?= <bjorn.forsman@gmail.com>
 Date: Wed, 5 Dec 2018 19:52:51 +0100

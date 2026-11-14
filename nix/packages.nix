@@ -140,53 +140,6 @@ let
     # Set-wide choices: one TLS stack, one of each (docs/design/principles.md).
     features.tls = "openssl";
   };
-  # The generator gives a package a purl only from its own sources.toml. hwdb, gen-init-cpio, ca-bundle
-  # are built from another package's source and have none (lib/sbom-sources.nix): this sets their
-  # purl to that source's, plus a subpath. The document is rebuilt with the generator's own
-  # builder, so everything else in it is unchanged.
-  sourcePurls = import ../lib/sbom-sources.nix;
-  sourcePurl =
-    n:
-    let
-      s = sourcePurls.${n};
-      root = builtins.head (
-        filter (c: c.type == "application")
-          (generated {
-            roots = [ set.pkgs.${s.from} ];
-            name = "source";
-          }).bom.components
-      );
-    in
-    "${root.purl}#${s.subpath}";
-  generated = set.sbom;
-  sbom =
-    args:
-    let
-      orig = generated args;
-      bom = orig.bom // {
-        components = map (
-          c: if sourcePurls ? ${c.name} then c // { purl = sourcePurl c.name; } else c
-        ) orig.bom.components;
-      };
-    in
-    if !(builtins.any (c: sourcePurls ? ${c.name}) orig.bom.components) then
-      orig
-    else
-      derivation {
-        inherit (orig)
-          name
-          system
-          builder
-          args
-          __contentAddressed
-          outputHashMode
-          outputHashAlgo
-          ;
-        json = builtins.toFile "sbom.json" (builtins.toJSON bom);
-      }
-      // {
-        inherit bom;
-      };
   catalogueNames = builtins.attrNames (
     listToAttrs (
       map (n: {
@@ -211,7 +164,7 @@ let
       # the package's own component, as the SBOM generator writes it
       root = builtins.head (
         filter (c: c.type == "application")
-          (sbom {
+          (set.sbom {
             roots = [ p ];
             name = "catalogue";
           }).bom.components
@@ -236,10 +189,7 @@ let
 in
 {
   inherit (set) pkgs platform;
-  inherit platforms;
-  set = set // {
-    inherit sbom;
-  };
+  inherit platforms set;
   downstream = checked downstreamInfo;
   catalogue = checked (
     listToAttrs (

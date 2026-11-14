@@ -48,7 +48,6 @@ let
     ./trust.nix
     ./imds.nix
     ./components.nix
-    ./sbom-patches.nix
     ./pins.nix
   ];
   tests = builtins.concatLists areas;

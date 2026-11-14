@@ -24,7 +24,7 @@
 # A package that fails here fails the image build, not the boot.
 #
 # The source is cacert's directory, so there is no second pin to keep in step: a cacert update
-# updates this. No sources.toml; the SBOM purl is cacert's plus a subpath (lib/sbom-sources.nix).
+# updates this. No sources.toml; the SBOM purl is cacert's plus a subpath (sourceOf).
 {
   package,
   pkgs,
@@ -34,6 +34,10 @@ package {
   name = "ca-bundle";
   inherit (pkgs.cacert) version;
   source = "${pkgs.cacert}/etc/ssl/certs";
+  sourceOf = {
+    package = pkgs.cacert;
+    subpath = "certifi/cacert.pem";
+  };
   buildDependencies = [ buildPkgs.p11-kit ]; # trust, and its module
   env = {
     GOLCONDA_CA_ANCHORS = "[]";

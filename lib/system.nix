@@ -338,10 +338,10 @@ let
     } root;
 
   # The SBOM (CycloneDX JSON), matched by derivation, not by name: every component says where it
-  # comes from (golconda:origin), a downstream replacement names what it replaced
-  # (pedigree.ancestors), and a patched package lists its patches (pedigree.patches,
-  # lib/sbom-patches.nix). The generator reads purl and cpe from each sources.toml.
-  sbomPatches = import ./sbom-patches.nix { };
+  # comes from (golconda:origin), and a downstream replacement names what it replaced
+  # (pedigree.ancestors). The generator reads purl and cpe from each sources.toml (or a package's
+  # sourceOf), and lists a patched package's patches (pedigree.patches; a patch that says it is an
+  # upstream commit is a backport).
   sbom = setFull.set.sbom {
     roots = composed.packages;
     name = "${composed.name}-${composed.version}";
@@ -356,20 +356,17 @@ let
       let
         downstream = downstreamByDrv.${drvKey pkg} or null;
         type = if builtins.elem pkg composed.packages then "application" else "library";
-        patches = sbomPatches.of pkg;
-        pedigree =
-          (
-            if downstream == null || downstream.replaces == null then
-              { }
-            else
-              {
-                ancestors = [ (ancestorOf type downstream.name) ];
-                notes = "replaced by the downstream package ${downstream.name}; the original comes from ${downstream.replaces}";
-              }
-          )
-          // (if patches == [ ] then { } else { inherit patches; });
       in
-      if pedigree == { } then { } else { inherit pedigree; };
+      if downstream == null || downstream.replaces == null then
+        { }
+      else
+        {
+          # merged over the generator's pedigree, which keeps its patches
+          pedigree = {
+            ancestors = [ (ancestorOf type downstream.name) ];
+            notes = "replaced by the downstream package ${downstream.name}; the original comes from ${downstream.replaces}";
+          };
+        };
   };
   # The files mkSystem adds to /usr/lib/golconda/ (modules/lib/merge.nix reserves the paths).
   artifacts = {

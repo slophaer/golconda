@@ -8,6 +8,7 @@
 #
 # The sources are the target systemd's own lib/udev/hwdb.d, so the database always matches the
 # udev that reads it and carries its version; no second pin can drift from packages/systemd. The
+# SBOM names systemd's source, at its hwdb.d (sourceOf). The
 # compiler is the build machine's systemd-hwdb (buildDependencies). Only the files in files.nix
 # go in; a file there that systemd no longer ships fails the build, so a rename is noticed.
 # The output is the same bytes for the same inputs.
@@ -20,6 +21,10 @@ package {
   name = "hwdb";
   inherit (pkgs.systemd) version;
   source = "${pkgs.systemd}/lib/udev/hwdb.d";
+  sourceOf = {
+    package = pkgs.systemd;
+    subpath = "hwdb.d";
+  };
   buildDependencies = [ buildPkgs.systemd ]; # systemd-hwdb
   env.GOLCONDA_HWDB_FILES = builtins.toJSON (import ./files.nix);
   phases = [
