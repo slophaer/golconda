@@ -157,9 +157,11 @@ in
     touch $out
   '';
 
-  # the trial boot generator on fake efivars: a drop-in on a trial boot only (tests/trial-boot)
+  # the trial boot generator on fake efivars: a drop-in on a trial boot only; and the update
+  # activation's condition with a stub bootctl (tests/trial-boot)
   trial-boot = run "trial-boot" [ rp.coreutils ] ''
     sh ${src}/tests/trial-boot/generator.sh
+    sh ${src}/tests/trial-boot/update-pending.sh
     touch $out
   '';
 

@@ -295,12 +295,13 @@ Set `updateSource = "https://updates.example.com/server/"` in `"/system"` and th
 `/usr/lib/sysupdate.d/{10-usr,20-usr-verity,30-usr-verity-sig,40-uki}.transfer` and the update timer
 *(eval)*. To release a new version, change `version`, rebuild and publish the `release/` directory
 ([Releases](../design/releases.md)); `systemd-sysupdate-update.service` on the machine writes the B
-slots and the new UKI to the ESP, and the next boot runs them. Three failed boots make systemd-boot
-choose the other slot ([Updates](../design/updates.md)).
+slots and the new UKI to the ESP, and `systemd-sysupdate-reboot.timer` reboots into them at 04:10
+(`/system.updateReboot`). Three failed boots make systemd-boot choose the other slot
+([Updates](../design/updates.md)).
 
 The harness runs this whole update. `scripts/boot-test … --next DIR` serves the next release over
-HTTP at the image's `updateSource`, lets the guest install it, reboots, and checks the result.
-Output *(boot)*:
+HTTP at the image's `updateSource`, lets the guest install it, moves the reboot window to every 10
+s, waits for the guest to reboot itself, and checks the result. Output *(boot)*:
 
 ```text
 PASS: release-index (4 lines: usr, verity, signature, UKI; digests match)

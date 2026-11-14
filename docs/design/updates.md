@@ -1,8 +1,9 @@
 # Updates
 
 An update is a new version of four artifacts, written to the inactive slot by systemd-sysupdate, and
-a reboot. Rollback is the previous slot, chosen by boot counting or by hand. The transfer
-definitions are rendered (`/system.updateSource`); the artifacts come from the image builder
+a reboot, which systemd's reboot timer starts in a nightly window ([Activation](#activation)).
+Rollback is the previous slot, chosen by boot counting or by hand. The transfer definitions are
+rendered (`/system.updateSource`); the artifacts come from the image builder
 ([Image artifacts](../reference/image.md)).
 
 ```mermaid
@@ -12,10 +13,13 @@ flowchart TD
   chk -->|no| done[nothing to do]
   chk -->|yes| w1[write usr, verity, sig to the inactive slot]
   w1 --> w2[write UKI to the ESP as id_version+3-0.efi]
-  w2 --> reboot
+  w2 --> window[the reboot timer, at 04:10: does systemd-boot pick another entry?]
+  window -->|yes| reboot
+  window -->|no| done
   reboot --> good{boot-complete?}
   good -->|yes| bless[bless-boot: entry good; the old slot is now inactive]
-  good -->|3 failures| fallback[systemd-boot falls back to the previous UKI and slot]
+  good -->|no, or not in time: the trial boot reboots| retry[next try]
+  retry -->|3 failures| fallback[systemd-boot falls back to the previous UKI and slot]
 ```
 
 ## Transfers
@@ -27,11 +31,34 @@ and `.conf` still loads with a warning. `InstancesMax=2` keeps exactly two of ea
 `ProtectVersion=%A` never overwrites the running one. The definitions are generated from the image
 name and the update source; artifact names are in [reference/image](../reference/image.md).
 
-The image enables the timer with a static link,
+The image enables the update timer with a static link,
 `/usr/lib/systemd/system/timers.target.wants/systemd-sysupdate-update.timer` →
 `../systemd-sysupdate-update.timer` (`modules/system/default.nix`). systemd 262 renamed
 `systemd-sysupdate.timer` to `systemd-sysupdate-update.timer` and keeps the old name as an alias;
 the service is `systemd-sysupdate-update.service`.
+
+## Activation
+
+An installed update runs only after a reboot. The image enables systemd's own
+`systemd-sysupdate-reboot.timer` with a static link, in the window `/system.updateReboot` names: an
+`OnCalendar=` value, by default `04:10`, systemd's. The timer keeps systemd's
+`RandomizedDelaySec=30min`, so the machines of one window do not all reboot at once. Its service
+runs `systemd-sysupdate reboot`, which reboots when a newer version is installed than the one that
+runs. With `updateReboot = null` the image installs updates and waits for the operator's reboot.
+
+After a fallback the release that failed its three tries is still installed, and it is newer, so
+`systemd-sysupdate reboot` alone would reboot into it every night. The service therefore has an
+`ExecCondition=`, `/usr/lib/golconda/golconda-update-pending`, which passes only when systemd-boot
+would start another entry than the running one: `bootctl list` marks the entry systemd-boot picks as
+`(default)` (an entry with no try left sorts last) and the running one as `(selected)`. After a
+fallback both are the old release, and nothing reboots. After an install the new entry, `+3-0`, is
+the default, and the machine reboots into its first try, a [trial boot](boot.md#trial-boot). An
+administrator who wants another window writes a drop-in for the timer in `/etc`; the boot test does
+so to activate within seconds. An administrator who runs `bootctl set-oneshot` or `set-default`
+changes what systemd-boot picks, and the condition follows it.
+
+`--next` and `--next --fail-health` prove both cases in QEMU, with the window moved to every 10 s
+([What is proven](../proven.md)).
 
 ## Update source
 

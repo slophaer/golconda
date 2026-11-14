@@ -134,9 +134,9 @@ that timed out (systemd's `job.c`), so one unit covers both. The deadline counts
 the host's PID 1; the initrd has its own. A kernel that hangs without a panic, and firmware that
 never starts the loader, need a hardware watchdog; the image sets none up.
 
-`--next --fail-health` proves the health row in QEMU, with no reboot from the harness
-([What is proven](../proven.md)). The panic, crash and initrd rows have no test of their own *(being
-built)*.
+In QEMU, with no reboot from the harness, `--next --fail-health` proves the health row and
+`--next --fail-initrd` the initrd failure row ([What is proven](../proven.md)). The panic, crash and
+initrd hang rows have no test of their own *(being built)*.
 
 systemd-sysupdate tells the slots apart by GPT label: an installed slot carries its version
 (`usr_20261031.1`, `usr-verity_…`, `usr-verity-sig_…`), a free one `_empty`, which gpt-auto also

@@ -9,7 +9,7 @@ this shape: [design/modules](../../design/modules.md).
 
 | path             | role                                                                                                                                                                       |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/system`        | the composer: `name`, `version`, `updateSource`, and `components` from `mkSystem` → the output below                                                                       |
+| `/system`        | the composer: `name`, `version`, `updateSource`, `updateReboot`, and `components` from `mkSystem` → the output below                                                       |
 | `/pkgs`          | the repkgs sets, passed once as `target` (and `build`); returns `{ target; build; pkgs }` to the modules that declare the input                                            |
 | `/base`          | built in, composed first: systemd, dbus-broker, dash, uutils coreutils, tpm2-tss, e2fsprogs, the kernel, the base units, `C.UTF-8`, `ntp`, `journalMaxUse` (details below) |
 | `/network`       | built in: networkd `.network` files (DHCP on every wired link by default) and resolved's fallback `dns`                                                                    |
@@ -23,7 +23,7 @@ this shape: [design/modules](../../design/modules.md).
 ## The composer output
 
 `/system` returns
-`{ name; version; updateSource; units; files; sysusers; tmpfiles; packages; packageOrigins; links }`:
+`{ name; version; updateSource; updateReboot; units; files; sysusers; tmpfiles; packages; packageOrigins; links }`:
 
 | field            | shape                                                                                      | installed as                                                                       |
 | ---------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |

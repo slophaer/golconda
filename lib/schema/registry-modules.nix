@@ -77,6 +77,13 @@
     not.pattern = "[\\u0000-\\u0020\\u007f]";
   };
 
+  updateReboot = {
+    description = "When a machine reboots into an installed update: an OnCalendar= value (systemd.time(7)), not empty, with no control character.";
+    type = "string";
+    minLength = 1;
+    not.pattern = "[\\u0000-\\u001f\\u007f]";
+  };
+
   # modules/network/default.nix
   networks = {
     description = "Network configurations keyed by one filename component.";

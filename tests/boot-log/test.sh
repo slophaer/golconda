@@ -122,10 +122,11 @@ reboot_guest() { BOOT_ID=next-boot; }
 guest_version() { echo 20261110.1; }
 guest_hash() { echo 0; }
 for f in check_unsealed check_no_failed check_hwdb check_units_composed test_certs_after_update \
-  test_loader test_recovery test_release_index push_admin_vars; do
+  test_loader test_recovery test_release_index push_admin_vars check_reboot_window activate_soon \
+  activate_never check_reboot_skipped; do
   eval "$f() { :; }"
 done
-TPM=1 TAMPER_INDEX=0 FAIL_HEALTH=0 ROTATE=0 BOOT_ID=first-boot FIRST_BOOT_ID=first-boot
+TPM=1 TAMPER_INDEX=0 FAIL_HEALTH=0 FAIL_INITRD=0 ROTATE=0 BOOT_ID=first-boot FIRST_BOOT_ID=first-boot
 OLD_VERSION=20261110.1 NEXT_VERSION=20261110.2 UPDATE_ADDR=169.254.169.2 HTTP_PORT=8074
 NEXT_RELEASE=$WORK/release HTTP_LOG=$WORK/http.log
 mkdir -p "$NEXT_RELEASE"

@@ -43,7 +43,7 @@ iets eval --json -E '(import ./default.nix).configLib.validPaths'
 | `/trust`         | `anchors` (PEM certificates), `distrust` (SHA-256 fingerprints)                                                   |
 | `/factory`       | `timezone`, `extraFiles`                                                                                          |
 | `/network`       | `networks`, `dns`, `defaultDhcp`                                                                                  |
-| `/system`        | `name`, `version`, `updateSource`                                                                                 |
+| `/system`        | `name`, `version`, `updateSource`, `updateReboot`                                                                 |
 | `/services/sshd` | `package` (a name), `port`, `authorizedKeys`, `trustedUserCAKeys`, `principals`, `revokedKeys`, `hostCertificate` |
 
 The option types, defaults and descriptions are on the generated module pages

@@ -40,7 +40,10 @@ counter (`+3-0`: three tries left, none done); `systemd-bless-boot` removes the 
 With `/system.updateSource` set, the composer writes the definitions as
 `/usr/lib/sysupdate.d/<n>.transfer` (the suffix systemd wants since 257; `.conf` still loads with a
 warning) and enables the update timer with a static link,
-`timers.target.wants/systemd-sysupdate-update.timer`. systemd 262 renamed
+`timers.target.wants/systemd-sysupdate-update.timer`, and, unless `/system.updateReboot` is null,
+the reboot timer, `timers.target.wants/systemd-sysupdate-reboot.timer`, with an `OnCalendar=`
+drop-in and `ExecCondition=/usr/lib/golconda/golconda-update-pending` for its service
+([Updates: Activation](../design/updates.md#activation)). systemd 262 renamed
 `systemd-sysupdate.timer`/`.service` to `systemd-sysupdate-update.timer`/`.service` and keeps the
 old names as aliases. The timer starts `systemd-sysupdate-update.service`, which runs
 `systemd-sysupdate update --component-all --cleanup=yes`. The image ships its definitions in
@@ -583,6 +586,9 @@ With `--next DIR` ([The update test](#the-update-test)):
 | `host-cert-presented`                                                  | the next release presents the host certificate to a strict `@cert-authority` known_hosts                                                                    |
 | `cert-login-after-update`, `cert-revoked-refused`                      | the good certificate logs in; the one the KRL names is refused                                                                                              |
 | `krl-pushed-again`, `krl-rotated`                                      | a second KRL, pushed while the release runs, refuses the good certificate too                                                                               |
+| `update-reboot-window`                                                 | `systemd-sysupdate-reboot.timer` is active, with the image's `OnCalendar=*-*-* 04:10:00`                                                                    |
+| `update-activated`                                                     | with the timer's window moved to every 10 s, the guest reboots into the new release by itself (with `--fail-health`, into its first try)                    |
+| `update-reboot-skipped`, `update-reboot-skipped-after-fallback`        | the timer fires on the new release, or after `--fail-health`'s fallback on the old one, `golconda-update-pending` finds nothing to activate, and no reboot  |
 | `boots-next`                                                           | after the reboot `IMAGE_VERSION` is the new version                                                                                                         |
 | `units-composed-only-after-update`, `no-sysext-after-update`           | `units-composed-only` and `no-sysext` on the updated release; with `--fail-health`, `-after-fallback` on the old release                                    |
 | `no-failed-units-after-update`                                         | the updated system has no failed unit                                                                                                                       |
@@ -593,6 +599,8 @@ With `--next DIR` ([The update test](#the-update-test)):
 | `trial-hang-rebooted`, `trial-fail-rebooted`                           | with `--fail-health`, the hung try reboots at the deadline and the two failed ones at once, three reboots by the policy and none by the harness             |
 | `fallback-to-old-slot`, `counter-exhausted`, `old-slot-selected`       | with `--fail-health`, the fourth boot runs the old release, the candidate has `tries: 0 left; 3 done`, the old entry is selected                            |
 | `blessed-no-trial-policy`                                              | with `--fail-health`, the blessed old release runs no health unit and has no trial drop-in                                                                  |
+| `initrd-broken`, `initrd-fail-rebooted`                                | with `--fail-initrd`, the candidate's hash partition is zeroed at the start, and `golconda-initrd-failed.service` reboots each of its three tries           |
+| `fallback-to-old-slot-initrd`, `counter-exhausted-initrd`              | with `--fail-initrd`, the fourth boot runs the old release, and the candidate has `tries: 0 left; 3 done`                                                   |
 | `exhausted-entry-stays-up`, `oneshot-exhausted-is-once`                | with `--fail-health`, the candidate started with no try left fails its health check and is not rebooted; the next boot is the old release                   |
 | `hwdb-after-update`                                                    | the updated release's `/usr/lib/udev/hwdb.bin` answers for DMI, PCI and USB; none in `/etc`                                                                 |
 | `loader-replaced`                                                      | when the loader bytes differ, the new loader is on the ESP and the old one is `systemd-boot-fallbackx64.efi`                                                |
@@ -664,10 +672,15 @@ be held. `DIR` is a built release (`DIR/disk/release`, `DIR/keys`). The harness:
    `Successfully installed 'http://…'` line is `http-fetch`; the service's exit status is
    `sysupdate-installed`. sysupdate fetches `SHA256SUMS` and the four artifacts over HTTP, then
    writes the B slots and `EFI/Linux/<id>_<version>+3-0.efi`;
-1. reboots and checks `boots-next`, `units-composed-only-after-update`,
-   `no-failed-units-after-update`, `clock-not-reset-after-update`, `hwdb-after-update` and the
-   loader markers (the new release installed its loader on its first good boot and kept the previous
-   one as `systemd-boot-fallbackx64.efi`);
+1. checks that `systemd-sysupdate-reboot.timer` is active at 04:10 (`update-reboot-window`), moves
+   its window to every 10 s with a drop-in in `/etc`, and waits: the guest reboots into the release
+   by itself (`update-activated`), and there the timer fires and reboots nothing
+   (`update-reboot-skipped`); the drop-in goes again, and while the recovery paths below boot the
+   slots by hand the timer is masked;
+1. checks `boots-next`, `units-composed-only-after-update`, `no-failed-units-after-update`,
+   `clock-not-reset-after-update`, `hwdb-after-update` and the loader markers (the new release
+   installed its loader on its first good boot and kept the previous one as
+   `systemd-boot-fallbackx64.efi`);
 1. runs the recovery paths: `bootctl list` shows both slots, a damaged `BOOTX64.EFI` is reinstalled
    by `golconda-loader-update`, `bootctl set-oneshot` and `bootctl set-default` boot the other slot
    and back, and `bootctl reboot-to-firmware` reaches OVMF's boot menu.
@@ -701,24 +714,32 @@ rotated store, which firmware must refuse.
 
 `--next DIR --fail-health` proves the [trial boot](../design/boot.md#trial-boot) policy and the
 fallback instead of the good update boot. A drop-in in `/etc` replaces the `ExecStart=` of
-`golconda-health-network.service`: on the first boot that runs it, it hangs; on every later one it
-fails at once (a file in `/var` tells them apart). Another drop-in sets `boot-complete.target`'s
-deadline to 90 s instead of the image's 15 minutes. The harness reboots once, into the candidate,
-and from there on only watches: it logs in whenever ssh answers and waits for the old release. The
-serial console holds the evidence of the three tries: the generator's line for `+2-1`, `+1-2` and
-`+0-3` (`trial-boot-counted`), the hung unit followed by the reboot of
-`golconda-trial-boot-failed.service` (`trial-hang-rebooted`), and two failed units followed by
-reboots, three in all (`trial-fail-rebooted`). On the fourth boot the previous release runs
-(`fallback-to-old-slot`), the candidate is at `tries: 0 left; 3 done` (`counter-exhausted`), the old
-entry is the one systemd-boot selected (`old-slot-selected`), PID 1 kept the clock
-(`clock-not-reset-after-fallback`), and the blessed entry ran no health unit and got no trial
-drop-in (`blessed-no-trial-policy`). Then `bootctl set-oneshot` starts the candidate once more: its
-counter goes from `+0-3` to `+0-4`, the generator says it had no try left, its health unit fails,
-and 20 seconds later the same boot still answers (`exhausted-entry-stays-up`); the next boot is the
-old release (`oneshot-exhausted-is-once`). The drop-ins are on the state partition, so they hold for
-every slot; the harness removes them at the end. `--fail-health` and `--rotate` are alternatives,
-and `--fail-health` skips the loader and recovery checks, because no boot of the candidate is
-blessed.
+`golconda-health-network.service`: the first boot that runs it hangs, every later one fails at once
+(a file in `/var` tells them apart). Another drop-in sets `boot-complete.target`'s deadline to 90 s
+instead of the image's 15 minutes. The harness moves the reboot timer's window to every 10 s, the
+guest reboots into the candidate by itself (`update-activated`), and from there on the harness only
+watches: it logs in whenever ssh answers and waits for the old release. The serial console shows the
+three tries: the generator's line for `+2-1`, `+1-2` and `+0-3` (`trial-boot-counted`), the hung
+unit and then the reboot by `golconda-trial-boot-failed.service` (`trial-hang-rebooted`), and two
+failed units, each followed by a reboot (`trial-fail-rebooted`). The fourth boot runs the old
+release, with the checks of the table above; there the reboot timer, still firing every 10 s, does
+not reboot back into the failed release (`update-reboot-skipped-after-fallback`). Then
+`bootctl set-oneshot` starts the candidate once more: its counter goes from `+0-3` to `+0-4`, the
+generator says it had no try left, its health unit fails, and 20 seconds later the same boot still
+answers (`exhausted-entry-stays-up`); the next boot is the old release
+(`oneshot-exhausted-is-once`). The drop-ins are on the state partition, so they hold for every slot;
+the harness removes them at the end. `--fail-health` and `--rotate` are alternatives, and
+`--fail-health` skips the loader and recovery checks, because no boot of the candidate is blessed.
+
+`--next DIR --fail-initrd` proves the initrd's row of the trial boot policy. After the install the
+harness zeroes the first MiB of the candidate's verity hash partition
+(`/dev/disk/by-partlabel/usr-verity_<version>`), so the candidate's initrd cannot attach `/usr` and
+fails into `emergency.target`. The reboot timer activates the candidate, and the harness only
+watches: three lines of `golconda-initrd-failed.service` on the serial console and none of the
+host's generator (`initrd-fail-rebooted`), then the old release (`fallback-to-old-slot-initrd`) with
+the candidate at `tries: 0 left; 3 done` (`counter-exhausted-initrd`), where the timer reboots
+nothing (`update-reboot-skipped-after-initrd-fallback`). It skips the loader and recovery checks
+too.
 
 What this test does not prove:
 

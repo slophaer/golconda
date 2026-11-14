@@ -4,7 +4,7 @@
 # Usage: boot-test <disk.raw> --keys DIR [--secure-boot [--auto-enrol [--no-microsoft-keys]]]
 #                  [--tpm] [--timeout SECONDS]
 #                  [--ssh-test [--esp-creds | --imds | --enrol]]
-#                  [--next DIR [--rotate | --fail-health | --tamper-index]] [--factory-reset]
+#                  [--next DIR [--rotate | --fail-health | --fail-initrd | --tamper-index]] [--factory-reset]
 #
 # The script boots the image in QEMU with:
 #   - a 40 GiB qcow2 overlay (room for root partition)
@@ -154,8 +154,12 @@
 #   (a QEMU guestfwd to a stdio HTTP server in $WORKDIR; no host port), and installs it with
 #   systemd-sysupdate-update.service. The guest reads
 #   its own /usr/lib/sysupdate.d/*.transfer (Type=url-file, Path=http://169.254.169.2:PORT/), so it
-#   fetches SHA256SUMS and the artifacts over HTTP; the harness rewrites no definition. Then it
-#   reboots into the release, and checks that golconda-loader-update.service put the new loader on
+#   fetches SHA256SUMS and the artifacts over HTTP; the harness rewrites no definition. Then the
+#   activation (docs/design/updates.md): systemd-sysupdate-reboot.timer is active at the image's
+#   04:10 (update-reboot-window); a drop-in in /etc moves its window to every 10 s, and the guest
+#   must reboot into the release by itself (update-activated), then fire the timer there and reboot
+#   no more (update-reboot-skipped); the drop-in goes again. It checks that
+#   golconda-loader-update.service put the new loader on
 #   the ESP, that /etc/systemd/system still holds no link (units-composed-only-after-update), and
 #   that the updated system has no failed unit. Then the
 #   recovery checks: bootctl list shows both slots, a damaged loader
@@ -164,17 +168,30 @@
 # With --next DIR --fail-health: prove the trial boot policy and the three-boot fallback
 #   (docs/design/boot.md, "Trial boot"). A drop-in in /etc breaks golconda-health-network.service:
 #   on the first boot that runs it, it hangs; on each later one it fails at once. Another sets
-#   boot-complete.target's deadline to 90 s. The harness reboots once, into the candidate, and then
+#   boot-complete.target's deadline to 90 s. The reboot timer's window moves to every 10 s, so the
+#   guest activates the candidate by itself (update-activated); the harness reboots nothing and
 #   only watches: the deadline must reboot the hung try, OnFailure= each failed one, and the fourth
 #   boot must run the old release. From the serial console: trial-boot-counted (the generator saw
 #   +2-1, +1-2, +0-3), trial-hang-rebooted, trial-fail-rebooted (three reboots by the policy). Then
 #   fallback-to-old-slot, counter-exhausted, old-slot-selected and blessed-no-trial-policy (the
-#   blessed old release runs no health unit and gets no drop-in). Last, bootctl set-oneshot starts
+#   blessed old release runs no health unit and gets no drop-in) and
+#   update-reboot-skipped-after-fallback (the timer, still every 10 s, does not reboot into the
+#   failed release again). Last, bootctl set-oneshot starts
 #   the candidate with no try left: its health check fails and it stays up
 #   (exhausted-entry-stays-up). The drop-ins are on the state partition, so they hold for every
 #   slot; the harness removes them at the end. This mode skips the loader and recovery checks: no
 #   boot of the candidate is blessed. It takes about seven minutes more than --next: give it a
 #   --timeout of 900.
+# With --next DIR --fail-initrd: an initrd failure must reboot (docs/design/boot.md, "Trial
+#   boot"). After the install the harness zeroes the first MiB of the candidate's verity hash
+#   partition (usr-verity_<version>, the superblock and the top of the tree), so its initrd cannot
+#   attach /usr and fails into emergency.target. The reboot timer's window moves to every 10 s, so
+#   the guest activates the candidate by itself, and the harness only watches:
+#   golconda-initrd-failed.service must reboot each of the three tries
+#   (initrd-fail-rebooted: three of its lines on the serial console, and the candidate's host
+#   never started), and the fourth boot must run the old release (fallback-to-old-slot-initrd,
+#   counter-exhausted-initrd), where the timer reboots nothing
+#   (update-reboot-skipped-after-initrd-fallback). This mode skips the loader and recovery checks.
 # With --next DIR --rotate: DIR is signed with a new db key. Its certificate is enrolled in db
 #   beside the old one before the first boot; after the update the harness stops QEMU, rewrites
 #   the variable store (db: the new certificate only; dbx: the old one), boots again and checks
@@ -255,6 +272,7 @@ SSH_TEST=0
 NEXT=""
 ROTATE=0
 FAIL_HEALTH=0
+FAIL_INITRD=0
 TAMPER_INDEX=0
 FACTORY_RESET=0
 ESP_CREDS=0
@@ -286,7 +304,7 @@ IMDS_NET_CRED=60-imds-ipv6
 . "$SCRIPT_DIR/boot-test-update.sh"
 
 usage() {
-  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot [--auto-enrol [--no-microsoft-keys]]] [--tpm] [--timeout SECONDS] [--ssh-test [--esp-creds | --imds | --enrol]] [--next DIR [--rotate | --fail-health | --tamper-index]] [--factory-reset]"
+  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot [--auto-enrol [--no-microsoft-keys]]] [--tpm] [--timeout SECONDS] [--ssh-test [--esp-creds | --imds | --enrol]] [--next DIR [--rotate | --fail-health | --fail-initrd | --tamper-index]] [--factory-reset]"
   exit 1
 }
 
@@ -302,6 +320,7 @@ while [ $# -gt 0 ]; do
     --next) NEXT="$2"; SSH_TEST=1; shift 2 ;;
     --rotate) ROTATE=1; shift ;;
     --fail-health) FAIL_HEALTH=1; shift ;;
+    --fail-initrd) FAIL_INITRD=1; shift ;;
     --tamper-index) TAMPER_INDEX=1; shift ;;
     --factory-reset) FACTORY_RESET=1; shift ;;
     --esp-creds) ESP_CREDS=1; shift ;;
@@ -385,6 +404,10 @@ if [ "$ENROL" = 1 ] && { [ "$SSH_TEST" = 0 ] || [ -n "$NEXT" ] || [ "$ESP_CREDS"
   exit 1
 fi
 
+if [ "$FAIL_INITRD" = 1 ] && { [ -z "$NEXT" ] || [ "$FAIL_HEALTH" = 1 ] || [ "$ROTATE" = 1 ] || [ "$TAMPER_INDEX" = 1 ]; }; then
+  echo "Error: --fail-initrd needs --next, and is a fallback of its own: not with --fail-health, --rotate or --tamper-index" >&2
+  exit 1
+fi
 if [ "$FAIL_HEALTH" = 1 ] && [ -z "$NEXT" ]; then
   echo "Error: --fail-health needs --next" >&2
   exit 1

@@ -60,8 +60,19 @@ updateSource = "https://updates.example.com/web/"
 ```
 
 Serve the `release/` directory of the build at that URL. The image enables
-`systemd-sysupdate-update.timer`. With `updateSource` unset, the image has no transfers and no
-update runs. Read the counters with `bootctl list`.
+`systemd-sysupdate-update.timer`, which installs, and `systemd-sysupdate-reboot.timer`, which
+reboots into an installed release at 04:10 (plus up to 30 random minutes). Set another window, or
+`null` to reboot by hand:
+
+```toml
+["/system"]
+updateReboot = "Sat 03:00"
+```
+
+The reboot happens only when the boot loader would start the new release: after a fallback, the
+failed release stays installed and the machine stays on the old one
+([Updates: Activation](../design/updates.md#activation)). With `updateSource` unset, the image has
+no transfers and no update runs. Read the counters with `bootctl list`.
 
 ## Status
 
@@ -69,27 +80,34 @@ The boot test proves this in QEMU with OVMF ([What is proven](../proven.md)):
 
 - `release-index`, `sysupdate-installed`, `boots-next`, `units-composed-only-after-update` and
   `no-failed-units-after-update`: the update installs and the new version boots (`--next`).
+- `update-reboot-window`, `update-activated`, `update-reboot-skipped`: the reboot timer is on, it
+  reboots into the installed release by itself (its window moved to every 10 s), and then reboots no
+  more; `update-reboot-skipped-after-fallback`: after a fallback it does not reboot into the failed
+  release again (`--next --fail-health`).
 - `http-source`, `http-fetch`, `index-signed`: the guest fetches over HTTP with its own definition.
 - `health-check-broken`, `trial-boot-counted`, `trial-hang-rebooted`, `trial-fail-rebooted`,
   `fallback-to-old-slot`, `counter-exhausted`: a health unit that hangs or fails costs one try each,
   the machine reboots itself after each, and the old release boots after the third
   (`--next --fail-health`). `blessed-no-trial-policy` and `exhausted-entry-stays-up`: on the blessed
   old release, and on the candidate with no try left, the failed check reboots nothing.
+- `initrd-fail-rebooted`, `fallback-to-old-slot-initrd`, `counter-exhausted-initrd`: a candidate
+  whose initrd fails reboots each try by itself, and the old release boots after the third
+  (`--next --fail-initrd`).
 - `loader-update-ran` and `loader-update-not-run`: the loader updates after a good boot only.
 
 ## Limits
 
 - A fresh disk has one slot. There the loader still boots the exhausted entry, so after three
   reboots the machine stays up and unblessed until you fill the other slot.
-- The reboots after a kernel panic, a PID 1 crash and an initrd failure have no test of their own. A
-  kernel that hangs without a panic is not caught: that needs a hardware watchdog.
+- The reboots after a kernel panic, a PID 1 crash and an initrd that hangs have no test of their
+  own. A kernel that hangs without a panic is not caught: that needs a hardware watchdog.
 - The machine supports no downgrade except the boot-counting fallback. `golconda release` refuses a
   version that does not increase before it is built or published.
 - Nothing stops an older image signed by the same key from booting. Rollback protection is
   *(later)*.
 - The tests use plain HTTP in QEMU. HTTPS from a real update server ran by hand on Hetzner Cloud
   ([What is proven](../proven.md#on-hetzner-cloud)); it has no marker. The timer and real hardware
-  have none either.
+  have none either. The 04:10 window itself is not waited for: the test moves it.
 
 ## More
 

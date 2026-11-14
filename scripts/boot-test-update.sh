@@ -11,6 +11,52 @@ HEALTH_DROPIN=/etc/systemd/system/golconda-health-network.service.d/zz-boot-test
 DEADLINE_DROPIN=/etc/systemd/system/boot-complete.target.d/zz-boot-test.conf
 HUNG_FILE=/var/lib/boot-test-health-hung
 
+# the activation (docs/design/updates.md, "Activation"): the image's reboot timer fires at 04:10;
+# this drop-in moves its window to every 10 s, as an administrator's drop-in in /etc would
+REBOOT_DROPIN=/etc/systemd/system/systemd-sysupdate-reboot.timer.d/zz-boot-test.conf
+
+# check_reboot_window: the image enables systemd-sysupdate-reboot.timer in /system.updateReboot's
+# window, systemd's 04:10 for the test image
+check_reboot_window() {
+  W=$(guest systemctl show -p ActiveState -p TimersCalendar systemd-sysupdate-reboot.timer 2>&1) || true
+  echo "$W"
+  RC=0
+  echo "$W" | grep -qx 'ActiveState=active' || RC=1
+  echo "$W" | grep -q 'OnCalendar=\*-\*-\* 04:10:00' || RC=1
+  verdict "update-reboot-window (systemd-sysupdate-reboot.timer is active, at 04:10)" $RC
+}
+
+# activate_soon: the reboot timer fires every 10 s from now on, on every slot, until the drop-in is
+# removed; the harness reboots nothing itself
+activate_soon() {
+  printf '[Timer]\nOnCalendar=\nOnCalendar=*:*:0/10\nRandomizedDelaySec=0\nAccuracySec=1s\n' \
+    | guest "mkdir -p ${REBOOT_DROPIN%/*} && cat > $REBOOT_DROPIN && systemctl daemon-reload && systemctl restart systemd-sysupdate-reboot.timer"
+}
+
+# activate_never: remove that drop-in again
+activate_never() {
+  guest "rm -f $REBOOT_DROPIN && rmdir ${REBOOT_DROPIN%/*} && systemctl daemon-reload && systemctl restart systemd-sysupdate-reboot.timer" || true
+}
+
+# check_reboot_skipped NAME: the reboot timer fired on this boot, golconda-update-pending found
+# nothing to activate, and the boot goes on
+check_reboot_skipped() {
+  RC=1
+  N=0
+  while [ "$N" -lt 20 ]; do
+    if guest journalctl -b -u systemd-sysupdate-reboot.service -o cat --no-pager 2>/dev/null \
+      | grep -q "golconda-update-pending: the default entry is the running one: nothing to activate"; then
+      RC=0
+      break
+    fi
+    sleep 2
+    N=$((N + 1))
+  done
+  B=$(guest cat /proc/sys/kernel/random/boot_id 2>/dev/null) || true
+  [ "$B" = "$BOOT_ID" ] || RC=1
+  verdict "$1 (the reboot timer fired, golconda-update-pending found nothing to activate, no reboot)" $RC
+}
+
 # trial_trace MARK: the trial boot policy's lines in the serial log after byte MARK, one per line:
 # the generator's verdict on each boot, the health unit's, the reboot
 trial_trace() {
@@ -33,8 +79,8 @@ wait_for_old() {
 
 # test_fail_health: the trial boot policy and the three-boot fallback of docs/design/boot.md. A
 # drop-in in /etc breaks golconda-health-network.service: the candidate's first try hangs until the
-# deadline, its second and third fail at once. The harness starts the first try; after that it
-# only watches. The policy must reboot each try by itself, systemd-boot must count it, and the
+# deadline, its second and third fail at once. The reboot timer starts the first try, and the
+# harness only watches. The policy must reboot each try by itself, systemd-boot must count it, and the
 # fourth boot must be the old release, blessed, where the broken unit does not run and nothing
 # reboots. Then the candidate, with no try left, is started once more by hand: it fails its health
 # check and must stay up.
@@ -54,8 +100,8 @@ EOF
   verdict "health-check-broken (golconda-health-network.service hangs once, then fails; the deadline is 90 s)" $RC
 
   MARK=$(wc -c < "$SERIAL_LOG")
-  echo "--- the operator activates $NEXT_VERSION; from here on the harness only watches ---"
-  guest systemctl reboot 2>&1 || true
+  echo "--- the reboot timer activates $NEXT_VERSION; the harness only watches ---"
+  activate_soon || true
   if ! wait_for_old "$BOOT_ID"; then
     verdict "fallback-to-old-slot (no login of $OLD_VERSION before the timeout)" 1
     trial_trace "$MARK"
@@ -65,6 +111,9 @@ EOF
   T=$(trial_trace "$MARK")
   echo "$T"
   verdict "fallback-to-old-slot ($NEXT_VERSION failed 3 times, $V boots, the harness rebooted nothing)" 0
+  RC=0
+  echo "$T" | head -1 | grep -qxF "golconda-trial-boot: ${IMAGE_ID}_$NEXT_VERSION+2-1.efi is on trial" || RC=1
+  verdict "update-activated (the reboot timer started $NEXT_VERSION's first try)" $RC
   RC=0
   for c in 2-1 1-2 0-3; do
     echo "$T" | grep -qxF "golconda-trial-boot: ${IMAGE_ID}_$NEXT_VERSION+$c.efi is on trial" || RC=1
@@ -96,6 +145,9 @@ EOF
   ! echo "$G" | grep -q golconda-trial-boot || RC=1
   [ "$(echo "$G" | grep -c '^inactive$')" = 2 ] || RC=1
   verdict "blessed-no-trial-policy (the blessed entry runs no health unit and has no trial drop-in)" $RC
+  # $NEXT_VERSION is installed and newer, and the timer still fires every 10 s: only
+  # golconda-update-pending keeps it from rebooting the machine back into the bad entry
+  check_reboot_skipped update-reboot-skipped-after-fallback
 
   echo "--- the candidate once more, with no try left (bootctl set-oneshot) ---"
   MARK=$(wc -c < "$SERIAL_LOG")
@@ -123,6 +175,43 @@ EOF
   verdict "oneshot-exhausted-is-once (running $V)" $RC
 
   guest "rm -f $HEALTH_DROPIN $DEADLINE_DROPIN $HUNG_FILE && rmdir ${HEALTH_DROPIN%/*} ${DEADLINE_DROPIN%/*} && systemctl daemon-reload" || true
+  activate_never
+}
+
+# test_fail_initrd: the trial boot policy in the initrd. The candidate's /usr hash tree is damaged,
+# so its initrd fails each try into emergency.target, where golconda-initrd-failed.service reboots.
+# The reboot timer starts the first try; the harness only watches until the old release answers
+test_fail_initrd() {
+  echo ""
+  echo "=== the initrd fails: $NEXT_VERSION's verity hash partition is damaged ==="
+  P=/dev/disk/by-partlabel/usr-verity_$NEXT_VERSION
+  RC=0
+  guest "dd if=/dev/zero of=$P bs=65536 count=16 conv=notrunc && sync" || RC=1
+  verdict "initrd-broken ($P: its first MiB zeroed)" $RC
+  MARK=$(wc -c < "$SERIAL_LOG")
+  echo "--- the reboot timer activates $NEXT_VERSION; the harness only watches ---"
+  activate_soon || true
+  if ! wait_for_old "$BOOT_ID"; then
+    verdict "fallback-to-old-slot-initrd (no login of $OLD_VERSION before the timeout)" 1
+    trial_trace "$MARK"
+    return 1
+  fi
+  T=$(trial_trace "$MARK")
+  echo "the trial boot policy's lines on the serial console:"
+  echo "$T"
+  verdict "fallback-to-old-slot-initrd ($NEXT_VERSION failed in the initrd 3 times, $V boots)" 0
+  RC=0
+  [ "$(echo "$T" | grep -cxF "golconda-trial-boot: the initrd failed")" = 3 ] || RC=1
+  # the host's generator logs on every counted boot of the host: the candidate's never started
+  ! echo "$T" | grep -q "golconda-trial-boot: ${IMAGE_ID}_$NEXT_VERSION+" || RC=1
+  verdict "initrd-fail-rebooted (golconda-initrd-failed.service rebooted each of the three tries)" $RC
+  L=$(guest bootctl list --no-pager 2>&1) || true
+  echo "$L" | grep -E " (title|version|tries):" || true
+  RC=0; echo "$L" | grep -q "tries: 0 left; 3 done" || RC=1
+  verdict "counter-exhausted-initrd (the candidate has tries: 0 left; 3 done)" $RC
+  check_unsealed "after the fallback to $V"
+  check_reboot_skipped update-reboot-skipped-after-initrd-fallback
+  activate_never
 }
 
 # refusal_evidence JOURNAL: true when sysupdate's journal shows the index check failing (a bad
@@ -251,6 +340,12 @@ test_next() {
   fi
   [ "$RC" != 0 ] || test_verity_keyring
 
+  check_reboot_window
+  if [ "$FAIL_INITRD" = 1 ]; then
+    test_fail_initrd || return 1
+    check_no_failed no-failed-units-after-update
+    return 0
+  fi
   if [ "$FAIL_HEALTH" = 1 ]; then
     # no blessed boot of the candidate, so no loader and no recovery checks here
     test_fail_health || return 1
@@ -258,11 +353,18 @@ test_next() {
     check_no_failed no-failed-units-after-update
     return 0
   fi
-  echo "Rebooting into $NEXT_VERSION..."
-  reboot_guest || return 1
+  echo "Waiting for the reboot timer to activate $NEXT_VERSION..."
+  activate_soon || true
+  if ! wait_for_ssh "$BOOT_ID"; then
+    verdict "update-activated (no login after the activation before the timeout)" 1
+    return 1
+  fi
   V=$(guest_version)
   RC=0; [ "$V" = "$NEXT_VERSION" ] || RC=1
+  verdict "update-activated (the reboot timer rebooted into $V; the harness rebooted nothing)" $RC
   verdict "boots-next ($OLD_VERSION -> $V)" $RC
+  check_reboot_skipped update-reboot-skipped
+  activate_never
   check_unsealed "after the update to $V"
   check_units_composed -after-update
   check_no_failed no-failed-units-after-update
@@ -311,6 +413,9 @@ test_recovery() {
 
   echo ""
   echo "=== recovery: bootctl set-oneshot (the other slot, once) ==="
+  # on the old slot systemd-boot's default is the new one, so the reboot timer would activate it:
+  # masked while the harness boots slots by hand, whatever the hour
+  guest "ln -sf /dev/null /etc/systemd/system/systemd-sysupdate-reboot.timer" || true
   guest bootctl set-oneshot "$OLD_ENTRY"
   reboot_guest || return 1
   V=$(guest_version)
@@ -340,6 +445,7 @@ test_recovery() {
   V=$(guest_version)
   RC=0; [ "$V" = "$NEXT_VERSION" ] || RC=1
   verdict "set-default-cleared (running $V)" $RC
+  guest "rm -f /etc/systemd/system/systemd-sysupdate-reboot.timer && systemctl daemon-reload" || true
 
   echo ""
   echo "=== recovery: the firmware menu ==="

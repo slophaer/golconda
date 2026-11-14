@@ -187,10 +187,11 @@ var names its credential id in `credentials` and orders itself after the var's u
 
 ## The composer
 
-`/system` takes `name`, `version` and `updateSource`, and from `mkSystem` the selected components'
-fragments and the build's own as `components`, each named
+`/system` takes `name`, `version`, `updateSource` and `updateReboot`, and from `mkSystem` the
+selected components' fragments and the build's own as `components`, each named
 ([Which modules a system has](#which-modules-a-system-has)). It merges them, then the sysupdate
-definitions it renders from `updateSource`. The merge follows four rules:
+definitions it renders from `updateSource` and the reboot timer from `updateReboot`. The merge
+follows four rules:
 
 - Attribute-set fields are unioned, and a key that appears twice throws with the key's name.
 - List fields are concatenated.

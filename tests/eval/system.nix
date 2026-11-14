@@ -143,3 +143,71 @@ in
     && !(result.links ? "/usr/lib/systemd/system/timers.target.wants/systemd-sysupdate-update.timer")
   ))
 ]
+# The activation of an installed update (docs/design/updates.md, "Activation"): systemd's
+# reboot timer in the window /system.updateReboot names, behind golconda-update-pending, which
+# lets it reboot only into another entry than the running one.
+++ (
+  let
+    sys =
+      extra:
+      composeWith {
+        "/system" = {
+          name = "t";
+          version = "20261031.1";
+        }
+        // extra;
+      };
+    src = {
+      updateSource = "https://u.example/";
+    };
+    on = sys src;
+    night = sys (src // { updateReboot = "Sat 02:00"; });
+    manual = sys (src // { updateReboot = null; });
+    none = sys { };
+    timerLink = "/usr/lib/systemd/system/timers.target.wants/systemd-sysupdate-reboot.timer";
+    timerDropIn = "/usr/lib/systemd/system/systemd-sysupdate-reboot.timer.d/golconda.conf";
+    serviceDropIn = "/usr/lib/systemd/system/systemd-sysupdate-reboot.service.d/golconda.conf";
+    program = "/usr/lib/golconda/golconda-update-pending";
+    updateLink = "/usr/lib/systemd/system/timers.target.wants/systemd-sysupdate-update.timer";
+    activates =
+      s:
+      s.links ? ${timerLink}
+      && s.files ? ${timerDropIn}
+      && s.files ? ${serviceDropIn}
+      && s.files ? ${program};
+    activatesNot =
+      s:
+      !(s.links ? ${timerLink})
+      && !(s.files ? ${timerDropIn})
+      && !(s.files ? ${serviceDropIn})
+      && !(s.files ? ${program});
+    accepts =
+      v: (builtins.tryEval (builtins.deepSeq (sys (src // { updateReboot = v; })).files true)).success;
+  in
+  [
+    (check "updateReboot: by default an installed update reboots at 04:10, systemd's window" (
+      activates on
+      &&
+        on.links.${timerLink} == {
+          target = "../systemd-sysupdate-reboot.timer";
+          kind = "explicit";
+        }
+      && hasInfix "\n[Timer]\nOnCalendar=\nOnCalendar=04:10\n" on.files.${timerDropIn}.text
+    ))
+    (check "updateReboot: the window is the configuration's OnCalendar=" (
+      hasInfix "\nOnCalendar=\nOnCalendar=Sat 02:00\n" night.files.${timerDropIn}.text
+    ))
+    (check "updateReboot: the reboot needs another default entry than the running one" (
+      hasInfix "\n[Service]\nExecCondition=${program}\n" on.files.${serviceDropIn}.text
+      && on.files.${program}.mode == "0755"
+      && on.files.${program}.text == builtins.readFile ../../modules/system/golconda-update-pending
+    ))
+    (check "updateReboot: null installs updates and leaves the reboot to the operator" (
+      activatesNot manual && manual.links ? ${updateLink}
+    ))
+    (check "updateReboot: no update source, no activation" (activatesNot none))
+    (check "updateReboot: a line break cannot add an INI line" (
+      accepts "04:10" && accepts "Mon..Fri 03:30" && !(accepts "04:10\nOnCalendar=*:*") && !(accepts "")
+    ))
+  ]
+)

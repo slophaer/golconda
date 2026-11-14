@@ -1,0 +1,29 @@
+#!/bin/sh
+# golconda-update-pending: exit 0 when systemd-boot would start another entry than the running
+# one at the next boot, 1 otherwise (docs/design/updates.md, "Activation").
+#
+# systemd-sysupdate-reboot.service runs it as ExecCondition= before `systemd-sysupdate reboot`,
+# which reboots when a newer version is installed than the one that runs. That alone reboots a
+# machine after every fallback, every night: the release that failed its tries is still installed,
+# and newer. bootctl knows which entry systemd-boot would pick (bad entries, with no try left, sort
+# last) and which one it picked for this boot: the update is pending only when they differ.
+set -u
+
+list=$(bootctl list --no-pager 2>/dev/null) || {
+  echo "golconda-update-pending: bootctl list failed: nothing to activate"
+  exit 1
+}
+case $list in
+  *' (default) (selected)'*)
+    echo "golconda-update-pending: the default entry is the running one: nothing to activate"
+    exit 1
+    ;;
+  *' (selected)'*)
+    echo "golconda-update-pending: systemd-boot's default entry is not the running one: activate it"
+    exit 0
+    ;;
+  *)
+    echo "golconda-update-pending: no entry is marked as the running one: nothing to activate"
+    exit 1
+    ;;
+esac
