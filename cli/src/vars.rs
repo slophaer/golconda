@@ -49,9 +49,9 @@ pub struct Manifest {
 #[error("{0}")]
 pub struct Error(pub String);
 
-type Result<T> = result::Result<T, Error>;
+pub type Result<T> = result::Result<T, Error>;
 
-fn err<T>(msg: impl Into<String>) -> Result<T> {
+pub fn err<T>(msg: impl Into<String>) -> Result<T> {
     Err(Error(msg.into()))
 }
 
@@ -153,10 +153,11 @@ impl Program {
         }
     }
 
-    /// The program at `path`, with no arguments of its own (a path may hold spaces).
-    pub fn at(path: &Path) -> Program {
+    /// The program at `path` (or the name PATH finds), with no arguments of its own (a path may
+    /// hold spaces).
+    pub fn at(path: impl AsRef<OsStr>) -> Program {
         Program {
-            argv: vec![path.as_os_str().to_owned()],
+            argv: vec![path.as_ref().to_owned()],
         }
     }
 

@@ -15,8 +15,8 @@ mod vars;
 
 /// Push a Golconda system's admin vars, and check, build and publish its releases.
 ///
-/// git, gpgv, rclone, nix-build, ssh, ssh-keygen and age come from PATH, or GOLCONDA_<NAME>
-/// (GOLCONDA_SSH="ssh -p 2222", GOLCONDA_SSH_KEYGEN).
+/// git, gpgv, rclone, nix-build, ssh, ssh-keygen and age come from PATH; GOLCONDA_GPGV,
+/// GOLCONDA_SSH (GOLCONDA_SSH="ssh -p 2222"), GOLCONDA_SSH_KEYGEN and GOLCONDA_AGE name others.
 #[derive(Parser)]
 #[command(version, verbatim_doc_comment)]
 struct Cli {
@@ -259,53 +259,21 @@ fn list_releases(
     Ok(out)
 }
 
-/// `release build`: the version, the build, the check and the commit (release::build).
-fn build_release(
-    doc: &Doc,
-    (keys, pcr_keys, index_keys): (&Path, Option<&Path>, Option<&Path>),
-    pkcs11_module: Option<&Path>,
-    version: &str,
-    to: Option<&str>,
-    out: PathBuf,
-    (git, gpgv, rclone): (&Program, &Program, &Program),
-) -> Result<String, Box<dyn error::Error>> {
-    let version = match version {
-        "auto" => None,
-        v => Some(v.parse()?),
-    };
-    let dest = to.map(|to| release::Destination { rclone, to });
-    let req = release::BuildRequest {
-        document: &doc.file,
-        system: &doc.system,
-        keys,
-        pcr_keys,
-        index_keys,
-        pkcs11_module,
-        version,
-        dest: dest.as_ref(),
-        out,
-        author: None,
-    };
-    let nix_build = Program::from_env("GOLCONDA_NIX_BUILD", "nix-build");
-    let tools = release::Tools {
-        nix_build: &nix_build,
-        git,
-        gpgv,
-    };
-    let b = release::build(&req, &tools)?;
-    Ok(format!(
+/// What `release build` made.
+fn built(b: &release::Built) -> String {
+    format!(
         "{} {} built: {}\nrelease commit {}\n",
         b.record.id,
         b.record.version,
         b.release.dir.display(),
         b.record.commit
-    ))
+    )
 }
 
 fn run_release(command: Releases) -> Result<String, Box<dyn error::Error>> {
     let gpgv = Program::from_env("GOLCONDA_GPGV", "gpgv");
-    let git = Program::from_env("GOLCONDA_GIT", "git");
-    let rclone = Program::from_env("GOLCONDA_RCLONE", "rclone");
+    let git = Program::at("git");
+    let rclone = Program::at("rclone");
     match command {
         Releases::Publish {
             dir,
@@ -343,15 +311,32 @@ fn run_release(command: Releases) -> Result<String, Box<dyn error::Error>> {
             version,
             to,
             out,
-        } => build_release(
-            &doc,
-            (&keys, pcr_keys.as_deref(), index_keys.as_deref()),
-            pkcs11_module.as_deref(),
-            &version,
-            to.as_deref(),
-            out,
-            (&git, &gpgv, &rclone),
-        ),
+        } => {
+            let dest = to.as_deref().map(|to| release::Destination {
+                rclone: &rclone,
+                to,
+            });
+            let req = release::BuildRequest {
+                document: &doc.file,
+                system: &doc.system,
+                keys: &keys,
+                pcr_keys: pcr_keys.as_deref(),
+                index_keys: index_keys.as_deref(),
+                pkcs11_module: pkcs11_module.as_deref(),
+                version: match version.as_str() {
+                    "auto" => None,
+                    v => Some(v.parse()?),
+                },
+                dest: dest.as_ref(),
+                out,
+            };
+            let tools = release::Tools {
+                nix_build: &Program::at("nix-build"),
+                git: &git,
+                gpgv: &gpgv,
+            };
+            Ok(built(&release::build(&req, &tools)?))
+        }
         Releases::List { image, to, repo } => {
             list_releases(&git, &rclone, image.as_deref(), to.as_deref(), &repo)
         }

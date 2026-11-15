@@ -8,30 +8,18 @@
 //!
 //! `gpgv` is a program, as `age` and `ssh` are for vars: `GOLCONDA_GPGV` names it.
 
-use crate::vars::Program;
+use crate::vars::{Error, Program, Result, err};
 use ring::digest::{Context, SHA256};
 use serde_json::Value;
 use std::cmp::Ordering;
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::fmt::{self, Write as _};
 use std::fs;
 use std::io::{self, Read, Write as _};
-use std::ops::Range;
 use std::path::{self, Path, PathBuf};
-use std::result;
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tempfile::{Builder, TempDir, TempPath};
-
-#[derive(Debug, thiserror::Error)]
-#[error("{0}")]
-pub struct Error(pub String);
-
-pub type Result<T> = result::Result<T, Error>;
-
-fn err<T>(msg: impl Into<String>) -> Result<T> {
-    Err(Error(msg.into()))
-}
 
 /// The last revision whose timestamp is still inside its date (lib/version.nix).
 const MAX_REVISION: u32 = 86_399;
@@ -118,12 +106,11 @@ impl Version {
         let secs = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.as_secs());
-        let t = rfc3339(secs);
-        let n = |r: Range<usize>| t[r].parse().unwrap_or(1);
+        let (year, month, day) = civil_date(secs / 86400);
         Version {
-            year: n(0..4),
-            month: n(5..7),
-            day: n(8..10),
+            year,
+            month,
+            day,
             revision: 0,
         }
     }
@@ -535,21 +522,21 @@ pub fn records(
     id: Option<&str>,
     version: Option<Version>,
 ) -> Result<Vec<Record>> {
-    let mut args = vec![
-        "-C".to_string(),
-        repo.to_string_lossy().into_owned(),
+    let mut args: Vec<OsString> = vec![
+        "-C".into(),
+        repo.into(),
         "log".into(),
         "--all".into(),
         "-z".into(),
         "--format=%H%n%(trailers:only,unfold)".into(),
         "--fixed-strings".into(),
-        format!("--grep=Release-Image: {}", id.unwrap_or_default()),
+        format!("--grep=Release-Image: {}", id.unwrap_or_default()).into(),
     ];
     if let Some(v) = version {
         args.push("--all-match".into());
-        args.push(format!("--grep=Release-Version: {v}"));
+        args.push(format!("--grep=Release-Version: {v}").into());
     }
-    let out = git.run(&args, None).map_err(|e| Error(e.0))?;
+    let out = git.run(&args, None)?;
     let text = String::from_utf8_lossy(&out);
     Ok(text
         .split('\0')
@@ -589,10 +576,7 @@ impl Destination<'_> {
         if !self.files()?.iter().any(|f| f == name) {
             return Ok(None);
         }
-        let out = self
-            .rclone
-            .output(&["cat", &self.path(name)], None)
-            .map_err(|e| Error(e.0))?;
+        let out = self.rclone.output(&["cat", &self.path(name)], None)?;
         match out.status.code() {
             Some(0) => Ok(Some(out.stdout)),
             Some(c) if NOT_FOUND.contains(&c) => Ok(None),
@@ -629,8 +613,7 @@ impl Destination<'_> {
     pub fn files(&self) -> Result<Vec<String>> {
         let out = self
             .rclone
-            .output(&["lsf", "--files-only", self.to], None)
-            .map_err(|e| Error(e.0))?;
+            .output(&["lsf", "--files-only", self.to], None)?;
         match out.status.code() {
             Some(0) => Ok(String::from_utf8_lossy(&out.stdout)
                 .lines()
@@ -663,7 +646,6 @@ impl Destination<'_> {
                 None,
             )
             .map(|_| ())
-            .map_err(|e| Error(e.0))
     }
 }
 
@@ -783,8 +765,6 @@ pub struct BuildRequest<'a> {
     /// the directory the signed release goes to, made new: disk.raw, release/, and `unsigned`,
     /// the link to the unsigned outputs (a GC root)
     pub out: PathBuf,
-    /// the release commit's author, `Name <id>`; None: git's configured one
-    pub author: Option<String>,
 }
 
 /// The programs a build runs. The build goes through nix-build, not iets: the image's
@@ -833,12 +813,13 @@ impl Golconda {
     }
 }
 
-fn git_out(git: &Program, dir: &Path, args: &[&str]) -> Result<String> {
-    let mut all = vec!["-C", dir.to_str().unwrap_or(".")];
-    all.extend(args);
+fn git_out<S: AsRef<OsStr>>(git: &Program, dir: &Path, args: &[S]) -> Result<String> {
+    let all: Vec<&OsStr> = ["-C".as_ref(), dir.as_os_str()]
+        .into_iter()
+        .chain(args.iter().map(AsRef::as_ref))
+        .collect();
     git.run(&all, None)
         .map(|o| String::from_utf8_lossy(&o).trim().to_string())
-        .map_err(|e| Error(e.0))
 }
 
 /// The image id and version the document sets in `/system`.
@@ -910,10 +891,14 @@ pub fn build(req: &BuildRequest<'_>, tools: &Tools<'_>) -> Result<Built> {
     drop(copy);
     let rel = document.strip_prefix(&repo).unwrap_or(&document);
     let msg = format!("release: {id} {version}\n\n{}", record.trailers());
-    let author = req.author.as_ref().map(|a| format!("--author={a}"));
-    let mut args = vec!["commit", "-q", "-m", &msg];
-    args.extend(author.as_deref());
-    args.extend(["--", rel.to_str().unwrap_or_default()]);
+    let args: [&OsStr; 6] = [
+        "commit".as_ref(),
+        "-q".as_ref(),
+        "-m".as_ref(),
+        msg.as_ref(),
+        "--".as_ref(),
+        rel.as_os_str(),
+    ];
     let committed = write_document(&document, &edited)
         .and_then(|()| git_out(tools.git, &repo, &args))
         .and_then(|_| git_out(tools.git, &repo, &["rev-parse", "HEAD"]));
@@ -1131,7 +1116,7 @@ fn sign_release(
         sign.extend(["--pkcs11-module".as_ref(), m.as_os_str()]);
     }
     sign.extend(["--out".as_ref(), out.as_os_str()]);
-    Program::at(&unsigned.join("sign"))
+    Program::at(unsigned.join("sign"))
         .run(&sign, None)
         .map(|_| ())
         .map_err(|e| Error(format!("signing failed: {}", e.0)))
@@ -1188,14 +1173,10 @@ fn find_root(path: &Path) -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
-/// Seconds since 1970 as `YYYY-MM-DDTHH:MM:SSZ` (the days-to-civil algorithm, proleptic
-/// Gregorian).
-fn rfc3339(secs: u64) -> String {
-    let (days, rest) = (
-        i64::try_from(secs / 86400).unwrap_or(i64::MAX),
-        secs % 86400,
-    );
-    let z = days + 719_468;
+/// Days since 1970 as the date (year, month, day): the days-to-civil algorithm, proleptic
+/// Gregorian.
+fn civil_date(days: u64) -> (u32, u32, u32) {
+    let z = i64::try_from(days).unwrap_or(i64::MAX - 719_468) + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z.rem_euclid(146_097);
     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
@@ -1204,12 +1185,8 @@ fn rfc3339(secs: u64) -> String {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = yoe + era * 400 + i64::from(m <= 2);
-    format!(
-        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z",
-        rest / 3600,
-        rest % 3600 / 60,
-        rest % 60
-    )
+    let int = |v: i64| u32::try_from(v).unwrap_or(u32::MAX);
+    (int(y), int(m), int(d))
 }
 
 #[cfg(test)]
@@ -1220,11 +1197,11 @@ mod tests {
     use std::time::Duration;
 
     #[test]
-    fn rfc3339_dates() {
-        assert_eq!(rfc3339(0), "1970-01-01T00:00:00Z");
-        assert_eq!(rfc3339(951_782_400), "2000-02-29T00:00:00Z");
-        assert_eq!(rfc3339(1_793_908_800 + 3661), "2026-11-05T21:01:01Z");
-        assert_eq!(rfc3339(4_107_542_399), "2100-02-28T23:59:59Z");
+    fn civil_dates() {
+        assert_eq!(civil_date(0), (1970, 1, 1));
+        assert_eq!(civil_date(951_782_400 / 86400), (2000, 2, 29));
+        assert_eq!(civil_date(1_793_908_800 / 86400), (2026, 11, 5));
+        assert_eq!(civil_date(4_107_542_399 / 86400), (2100, 2, 28));
     }
 
     #[test]
@@ -1681,7 +1658,7 @@ mod tests {
             dest: f.tmp.path().join("www"),
             gpgv: f.gpgv,
             git: Program::from_env("GOLCONDA_TEST_UNSET_GIT", "git"),
-            rclone: Program::from_env("GOLCONDA_RCLONE", "rclone"),
+            rclone: Program::at("rclone"),
             tmp: f.tmp,
         }
     }
@@ -2088,7 +2065,6 @@ mod tests {
                 version: version.map(v),
                 dest: dest.then_some(&d),
                 out: self.tmp.path().join("result"),
-                author: None,
             };
             let tools = Tools {
                 nix_build: iets,
@@ -2381,7 +2357,6 @@ mod tests {
             version: Some(v("20261106.1")),
             dest: None,
             out: out.clone(),
-            author: Some("Alice <id-alice>".into()),
         };
         let tools = Tools {
             nix_build: &iets,
@@ -2405,9 +2380,6 @@ mod tests {
                 && signed.contains(&format!("--index-keys {}", old.display())),
             "{signed}"
         );
-        // the author given, the committer git's own
-        let who = sh(&s.repo, "git", &["log", "-1", "--format=%an <%ae>"]);
-        assert_eq!(who, "Alice <id-alice>");
         // a second build into the same directory is refused before anything is built, and
         // leaves it as it was
         fs::remove_file(s.tmp.path().join("iets.log")).unwrap();

@@ -35,19 +35,16 @@ With `image-smoke-test-rotated` in place of `image-smoke-test-next`, add `--rota
 Build it with `nix-build -A packages.x86_64-linux.golconda-cli`; the binary is
 `result/bin/golconda`. It runs where an operator works, not on a machine, and is not part of an
 image. The source is `cli/` (`cli/README.md` is for developers). It calls other programs, found on
-`PATH`; an environment variable replaces each one, with arguments if you like
-(`GOLCONDA_SSH="ssh -p 2222"`):
+`PATH`: `age`, `ssh`, `ssh-keygen`, `gpgv`, `git`, `rclone` and `nix-build`. A variable replaces
+some of them, with arguments if you like (`GOLCONDA_SSH="ssh -p 2222"`):
 
-| variable                | program                                         | used by                                            |
-| ----------------------- | ----------------------------------------------- | -------------------------------------------------- |
-| `GOLCONDA_AGE`          | `age` (or `rage`)                               | `vars`                                             |
-| `GOLCONDA_SSH`          | `ssh`                                           | `vars`                                             |
-| `GOLCONDA_SSH_KEYGEN`   | `ssh-keygen`                                    | `vars enrol`                                       |
-| `GOLCONDA_AGE_IDENTITY` | the age identity file that `vars push -i` names | `vars push`, `vars enrol`                          |
-| `GOLCONDA_NIX_BUILD`    | `nix-build`                                     | `release build`                                    |
-| `GOLCONDA_GIT`          | `git`                                           | `release build`, `release list`, `release publish` |
-| `GOLCONDA_GPGV`         | `gpgv`                                          | `release check`, `release publish`                 |
-| `GOLCONDA_RCLONE`       | `rclone`                                        | `release publish`, `release list`                  |
+| variable                | program                                         | used by                            |
+| ----------------------- | ----------------------------------------------- | ---------------------------------- |
+| `GOLCONDA_AGE`          | `age` (or `rage`)                               | `vars`                             |
+| `GOLCONDA_SSH`          | `ssh`                                           | `vars`                             |
+| `GOLCONDA_SSH_KEYGEN`   | `ssh-keygen`                                    | `vars enrol`                       |
+| `GOLCONDA_AGE_IDENTITY` | the age identity file that `vars push -i` names | `vars push`, `vars enrol`          |
+| `GOLCONDA_GPGV`         | `gpgv`                                          | `release check`, `release publish` |
 
 Golconda packages age as `packages.<system>.age` (`age` and `age-keygen`). Put it on `PATH` beside
 `golconda`, with any `age-plugin-*` that the operators' keys need: age finds its plugins on `PATH`,
