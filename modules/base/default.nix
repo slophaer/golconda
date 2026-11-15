@@ -105,6 +105,7 @@ let
   inherit (import ../lib/text.nix) lines;
   ini = import ../lib/ini.nix;
   grammar = import ../lib/grammar.nix;
+  merge = import ../lib/merge.nix;
 
   # a value of a systemd setting, by its grammar (modules/lib/grammar.nix)
   word =
@@ -251,29 +252,30 @@ in
         "disable *"
       ];
     in
-    {
-      packages = [
-        p.systemd
-        p.dbus-broker
-        p.dash
-        p.uutils-coreutils
-        p.e2fsprogs # mkfs.ext4 and fsck.ext4: repart makes the root partition at first boot
-        p.tzdata # the zone database: /usr/share/zoneinfo
-        p.hwdb # the compiled hardware database: /usr/lib/udev/hwdb.bin
-        p.lvm2 # dmsetup and the dm udev rules (/dev/mapper/usr; parts/links.nix)
-        p.linux-kernel # kernel; UKI builder consumes it
-      ];
+    # the union of the parts and the rest: a path that two of them claim throws (modules/lib/merge.nix)
+    merge [
+      boot
+      dbus
+      dropIns
+      imds
+      trialBoot
+      failedBoots
+      espCredentials
+      usrLinks
+      {
+        packages = [
+          p.systemd
+          p.dbus-broker
+          p.dash
+          p.uutils-coreutils
+          p.e2fsprogs # mkfs.ext4 and fsck.ext4: repart makes the root partition at first boot
+          p.tzdata # the zone database: /usr/share/zoneinfo
+          p.hwdb # the compiled hardware database: /usr/lib/udev/hwdb.bin
+          p.lvm2 # dmsetup and the dm udev rules (/dev/mapper/usr; parts/links.nix)
+          p.linux-kernel # kernel; UKI builder consumes it
+        ];
 
-      units = boot.units // trialBoot.units // failedBoots.units // espCredentials.units;
-
-      files =
-        dropIns.files
-        // imds.files
-        // boot.files
-        // trialBoot.files
-        // failedBoots.files
-        // espCredentials.files
-        // {
+        files = {
           "/usr/lib/systemd/timesyncd.conf.d/golconda.conf" = timesyncdConf;
           "/usr/lib/systemd/journald.conf.d/golconda.conf" = journaldConf;
           "/usr/lib/systemd/system.conf.d/golconda-caps.conf" = capsConf;
@@ -282,24 +284,16 @@ in
           "/usr/lib/systemd/system-preset/00-golconda.preset" = presetFile;
         };
 
-      # path -> { target; kind; }, the shape the composer takes
-      links =
-        wantsLinks
-        // boot.links
-        // trialBoot.links
-        // failedBoots.links
-        // espCredentials.links
-        // dbus.links
-        // usrLinks.links;
+        # path -> { target; kind; }, the shape the composer takes
+        links = wantsLinks;
 
-      inherit (dbus) sysusers;
-
-      # merged /usr on the root partition: #!/bin/sh and friends. The root partition starts
-      # empty (image/repart.nix makes only directories), so tmpfiles makes these links at boot.
-      tmpfiles = [
-        "L /bin - - - - usr/bin"
-        "L /sbin - - - - usr/bin"
-        "L /lib - - - - usr/lib"
-      ];
-    };
+        # merged /usr on the root partition: #!/bin/sh and friends. The root partition starts
+        # empty (image/repart.nix makes only directories), so tmpfiles makes these links at boot.
+        tmpfiles = [
+          "L /bin - - - - usr/bin"
+          "L /sbin - - - - usr/bin"
+          "L /lib - - - - usr/lib"
+        ];
+      }
+    ];
 }
