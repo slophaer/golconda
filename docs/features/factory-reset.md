@@ -66,9 +66,8 @@ counting has markers too (`fallback-to-old-slot`).
 ## Limits
 
 - No local login and no rescue shell. A machine without working ssh has no console session.
-- No remote recovery channel. A failed candidate reboots by itself only on a trial boot
-  ([Boot: Trial boot](../design/boot.md#trial-boot)); a kernel that hangs without a panic needs a
-  hardware watchdog, which the image does not set up.
+- No remote recovery channel. A failed candidate reboots by itself only on a trial boot or after a
+  hang ([Boot: Trial boot](../design/boot.md#trial-boot)).
 - The reset test ran on the test image: one `/usr` slot, QEMU. A reset after an update, the TPM
   clear and sealed credentials, real firmware, and the case where ssh is down are manual steps.
 - The boot test does not exercise the menu. A headless machine needs serial redirection in its

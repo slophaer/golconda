@@ -139,6 +139,14 @@
         file baseOnly "/usr/lib/systemd/system.conf.d/golconda-crash.conf"
       )
     ))
+    (check "trial boot: PID 1 runs the hardware watchdog, 30 s, and 10 min for a reboot" (
+      let
+        t = file baseOnly "/usr/lib/systemd/system.conf.d/golconda-watchdog.conf";
+      in
+      hasInfix "\n[Manager]\n" t
+      && hasInfix "\nRuntimeWatchdogSec=30s\n" t
+      && hasInfix "\nRebootWatchdogSec=10min\n" t
+    ))
     (check "trial boot: an initrd failure reboots, in the initrd only" (
       hasInfix "\nConditionPathExists=/etc/initrd-release\n" initrdFailed
       && hasInfix "\nDefaultDependencies=no\n" initrdFailed

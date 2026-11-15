@@ -65,6 +65,13 @@ covers it.
 - **`/proc/config.gz`** (`CONFIG_IKCONFIG`): nothing reads it. The package has the resolved config
   in `lib/modules/<version>/config`.
 
+## Hangs and watchdogs
+
+The soft and hard lockup detectors (the hard one on the perf NMI) and the hung task detector are
+built in, and so are the watchdog drivers: QEMU's `i6300esb`, Intel's `iTCO_wdt` (through
+`lpc_ich`), AMD's `sp5100_tco` and `softdog`. What a hang then does is the
+[trial boot](boot.md#trial-boot) policy's.
+
 ## Lockdown
 
 The cmdline sets `lockdown=integrity`. This is kernel self-protection: it blocks operations that

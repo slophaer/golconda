@@ -383,7 +383,8 @@ start_qemu() {
     $SMBIOS_BOOTSTRAP \
     $SMBIOS_IMDS \
     -netdev user,id=net0,net=$GUEST_NET,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22$NET_UPDATE$NET_IMDS$NET_TLS \
-    -device virtio-net-pci,netdev=net0"
+    -device virtio-net-pci,netdev=net0 \
+    -device i6300esb"
   
   if [ "$TPM" = 1 ] || [ "$SECURE_BOOT" = 1 ]; then
     QEMU_ARGS="$QEMU_ARGS \

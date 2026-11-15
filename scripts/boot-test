@@ -18,6 +18,7 @@
 #     source is the gateway, 169.254.169.2), with hostfwd to SSH (127.0.0.1:$BOOT_TEST_SSH_PORT;
 #     without it, the first free port from 10022 up, printed)
 #   - serial console logged to a file
+#   - an i6300esb watchdog, which PID 1 arms (watchdog-armed)
 #
 # --keys DIR: the throwaway keys directory (from image-smoke-test's keys symlink
 #   or the path to golconda-throwaway-keys directly).
@@ -39,6 +40,8 @@
 #   units-composed-only (no link in /etc/systemd/system; each enabled unit has a static link in
 #   /usr), no-sysext (no sysext or confext unit or program),
 #   sshd-golconda-only (sshd.service is the one ssh server: no ssh socket, generator or vsock),
+#   hang-panic-sysctls (kernel.panic=10, softlockup_panic, hardlockup_panic and hung_task_panic are
+#   1), watchdog-armed (watchdog0 is the i6300esb, active, timeout 30 s; RebootWatchdogSec=10min),
 #   and clock-not-reset (this boot's journal, journalctl -b, has no clock reset by PID 1 and no
 #   entry before the year of systemd's time-epoch). Each later boot checks the clock again under
 #   its own name: clock-not-reset-after-reboot (--tpm), -after-update (--next), -after-fallback

@@ -12,8 +12,8 @@
 #   - N + 1 = fallback: should this boot fail too, the next one starts the other /usr slot once
 #     (bootctl set-oneshot), and GolcondaFailedEntry-<the same guid> names this boot's entry;
 #   - N >= halt: this boot reboots on no failure. kernel.panic=0, and drop-ins in /run that PID 1
-#     reads at once (daemon-reload) and again after switch-root: CrashAction=freeze, and no
-#     deadline on initrd.target. The trial boot policy's reboot units skip themselves. The console
+#     reads at once (daemon-reload) and again after switch-root: CrashAction=freeze, no hardware
+#     watchdog and no deadline on initrd.target. The trial boot policy's reboot units skip themselves. The console
 #     stays readable.
 # complete (golconda-failed-boots-complete.service, in the host after multi-user.target and
 #   boot-complete.target): this boot completed, on a counted boot only when boot-complete.target
@@ -119,11 +119,13 @@ count() {
     # the same names as /base's files in /usr: these replace them
     printf '# golconda-failed-boots: %s failed boots in a row\n[Manager]\nCrashAction=freeze\n' "$failed" \
       >"$root/run/systemd/system.conf.d/golconda-crash.conf"
+    printf '# golconda-failed-boots: %s failed boots in a row\n[Manager]\nRuntimeWatchdogSec=off\n' "$failed" \
+      >"$root/run/systemd/system.conf.d/golconda-watchdog.conf"
     printf '# golconda-failed-boots: %s failed boots in a row, no deadline\n[Unit]\n' "$failed" \
       >"$root/run/systemd/system/initrd.target.d/golconda-trial-boot.conf"
     : >"$state/failed-boots-halt"
     systemctl daemon-reload || log "systemctl daemon-reload failed"
-    log "failed boots in a row: $failed: this boot reboots on no failure (kernel.panic=$(cat "$root/proc/sys/kernel/panic"), CrashAction=freeze)"
+    log "failed boots in a row: $failed: this boot reboots on no failure (kernel.panic=$(cat "$root/proc/sys/kernel/panic"), CrashAction=freeze, no watchdog)"
     return 0
   fi
 

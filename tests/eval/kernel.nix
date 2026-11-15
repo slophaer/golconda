@@ -193,6 +193,41 @@ in
     && hasInfix "lockdown=integrity" uki.cmdlineTemplate
     && hasInfix "ipe.enforce=1" uki.cmdlineTemplate
   ))
+  # a kernel hang becomes a panic, and panic=10 reboots (docs/design/boot.md, "Trial boot"): the
+  # detectors are built in and the cmdline makes each one panic
+  (check "kernel: the lockup and hung task detectors are built in and panic" (
+    let
+      uki = import ../../image/uki.nix;
+      config = readFile ../../packages/kernel/golconda.config;
+    in
+    hasInfix "\nCONFIG_SOFTLOCKUP_DETECTOR=y\n" config
+    && hasInfix "\nCONFIG_HARDLOCKUP_DETECTOR=y\n" config
+    && hasInfix "\nCONFIG_HARDLOCKUP_DETECTOR_PERF=y\n" config
+    && hasInfix "\nCONFIG_DETECT_HUNG_TASK=y\n" config
+    && hasInfix " panic=10 " uki.cmdlineTemplate
+    && hasInfix " softlockup_panic=1 " uki.cmdlineTemplate
+    && hasInfix " nmi_watchdog=panic " uki.cmdlineTemplate
+    && hasInfix " hung_task_panic=1 " uki.cmdlineTemplate
+  ))
+  # the hardware watchdogs are built in (no modules), softdog last: the Makefile's link order
+  # registers it after the hardware drivers, so it is watchdog0 only on a machine without one
+  (check "kernel: watchdog drivers for QEMU, Intel and AMD, and softdog, built in" (
+    let
+      config = readFile ../../packages/kernel/golconda.config;
+    in
+    all (o: hasInfix "\nCONFIG_${o}=y\n" config) [
+      "WATCHDOG"
+      "WATCHDOG_CORE"
+      "WATCHDOG_SYSFS"
+      "I6300ESB_WDT"
+      "ITCO_WDT"
+      "LPC_ICH"
+      "SP5100_TCO"
+      "SOFT_WATCHDOG"
+    ]
+    # the failed-boot counter's halt closes the watchdog: NOWAYOUT would keep it running
+    && hasInfix "\n# CONFIG_WATCHDOG_NOWAYOUT is not set\n" config
+  ))
   # kernel config: IPE and lockdown; the /usr signature and IPE policies trust the kernel's
   # built-in key (the secondary keyring), never the platform keyring: that is the firmware db,
   # which holds Microsoft's UEFI CAs by default (docs/design/trust.md)

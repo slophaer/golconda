@@ -113,11 +113,13 @@ counting needs a reboot to count, so `/base` reboots a boot that fails
 | PID 1 crashes, or cannot execute the host's (IPE denies an unsigned `/usr`) | `CrashAction=reboot` (`system.conf.d/golconda-crash.conf`): PID 1 reboots after 10 s                                                                                       | every boot        |
 | the initrd fails (a unit fails into `emergency.target`)                     | `golconda-initrd-failed.service`, wanted by `emergency.target`, runs only in the initrd: `SuccessAction=reboot`                                                            | every boot        |
 | the initrd hangs                                                            | `initrd.target`: `JobTimeoutSec=10min`, `JobTimeoutAction=reboot`                                                                                                          | every boot        |
+| the kernel hangs: a soft or hard lockup, a task blocked for 120 s           | `softlockup_panic=1 nmi_watchdog=panic hung_task_panic=1` on the UKI cmdline: the kernel's detectors panic, and `panic=10` reboots                                         | every boot        |
+| PID 1 or the kernel stops for 30 s, also a hang no detector sees            | the hardware watchdog, which PID 1 runs (`system.conf.d/golconda-watchdog.conf`: `RuntimeWatchdogSec=30s`, `RebootWatchdogSec=10min` for a reboot)                         | every boot        |
 | a health unit fails, or `boot-complete.target` is not reached in time       | the generator's drop-in for `boot-complete.target`: `JobTimeoutSec=` (`/base.trialBootDeadline`, 15 min) and `OnFailure=golconda-trial-boot-failed.service`, which reboots | a trial boot only |
 
-The first four rows end a boot that nobody can reach: no getty runs, and sshd is not up. On a
-counted entry the reboot is the next try; on a blessed one it is a retry that may succeed (a disk
-that was slow to appear). A failure at every boot, also of a blessed entry, is the
+The first six rows end a boot that nobody can reach: no getty runs, and sshd is not up. On a counted
+entry the reboot is the next try; on a blessed one it is a retry that may succeed (a disk that was
+slow to appear). A failure at every boot, also of a blessed entry, is the
 [failed-boot counter](#failed-boots)'s.
 
 The last row judges a machine that may answer ssh, so it reboots only when that moves the counter.
@@ -133,12 +135,18 @@ is on the serial console and in the journal.
 
 `OnFailure=` of `boot-complete.target` fires both for a job that failed on a dependency and for one
 that timed out (systemd's `job.c`), so one unit covers both. The deadline counts from the start of
-the host's PID 1; the initrd has its own. A kernel that hangs without a panic, and firmware that
-never starts the loader, need a hardware watchdog; the image sets none up.
+the host's PID 1; the initrd has its own.
+
+The kernel carries the watchdog drivers built in ([Kernel](kernel.md#hangs-and-watchdogs)): QEMU's
+i6300esb, Intel's and AMD's TCO, and softdog, a kernel timer, where no hardware one is found.
+softdog catches a PID 1 that stops, not a kernel that hangs. The watchdog runs from the initrd's PID
+1 on: firmware that never starts the loader, and a kernel that hangs before PID 1, are not covered.
 
 In QEMU, with no reboot from the harness, `--next --fail-health` proves the health row and
 `--next --fail-initrd` the initrd failure row ([What is proven](../proven.md)). The panic, crash and
-initrd hang rows have no test of their own *(being built)*.
+initrd hang rows have no test of their own *(being built)*. Of the two hang rows, every `--ssh-test`
+boot proves the settings (`hang-panic-sysctls`, `watchdog-armed`); no test hangs the kernel or lets
+the watchdog expire *(being built)*.
 
 ### Failed boots
 
@@ -160,11 +168,11 @@ so later boots keep to the release that works, and `golconda-update-pending` fin
 update reboot timer to activate. A newer release that sysupdate installs sorts first and is tried as
 usual. No default entry is set. When the failed entry's own boot completes, it is not marked, and
 its one-shot goes. After `/base.failedBootsHalt` (6), a boot reboots on no failure: the counter sets
-`kernel.panic=0` and, in `/run`, `CrashAction=freeze` and no deadline for `initrd.target` (PID 1
-reads them at once and again after switch-root), and the two reboot units of the trial boot policy
-skip themselves. The console keeps the last messages. Each step is a line in the kernel log
-(`golconda-failed-boots: …`). `--next --fail-blessed` proves both on a blessed entry whose PID 1
-crashes at every boot ([What is proven](../proven.md)).
+`kernel.panic=0` and, in `/run`, `CrashAction=freeze`, no watchdog and no deadline for
+`initrd.target` (PID 1 reads them at once and again after switch-root), and the two reboot units of
+the trial boot policy skip themselves. The console keeps the last messages. Each step is a line in
+the kernel log (`golconda-failed-boots: …`). `--next --fail-blessed` proves both on a blessed entry
+whose PID 1 crashes at every boot ([What is proven](../proven.md)).
 
 Limits:
 

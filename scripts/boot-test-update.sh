@@ -370,7 +370,7 @@ test_fail_blessed() {
     crash_line "$LATER_VERSION"
     echo "$F 5"
     crash_line "$LATER_VERSION"
-    echo "$F 6: this boot reboots on no failure (kernel.panic=0, CrashAction=freeze)"
+    echo "$F 6: this boot reboots on no failure (kernel.panic=0, CrashAction=freeze, no watchdog)"
     echo "boot-test: crash PID 1 ($LATER_VERSION)"
   )
   RC=0

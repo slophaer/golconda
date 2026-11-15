@@ -28,7 +28,8 @@
 #!
 #! Trial boot (`parts/trial-boot.nix`): a kernel panic (`panic=` on the
 #! cmdline), a PID 1 crash (`CrashAction=reboot`) and an initrd that fails or
-#! hangs reboot on every boot. `golconda-trial-boot-generator` recognises a
+#! hangs reboot on every boot, and so does a hang: PID 1 runs the hardware
+#! watchdog (`RuntimeWatchdogSec=30s`, `RebootWatchdogSec=10min`). `golconda-trial-boot-generator` recognises a
 #! trial boot (a counted entry that had a try left, from `LoaderBootCountPath`)
 #! and links a drop-in for boot-complete.target there: a deadline
 #! (`/base.trialBootDeadline`) and `OnFailure=` a unit that reboots. A blessed
@@ -137,7 +138,7 @@ in
     failedBootsHalt = {
       type = int;
       default = 6;
-      description = "After this many boots in a row that did not complete, a boot reboots on no failure: kernel.panic=0, CrashAction=freeze and no trial boot reboot, so the console stays readable. More than failedBootsFallback (docs/design/boot.md, \"Failed boots\").";
+      description = "After this many boots in a row that did not complete, a boot reboots on no failure: kernel.panic=0, CrashAction=freeze, no hardware watchdog and no trial boot reboot, so the console stays readable. More than failedBootsFallback (docs/design/boot.md, \"Failed boots\").";
     };
   };
 

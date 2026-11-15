@@ -139,13 +139,14 @@ check "the sixth boot in a row still reboots on a failure" 'count_is sixth 6 && 
 
 boot halt boot-test_20261031.2.efi 6
 run halt count
-check "the seventh boot in a row stops rebooting: kernel.panic=0, CrashAction=freeze, no trial reboot" \
+check "the seventh boot in a row stops rebooting: kernel.panic=0, CrashAction=freeze, no watchdog, no trial reboot" \
   'count_is halt 7 && [ "$(cat "$WORK/halt/proc/sys/kernel/panic")" = 0 ] &&
    grep -qx "CrashAction=freeze" "$WORK/halt/run/systemd/system.conf.d/golconda-crash.conf" &&
+   grep -qx "RuntimeWatchdogSec=off" "$WORK/halt/run/systemd/system.conf.d/golconda-watchdog.conf" &&
    [ -f "$WORK/halt/run/systemd/system/initrd.target.d/golconda-trial-boot.conf" ] &&
    ! grep -q JobTimeoutAction "$WORK/halt/run/systemd/system/initrd.target.d/golconda-trial-boot.conf" &&
    [ -e "$WORK/halt/run/golconda/failed-boots-halt" ] && called halt "systemctl daemon-reload" &&
-   logged halt "golconda-failed-boots: failed boots in a row: 6: this boot reboots on no failure (kernel.panic=0, CrashAction=freeze)" &&
+   logged halt "golconda-failed-boots: failed boots in a row: 6: this boot reboots on no failure (kernel.panic=0, CrashAction=freeze, no watchdog)" &&
    [ ! -e "$WORK/halt/$ONESHOT" ]'
 
 # complete: a blessed boot (no LoaderBootCountPath) completes at multi-user.target

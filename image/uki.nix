@@ -36,6 +36,10 @@
   # panics loses a try and systemd-boot falls back (the trial boot policy, modules/base/parts/
   # trial-boot.nix; docs/design/boot.md). A cmdline value, not CONFIG_PANIC_TIMEOUT, so the
   # policy is in one place with the rest of the boot's parameters.
+  # softlockup_panic=1 nmi_watchdog=panic hung_task_panic=1: a hang the kernel's detectors see (a
+  # CPU stuck in the kernel for 20 s, with interrupts off for 10 s, a task blocked for 120 s;
+  # packages/kernel/golconda.config) panics, and panic=10 reboots it. nmi_watchdog=panic sets
+  # kernel.hardlockup_panic and keeps the NMI watchdog on: the kernel has no hardlockup_panic=.
   # Security parameters (see docs/design/kernel.md):
   #   lsm=lockdown,yama,ipe,bpf   LSM stack order (capability is always first)
   #   lockdown=integrity          kernel lockdown level (blocks kexec, /dev/mem, etc.)
@@ -47,7 +51,7 @@
   # default pulls it into the initrd, which has no network here; /imds pulls it into the host
   # instead, on a cloud only (modules/imds), and without /imds it never runs.
   # The builder appends rdinit= (lib/image/initrd.nix says why)
-  cmdlineTemplate = "usrhash={usrhash} systemd.verity_usr_options=root-hash-signature=base64:{usrhashSig} rw panic=10 lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=1 systemd.imds.import=0 console=tty0 console=ttyS0,115200";
+  cmdlineTemplate = "usrhash={usrhash} systemd.verity_usr_options=root-hash-signature=base64:{usrhashSig} rw panic=10 softlockup_panic=1 nmi_watchdog=panic hung_task_panic=1 lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=1 systemd.imds.import=0 console=tty0 console=ttyS0,115200";
 
   # PCR policy signing (for measured boot and credential decryption): the phase paths to
   # sign. A phase path is the colon-separated chain of words systemd has measured into
