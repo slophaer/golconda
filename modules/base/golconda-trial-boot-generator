@@ -16,7 +16,7 @@
 # - an entry with no try left before this boot (left + done above the tries a release starts
 #   with, image/boot-counting.nix): systemd-boot starts a bad entry only when no other entry is
 #   left, and a reboot would only start it again;
-# - the initrd: an initrd failure reboots by golconda-initrd-failed.service on every boot.
+# - the initrd: an initrd failure reboots by golconda-emergency-reboot.service on every boot.
 #
 # It runs before the root partition's /bin link exists (tmpfiles makes it), hence /usr/bin/sh.
 # GOLCONDA_TRIAL_BOOT_ROOT prefixes every path it reads and the kernel log it writes, for the

@@ -201,7 +201,7 @@
 #   partition (usr-verity_<version>, the superblock and the top of the tree), so its initrd cannot
 #   attach /usr and fails into emergency.target. The reboot timer's window moves to every 10 s, so
 #   the guest activates the candidate by itself, and the harness only watches:
-#   golconda-initrd-failed.service must reboot each of the three tries
+#   golconda-emergency-reboot.service must reboot each of the three tries
 #   (initrd-fail-rebooted: three of its lines on the serial console, and the candidate's host
 #   never started), and the fourth boot must run the old release (fallback-to-old-slot-initrd,
 #   counter-exhausted-initrd), where the timer reboots nothing

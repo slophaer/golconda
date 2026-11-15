@@ -109,19 +109,20 @@ A trial boot is a counted boot whose entry had a try left before systemd-boot st
 counting needs a reboot to count, so `/base` reboots a boot that fails
 (`modules/base/parts/trial-boot.nix`), except where a reboot cannot help:
 
-| failure                                                                     | what reboots it                                                                                                                                    | when              |
-| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
-| a kernel panic                                                              | `panic=10` on the UKI cmdline: the kernel reboots after 10 s                                                                                       | every boot        |
-| PID 1 crashes, or cannot execute the host's (IPE denies an unsigned `/usr`) | `CrashAction=reboot` (`system.conf.d/golconda-crash.conf`): PID 1 reboots after 10 s                                                               | every boot        |
-| the initrd fails (a unit fails into `emergency.target`)                     | `golconda-initrd-failed.service`, wanted by `emergency.target`, runs only in the initrd: `SuccessAction=reboot`                                    | every boot        |
-| the initrd hangs                                                            | `initrd.target`: `JobTimeoutSec=10min`, `JobTimeoutAction=reboot`                                                                                  | every boot        |
-| the kernel hangs: a soft or hard lockup, a task blocked for 120 s           | `softlockup_panic=1 nmi_watchdog=panic hung_task_panic=1` on the UKI cmdline: the kernel's detectors panic, and `panic=10` reboots                 | every boot        |
-| PID 1 or the kernel stops for 30 s, also a hang no detector sees            | the hardware watchdog, which PID 1 runs (`system.conf.d/golconda-watchdog.conf`: `RuntimeWatchdogSec=30s`, `RebootWatchdogSec=10min` for a reboot) | every boot        |
-| a health unit fails, or `boot-complete.target` is not reached in time       | the generator's drop-in for `boot-complete.target`: `JobTimeoutSec=15min` and `OnFailure=golconda-trial-boot-failed.service`, which reboots        | a trial boot only |
+| failure                                                                                 | what reboots it                                                                                                                                    | when              |
+| --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| a kernel panic                                                                          | `panic=10` on the UKI cmdline: the kernel reboots after 10 s                                                                                       | every boot        |
+| PID 1 crashes, or cannot execute the host's (IPE denies an unsigned `/usr`)             | `CrashAction=reboot` (`system.conf.d/golconda-crash.conf`): PID 1 reboots after 10 s                                                               | every boot        |
+| the initrd fails (a unit fails into `emergency.target`)                                 | `golconda-emergency-reboot.service`, wanted by `emergency.target`: `SuccessAction=reboot`                                                          | every boot        |
+| the host fails into `emergency.target` (`local-fs.target`, `systemd-fsck-root.service`) | `golconda-emergency-reboot.service`, as in the initrd; the isolate also cancels the job of `boot-complete.target`, so the last row cannot reboot   | every boot        |
+| the initrd hangs                                                                        | `initrd.target`: `JobTimeoutSec=10min`, `JobTimeoutAction=reboot`                                                                                  | every boot        |
+| the kernel hangs: a soft or hard lockup, a task blocked for 120 s                       | `softlockup_panic=1 nmi_watchdog=panic hung_task_panic=1` on the UKI cmdline: the kernel's detectors panic, and `panic=10` reboots                 | every boot        |
+| PID 1 or the kernel stops for 30 s, also a hang no detector sees                        | the hardware watchdog, which PID 1 runs (`system.conf.d/golconda-watchdog.conf`: `RuntimeWatchdogSec=30s`, `RebootWatchdogSec=10min` for a reboot) | every boot        |
+| a health unit fails, or `boot-complete.target` is not reached in time                   | the generator's drop-in for `boot-complete.target`: `JobTimeoutSec=15min` and `OnFailure=golconda-trial-boot-failed.service`, which reboots        | a trial boot only |
 
-The first six rows end a boot that nobody can reach: no getty runs, and sshd is not up. On a counted
-entry the reboot is the next try; on a blessed one it is a retry that may succeed (a disk that was
-slow to appear). A failure at every boot, also of a blessed entry, is the
+The first seven rows end a boot that nobody can reach: no getty runs, and sshd is not up. On a
+counted entry the reboot is the next try; on a blessed one it is a retry that may succeed (a disk
+that was slow to appear). A failure at every boot, also of a blessed entry, is the
 [failed-boot counter](#failed-boots)'s.
 
 The last row judges a machine that may answer ssh, so it reboots only when that moves the counter.
@@ -146,10 +147,10 @@ softdog catches a PID 1 that stops, not a kernel that hangs. The watchdog runs f
 
 In QEMU, with no reboot from the harness, `--next --fail-health` proves the health row,
 `--next --fail-initrd` the initrd failure row, `--next --fail-panic` the panic row and
-`--next --fail-pid1` the crash row ([What is proven](../proven.md)). The initrd hang row has no test
-of its own *(being built)*. Of the two hang rows, every `--ssh-test` boot proves the settings
-(`hang-panic-sysctls`, `watchdog-armed`); no test hangs the kernel or lets the watchdog expire
-*(being built)*.
+`--next --fail-pid1` the crash row ([What is proven](../proven.md)). The initrd hang row and the
+host `emergency.target` row have no test of their own *(being built)*. Of the two hang rows, every
+`--ssh-test` boot proves the settings (`hang-panic-sysctls`, `watchdog-armed`); no test hangs the
+kernel or lets the watchdog expire *(being built)*.
 
 ### Failed boots
 

@@ -59,11 +59,11 @@
     ))
     (check "boot health: a configuration without /services/sshd still gates the network" (
       attrNames baseOnly.units == [
+        "golconda-emergency-reboot.service"
         "golconda-esp-credentials.service"
         "golconda-failed-boots-complete.service"
         "golconda-failed-boots.service"
         "golconda-health-network.service"
-        "golconda-initrd-failed.service"
         "golconda-loader-update.service"
         "golconda-trial-boot-failed.service"
       ]
@@ -125,7 +125,7 @@
     file = sys: p: sys.files.${p}.text;
     generatorPath = "/usr/lib/systemd/system-generators/golconda-trial-boot-generator";
     counting = (import ../../image).bootCounting;
-    initrdFailed = baseOnly.units."golconda-initrd-failed.service";
+    emergency = baseOnly.units."golconda-emergency-reboot.service";
     trialFailed = baseOnly.units."golconda-trial-boot-failed.service";
   in
   [
@@ -145,18 +145,24 @@
       && hasInfix "\nRuntimeWatchdogSec=30s\n" t
       && hasInfix "\nRebootWatchdogSec=10min\n" t
     ))
-    (check "trial boot: an initrd failure reboots, in the initrd only" (
-      hasInfix "\nConditionPathExists=/etc/initrd-release\n" initrdFailed
-      && hasInfix "\nDefaultDependencies=no\n" initrdFailed
-      && hasInfix "\nSuccessAction=reboot\n" initrdFailed
-      && hasInfix "\nFailureAction=reboot\n" initrdFailed
+    (check "trial boot: emergency.target reboots, in the initrd and in the host" (
+      # no initrd condition: a unit of the host that fails into emergency.target reboots too
+      !(hasInfix "initrd-release" emergency)
+      && hasInfix "\nDefaultDependencies=no\n" emergency
+      && hasInfix "\nSuccessAction=reboot\n" emergency
+      && hasInfix "\nFailureAction=reboot\n" emergency
       # the serial console shows it: the kernel log, not the journal's console (tty1)
-      && hasInfix "\nStandardOutput=file:/dev/kmsg\n" initrdFailed
+      && hasInfix "\nStandardOutput=file:/dev/kmsg\n" emergency
       &&
-        baseOnly.links."/usr/lib/systemd/system/emergency.target.wants/golconda-initrd-failed.service" == {
-          target = "../golconda-initrd-failed.service";
+        baseOnly.links."/usr/lib/systemd/system/emergency.target.wants/golconda-emergency-reboot.service"
+        == {
+          target = "../golconda-emergency-reboot.service";
           kind = "explicit";
         }
+      &&
+        filter (p: hasInfix "emergency.target" p) (attrNames baseOnly.links) == [
+          "/usr/lib/systemd/system/emergency.target.wants/golconda-emergency-reboot.service"
+        ]
     ))
     (check "trial boot: an initrd that hangs reboots" (
       let
@@ -262,7 +268,7 @@
       baseOnly.links ? "/usr/bin/chattr"
     ))
     (check "failed boots: on a halted boot the trial boot policy's reboot units skip themselves" (
-      hasInfix haltSkips baseOnly.units."golconda-initrd-failed.service"
+      hasInfix haltSkips baseOnly.units."golconda-emergency-reboot.service"
       && hasInfix haltSkips baseOnly.units."golconda-trial-boot-failed.service"
     ))
   ]

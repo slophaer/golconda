@@ -61,7 +61,7 @@ check_reboot_skipped() {
 # the generator's verdict on each boot, the health unit's, the reboot
 trial_trace() {
   tail -c +"$(($1 + 1))" "$SERIAL_LOG" | tr -d '\033\r' \
-    | grep -ao "golconda-trial-boot: [^ ]* is on trial\|golconda-trial-boot: [^ ]* had no try left\|boot-test: health [a-z]*\|golconda-trial-boot: boot-complete.target failed\|golconda-trial-boot: the initrd failed" || true
+    | grep -ao "golconda-trial-boot: [^ ]* is on trial\|golconda-trial-boot: [^ ]* had no try left\|boot-test: health [a-z]*\|golconda-trial-boot: boot-complete.target failed\|golconda-trial-boot: emergency.target reached" || true
 }
 
 # wait_for_old: wait, without a reboot of the harness's own, until the old release answers; a boot of
@@ -179,7 +179,7 @@ EOF
 }
 
 # test_fail_initrd: the trial boot policy in the initrd. The candidate's /usr hash tree is damaged,
-# so its initrd fails each try into emergency.target, where golconda-initrd-failed.service reboots.
+# so its initrd fails each try into emergency.target, where golconda-emergency-reboot.service reboots.
 # The reboot timer starts the first try; the harness only watches until the old release answers
 test_fail_initrd() {
   echo ""
@@ -201,10 +201,10 @@ test_fail_initrd() {
   echo "$T"
   verdict "fallback-to-old-slot-initrd ($NEXT_VERSION failed in the initrd 3 times, $V boots)" 0
   RC=0
-  [ "$(echo "$T" | grep -cxF "golconda-trial-boot: the initrd failed")" = 3 ] || RC=1
+  [ "$(echo "$T" | grep -cxF "golconda-trial-boot: emergency.target reached")" = 3 ] || RC=1
   # the host's generator logs on every counted boot of the host: the candidate's never started
   ! echo "$T" | grep -q "golconda-trial-boot: ${IMAGE_ID}_$NEXT_VERSION+" || RC=1
-  verdict "initrd-fail-rebooted (golconda-initrd-failed.service rebooted each of the three tries)" $RC
+  verdict "initrd-fail-rebooted (golconda-emergency-reboot.service rebooted each of the three tries)" $RC
   L=$(guest bootctl list --no-pager 2>&1) || true
   echo "$L" | grep -E " (title|version|tries):" || true
   RC=0; echo "$L" | grep -q "tries: 0 left; 3 done" || RC=1

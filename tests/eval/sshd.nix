@@ -293,12 +293,12 @@ in
   # the units of the fixture, exactly: a new unit is a decision, not an accident
   (check "sshd: the fixture composes exactly these units" (
     attrNames system.units == [
+      "golconda-emergency-reboot.service"
       "golconda-esp-credentials.service"
       "golconda-failed-boots-complete.service"
       "golconda-failed-boots.service"
       "golconda-health-network.service"
       "golconda-health-sshd.service"
-      "golconda-initrd-failed.service"
       "golconda-loader-update.service"
       "golconda-trial-boot-failed.service"
       "golconda-var-sshd-hostkey.service"
