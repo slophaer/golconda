@@ -158,8 +158,8 @@ every boot itself (`modules/base/parts/failed-boots.nix`). Early in the initrd,
 `golconda-failed-boots.service` adds one to the EFI variable
 `GolcondaFailedBoots-d1b3416f-c0f9-44e8-8b5a-cbb64676bdef`. `golconda-failed-boots-complete.service`
 removes it when the boot completes: on a counted boot when `boot-complete.target` is active, on an
-uncounted boot at `multi-user.target`. The count is an EFI variable, not a file, so it waits for no
-disk and no file system.
+uncounted boot at `multi-user.target`. The first try of an entry (`+2-1`, a new release) starts a
+new count. The count is an EFI variable, not a file, so it waits for no disk and no file system.
 
 The thresholds are constants. After 3 boots in a row that did not complete (the tries a release
 starts with, `image/boot-counting.nix`), the next boot starts the other slot: the third boot sets
@@ -182,7 +182,7 @@ Limits:
 - The failed release stays on the ESP and its slot until sysupdate replaces it;
   `bootctl set-oneshot` starts it by hand.
 - A halted machine stays down until someone resets it, and its next boot is halted again, until a
-  boot completes.
+  boot completes or a new release has its first try.
 - Each boot writes the variable to the firmware's non-volatile store, and a complete one removes it.
 
 systemd-sysupdate tells the slots apart by GPT label: an installed slot carries its version

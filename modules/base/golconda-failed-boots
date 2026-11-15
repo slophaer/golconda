@@ -8,7 +8,8 @@
 # cannot keep it from counting.
 #
 # count (golconda-failed-boots.service, early in the initrd): N boots before this one did not
-#   complete. It writes N + 1 first, then
+#   complete; N is 0 on the first try of an entry (LoaderBootCountPath names +<tries - 1>-1), a new
+#   release. It writes N + 1 first, then
 #   - N + 1 = fallback: should this boot fail too, the next one starts the other /usr slot once
 #     (bootctl set-oneshot), and GolcondaFailedEntry-<the same guid> names this boot's entry;
 #   - N >= halt: this boot reboots on no failure. kernel.panic=0, and drop-ins in /run that PID 1
@@ -108,6 +109,15 @@ mark_bad() {
 
 count() {
   failed=$(current)
+  # the first try of an entry (+<tries - 1>-1): a new release, which none of the boots before it
+  # ran, so its count starts again
+  path=$(strings LoaderBootCountPath)
+  case $path in
+    *"+$((fallback - 1))-1.efi")
+      [ "$failed" = 0 ] || log "${path##*\\} is a first try: the count starts again"
+      failed=0
+      ;;
+  esac
   unlock "$var"
   # one write: the attributes (non-volatile, boot and run time) and the number
   printf '\007\000\000\000%s' "$((failed + 1))" >"$var" || log "cannot write $var: this boot is not counted"

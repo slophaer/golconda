@@ -149,6 +149,19 @@ check "the seventh boot in a row stops rebooting: kernel.panic=0, CrashAction=fr
    logged halt "golconda-failed-boots: failed boots in a row: 6: this boot reboots on no failure (kernel.panic=0, CrashAction=freeze, no watchdog)" &&
    [ ! -e "$WORK/halt/$ONESHOT" ]'
 
+# the first try of an entry (+2-1): a new release, whose count starts again
+boot first-try boot-test_20261031.3.efi 6
+utf16 '\EFI\Linux\boot-test_20261031.3+2-1.efi' > "$WORK/first-try/$EFI/LoaderBootCountPath-$LOADER"
+run first-try count
+check "the first try of an entry starts a new count: no halt" \
+  'count_is first-try 1 && no_halt first-try && [ ! -e "$WORK/first-try/$ONESHOT" ] &&
+   logged first-try "golconda-failed-boots: boot-test_20261031.3+2-1.efi is a first try: the count starts again"'
+
+boot later-try boot-test_20261031.3.efi 6
+utf16 '\EFI\Linux\boot-test_20261031.3+1-2.efi' > "$WORK/later-try/$EFI/LoaderBootCountPath-$LOADER"
+run later-try count
+check "a later try of an entry keeps the count" 'count_is later-try 7 && [ -e "$WORK/later-try/run/golconda/failed-boots-halt" ]'
+
 # complete: a blessed boot (no LoaderBootCountPath) completes at multi-user.target
 boot blessed boot-test_20261031.1.efi 4
 mkdir -p "$WORK/blessed/run/golconda"
