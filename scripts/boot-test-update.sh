@@ -641,6 +641,7 @@ test_next() {
   check_no_failed no-failed-units-after-update
   check_clock clock-not-reset-after-update
   check_hwdb hwdb-after-update
+  check_dm_usr dm-usr-device-after-update
   test_certs cert-login-after-update
   test_loader "$NEXT_VERSION, its first good boot" 1
   NEW_LOADER=$(guest_hash "$ESP_REMOVABLE")

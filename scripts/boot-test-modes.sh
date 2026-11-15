@@ -99,6 +99,8 @@ test_ssh() {
 
   check_hwdb hwdb
 
+  check_dm_usr dm-usr-device
+
   check_ca_store
 
   # IPE (docs/design/kernel.md): only files on a dm-verity volume with a verified signature run.

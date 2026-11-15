@@ -1,9 +1,9 @@
 # lvm2: the device-mapper library and dmsetup, nothing of LVM itself.
 #
 # A farm package (prefix = "/usr"): its udev rules (10-dm, 13-dm-disk, 95-dm-notify) exec
-# dmsetup as /usr/bin/dmsetup, and the initrd farms lib/udev/rules.d as it is
-# (lib/image/initrd.nix). cryptsetup links libdevmapper; the initrd needs the rules and dmsetup
-# for /dev/mapper/usr.
+# dmsetup as /usr/bin/dmsetup, and /base links 10-dm and 13-dm-disk as they are
+# (modules/base/parts/links.nix). cryptsetup links libdevmapper; the initrd and the host need the
+# rules and dmsetup for /dev/mapper/usr.
 #
 # udev_sync is off: libdevmapper would link libudev, which is systemd's, and systemd depends on
 # cryptsetup, which depends on lvm2: systemd -> cryptsetup -> lvm2 -> libudev is a cycle. Without

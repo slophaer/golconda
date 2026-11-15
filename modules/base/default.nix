@@ -8,7 +8,8 @@
 #! has no bash), uutils-coreutils, e2fsprogs (mkfs.ext4 and fsck.ext4 for the root partition systemd-repart
 #! makes at first boot), tzdata
 #! (/usr/share/zoneinfo), hwdb (systemd's hardware database, compiled, at
-#! /usr/lib/udev/hwdb.bin) and the kernel (consumed later by the UKI builder).
+#! /usr/lib/udev/hwdb.bin), lvm2 (dmsetup and its `10-dm` and `13-dm-disk` udev
+#! rules, for `/dev/mapper/usr`) and the kernel (consumed later by the UKI builder).
 #! No GNU coreutils.
 #!
 #! Units enabled: dbus.socket (wanted by sockets.target), dbus-broker.service
@@ -249,6 +250,7 @@ in
         p.e2fsprogs # mkfs.ext4 and fsck.ext4: repart makes the root partition at first boot
         p.tzdata # the zone database: /usr/share/zoneinfo
         p.hwdb # the compiled hardware database: /usr/lib/udev/hwdb.bin
+        p.lvm2 # dmsetup and the dm udev rules (/dev/mapper/usr; parts/links.nix)
         p.linux-kernel # kernel; UKI builder consumes it
       ];
 

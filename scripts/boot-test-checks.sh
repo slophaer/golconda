@@ -456,6 +456,19 @@ reseal_vars() {
   verdict "$NAME (every credential sealed again, the host key with $WANT)" $RC
 }
 
+# check_dm_usr NAME: /usr is the dm-verity device "usr". The host's udev has lvm2's dm rules
+# (/base), so /dev/mapper/usr exists and dev-mapper-usr.device, which usr.mount requires, is active
+check_dm_usr() {
+  echo ""
+  echo "=== $1: /dev/mapper/usr ==="
+  RC=0
+  S=$(guest "systemctl is-active dev-mapper-usr.device; ls /dev/mapper; test -b /dev/mapper/usr && echo block" 2>&1) || true
+  echo "$S"
+  [ "$(echo "$S" | head -1)" = active ] || RC=1
+  echo "$S" | grep -qx block || RC=1
+  verdict "$1 (dev-mapper-usr.device active, /dev/mapper/usr a block device)" $RC
+}
+
 # test_loader LABEL COUNTED: on a counted boot (COUNTED=1) golconda-loader-update.service ran
 # after bless-boot, on a blessed one (0) it did not; the ESP's two copies of systemd-boot are
 # /usr's signed file, the loader.conf in effect is /usr's and enrols nothing, and with Secure Boot

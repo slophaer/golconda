@@ -6,6 +6,7 @@
   hasInfix,
   hasPrefix,
   imageLib,
+  mkSystemFixture,
   sources,
   usrTreeLib,
   ...
@@ -21,24 +22,34 @@ let
 in
 [
   # lvm2's device-mapper rules exec dmsetup by its compiled-in path, so lvm2 is a farm package
-  # (prefix /usr): the initrd farms the rules as they are, with nothing to substitute
-  (check "initrd: lvm2 is a farm package and the initrd farms its dm rules" (
+  # (prefix /usr): /base links two of its rules as they are, with nothing to substitute, for the
+  # host and the initrd alike (/dev/mapper/usr, dev-mapper-usr.device); 95-dm-notify only answers
+  # udev cookies, which libdevmapper does not wait on without udev_sync
+  (check "base: lvm2's 10-dm and 13-dm-disk rules and dmsetup, in the host and the initrd" (
     let
-      initrd = imageLib.initrdSystem {
-        imageId = "t";
-        version = "20261031.1";
-        pkgs = fixturePkgs;
-        inherit sources;
-        platform.name = "x86_64-linux";
-        buildSystem = "x86_64-linux";
+      initrd =
+        (imageLib.initrdSystem {
+          imageId = "t";
+          version = "20261031.1";
+          pkgs = fixturePkgs;
+          inherit sources;
+          platform.name = "x86_64-linux";
+          buildSystem = "x86_64-linux";
+        }).composed;
+      host = mkSystemFixture.composed;
+      rule = n: {
+        target = "${fixturePkgs.lvm2}/lib/udev/rules.d/${n}";
+        kind = "explicit";
       };
+      hasRules =
+        sys:
+        sys.links."/usr/lib/udev/rules.d/10-dm.rules" == rule "10-dm.rules"
+        && sys.links."/usr/lib/udev/rules.d/13-dm-disk.rules" == rule "13-dm-disk.rules"
+        && !(sys.links ? "/usr/lib/udev/rules.d/95-dm-notify.rules")
+        && !(sys.links ? "/usr/lib/udev/rules.d")
+        && (sys.origins.packages.lvm2 or [ ]) == [ "/base" ];
     in
-    fixturePkgs.lvm2.args.prefix == "/usr"
-    &&
-      initrd.composed.links."/usr/lib/udev/rules.d" == {
-        target = "${fixturePkgs.lvm2}/lib/udev/rules.d";
-        kind = "farm";
-      }
+    fixturePkgs.lvm2.args.prefix == "/usr" && hasRules host && hasRules initrd
   ))
   # 8. usr-tree library: pure helpers
   (check "usr-tree: stripUsrPrefix strips /usr/ prefix" (

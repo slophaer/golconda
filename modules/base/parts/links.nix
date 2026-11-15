@@ -1,7 +1,7 @@
 # Part of /base (modules/base/default.nix merges it): the /usr links into the
 # packages. /usr/bin/sh, the util-linux and e2fsprogs tools, systemd's farm
-# directories, the NSS modules, the PAM module directories, the zone database and the
-# compiled hwdb. (The CA bundle and its /etc links are /trust's.)
+# directories, the NSS modules, the PAM module directories, the zone database, the
+# compiled hwdb and lvm2's dm rules. (The CA bundle and its /etc links are /trust's.)
 # `p` is the package set. Returns { links; }.
 { p }:
 let
@@ -26,6 +26,29 @@ let
       kind = "explicit";
     };
   };
+
+  # The device-mapper rules of lvm2 (a farm package: they exec /usr/bin/dmsetup, and /base brings
+  # dmsetup with lvm2). 10-dm names the device and links /dev/mapper/<name>; 13-dm-disk adds the
+  # blkid data (ID_FS_USAGE) without which systemd's 99-systemd.rules keeps a CRYPT-* device, the
+  # dm-verity /usr, at SYSTEMD_READY=0. With both, /dev/mapper/usr exists and
+  # dev-mapper-usr.device, which usr.mount requires, is active, in the initrd and on the host.
+  # 95-dm-notify is left out: it answers the udev cookies of libdevmapper, and lvm2 is built
+  # without udev_sync (packages/lvm2), so nothing waits for one. Files, not a directory link:
+  # /usr/lib/udev is systemd's farm.
+  dmRuleLinks = listToAttrs (
+    map
+      (r: {
+        name = "/usr/lib/udev/rules.d/${r}";
+        value = {
+          target = "${p.lvm2}/lib/udev/rules.d/${r}";
+          kind = "explicit";
+        };
+      })
+      [
+        "10-dm.rules"
+        "13-dm-disk.rules"
+      ]
+  );
 
   # PAM modules: Linux-PAM loads a relative module name from /usr/lib/security/, and the
   # factory's stacks name <package>/<module>. Each package's module directory is one
@@ -135,5 +158,13 @@ let
     };
 in
 {
-  links = shLinks // toolLinks // farmLinks // dlopenLinks // pamLinks // zoneinfoLinks // hwdbLinks;
+  links =
+    shLinks
+    // toolLinks
+    // farmLinks
+    // dlopenLinks
+    // pamLinks
+    // zoneinfoLinks
+    // hwdbLinks
+    // dmRuleLinks;
 }

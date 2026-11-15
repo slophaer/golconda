@@ -102,6 +102,7 @@ let
   stubTzdata = withBin "tzdata-2026a" [ ];
   # hwdb ships one data file
   stubHwdb = withBin "hwdb-262" [ ];
+  stubLvm2 = withBin "lvm2-2.03.38" [ "dmsetup" ];
   # the repkgs set as /pkgs sees it: the stand-ins above
   stubSet = {
     buildPkgs = stubSet.pkgs;
@@ -117,6 +118,7 @@ let
       ca-bundle = stubCaBundle;
       tzdata = stubTzdata;
       hwdb = stubHwdb;
+      lvm2 = stubLvm2;
       linux-kernel = stubLinuxKernel;
     }
     # the libraries /base links for systemd's dlopen (dlopenSonames): no bin, name only

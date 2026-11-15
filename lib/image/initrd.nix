@@ -2,7 +2,7 @@
 #
 # initrdSystem { imageId; version; platform; buildSystem; pkgs; packagesDir ? null;
 #   replaces ? [ ]; sources ? the pins; secureBoot ? true; } → the mkSystem of the initrd: /base
-#   (systemd, dash, uutils-coreutils, dbus-broker) as lib/system.nix composes it, plus lvm2 and
+#   (systemd, dash, uutils-coreutils, dbus-broker, lvm2) as lib/system.nix composes it, plus
 #   cryptsetup. `secureBoot` is the image's /system.secureBoot: with it the initrd halts when the
 #   firmware does not enforce Secure Boot (golconda-secure-boot-required.service).
 #   `packagesDir` and `replaces` are the configuration's downstream package directory and its
@@ -17,8 +17,8 @@
 # The cpio holds: /usr (the tree), /init -> usr/lib/systemd/systemd, /etc/initrd-release ->
 # ../usr/lib/os-release (systemd knows it runs in an initrd by it) with /etc/os-release pointing
 # at it, the merged-/usr links /bin /sbin /lib and the empty mount points. lvm2's device-mapper
-# udev rules are in the tree: a farm link of the initrd's fragment (they exec /usr/bin/dmsetup,
-# and systemd's libcryptsetup needs them for /dev/mapper/usr). No machine-id, no shadow, no
+# udev rules and dmsetup are /base's, as on the host (systemd's libcryptsetup needs them for
+# /dev/mapper/usr). No machine-id, no shadow, no
 # static /init: systemd itself is PID 1 and finds the /usr partition by usrhash= (its
 # veritysetup and gpt-auto generators).
 #
@@ -107,14 +107,8 @@ let
         {
           name = "/image/initrd";
           packages = [
-            pkgs.lvm2 # dmsetup and the dm udev rules
             pkgs.cryptsetup # veritysetup, for the initrd's own checks
           ];
-          # lvm2 is a farm package (prefix /usr): its rules, file by file, beside systemd's
-          links."/usr/lib/udev/rules.d" = {
-            target = "${pkgs.lvm2}/lib/udev/rules.d";
-            kind = "farm";
-          };
           # The initrd reaches sockets.target and sysinit.target, which pull networkd (its
           # socket) and timesyncd through /base's .wants links. sysusers does not run in the
           # initrd, so /base gives those units ConditionPathExists=!/etc/initrd-release.
@@ -125,7 +119,7 @@ let
     };
 in
 {
-  # the system mkSystem makes of /base alone (lib/system.nix), plus lvm2 and cryptsetup
+  # the system mkSystem makes of /base alone (lib/system.nix), plus cryptsetup
   inherit initrdSystem;
 
   # initrdTree: the initrd system's /usr tree, without the kernel

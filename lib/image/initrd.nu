@@ -31,8 +31,9 @@ export def build [] {
   ^ln -s usr/lib $"($root)/lib"
   for d in [proc sys dev run tmp var sysroot] { mkdir $"($root)/($d)" }
 
-  # lvm2's device-mapper rules: the tree has them (a farm link of the initrd's fragment)
-  for r in [10-dm.rules 13-dm-disk.rules 95-dm-notify.rules] {
+  # lvm2's device-mapper rules: the tree has them (/base links them; not 95-dm-notify, which
+  # answers udev cookies, and lvm2 has no udev_sync)
+  for r in [10-dm.rules 13-dm-disk.rules] {
     if not ($"($root)/usr/lib/udev/rules.d/($r)" | path exists) { error make {msg: $"lvm2's ($r) missing from the initrd"} }
   }
 

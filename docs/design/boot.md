@@ -26,22 +26,24 @@ sequenceDiagram
 
 ## The initrd
 
-The initrd is a second `/usr` tree from the same store (`lib/image/initrd.nix`): `/base` plus lvm2
-and cryptsetup, minus the kernel, as a zstd cpio. systemd is PID 1 (`/init` points at it), udev runs
-with systemd's rules and lvm2's device-mapper rules (`10-dm`, `13-dm-disk`, `95-dm-notify`; lvm2 is
-a farm package, so they exec `/usr/bin/dmsetup`) and `dmsetup`; `blkid` must be there too, or
-`13-dm-disk` cannot probe the verity device and systemd keeps it at `SYSTEMD_READY=0`. lvm2 is built
-without `udev_sync`: libdevmapper would link libudev, which is systemd's, and systemd → cryptsetup →
-lvm2 → libudev is a cycle; libdevmapper does not wait on udev cookies, and systemd's device units do
-the waiting. Around `/usr` sit `/etc/initrd-release` (a link to `os-release`, how systemd knows it
-is in an initrd), the merged-usr links `/bin` `/sbin` `/lib`, and the empty mount points. There is
-no machine-id, no shadow, no getty, no static init. It needs no root partition to find `/usr`:
-`usrhash=` on the cmdline names the verity root hash, the generators derive the two DPS partition
-UUIDs from it, veritysetup attaches `/dev/mapper/usr`, and repart makes the root partition from
-`/usr/lib/repart.d/30-root.conf` on first boot. The cmdline also carries `rdinit=/init`: a repkgs
-binary maps its dynamic linker relative to its own path, which before `/proc` exists is the path the
-kernel execs; the fork's crt-interp and glibc follow the `/init` link to the real file without
-`/proc`. The kernel's configuration is in [Kernel](kernel.md).
+The initrd is a second `/usr` tree from the same store (`lib/image/initrd.nix`): `/base` plus
+cryptsetup, minus the kernel, as a zstd cpio. systemd is PID 1 (`/init` points at it), udev runs
+with systemd's rules and two of lvm2's device-mapper rules, `10-dm` and `13-dm-disk` (lvm2 is a farm
+package, so they exec `/usr/bin/dmsetup`), and `dmsetup`, all from `/base`, so the host has them
+too; `blkid` must be there as well, or `13-dm-disk` cannot probe the verity device and systemd keeps
+it at `SYSTEMD_READY=0`. With them `/dev/mapper/usr` exists, in the initrd and on the host, and
+`dev-mapper-usr.device`, which `usr.mount` requires, is active. lvm2 is built without `udev_sync`:
+libdevmapper would link libudev, which is systemd's, and systemd → cryptsetup → lvm2 → libudev is a
+cycle; libdevmapper does not wait on udev cookies, and systemd's device units do the waiting. So
+`95-dm-notify`, which answers those cookies, is left out. Around `/usr` sit `/etc/initrd-release` (a
+link to `os-release`, how systemd knows it is in an initrd), the merged-usr links `/bin` `/sbin`
+`/lib`, and the empty mount points. There is no machine-id, no shadow, no getty, no static init. It
+needs no root partition to find `/usr`: `usrhash=` on the cmdline names the verity root hash, the
+generators derive the two DPS partition UUIDs from it, veritysetup attaches `/dev/mapper/usr`, and
+repart makes the root partition from `/usr/lib/repart.d/30-root.conf` on first boot. The cmdline
+also carries `rdinit=/init`: a repkgs binary maps its dynamic linker relative to its own path, which
+before `/proc` exists is the path the kernel execs; the fork's crt-interp and glibc follow the
+`/init` link to the real file without `/proc`. The kernel's configuration is in [Kernel](kernel.md).
 
 ## Boot counting and A/B
 
