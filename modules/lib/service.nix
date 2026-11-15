@@ -8,7 +8,7 @@
 #
 #   let s = import ../../lib/service.nix { inherit types; };
 #   in s.render { name = "foo"; app = { package = pkg; argv = [ "-f" "${s.filesDir "foo"}/foo.conf" ];
-#                 files."foo.conf" = "..."; }; user = "dynamic"; sandbox = "strict"; }
+#                 files."foo.conf" = "..."; }; user = "root"; sandbox = "strict"; }
 { types }:
 let
   on = import ./on.nix;
@@ -35,13 +35,11 @@ let
     attrNames
     concatLists
     concatStringsSep
-    elemAt
     filter
     isString
     match
     replaceStrings
     sort
-    split
     ;
 
   # A unit name stem: what systemd accepts before ".service".
@@ -55,19 +53,8 @@ let
       null
   );
 
-  # Who runs the service: "dynamic" (DynamicUser=), "root", or a sysusers
-  # `u` line, which becomes User= and a sysusers entry.
-  isSysusersLine = v: match "u!? +[a-z_][a-z0-9_-]* .*" v != null;
-  user = typedef' "serviceUser" (
-    v:
-    if !isString v then
-      "Expected a string"
-    else if v == "dynamic" || v == "root" || isSysusersLine v then
-      null
-    else
-      "'${v}' is neither \"dynamic\", \"root\" nor a sysusers line like 'u foo - \"Foo daemon\"'"
-  );
-  sysusersName = line: elemAt (filter isString (split " +" line)) 1;
+  # Who runs the service (User=): root, the only value.
+  user = enum "serviceUser" [ "root" ];
 
   # Three fixed hardening sets. Golconda's own, modelled on the portable
   # service profiles of the same names; not a free-form systemd.exec surface.
@@ -150,32 +137,18 @@ let
     "mixed"
   ];
 
-  # Which manager runs the unit: the system manager (PID 1, the unit under
-  # /usr/lib/systemd/system) or every user's own (`systemd --user`, the unit
-  # under /usr/lib/systemd/user).
-  scope = enum "serviceScope" [
-    "system"
-    "user"
-  ];
-  isUser = svc: (svc.scope or "system") == "user";
-
   service =
     (struct "service" {
       inherit
         name
         app
         sandbox
+        user
         ;
-      # default "system"
-      scope = optionalAttr scope;
-      # required for a system service; refused for a user one, which runs as
-      # the user whose manager starts it
-      user = optionalAttr user;
       # argv handle -> credstore id; default { }. The unit loads the credential
       # under its credstore id (LoadCredentialEncrypted=id, read as %d/id): the
       # sealer embeds that id as the credential name and PID 1 checks the
       # embedded name against the id it loads, so a renamed file fails.
-      # System scope only: Golconda seals credentials for the system manager.
       # app.argv names a credential by its handle: { credential = "n"; prefix ? ""; }.
       credentials = optionalAttr (attrsOf credentialId);
       # credential handle -> text PID 1 gives the service under that credential's id when
@@ -192,8 +165,7 @@ let
       # stray directive cannot enter the [Unit] section.
       after = optionalAttr (listOf unitName);
       wants = optionalAttr (listOf unitName);
-      # targets that pull in this unit; default [ "multi-user.target" ], for a
-      # user service [ "default.target" ]
+      # targets that pull in this unit; default [ "multi-user.target" ]
       # generates static .wants symlinks; [Install] section kept for admin overrides
       wantedBy = optionalAttr (listOf targetName);
     }).override
@@ -202,22 +174,15 @@ let
         unknown = false;
         verify =
           svc:
-          if isUser svc && svc ? user then
-            "a user service runs as the user whose manager starts it: `user` is refused (User= and DynamicUser= are system-manager settings)"
-          else if !isUser svc && !(svc ? user) then
-            "a system service names its user: \"dynamic\", \"root\" or a sysusers line"
-          else if isUser svc && (svc.credentials or { }) != { } then
-            "a user service cannot load a Golconda credential: credentials are sealed for the system manager in /etc/credstore.encrypted, which the per-user manager does not search (systemd.exec(5), Credentials); make it a system service"
+          let
+            undeclared = filter (n: !((svc.credentials or { }) ? ${n})) (
+              attrNames (svc.credentialFallbacks or { })
+            );
+          in
+          if undeclared != [ ] then
+            "a credential fallback names no declared credential: ${concatStringsSep ", " undeclared}"
           else
-            let
-              undeclared = filter (n: !((svc.credentials or { }) ? ${n})) (
-                attrNames (svc.credentialFallbacks or { })
-              );
-            in
-            if undeclared != [ ] then
-              "a credential fallback names no declared credential: ${concatStringsSep ", " undeclared}"
-            else
-              null;
+            null;
       };
 
   # systemd command-line text: % and $ are specifiers and variables, so they
@@ -278,17 +243,6 @@ let
       ]
       ++ map (a: if isCredentialRef a then checkedRef a else arg a) (svc.app.argv or [ ]);
 
-      user = isUser svc;
-      userLines =
-        if user then
-          [ ]
-        else if svc.user == "dynamic" then
-          [ "DynamicUser=yes" ]
-        else if svc.user == "root" then
-          [ "User=root" ]
-        else
-          [ "User=${sysusersName svc.user}" ];
-
       unitSection = [
         "[Unit]"
         "Description=${svc.name}"
@@ -308,10 +262,10 @@ let
       ++ map (d: "StateDirectory=${d}") (svc.state or [ ])
       ++ (on (svc ? runtimeDirectory) [ "RuntimeDirectory=${svc.runtimeDirectory}" ])
       ++ (on (svc ? killMode) [ "KillMode=${svc.killMode}" ])
-      ++ userLines
+      ++ [ "User=${svc.user}" ]
       ++ sandboxLines.${svc.sandbox};
 
-      wantedByTargets = svc.wantedBy or [ (if user then "default.target" else "multi-user.target") ];
+      wantedByTargets = svc.wantedBy or [ "multi-user.target" ];
 
       installSection = [
         "[Install]"
@@ -329,10 +283,9 @@ let
       # Static .wants symlinks: <unitDir>/<target>.wants/<unit> -> ../<unit>
       # These work without a first-boot step (unlike presets) and in the initrd too.
       unitFileName = "${svc.name}.service";
-      unitDir = if user then "/usr/lib/systemd/user" else "/usr/lib/systemd/system";
       wantsLinks = builtins.listToAttrs (
         map (t: {
-          name = "${unitDir}/${t}.wants/${unitFileName}";
+          name = "/usr/lib/systemd/system/${t}.wants/${unitFileName}";
           value = {
             target = "../${unitFileName}";
             kind = "explicit";
@@ -350,28 +303,14 @@ let
       );
     in
     {
-      # A system unit is a typed `units` entry; a user unit is a file under
-      # /usr/lib/systemd/user, so the composer's duplicate check covers both.
+      inherit files;
+      units.${unitFileName} = text + "\n";
       links = wantsLinks;
       # StateDirectory= creates and owns the state; no tmpfiles lines needed
       packages = [ svc.app.package ];
       # the image builder checks that /usr/bin/<program> exists once the tree is built
       programs = [ (binName svc.app) ];
-    }
-    // (
-      if user then
-        {
-          files = files // {
-            "${unitDir}/${unitFileName}" = text + "\n";
-          };
-        }
-      else
-        {
-          inherit files;
-          units.${unitFileName} = text + "\n";
-          sysusers = on (isSysusersLine svc.user) [ svc.user ];
-        }
-    );
+    };
 
   # service -> fragment; type-checks first, so a bad value throws with the
   # korora message instead of failing somewhere inside the text.
@@ -387,7 +326,6 @@ in
     sandbox
     sandboxLines
     killMode
-    scope
     escape
     filesDir
     render

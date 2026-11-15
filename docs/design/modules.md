@@ -153,10 +153,10 @@ An `app` file must not carry a per-machine value: one image serves every machine
 path or a key marker in its text is a type error that names the file.
 
 The `service` type grows a field when two services would need it and it has one meaning (`killMode`,
-`runtimeDirectory`, `scope`); everything else a program needs is its own configuration, which the
-module writes into the app's files (sshd's `Subsystem sftp internal-sftp` is `sshd_config` content,
-not a unit field). There is no generic escape hatch into the unit text: a module that needs a
-directive the type lacks adds the field, with its type, or does without.
+`runtimeDirectory`); everything else a program needs is its own configuration, which the module
+writes into the app's files (sshd's `Subsystem sftp internal-sftp` is `sshd_config` content, not a
+unit field). There is no generic escape hatch into the unit text: a module that needs a directive
+the type lacks adds the field, with its type, or does without.
 
 ### Sandbox tiers
 
@@ -170,13 +170,6 @@ A service names one of three tiers, `strict`, `default` or `trusted`, each a fix
 
 The tiers are not a free-form `systemd.exec` surface on purpose: a hardening line that is right for
 one service and wrong for another is a new tier, not an option.
-
-### User services
-
-`service.scope = "user"` renders the same unit for `systemd --user`, under `/usr/lib/systemd/user/`.
-`user` and `credentials` are refused: the unit runs as whoever's manager starts it, and Golconda
-seals credentials for the system manager only (a per-user credstore would need
-`systemd-creds encrypt --user`).
 
 ### Vars
 

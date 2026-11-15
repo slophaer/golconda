@@ -36,7 +36,7 @@ let
         package = standIn;
         argv = [ a ];
       };
-      user = "dynamic";
+      user = "root";
       sandbox = "strict";
     };
   agree =

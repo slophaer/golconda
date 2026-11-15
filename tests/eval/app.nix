@@ -55,7 +55,7 @@ in
           ];
         };
         credentials.k = "x.k";
-        user = "dynamic";
+        user = "root";
         sandbox = "strict";
       }).units."x.service"
   ))
@@ -64,7 +64,7 @@ in
       base = {
         name = "x";
         app.package = standIn;
-        user = "dynamic";
+        user = "root";
         sandbox = "strict";
       };
     in
@@ -93,7 +93,7 @@ in
           package = standIn;
           argv = [ "a\nb" ];
         };
-        user = "dynamic";
+        user = "root";
         sandbox = "strict";
       }
     )
@@ -109,7 +109,7 @@ in
             "c\"d"
           ];
         };
-        user = "dynamic";
+        user = "root";
         sandbox = "strict";
       }
     )
@@ -126,7 +126,7 @@ in
           ];
         };
         credentials.k = "x.k";
-        user = "dynamic";
+        user = "root";
         sandbox = "strict";
       }).units."x.service"
   ))
@@ -139,7 +139,7 @@ in
           argv = [ (s.credentialArg "Revoked Keys=" "k") ];
         };
         credentials.k = "x.k";
-        user = "dynamic";
+        user = "root";
         sandbox = "strict";
       }
     )
@@ -149,7 +149,7 @@ in
       base = {
         name = "x";
         app.package = standIn;
-        user = "dynamic";
+        user = "root";
         sandbox = "strict";
       };
     in
@@ -173,7 +173,7 @@ in
             "keys/root" = "k\n";
           };
         };
-        user = "dynamic";
+        user = "root";
         sandbox = "strict";
       };
     in
@@ -220,7 +220,7 @@ in
           package = standIn;
           files."x.conf" = "RevokedKeys %d/krl\n";
         };
-        user = "dynamic";
+        user = "root";
         sandbox = "strict";
       }
     )
@@ -233,7 +233,7 @@ in
           package = standIn;
           files."key" = "-----BEGIN OPENSSH PRIVATE KEY-----\n";
         };
-        user = "dynamic";
+        user = "root";
         sandbox = "strict";
       }
     )
@@ -342,7 +342,7 @@ in
         (s.render {
           name = "x";
           inherit app;
-          user = "dynamic";
+          user = "root";
           sandbox = "strict";
         }).programs;
     in

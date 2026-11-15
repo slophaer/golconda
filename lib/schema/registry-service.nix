@@ -1,4 +1,4 @@
-# The registry entries of modules/lib/service.nix: the service and its scope, user, sandbox and ordering types.
+# The registry entries of modules/lib/service.nix: the service and its user, sandbox and ordering types.
 #
 # An attribute set of registry entries, keyed by the type's base name; lib/schema.nix
 # merges every lib/schema/registry-*.nix into `typeRegistry`. Every entry has a `description`.
@@ -6,7 +6,7 @@
 {
   # modules/lib/service.nix
   service = {
-    description = "A service: an app plus what only a unit has (scope, credentials, state, user, sandbox, ordering). Rendered as `ExecStart=/usr/bin/<program> <argv>` with the app's files under `/usr/lib/<name>/`. `user` is required for scope system and refused for scope user, which also refuses credentials.";
+    description = "A system service: an app plus what only a unit has (credentials, state, user, sandbox, ordering). Rendered as `ExecStart=/usr/bin/<program> <argv>` with the app's files under `/usr/lib/<name>/`.";
     type = "object";
     properties = {
       name = {
@@ -14,9 +14,6 @@
       };
       app = {
         "$ref" = "#/$defs/app";
-      };
-      scope = {
-        "$ref" = "#/$defs/serviceScope";
       };
       credentials = {
         type = "object";
@@ -79,6 +76,7 @@
     required = [
       "name"
       "app"
+      "user"
       "sandbox"
     ];
   };
@@ -95,14 +93,6 @@
     pattern = pattern "component";
   };
 
-  serviceScope = {
-    description = "Which manager runs the unit: system (PID 1, /usr/lib/systemd/system) or user (systemd --user, /usr/lib/systemd/user; default WantedBy=default.target).";
-    enum = [
-      "system"
-      "user"
-    ];
-  };
-
   serviceName = {
     description = "Valid systemd unit name stem.";
     type = "string";
@@ -110,8 +100,8 @@
   };
 
   serviceUser = {
-    description = "\"dynamic\", \"root\", or a sysusers line.";
-    type = "string";
+    description = "Who runs the service (User=): root.";
+    enum = [ "root" ];
   };
 
   sandbox = {

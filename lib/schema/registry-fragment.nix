@@ -108,7 +108,7 @@
   };
 
   units = {
-    description = "Unit name -> unit file text, installed to `/usr/lib/systemd/system/<name>`; a user unit is a file under /usr/lib/systemd/user instead.";
+    description = "Unit name -> unit file text, installed to `/usr/lib/systemd/system/<name>`.";
     type = "object";
     propertyNames = {
       "$ref" = "#/$defs/unitName";

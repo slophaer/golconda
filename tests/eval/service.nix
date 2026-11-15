@@ -22,7 +22,7 @@ in
           package = standIn;
           env.HOME.set = "/var/lib/x";
         };
-        user = "dynamic";
+        user = "root";
         sandbox = "strict";
       }).units."x.service"
   ))
@@ -43,22 +43,31 @@ in
         sandbox = "trusted";
       }).units."esc.service"
   ))
-  (check "user must be dynamic, root or a sysusers line" (
-    throws (
-      s.render {
-        name = "x";
-        app.package = standIn;
-        user = "bob";
-        sandbox = "strict";
-      }
-    )
+  (check "user is root" (
+    all
+      (
+        user:
+        throws (
+          s.render {
+            name = "x";
+            app.package = standIn;
+            inherit user;
+            sandbox = "strict";
+          }
+        )
+      )
+      [
+        "bob"
+        "dynamic"
+        "u foo - \"Foo daemon\""
+      ]
   ))
   (check "killMode and runtimeDirectory render; neither by default" (
     let
       base = {
         name = "x";
         app.package = standIn;
-        user = "dynamic";
+        user = "root";
         sandbox = "strict";
       };
       plain = (s.render base).units."x.service";
@@ -80,7 +89,7 @@ in
       s.render {
         name = "x";
         app.package = standIn;
-        user = "dynamic";
+        user = "root";
         sandbox = "strict";
         killMode = "none";
       }
@@ -89,7 +98,7 @@ in
       s.render {
         name = "x";
         app.package = standIn;
-        user = "dynamic";
+        user = "root";
         sandbox = "strict";
         runtimeDirectory = "a/b";
       }
@@ -98,7 +107,7 @@ in
       s.render {
         name = "x";
         app.package = standIn;
-        user = "dynamic";
+        user = "root";
         sandbox = "strict";
         runtimeDirectory = [ "a" ];
       }
@@ -114,7 +123,7 @@ in
           s.render {
             name = "x";
             app.package = standIn;
-            user = "dynamic";
+            user = "root";
             sandbox = "strict";
             runtimeDirectory = c;
           }
@@ -144,7 +153,7 @@ in
       s.render {
         name = "x";
         app.package = standIn;
-        user = "dynamic";
+        user = "root";
         sandbox = "strict";
         runtimeDirectory = "...x";
       }
@@ -232,7 +241,7 @@ in
       frag = s.render {
         name = "w";
         app.package = standIn;
-        user = "dynamic";
+        user = "root";
         sandbox = "strict";
         wantedBy = [ "sysinit.target" ];
       };

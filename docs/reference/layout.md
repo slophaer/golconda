@@ -26,7 +26,6 @@ root hash, which is how gpt-auto finds the pair the UKI's `usrhash=` names.
 | `/usr/nix/store`                                | image | `lib/usr-tree.nix`: the closure of the composer's `packages`                                                                                 |
 | `/usr/bin`, `/usr/lib`, `/usr/share`            | image | `lib/usr-tree.nix` from the composer's `links` (symlinks) and `files`                                                                        |
 | `/usr/lib/systemd/system/<name>`                | image | the composer's `units`; `.wants/` links from `links`                                                                                         |
-| `/usr/lib/systemd/user/<name>`                  | image | the composer's `files` (user-scope services)                                                                                                 |
 | `/usr/lib/sysusers.d/golconda.conf`             | image | the composer's `sysusers` lines, one file                                                                                                    |
 | `/usr/lib/tmpfiles.d/golconda.conf`             | image | the composer's `tmpfiles` lines, one file                                                                                                    |
 | `/usr/lib/systemd/network/*.network`            | image | `/network`                                                                                                                                   |

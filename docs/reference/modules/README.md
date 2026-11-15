@@ -27,7 +27,7 @@ this shape: [design/modules](../../design/modules.md).
 
 | field            | shape                                                                                      | installed as                                                                       |
 | ---------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `units`          | `{ unitName = text; }`                                                                     | `/usr/lib/systemd/system/<name>`; user units are `files`                           |
+| `units`          | `{ unitName = text; }`                                                                     | `/usr/lib/systemd/system/<name>`                                                   |
 | `files`          | `{ path = { text; mode; }; }`                                                              | the path, a canonical path under `/usr/`                                           |
 | `sysusers`       | `[ line ]`                                                                                 | `/usr/lib/sysusers.d/golconda.conf`                                                |
 | `tmpfiles`       | `[ line ]`                                                                                 | `/usr/lib/tmpfiles.d/golconda.conf`                                                |
@@ -70,7 +70,7 @@ Plain files that modules import. The directory has no `default.nix`, so adios do
 | `merge.nix`    | `merge [ fragment… ]` → the output above without `name`/`version`; `duplicateError` the duplicate check's message or `null`; `labelFragments` the origin labels; `pkgKey` the package key; `declaredBin` a package's declared `bin` or `null`       |
 | `path.nix`     | `usrError`, `relativeError`, `componentError`: the canonical-path checks (plain functions, no `types`); `hasControl`, `hasPrefix`                                                                                                                   |
 | `app.nix`      | `app`, `argv`, `files`, `perMachineMarkers`, `envOp`, `env`, `envName`, `unitValue`, `programName`, `credentialRef`, `isCredentialRef`, `binName`, `exe`                                                                                            |
-| `service.nix`  | `service`, `render`, `filesDir`, `sandbox`, `sandboxLines`, `killMode`, `scope`, `credentialId`, `stateDirectory`, `credential`, `credentialArg`                                                                                                    |
+| `service.nix`  | `service`, `render`, `filesDir`, `sandbox`, `sandboxLines`, `killMode`, `credentialId`, `stateDirectory`, `credential`, `credentialArg`                                                                                                             |
 | `grammar.nix`  | the patterns of names, paths and the version, one each: the typedefs match them and `lib/schema.nix` exports them                                                                                                                                   |
 | `var.nix`      | `var`, `word`, `render`, `adminVar`, `admin`, `unitName`, `credentialId`, `stateDir`                                                                                                                                                                |
 | `ini.nix`      | `render`: an attribute set of sections to INI text (sysupdate definitions); a section name and a key are plain words, and a value holds no line break                                                                                               |
@@ -113,8 +113,7 @@ An `app`'s files are text only.
 A `unitName` is a stem of letters, digits, `: _ . @ -` and one of `.service`, `.target`, `.socket`,
 `.timer`, `.path`, `.mount`, `.slice` (`unitSuffixes`); a `unitText` is a string with at least one
 section header line (`[Unit]`, `[Service]`, ...). An empty text, a text without a header, or a name
-with another suffix is a type error that names the unit. A user unit is not in `units`: the renderer
-writes it as a file under `/usr/lib/systemd/user/`.
+with another suffix is a type error that names the unit.
 
 ### `app`
 
@@ -141,34 +140,31 @@ A service is an `app` plus what only a unit has. `render service` returns a frag
 the package, and the `.wants` links. A module writes the same `/usr/lib/<name>/` paths into `argv`
 that the renderer writes the files to; `systemctl cat` shows the whole command.
 
-| field                 | type                                                                                     | rendered as                                                                             |
-| --------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `name`                | unit name stem                                                                           | `units."<name>.service"`, `/usr/lib/<name>/` for files                                  |
-| `scope`               | `"system"` or `"user"`, default `"system"`                                               | which manager: `units` or a file under `/usr/lib/systemd/user/`                         |
-| `app`                 | `app`                                                                                    | `ExecStart=`, `Environment=`, `files`, `packages`                                       |
-| `credentials`         | attrs handle → credstore id, default `{ }`                                               | `LoadCredentialEncrypted=id`, argv `%d/id`; refused for scope `user`                    |
-| `credentialFallbacks` | attrs handle → text, default `{ }`; the handle is in `credentials`                       | `SetCredential=id:text` (`\` and line breaks escaped): the text when `id` is not sealed |
-| `state`               | list of string, default `[ ]`                                                            | `StateDirectory=`                                                                       |
-| `runtimeDirectory`    | word, optional                                                                           | `RuntimeDirectory=`                                                                     |
-| `killMode`            | `"control-group"`, `"process"` or `"mixed"`, optional                                    | `KillMode=`; absent means systemd's default (`control-group`)                           |
-| `user`                | `"dynamic"`, `"root"` or a sysusers line; required for scope `system`                    | `DynamicUser=yes`, `User=root`, or `User=` plus sysusers; refused for `user`            |
-| `sandbox`             | `"strict"`, `"default"` or `"trusted"`, required                                         | the tier's directives (below)                                                           |
-| `after`               | list of unit names, default `[ ]`                                                        | `After=`                                                                                |
-| `wants`               | list of unit names, default `[ ]`                                                        | `Wants=`                                                                                |
-| `wantedBy`            | list of target names, default `[ "multi-user.target" ]` (`user`: `[ "default.target" ]`) | `[Install] WantedBy=` and static `.wants` links under the scope's unit directory        |
+| field                 | type                                                               | rendered as                                                                             |
+| --------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| `name`                | unit name stem                                                     | `units."<name>.service"`, `/usr/lib/<name>/` for files                                  |
+| `app`                 | `app`                                                              | `ExecStart=`, `Environment=`, `files`, `packages`                                       |
+| `credentials`         | attrs handle → credstore id, default `{ }`                         | `LoadCredentialEncrypted=id`, argv `%d/id`                                              |
+| `credentialFallbacks` | attrs handle → text, default `{ }`; the handle is in `credentials` | `SetCredential=id:text` (`\` and line breaks escaped): the text when `id` is not sealed |
+| `state`               | list of string, default `[ ]`                                      | `StateDirectory=`                                                                       |
+| `runtimeDirectory`    | word, optional                                                     | `RuntimeDirectory=`                                                                     |
+| `killMode`            | `"control-group"`, `"process"` or `"mixed"`, optional              | `KillMode=`; absent means systemd's default (`control-group`)                           |
+| `user`                | `"root"`, required                                                 | `User=root`                                                                             |
+| `sandbox`             | `"strict"`, `"default"` or `"trusted"`, required                   | the tier's directives (below)                                                           |
+| `after`               | list of unit names, default `[ ]`                                  | `After=`                                                                                |
+| `wants`               | list of unit names, default `[ ]`                                  | `Wants=`                                                                                |
+| `wantedBy`            | list of target names, default `[ "multi-user.target" ]`            | `[Install] WantedBy=` and static `.wants` links                                         |
 
 Arguments are escaped (`%` → `%%`, `$` → `$$`; a literal `%u` for sshd is `%%u` in the unit).
 `credential "n"` builds a plain ref; `credentialArg "RevokedKeys=" "n"` builds one with a prefix,
 for programs that take a path as `-o Option=<path>`. A prefix is one word of letters, digits and
-`_ = : / . , + -`. A ref that names a credential the service does not declare throws. A user
-service's unit is `files."/usr/lib/systemd/user/<name>.service"` with its `.wants` links beside it,
-no `User=` or `DynamicUser=` line and no sysusers entry; its files still go to `/usr/lib/<name>/`.
-An unknown field is a type error. A credential fallback is for a public value that the service needs
-before its sealed credential arrives (sshd's revocation list before the first push): PID 1 gives the
-text when the credstore has no file of that id, and the sealed file once it has one
-(`systemd.exec(5)`, `SetCredential=`). The text is in the unit file in `/usr`, so it is never a
-secret; a fallback that names no declared credential, an empty one, or one with a control character
-other than a line break is a type error.
+`_ = : / . , + -`. A ref that names a credential the service does not declare throws. An unknown
+field is a type error. A credential fallback is for a public value that the service needs before its
+sealed credential arrives (sshd's revocation list before the first push): PID 1 gives the text when
+the credstore has no file of that id, and the sealed file once it has one (`systemd.exec(5)`,
+`SetCredential=`). The text is in the unit file in `/usr`, so it is never a secret; a fallback that
+names no declared credential, an empty one, or one with a control character other than a line break
+is a type error.
 
 #### Sandbox tiers
 

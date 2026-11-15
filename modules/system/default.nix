@@ -23,9 +23,7 @@
 #! expand, dlopen sonames), with one duplicate check that names both sources of
 #! a path. The `/usr/bin` links of the packages are not in it: the `/usr` tree
 #! builder makes them from each package's `exports.json`. `units` holds
-#! the system manager's units (typed names, `/usr/lib/systemd/system/<name>`);
-#! a user unit (`service.scope = "user"`) is a file under
-#! `/usr/lib/systemd/user/`, so one duplicate check covers both scopes.
+#! the system manager's units (typed names, `/usr/lib/systemd/system/<name>`).
 #!
 #! `packageOrigins` answers "why is this package here": package key (its
 #! name-version) -> the origins that brought it: a component's module path
