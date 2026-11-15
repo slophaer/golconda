@@ -36,7 +36,9 @@
 #                       image-next:ATTR). So one run boots the Secure Boot sets and the nosb sets.
 #                       @next=ATTR instead names the next image, packages.<system>.ATTR (out-link
 #                       result-verify-ATTR, step image-next:ATTR), for a next release that is no
-#                       <image>-next, as in "--next @next=image-smoke-test-rotated --rotate"
+#                       <image>-next, as in "--next @next=image-smoke-test-rotated --rotate".
+#                       Each @next word of a set is replaced, so a set can name a third release,
+#                       as in "--next @next --later @next=image-smoke-test-later"
 #   --no-boot           build the image, do not boot it
 #   --lint-only         lint only
 #   --each-commit BASE  every commit in BASE..HEAD, in a scratch worktree: lint each, and build and
@@ -189,25 +191,31 @@ label() { if [ "$2" = "$image" ]; then echo "$1"; else echo "$1:$2"; fi; }
 # add LIST WORD: LIST with WORD at its end, once
 add() { case " $1 " in *" $2 "*) echo "$1" ;; *) echo "$1${1:+ }$2" ;; esac; }
 
-# next_of ATTR FLAGS: the next image FLAGS name, "ATTR_NEXT:OUTLINK:STEP_LABEL": ATTR_NEXT for
-# @next=ATTR_NEXT, else ATTR-next
-next_of() {
-  case $2 in
-  *@next=*) w=${2#*@next=}; w=${w%% *}; echo "$w:result-verify-$w:image-next:$w" ;;
-  *) echo "$1-next:$(link "$1")-next:$(label image-next "$1")" ;;
-  esac
+# nexts_of ATTR FLAGS: the images the @next words of FLAGS name, one "ATTR_NEXT:OUTLINK:STEP_LABEL"
+# per word: ATTR_NEXT for @next=ATTR_NEXT, ATTR-next for @next
+nexts_of() {
+  for w in $2; do
+    case $w in
+    @next=*) w=${w#@next=}; echo "$w:result-verify-$w:image-next:$w" ;;
+    @next) echo "$1-next:$(link "$1")-next:$(label image-next "$1")" ;;
+    esac
+  done
+}
+# add_nexts ATTR FLAGS: $nexts with the images FLAGS' @next words name
+add_nexts() {
+  for nx in $(nexts_of "$1" "$2"); do nexts=$(add "$nexts" "$nx"); done
 }
 # the images to build, each once, and the next images a set's @next needs
 images=
 nexts=
 if [ -z "$boot_sets" ]; then
   images=$image
-  case $boot_args in *@next*) nexts=$(next_of "$image" "$boot_args") ;; esac
+  add_nexts "$image" "$boot_args"
 else
   while IFS= read -r bs; do
     a=$(set_image "$bs")
     images=$(add "$images" "$a")
-    case $(set_flags "$bs") in *@next*) nexts=$(add "$nexts" "$(next_of "$a" "$(set_flags "$bs")")") ;; esac
+    add_nexts "$a" "$(set_flags "$bs")"
   done <<EOF
 $boot_sets
 EOF
@@ -261,18 +269,20 @@ if [ -n "$nexts" ] || [ $enrol = 1 ]; then
   PATH=$(resolve result-verify-age)/bin:$PATH
   export BOOT_TEST_GOLCONDA PATH
 fi
-# boot_cmd ATTR FLAGS: three lines for boot-test, the image's disk, its keys and FLAGS with @next
-# replaced
+# boot_cmd ATTR FLAGS: three lines for boot-test, the image's disk, its keys and FLAGS with each
+# @next word replaced by its image's path
 boot_cmd() {
   img=$(resolve "$(link "$1")") || return 1
-  flags=$2
-  case $flags in
-  *@next*)
-    nx=$(next_of "$1" "$flags"); rest=${nx#*:}
-    next=$(resolve "${rest%%:*}") || return 1
-    flags=$(printf '%s\n' "$flags" | sed "s|@next=[^ ]*|$next|g; s|@next|$next|g")
-    ;;
-  esac
+  flags=
+  for w in $2; do
+    case $w in
+    @next | @next=*)
+      nx=$(nexts_of "$1" "$w"); rest=${nx#*:}
+      w=$(resolve "${rest%%:*}") || return 1
+      ;;
+    esac
+    flags="$flags${flags:+ }$w"
+  done
   resolve "$img/disk/disk.raw" && resolve "$img/keys" && printf '%s\n' "$flags"
 }
 if [ -z "$boot_sets" ]; then

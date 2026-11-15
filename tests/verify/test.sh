@@ -347,4 +347,15 @@ grep -qxF "boot-test $WORK/images/image-smoke-test/disk/disk.raw --keys $WORK/im
 echo "$out" | grep -qE '^PASS image-next:image-smoke-test-rotated [0-9]+s$' || fail "no PASS line for the named next image: $out"
 grep -q 'golconda-cli' "$CALLS" || fail "golconda-cli not built for @next=ATTR"
 
+# 15 a set can name several next images, each @next word its own: @next is <image>-next, @next=ATTR
+#    is ATTR (a third release, as --fail-blessed --later takes). Each is built once and replaced
+run scripts/verify --boot-set '--next @next --fail-blessed --later @next=image-smoke-test-later --timeout 1'
+[ $rc = 0 ] || fail "two @next words exited $rc: $out"
+for a in image-smoke-test-next:result-verify-next image-smoke-test-later:result-verify-image-smoke-test-later; do
+  [ "$(grep -c "^nix-build -A packages\\.[a-z0-9_]*-linux\\.${a%%:*} -o ${a#*:}\$" "$CALLS")" = 1 ] ||
+    fail "${a%%:*} not built once to ${a#*:}: $(cat "$CALLS")"
+done
+grep -qxF "boot-test $WORK/images/image-smoke-test/disk/disk.raw --keys $WORK/images/image-smoke-test/keys --next $WORK/images/image-smoke-test-next --fail-blessed --later $WORK/images/image-smoke-test-later --timeout 1" "$CALLS" ||
+  fail "two @next words not each replaced: $(grep boot-test "$CALLS")"
+
 echo "verify tests passed"
