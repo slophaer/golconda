@@ -193,9 +193,10 @@ cosmetic change.
 ### `merge`
 
 `merge [ fragmentA fragmentB ]` unions `units`, `files` and `links`, normalises every file to
-`{ text; mode; }`, concatenates `sysusers` and `tmpfiles`, returns `packages` with each package
-once, and records in `packageOrigins` which fragments (by `name`) brought each. The output's `links`
-is one map: the composer derives `/usr/bin/<name>` for every name in a package's `bin` list (kind
+`{ text; mode; }`, concatenates `sysusers` and `tmpfiles` (each line once; two different lines for
+one tmpfiles path or one sysusers user or group throw), returns `packages` with each package once,
+and records in `packageOrigins` which fragments (by `name`) brought each. The output's `links` is
+one map: the composer derives `/usr/bin/<name>` for every name in a package's `bin` list (kind
 `package`) into the same map as the fragments' links.
 
 One duplicate check covers it all. Each fragment claims paths in `/usr`: its units, files, links and

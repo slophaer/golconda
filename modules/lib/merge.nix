@@ -1,7 +1,7 @@
 # The union of fragments, the one rule the composer (/system) and modules that
 # return more than one fragment share: attribute fields (units, files, links)
-# must not repeat a key, list fields concatenate. There is no priority and no
-# override (docs/design/modules.md).
+# must not repeat a key, list fields concatenate with each element once. There
+# is no priority and no override (docs/design/modules.md).
 #
 # The /usr symlink farm is one map, path under /usr -> { target; kind; }: the
 # fragments' own `links`, kind "farm" (a directory the image builder expands
@@ -17,7 +17,10 @@
 # same rule to the /usr/bin names of the packages. The paths the system and the
 # image builder write themselves (os-release, the golconda.conf of sysusers.d
 # and tmpfiles.d, /usr/lib/golconda/*.json) are claimed before any fragment, so
-# a fragment cannot claim one.
+# a fragment cannot claim one. The same check covers the lines: a tmpfiles
+# line claims its path, a sysusers `u` or `g` line its user or group. An
+# identical line is one claim and comes out once. A line with a control
+# character throws.
 #
 # Every value of `files` comes out as { text; mode; }: a plain string is a
 # file with mode "0644" (fragment.nix). The image builder reads one shape.
@@ -188,9 +191,38 @@ let
       "/usr/lib/tmpfiles.d/golconda.conf"
     ];
 
-  # Every path one labelled fragment claims in the /usr tree, as
-  # { path; what; origin; }: a unit at /usr/lib/systemd/system/<name>, a file
-  # at its path, a link at its path.
+  # The fields of a sysusers or tmpfiles line, split at white space.
+  fieldsOf = line: filter (x: isString x && x != "") (builtins.split "[[:space:]]+" line);
+
+  # The key a sysusers line claims: a `u` line its user, a `g` line its group
+  # (field 2). An `m` or `r` line claims nothing.
+  sysusersKey =
+    line:
+    let
+      fs = fieldsOf line;
+      type = builtins.replaceStrings [ "!" ] [ "" ] (head fs);
+    in
+    if builtins.length fs < 2 then
+      null
+    else if type == "u" then
+      "user ${builtins.elemAt fs 1}"
+    else if type == "g" then
+      "group ${builtins.elemAt fs 1}"
+    else
+      null;
+
+  # The path a tmpfiles line claims (field 2).
+  tmpfilesKey =
+    line:
+    let
+      fs = fieldsOf line;
+    in
+    if builtins.length fs < 2 then null else builtins.elemAt fs 1;
+
+  # Every key one labelled fragment claims, as { path; what; origin; }: a unit
+  # at /usr/lib/systemd/system/<name>, a file at its path, a link at its path,
+  # a tmpfiles line at its path, and a sysusers line for its user or group. A
+  # line claim also has `line`: two identical lines are one claim.
   claimsOf =
     l:
     let
@@ -200,10 +232,39 @@ let
         inherit path what;
         inherit (l) origin;
       };
+      lineClaims =
+        field: keyOf:
+        concatMap (
+          line:
+          let
+            k = keyOf line;
+          in
+          if k == null then [ ] else [ (claim k "${field} line '${line}'" // { inherit line; }) ]
+        ) (f.${field} or [ ]);
     in
     map (n: claim "/usr/lib/systemd/system/${n}" "unit '${n}'") (attrNames (f.units or { }))
     ++ map (p: claim p "file") (attrNames (f.files or { }))
-    ++ map (p: claim p "${links.${p}.kind} link to ${links.${p}.target}") (attrNames links);
+    ++ map (p: claim p "${links.${p}.kind} link to ${links.${p}.target}") (attrNames links)
+    ++ lineClaims "sysusers" sysusersKey
+    ++ lineClaims "tmpfiles" tmpfilesKey;
+
+  # The first sysusers or tmpfiles line with a control character, as an error,
+  # or null: a line break would add a line.
+  lineControlErrorOf =
+    labelled:
+    let
+      linesOf = l: (l.fragment.sysusers or [ ]) ++ (l.fragment.tmpfiles or [ ]);
+      bad = concatMap (
+        l:
+        map (line: "golconda: a line from ${l.origin} contains a control character: '${line}'") (
+          filter path.hasControl (linesOf l)
+        )
+      ) labelled;
+    in
+    if bad == [ ] then null else head bad;
+
+  # Each element once, in first-seen order.
+  unique = foldl' (acc: x: if elem x acc then acc else acc ++ [ x ]) [ ];
 
   # The one duplicate check: one path, one claim. The message names both
   # claims and both origins.
@@ -213,11 +274,13 @@ let
       claims = concatMap claimsOf labelled;
       aliases = filter (c: c.path == "/usr/sbin" || path.hasPrefix "/usr/sbin/" c.path) claims;
       byPath = groupBy (c: c.path) (reservedClaims ++ claims);
+      controlError = lineControlErrorOf labelled;
       errorAt =
         path:
         let
           first = head byPath.${path};
-          clash = tail byPath.${path};
+          # an identical line is the same claim
+          clash = filter (c: !(c ? line && first ? line && c.line == first.line)) (tail byPath.${path});
         in
         if clash == [ ] then
           null
@@ -225,7 +288,9 @@ let
           "golconda: ${path} defined twice: ${first.what} from ${first.origin}, ${(head clash).what} from ${(head clash).origin}";
       errors = filter (e: e != null) (map errorAt (attrNames byPath));
     in
-    if aliases != [ ] then
+    if controlError != null then
+      controlError
+    else if aliases != [ ] then
       let
         c = head aliases;
       in
@@ -259,11 +324,9 @@ let
       builtins.seq (attrNames files) {
         inherit files links packages;
         units = unionAttrs "units" fragments;
-        sysusers = concat "sysusers" fragments;
-        tmpfiles = concat "tmpfiles" fragments;
-        programs = foldl' (acc: n: if elem n acc then acc else acc ++ [ n ]) [ ] (
-          concat "programs" fragments
-        );
+        sysusers = unique (concat "sysusers" fragments);
+        tmpfiles = unique (concat "tmpfiles" fragments);
+        programs = unique (concat "programs" fragments);
       };
 
   union = fragments: unionOf (labelFragments fragments);

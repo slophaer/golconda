@@ -194,7 +194,9 @@ definitions it renders from `updateSource` and the reboot timer from `updateRebo
 follows four rules:
 
 - Attribute-set fields are unioned, and a key that appears twice throws with the key's name.
-- List fields are concatenated.
+- List fields are concatenated, and an identical line is kept once. A tmpfiles line claims its path
+  and a sysusers `u` or `g` line its user or group: two different lines for one key throw. A line
+  with a control character throws.
 - `packages` is one list with each package once, and `packageOrigins` says which fragments brought
   it.
 - The fragments' links are one map, and one duplicate check covers the whole map.
@@ -208,11 +210,12 @@ becomes an image is in [Configuration](config.md#from-document-to-image).
 
 ## `/factory`
 
-`/factory` is the one module that may write under `/etc`, and it does so only as the seed in
-`/usr/share/factory/etc` plus the tmpfiles `L` lines that link it
-([Layout: State](layout.md#state)). It knows no service: a module that needs a file under `/etc`
-(sshd's `pam.d/sshd`) has it in the factory because `/etc` content lives there, while the module's
-own user and directories are in the module's fragment.
+`/factory` and `/trust` are the modules that write under `/etc`, with tmpfiles `L` lines. `/factory`
+writes the seed in `/usr/share/factory/etc` plus the lines that link it
+([Layout: State](layout.md#state)); `/trust` links `/etc/ssl` to the CA bundle. `/factory` knows no
+service: a module that needs a file under `/etc` (sshd's `pam.d/sshd`) has it in the factory because
+`/etc` content lives there, while the module's own user and directories are in the module's
+fragment.
 
 ## Why not the NixOS module system
 

@@ -205,6 +205,77 @@ in
     # the composer alone (no components): the fragments' sysusers are there
     elem "a" result.sysusers && elem "b" result.sysusers
   ))
+  # sysusers and tmpfiles lines: one line for one user, group or path; identical lines once
+  (check "composer refuses two sysusers lines for one user" (
+    let
+      frags = [
+        {
+          name = "/a";
+          sysusers = [ "u foo - \"Foo\" /var/empty" ];
+        }
+        {
+          name = "/b";
+          sysusers = [ "u foo - \"Foo\" /var/lib/foo" ];
+        }
+      ];
+      msg = merge.duplicateError frags;
+      same = merge [
+        { sysusers = [ "u foo - \"Foo\" -" ]; }
+        { sysusers = [ "u foo - \"Foo\" -" ]; }
+        {
+          sysusers = [
+            "g foo -"
+            "m foo bar"
+            "m foo baz"
+          ];
+        }
+      ];
+    in
+    msg != null
+    && hasInfix "user foo" msg
+    && hasInfix "/a" msg
+    && hasInfix "/b" msg
+    && !(tryEval (deepSeq (merge frags).sysusers true)).success
+    &&
+      same.sysusers == [
+        "u foo - \"Foo\" -"
+        "g foo -"
+        "m foo bar"
+        "m foo baz"
+      ]
+  ))
+  (check "composer refuses two tmpfiles lines for one path" (
+    let
+      frags = [
+        {
+          name = "/trust";
+          tmpfiles = [ "L /etc/ssl/cert.pem - - - - /usr/share/a.crt" ];
+        }
+        {
+          name = "/factory";
+          tmpfiles = [ "L /etc/ssl/cert.pem - - - - /usr/share/factory/etc/ssl/cert.pem" ];
+        }
+      ];
+      msg = merge.duplicateError frags;
+      same = merge [
+        { tmpfiles = [ "d /var/empty 0755 root root -" ]; }
+        { tmpfiles = [ "d /var/empty 0755 root root -" ]; }
+      ];
+    in
+    msg != null
+    && hasInfix "/etc/ssl/cert.pem" msg
+    && hasInfix "/trust" msg
+    && hasInfix "/factory" msg
+    && !(tryEval (deepSeq (merge frags).tmpfiles true)).success
+    && same.tmpfiles == [ "d /var/empty 0755 root root -" ]
+  ))
+  (check "composer refuses a control character in a sysusers or tmpfiles line" (
+    merge.duplicateError [ { sysusers = [ "u foo -\nu root 0" ]; } ] != null
+    &&
+      merge.duplicateError [ { tmpfiles = [ "d /var/x 0755 root root -\nL /etc/x - - - - /y" ]; } ]
+      != null
+    && merge.duplicateError [ { tmpfiles = [ "d /var/x 0755 root root -" ]; } ] == null
+  ))
   # 7. Composer output includes links from services and vars
   (check "composer: merges links from services" (
     system.links ? "/usr/lib/systemd/system/multi-user.target.wants/sshd.service"

@@ -15,9 +15,11 @@ is described ([Modules](modules.md), [Configuration](config.md)), where the prog
 `/var` on the state partition and is declared: a `StateDirectory=`, a tmpfiles line, a repart
 definition. A path that is neither in the image nor declared does not exist.
 
-Enforced: a fragment's `files` must be under `/usr` (a path under `/etc` is a type error outside
-`/factory`), and the `/usr` tree builder refuses a top-level directory other than `bin`, `lib`,
-`share`, `libexec`, `nix` and the `sbin` link. Nothing checks `/var`.
+Enforced: a fragment's `files` must be under `/usr` (a path under `/etc` is a type error), and the
+`/usr` tree builder refuses a top-level directory other than `bin`, `lib`, `share`, `libexec`, `nix`
+and the `sbin` link. `/etc` gets content from tmpfiles lines only: `/factory` links its seeds, and
+`/trust` links the CA bundle. Nothing checks which module writes a tmpfiles line, and nothing checks
+`/var`.
 
 ## The image holds no per-machine value
 
