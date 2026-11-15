@@ -224,11 +224,7 @@ test_reboot() {
 check_esp_credentials_removed() {
   NAME=$1
   shift
-  N=0
-  while [ "$N" -lt 15 ] && [ "$(guest systemctl is-active golconda-esp-credentials.service 2>/dev/null)" != active ]; do
-    sleep 2
-    N=$((N + 1))
-  done
+  wait_for 30 guest_active golconda-esp-credentials.service
   E=$(guest "systemctl is-active golconda-esp-credentials.service; ls -A /boot/loader/credentials 2>/dev/null; journalctl -b -u golconda-esp-credentials.service -o cat --no-pager" 2>&1) || true
   echo "$E"
   RC=0
@@ -405,11 +401,7 @@ test_secure_boot_off() {
     SERIAL_LOG=$WORKDIR/serial-secure-boot-off-$n.log
     rotate_tpm
     start_qemu
-    W=0
-    while qemu_running && [ "$W" -lt 150 ] && ! grep -aq 'System halted' "$SERIAL_LOG"; do
-      sleep 1
-      W=$((W + 1))
-    done
+    wait_serial 150 'System halted'
     # a halted machine stays halted: give a reboot time to show
     sleep 10
     stop_qemu
@@ -429,13 +421,9 @@ test_secure_boot_off() {
   rotate_tpm
   start_qemu
   STUB_CMDLINE=""
-  W=0
-  while qemu_running && [ "$W" -lt 150 ] && ! serial_marker_present multi-user-reached "$SERIAL_LOG"; do
-    sleep 1
-    W=$((W + 1))
-  done
-  # sshd's start has its own time; then one login try
-  sleep 15
+  wait_for 150 serial_marker_present multi-user-reached "$SERIAL_LOG"
+  # sshd's start has its own time: wait for its failure; then one login try
+  wait_serial 15 'Failed to set up credentials'
   RC_LOGIN=0
   # shellcheck disable=SC2086
   if ssh $SSH_OPTS $NO_HOSTKEY_CHECK -i "$WORKDIR/ssh/user" root@localhost true 2>/dev/null; then

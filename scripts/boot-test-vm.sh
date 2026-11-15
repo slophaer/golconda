@@ -221,11 +221,7 @@ test_no_reenrol() {
   TIMEOUT=$SAVED_TIMEOUT
   # the kernel's line on Secure Boot comes early; with `force` systemd-boot would have enrolled and
   # reset before it, and the kernel would say enabled
-  W=0
-  while qemu_running && [ "$W" -lt 120 ] && ! grep -aq 'Secure boot \(dis\|en\)abled' "$SERIAL_LOG"; do
-    sleep 1
-    W=$((W + 1))
-  done
+  wait_serial 120 'Secure boot \(dis\|en\)abled'
   stop_qemu
   tr -d '\033\r' < "$SERIAL_LOG" | grep -a 'Secure Boot keys\|Secure boot \(dis\|en\)abled\|Linux version' | head -5 || true
   ! grep -aqF 'Custom Secure Boot keys successfully enrolled' "$SERIAL_LOG" || RC=1

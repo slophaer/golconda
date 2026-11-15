@@ -51,6 +51,26 @@ for marker in 'Initial Setup' 'Generate var' 'Started OpenSSH' 'Multi-User' 'Boo
   expect_status 1 "missing $marker" check_markers
 done
 
+# wait_for SECONDS CMD...: true once CMD succeeds; false after SECONDS, or as soon as QEMU stops.
+# wait_serial SECONDS PATTERN waits so for the serial log.
+qemu_running() { [ ! -e "$WORK/qemu-stopped" ]; }
+third_try() { echo x >> "$WORK/tries"; [ "$(wc -l < "$WORK/tries")" -ge 3 ]; }
+expect_status 0 "wait_for: true on the third try" wait_for 10 third_try
+start=$(date +%s)
+expect_status 1 "wait_for: false after its time" wait_for 2 false
+[ $(($(date +%s) - start)) -ge 2 ] || { echo "FAIL: wait_for gave up before 2 s"; ERRORS=$((ERRORS + 1)); }
+: > "$WORK/qemu-stopped"
+start=$(date +%s)
+expect_status 1 "wait_for: false when QEMU stops" wait_for 30 false
+[ $(($(date +%s) - start)) -lt 5 ] || { echo "FAIL: wait_for went on after QEMU stopped"; ERRORS=$((ERRORS + 1)); }
+rm "$WORK/qemu-stopped"
+SERIAL_LOG=$WORK/serial-wait.log
+: > "$SERIAL_LOG"
+(command sleep 1; echo 'System halted' >> "$SERIAL_LOG") &
+expect_status 0 "wait_serial: the pattern comes late" wait_serial 10 'System halted'
+wait
+expect_status 1 "wait_serial: the pattern never comes" wait_serial 1 'Linux version'
+
 # The caller owns the guest and timeout. Use deterministic polls instead of a VM.
 qemu_running() { [ "$POLLS" -lt 2 ]; }
 sleep() {

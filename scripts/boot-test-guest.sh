@@ -37,6 +37,11 @@ wait_for_ssh() {
   return 1
 }
 
+# guest_active UNIT: the guest's UNIT is active
+guest_active() {
+  [ "$(guest systemctl is-active "$1" 2>/dev/null)" = active ]
+}
+
 # one check: $1 name, $2 0 for PASS; counts into PASS/FAIL
 verdict() {
   if [ "$2" = 0 ]; then

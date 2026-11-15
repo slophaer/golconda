@@ -220,7 +220,7 @@
 #   serves LATER: sysupdate installs it (later-release-installed), and the timer starts its first
 #   try, which is blessed (later-release-tried). Then the harness arms LATER and the old release and
 #   reboots once more: three crashes, the old release once, two more, and the seventh boot in a row
-#   crashes and nothing reboots it for 60 s (failed-boots-halt). The run ends there; it skips the
+#   crashes and nothing reboots it for 20 s (failed-boots-halt). The run ends there; it skips the
 #   loader and recovery checks. Give it a --timeout of 1800.
 # With --next DIR --fail-panic or --fail-pid1: the panic or PID 1 crash row of the trial boot policy
 #   (docs/design/boot.md, "Trial boot"). After the install the harness arms the test image's

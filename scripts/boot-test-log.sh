@@ -1,6 +1,24 @@
 # shellcheck shell=sh
 # Serial boot decisions only. Sourcing this file starts no processes.
-# wait_for_boot uses the caller's SERIAL_LOG and qemu_running function.
+# The waits use the caller's SERIAL_LOG and qemu_running function.
+
+# wait_for SECONDS CMD...: run CMD each second until it succeeds; false when SECONDS pass or QEMU
+# stops first
+wait_for() {
+  wf_end=$(($(date +%s) + $1))
+  shift
+  until "$@"; do
+    if ! qemu_running || [ "$(date +%s)" -ge "$wf_end" ]; then
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+# wait_serial SECONDS PATTERN: wait_for the serial log to hold PATTERN (grep's basic regex)
+wait_serial() {
+  wait_for "$1" grep -aq "$2" "$SERIAL_LOG"
+}
 
 serial_marker_present() {
   case "$1" in

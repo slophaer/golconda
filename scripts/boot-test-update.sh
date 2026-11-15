@@ -40,18 +40,13 @@ activate_never() {
 
 # check_reboot_skipped NAME: the reboot timer fired on this boot, golconda-update-pending found
 # nothing to activate, and the boot goes on
+reboot_skipped() {
+  guest journalctl -b -u systemd-sysupdate-reboot.service -o cat --no-pager 2>/dev/null \
+    | grep -q "golconda-update-pending: the default entry is the running one: nothing to activate"
+}
 check_reboot_skipped() {
-  RC=1
-  N=0
-  while [ "$N" -lt 20 ]; do
-    if guest journalctl -b -u systemd-sysupdate-reboot.service -o cat --no-pager 2>/dev/null \
-      | grep -q "golconda-update-pending: the default entry is the running one: nothing to activate"; then
-      RC=0
-      break
-    fi
-    sleep 2
-    N=$((N + 1))
-  done
+  RC=0
+  wait_for 40 reboot_skipped || RC=1
   B=$(guest cat /proc/sys/kernel/random/boot_id 2>/dev/null) || true
   [ "$B" = "$BOOT_ID" ] || RC=1
   verdict "$1 (the reboot timer fired, golconda-update-pending found nothing to activate, no reboot)" $RC
@@ -315,26 +310,23 @@ failed_trace() {
 # crash_line VERSION: the trace of one crash of VERSION that PID 1 rebooted (CrashAction=reboot)
 crash_line() { echo "boot-test: crash PID 1 ($1)"; echo "reboot: Restarting system"; }
 
+# halted_crash: since MARK, the sixth failed boot reboots on no failure, and its crash of
+# LATER_VERSION is the last line (no reboot after it)
+halted_crash() {
+  HT=$(failed_trace "$MARK")
+  echo "$HT" | grep -q "reboots on no failure" &&
+    [ "$(echo "$HT" | tail -1)" = "boot-test: crash PID 1 ($LATER_VERSION)" ]
+}
+
 # failed_count_gone: the counter's variable is gone, golconda-failed-boots-complete.service ran
 failed_count_gone() {
-  N=0
-  while [ "$N" -lt 30 ]; do
-    [ "$(guest systemctl is-active golconda-failed-boots-complete.service 2>/dev/null)" = active ] && break
-    sleep 2
-    N=$((N + 1))
-  done
+  wait_for 60 guest_active golconda-failed-boots-complete.service
   guest "! ls /sys/firmware/efi/efivars/GolcondaFailedBoots-* 2>/dev/null"
 }
 
 # wait_blessed: wait until systemd-bless-boot.service ran on this boot
 wait_blessed() {
-  N=0
-  while [ "$N" -lt 30 ]; do
-    [ "$(guest systemctl is-active systemd-bless-boot.service 2>/dev/null)" = active ] && return 0
-    sleep 2
-    N=$((N + 1))
-  done
-  return 1
+  wait_for 60 guest_active systemd-bless-boot.service
 }
 
 # test_fail_blessed: the failed-boot counter (docs/design/boot.md, "Failed boots") on a blessed
@@ -437,14 +429,9 @@ test_fail_blessed() {
   MARK=$(wc -c < "$SERIAL_LOG")
   guest "touch /var/lib/boot-test/crash-$LATER_VERSION /var/lib/boot-test/crash-$OLD_VERSION && sync" || true
   guest systemctl reboot 2>&1 || true
-  # until the halted boot's crash, then a minute without a reboot: more than PID 1's 10 s
-  while qemu_running && ! failed_trace "$MARK" | grep -q "reboots on no failure"; do
-    sleep 5
-  done
-  while qemu_running && [ "$(failed_trace "$MARK" | tail -1)" != "boot-test: crash PID 1 ($LATER_VERSION)" ]; do
-    sleep 2
-  done
-  sleep 60
+  # until the halted boot's crash, then 20 s without a reboot: more than PID 1's 10 s
+  wait_for "$TIMEOUT" halted_crash
+  sleep 20
   T=$(failed_trace "$MARK")
   echo "$T"
   E=$(
@@ -466,7 +453,7 @@ test_fail_blessed() {
   RC=0
   qemu_running || RC=1
   [ "$T" = "$E" ] || { RC=1; printf 'expected:\n%s\n' "$E"; }
-  verdict "failed-boots-halt (both slots crash: the fourth boot ran $OLD_VERSION once, the seventh crashed and nothing rebooted it for 60 s)" $RC
+  verdict "failed-boots-halt (both slots crash: the fourth boot ran $OLD_VERSION once, the seventh crashed and nothing rebooted it for 20 s)" $RC
   stop_qemu
 }
 
@@ -725,20 +712,17 @@ test_recovery() {
   guest bootctl reboot-to-firmware true 2>&1 || true
   guest bootctl reboot-to-firmware 2>&1 || true
   guest systemctl reboot 2>&1 || true
-  FW=1
-  FW_WAIT=0
-  while [ "$FW_WAIT" -lt 45 ] && qemu_running; do
-    if tail -c +"$((FW_MARK + 1))" "$SERIAL_LOG" | grep -aq "Boot Maintenance Manager"; then
-      FW=0
-      break
-    fi
-    FW_WAIT=$((FW_WAIT + 1))
-    sleep 1
-  done
+  FW=0
+  wait_for 45 firmware_menu || FW=1
   # OVMF (edk2-stable202408) draws its front page with cursor moves; the item texts are plain runs
   tail -c +"$((FW_MARK + 1))" "$SERIAL_LOG" \
     | grep -ao "Please select boot device:\|Device Manager\|Boot Maintenance Manager\|UEFI [A-Za-z0-9 ]*Device" | sort -u || true
   verdict "reboot-to-firmware (OVMF's boot menu on the serial console)" $FW
+}
+
+# firmware_menu: OVMF's boot menu is on the serial console after byte FW_MARK
+firmware_menu() {
+  tail -c +"$((FW_MARK + 1))" "$SERIAL_LOG" | grep -aq "Boot Maintenance Manager"
 }
 
 # db_certs LOG: the db certificates the kernel loaded, "<CN>: <key id>", one per line

@@ -480,13 +480,8 @@ test_loader() {
   if [ "$2" = 1 ]; then
     # it runs after systemd-bless-boot.service, which waits for the health units (the network
     # one waits up to 60 s)
-    LW=0
-    while [ "$LW" -lt 120 ] && qemu_running; do
-      LU=$(guest systemctl is-active golconda-loader-update.service 2>/dev/null) || true
-      [ "$LU" = active ] && break
-      LW=$((LW + 2))
-      sleep 2
-    done
+    wait_for 120 guest_active golconda-loader-update.service
+    LU=$(guest systemctl is-active golconda-loader-update.service 2>/dev/null) || true
     guest journalctl -b -u golconda-loader-update.service -o cat --no-pager 2>&1 || true
     RC=0; [ "$LU" = active ] || RC=1
     verdict "loader-update-ran (golconda-loader-update.service after bless-boot: $LU)" $RC
@@ -586,15 +581,12 @@ check_imds_off() {
 # wait_imds_import: the import the generator pulled in runs before sysinit.target, so it has ended
 # by the first login; wait a little anyway. Never start it here, so a missed detection cannot pass.
 # Sets IMDS_STATE.
+imds_import_ended() {
+  IMDS_STATE=$(guest systemctl is-active "$IMDS_UNIT" 2>/dev/null) || true
+  case $IMDS_STATE in active | failed) ;; *) return 1 ;; esac
+}
 wait_imds_import() {
-  IMDS_STATE=""
-  IW=0
-  while [ "$IW" -lt 60 ] && qemu_running; do
-    IMDS_STATE=$(guest systemctl is-active "$IMDS_UNIT" 2>/dev/null) || true
-    case $IMDS_STATE in active | failed) break ;; esac
-    IW=$((IW + 2))
-    sleep 2
-  done
+  wait_for 60 imds_import_ended
   guest journalctl -b -u "$IMDS_UNIT" -u systemd-firstboot.service -o cat --no-pager 2>&1 || true
 }
 
