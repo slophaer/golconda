@@ -910,12 +910,19 @@ pub fn build(req: &BuildRequest<'_>, tools: &Tools<'_>) -> Result<Built> {
             let mut args = vec!["commit", "-q", "-m", &msg];
             args.extend(author.as_deref());
             args.extend(["--", rel.to_str().unwrap_or_default()]);
-            git_out(tools.git, &repo, &args)?;
-            let commit = git_out(tools.git, &repo, &["rev-parse", "HEAD"])?;
-            Ok(Built {
-                release,
-                record: Record { commit, ..record },
-            })
+            let committed = git_out(tools.git, &repo, &args)
+                .and_then(|_| git_out(tools.git, &repo, &["rev-parse", "HEAD"]));
+            match committed {
+                Ok(commit) => Ok(Built {
+                    release,
+                    record: Record { commit, ..record },
+                }),
+                Err(e) => {
+                    // a release no commit records: build_and_check made --out new
+                    let _ = fs::remove_dir_all(&req.out);
+                    Err(e)
+                }
+            }
         },
     );
     if built.is_err() {
@@ -2318,6 +2325,15 @@ mod tests {
         let e = s.build(&doc, &iets, Some("20261106.4"), false).unwrap_err();
         assert!(e.0.contains("no release key"), "{e}");
         assert_eq!(fs::read_to_string(&doc).unwrap(), DOC);
+        assert_eq!(s.head(), "server");
+        // a release commit git refuses (no name): the directory goes too
+        fs::write(s.tmp.path().join("keys/release/index.pgp"), "key").unwrap();
+        s.out("20261106.5", "20261106.5");
+        sh(&s.repo, "git", &["config", "user.name", ""]);
+        let e = s.build(&doc, &iets, Some("20261106.5"), false).unwrap_err();
+        assert!(e.0.contains("git -C"), "{e}");
+        assert_eq!(fs::read_to_string(&doc).unwrap(), DOC);
+        assert!(!s.tmp.path().join("result").exists());
         assert_eq!(s.head(), "server");
         assert_eq!(
             sh(
