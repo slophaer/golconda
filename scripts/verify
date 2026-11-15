@@ -6,22 +6,23 @@
 # scripts/boot-test; stop at the first failure. Run it through the build queue on a shared host (qbuild -g vm verify --
 # scripts/verify); a step's output goes to stdout.
 #
-#   scripts/verify [-C DIR] [--image ATTR] [--boot-args ARGS | --boot-set ARGS...] [--no-boot]
-#                  [--lint-only] [--each-commit BASE]
+#   scripts/verify [-C DIR] [--image ATTR] [--boot-args ARGS | --boot-set ARGS...] [--jobs N]
+#                  [--no-boot] [--lint-only] [--each-commit BASE]
 #
 #   -C DIR              verify the tree in DIR (default: this repository)
 #   --image ATTR        the image under packages.<system> (default image-smoke-test); the out-link
 #                       is result-verify. A boot set may name another (@image below)
-#   --boot-args ARGS    scripts/boot-test's flags after the disk and --keys (default
-#                       "--secure-boot --ssh-test --tpm --timeout 300": a reboot on a loaded
-#                       host can outlast boot-test's own default). @next in the flags (and in
+#   --boot-args ARGS    one boot with scripts/boot-test's flags after the disk and --keys, in
+#                       place of the boot matrix. @next in the flags (and in
 #                       --boot-set) stands for the next release's image: verify builds
 #                       <image>-next too (image-smoke-test-next for the default image,
 #                       image-smoke-test-nosb-next for image-smoke-test-nosb; out-link
 #                       result-verify-next) and puts its path there, as in "--next @next". It
 #                       also builds golconda-cli and age, which --next and --enrol need
 #                       (BOOT_TEST_GOLCONDA, PATH)
-#   --boot-set ARGS     one boot of a list (repeat it): all sets boot at the same time, each with
+#   --boot-set ARGS     one boot of a list (repeat it), in place of the boot matrix. Without
+#                       --boot-set and --boot-args, the sets are the lines of tests/boot/matrix.
+#                       The sets boot at the same time (at most --jobs), each with
 #                       its own log, and the summary has one line per set with its result, time,
 #                       image and ARGS ("PASS boot[N] 300s @image=ATTR ARGS"), and a line with the
 #                       names of the checks that passed ("  passed boot[N] (COUNT): NAME ...").
@@ -39,6 +40,8 @@
 #                       <image>-next, as in "--next @next=image-smoke-test-rotated --rotate".
 #                       Each @next word of a set is replaced, so a set can name a third release,
 #                       as in "--next @next --later @next=image-smoke-test-later"
+#   --jobs N            boot at most N sets at the same time (default: MemAvailable / 2.5 GiB,
+#                       at least 1)
 #   --no-boot           build the image, do not boot it
 #   --lint-only         lint only
 #   --each-commit BASE  every commit in BASE..HEAD, in a scratch worktree: lint each, and build and
@@ -58,7 +61,8 @@ self=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)/$(basename "$0")
 dir=$(dirname "$self")/..
 image="image-smoke-test"
 boot=1
-boot_args="--secure-boot --ssh-test --tpm --timeout 300"
+boot_args=
+jobs=
 lint_only=0
 each=
 boot_sets=
@@ -70,9 +74,10 @@ while [ $# -gt 0 ]; do
   case "$1" in
   -C) dir=${2:?}; shift 2 ;;
   --image) image=${2:?}; shift 2 ;;
-  --boot-args) boot_args=${2?}; shift 2 ;;
+  --boot-args) boot_args=${2:?}; shift 2 ;;
   --boot-set) boot_sets="$boot_sets${boot_sets:+
 }${2?}"; shift 2 ;;
+  --jobs) case ${2:-} in '' | *[!0-9]* | 0) usage ;; esac; jobs=$2; shift 2 ;;
   --no-boot) boot=0; shift ;;
   --lint-only) lint_only=1; shift ;;
   --each-commit) each=${2:?}; shift 2 ;;
@@ -81,6 +86,10 @@ while [ $# -gt 0 ]; do
 done
 cd "$dir" || exit 2
 system=${GOLCONDA_SYSTEM:-$(uname -m)-linux}
+if [ -z "$boot_sets" ] && [ -z "$boot_args" ]; then
+  boot_sets=$(grep -v -e '^#' -e '^[[:space:]]*$' tests/boot/matrix) ||
+    { echo "verify: no boot set in $(pwd)/tests/boot/matrix" >&2; exit 2; }
+fi
 
 if ! git diff --quiet || ! git diff --cached --quiet; then
   echo "verify: $(pwd) has uncommitted changes; commit or stash them first" >&2
@@ -111,7 +120,9 @@ if [ -n "$each" ]; then
     line="$(git log -1 --format='%h %s' "$c")"
     echo "== commit $line"
     if [ "$c" = "$last" ]; then
-      set -- -C "$wt" --image "$image" --boot-args "$boot_args"
+      set -- -C "$wt" --image "$image"
+      [ -z "$boot_args" ] || set -- "$@" --boot-args "$boot_args"
+      [ -z "$jobs" ] || set -- "$@" --jobs "$jobs"
       while IFS= read -r bs; do
         [ -z "$bs" ] || set -- "$@" --boot-set "$bs"
       done <<EOF
@@ -321,15 +332,26 @@ while IFS= read -r bs; do
 done <<EOF
 $boot_sets
 EOF
+# at most $jobs boots at a time: each takes a line from the FIFO on descriptor 3 before it starts,
+# and puts it back when it ends
+[ -n "$jobs" ] ||
+  jobs=$(awk '/^MemAvailable:/ { n = int($2 / (2.5 * 1024 * 1024)); print (n < 1 ? 1 : n) }' /proc/meminfo)
+echo "== boots: $n sets, at most $jobs at a time"
+mkfifo "$logs/jobs" || finish 1
+exec 3<>"$logs/jobs"
+rm "$logs/jobs"
+i=0
+while [ $i -lt "$jobs" ]; do echo; i=$((i + 1)); done >&3
 n=0
 while IFS= read -r bs; do
   n=$((n + 1))
   echo "== boot[$n]: $(shown "$bs")"
-  boot_set "$n" &
+  { read -r _ <&3; boot_set "$n"; echo >&3; } &
 done <<EOF
 $boot_sets
 EOF
 wait
+exec 3>&-
 i=0
 bad=0
 while IFS= read -r bs; do

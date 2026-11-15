@@ -59,7 +59,7 @@ unset BOOT_TEST_STORE_ROOT NIX_REMOTE || true
 
 # A repository with scripts/verify, a fake boot-test, and two commits.
 repo=$WORK/repo
-mkdir -p "$repo/scripts" "$repo/pins/repkgs"
+mkdir -p "$repo/scripts" "$repo/pins/repkgs" "$repo/tests/boot"
 cp "$ROOT/scripts/verify" "$repo/scripts/verify"
 cat >"$repo/scripts/boot-test" <<'EOF'
 #!/bin/sh
@@ -87,6 +87,7 @@ EOF
 chmod +x "$repo/scripts/verify" "$repo/scripts/boot-test"
 printf '[pin]\nrev = "0123456789abcdef"\n' >"$repo/pins/repkgs/sources.toml"
 echo readme >"$repo/README.md"
+printf '# the boot matrix\n--secure-boot --ssh-test --tpm --timeout 300\n\n--timeout 2\n' >"$repo/tests/boot/matrix"
 # the out-links, as the real .gitignore has them
 echo 'result*' >"$repo/.gitignore"
 git -C "$repo" init -q
@@ -106,15 +107,17 @@ run() {
 }
 
 # 1 a clean tree passes lint, image, the initrd's second build, the release's second signing and
-#   boot, in that order, and says what it tested
+#   the sets of tests/boot/matrix (comments and blank lines skipped), in that order, and says what
+#   it tested
 run scripts/verify
 [ $rc = 0 ] || fail "clean run exited $rc: $out"
 echo "$out" | grep -q "verify $head, repkgs 245843b" || fail "no commit and pin line: $out"
-for s in lint image initrd-reproducible disk-reproducible boot; do
-  echo "$out" | grep -qE "^PASS $s [0-9]+s$" || fail "no PASS line for $s: $out"
+for s in lint image initrd-reproducible disk-reproducible 'boot\[1\]' 'boot\[2\]'; do
+  echo "$out" | grep -qE "^PASS $s [0-9]+s" || fail "no PASS line for $s: $out"
 done
 order=$(cut -d' ' -f1 "$CALLS" | tr '\n' ' ')
-[ "$order" = "nix-shell nix-build nix-build nix-build boot-test " ] || fail "steps out of order: $order"
+[ "$order" = "nix-shell nix-build nix-build nix-build boot-test boot-test " ] || fail "steps out of order: $order"
+grep -q "boot-test .* --keys .* --timeout 2$" "$CALLS" || fail "the second set of the matrix not booted: $(cat "$CALLS")"
 grep -q 'nix-build -A packages\.[a-z0-9_]*-linux\.initrd-reproducible -o result-verify-initrd-reproducible$' "$CALLS" ||
   fail "the initrd's second build did not run: $(cat "$CALLS")"
 grep -q 'nix-build -A packages\.[a-z0-9_]*-linux\.disk-reproducible -o result-verify-disk-reproducible$' "$CALLS" ||
@@ -124,6 +127,13 @@ grep -q 'nix-build -A packages\.[a-z0-9_]*-linux\.image-smoke-test -o result-ver
 grep -q "boot-test $WORK/images/image-smoke-test/disk/disk.raw --keys $WORK/images/image-smoke-test/keys --secure-boot --ssh-test --tpm --timeout 300" "$CALLS" ||
   fail "boot-test not given the image's disk, keys and the smoke flags: $(cat "$CALLS")"
 grep -qE -- '--run ./scripts/lint$' "$CALLS" || fail "lint is not scripts/lint in the dev shell"
+
+# 1b --boot-args boots once with its flags, in place of the matrix
+run scripts/verify --boot-args '--timeout 480'
+[ $rc = 0 ] || fail "--boot-args run exited $rc: $out"
+echo "$out" | grep -qE "^PASS boot [0-9]+s$" || fail "no PASS line for the boot: $out"
+[ "$(grep -c '^boot-test' "$CALLS")" = 1 ] || fail "want 1 boot: $(cat "$CALLS")"
+grep -q "boot-test .* --keys .* --timeout 480$" "$CALLS" || fail "--boot-args not given to boot-test: $(cat "$CALLS")"
 
 # 2 an unclean tree is refused before any build
 echo dirty >>README.md
@@ -199,8 +209,9 @@ grep -q boot-test "$CALLS" && fail "booted after an image failure"
 # 9 --boot-set runs the sets at the same time and prints a line for each; the log of a set that
 #    passes is removed, the log of a failed set stays and its path is on the line
 rm -f "$WORK/rv-a" "$WORK/rv-b"
-run scripts/verify --boot-set '--rendezvous a --timeout 1' --boot-set '--rendezvous b'
+run scripts/verify --jobs 2 --boot-set '--rendezvous a --timeout 1' --boot-set '--rendezvous b'
 [ $rc = 0 ] || fail "--boot-set run exited $rc: $out"
+echo "$out" | grep -qxF '== boots: 2 sets, at most 2 at a time' || fail "no line with the job limit: $out"
 [ "$(grep -c '^boot-test' "$CALLS")" = 2 ] || fail "want 2 boots: $(cat "$CALLS")"
 grep -q 'boot-test .* --keys .* --rendezvous b$' "$CALLS" || fail "set 2 not run: $(cat "$CALLS")"
 echo "$out" | grep -qE '^PASS boot\[1\] [0-9]+s @image=image-smoke-test --rendezvous a --timeout 1$' || fail "no line for set 1: $out"
@@ -219,6 +230,23 @@ log=$(echo "$out" | sed -n 's/^FAIL(6) boot\[2\] .*(log \(.*\))$/\1/p' | head -1
 grep -q 'fake boot failed' "$log" || fail "the failed set's log is missing: $log"
 [ -e "$(dirname "$log")/boot-1.log" ] && fail "the passed set's log is next to it"
 rm -rf "$(dirname "$log")"
+
+# 9b --jobs 1 boots the sets one after the other: set 1 waits in vain for set 2; the default limit
+#    is MemAvailable / 2.5 GiB; --jobs takes a positive number only
+rm -f "$WORK/rv-a" "$WORK/rv-b"
+run scripts/verify --jobs 1 --boot-set '--rendezvous a' --boot-set '--rendezvous b'
+[ $rc != 0 ] || fail "--jobs 1 ran the sets at the same time: $out"
+echo "$out" | grep -qE '^FAIL\(5\) boot\[1\] ' || fail "set 1 did not wait in vain: $out"
+echo "$out" | grep -qE '^PASS boot\[2\] ' || fail "set 2 did not pass after set 1: $out"
+want=$(awk '/^MemAvailable:/ { n = int($2 / 2621440); print (n < 1 ? 1 : n) }' /proc/meminfo)
+run scripts/verify --boot-set '--timeout 1'
+# MemAvailable moves between the two reads: one off is the same limit
+got=$(echo "$out" | sed -n 's/^== boots: 1 sets, at most \([0-9]*\) at a time$/\1/p')
+[ -n "$got" ] && [ "$got" -ge $((want - 1)) ] && [ "$got" -le $((want + 1)) ] || fail "default job limit is not $want: $out"
+for j in 0 x ''; do
+  run scripts/verify --jobs "$j"
+  [ $rc = 2 ] || fail "--jobs '$j' accepted: $out"
+done
 
 # 10 --each-commit hands the sets to the last commit's run
 run scripts/verify --each-commit "$(git rev-list --max-parents=0 HEAD)" --boot-set '--timeout 1' --boot-set '--timeout 2'
@@ -357,5 +385,15 @@ for a in image-smoke-test-next:result-verify-next image-smoke-test-later:result-
 done
 grep -qxF "boot-test $WORK/images/image-smoke-test/disk/disk.raw --keys $WORK/images/image-smoke-test/keys --next $WORK/images/image-smoke-test-next --fail-blessed --later $WORK/images/image-smoke-test-later --timeout 1" "$CALLS" ||
   fail "two @next words not each replaced: $(grep boot-test "$CALLS")"
+
+# 16 the boot matrix: each flag is one that scripts/boot-test takes, each @image= and @next= a
+#    package of nix/default.nix
+words=$(grep -v -e '^#' -e '^[[:space:]]*$' "$ROOT/tests/boot/matrix")
+for w in $words; do
+  case $w in
+  --*) grep -qE "^ +${w}[|)]" "$ROOT/scripts/boot-test" || fail "tests/boot/matrix: boot-test has no $w" ;;
+  @image=* | @next=*) grep -qE "^ +${w#*=} =" "$ROOT/nix/default.nix" || fail "tests/boot/matrix: no package ${w#*=}" ;;
+  esac
+done
 
 echo "verify tests passed"

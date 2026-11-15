@@ -1,0 +1,25 @@
+# The boot matrix: the sets that scripts/verify boots when it gets no --boot-set and no
+# --boot-args. One set for each line: scripts/boot-test's flags after the disk and --keys, with
+# the words of scripts/verify (@image=ATTR first, @next, @next=ATTR). A line without @image boots
+# --image's image (default image-smoke-test). Blank lines and lines that start with # are skipped.
+--secure-boot --ssh-test --tpm --timeout 600
+--secure-boot --ssh-test --tpm --timeout 600 --next @next
+--secure-boot --ssh-test --tpm --timeout 900 --next @next --fail-health
+--secure-boot --ssh-test --tpm --timeout 900 --next @next --fail-initrd
+--secure-boot --ssh-test --tpm --timeout 900 --next @next --fail-panic
+--secure-boot --ssh-test --tpm --timeout 900 --next @next --fail-pid1
+--secure-boot --ssh-test --tpm --timeout 1800 --next @next --fail-blessed --later @next=image-smoke-test-later
+--secure-boot --ssh-test --tpm --timeout 600 --next @next --tamper-index
+--secure-boot --ssh-test --tpm --timeout 600 --next @next=image-smoke-test-rotated --rotate
+--secure-boot --ssh-test --tpm --timeout 900 --secure-boot-off
+--secure-boot --ssh-test --tpm --timeout 600 --auto-enrol
+--secure-boot --ssh-test --tpm --timeout 600 --auto-enrol --next @next
+@image=image-smoke-test-own-keys --secure-boot --ssh-test --tpm --timeout 600 --auto-enrol --no-microsoft-keys
+--secure-boot --ssh-test --tpm --timeout 600 --imds
+--secure-boot --ssh-test --tpm --timeout 600 --imds --next @next
+--secure-boot --ssh-test --factory-reset --timeout 480
+@image=image-smoke-test-next --secure-boot --ssh-test --tpm --timeout 600 --enrol
+@image=image-smoke-test-next --secure-boot --ssh-test --tpm --timeout 600 --enrol --factory-reset
+@image=image-smoke-test-nosb --ssh-test --timeout 400 --esp-creds
+@image=image-smoke-test-nosb --ssh-test --timeout 400 --next @next
+@image=image-smoke-test-nosb --ssh-test --timeout 400 --esp-creds --factory-reset

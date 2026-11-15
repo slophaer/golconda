@@ -380,9 +380,11 @@ is the update source the test images name. systemd's IMDS lock (`imds-network=lo
 included, stays reachable; `imds-endpoint-locked` and the update markers prove both in one run
 (`--imds --next`).
 
-`scripts/verify --boot-set ARGS` (repeat it) builds the image once and boots a list of flag sets at
-the same time, each with its own log. `@next` in the flags stands for the next release's image:
-`--next @next` makes verify build `<image>-next` as well (`image-smoke-test-next` for
+`scripts/verify` boots the flag sets of `tests/boot/matrix`, one set for each line.
+`--boot-set ARGS` (repeat it) gives another list, and `--boot-args ARGS` gives one boot. Verify
+builds each image once and boots the sets at the same time, at most `--jobs N` (default:
+MemAvailable / 2.5 GiB), each with its own log. `@next` in the flags stands for the next release's
+image: `--next @next` makes verify build `<image>-next` as well (`image-smoke-test-next` for
 `image-smoke-test`, `image-smoke-test-nosb-next` for `--image image-smoke-test-nosb`; out-link
 `result-verify-next`), and `golconda-cli` and `age` for `--next`'s admin vars, and put their paths
 in the flags, in `BOOT_TEST_GOLCONDA` and on `PATH`. A set that starts with the word `@image=ATTR`
