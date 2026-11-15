@@ -73,8 +73,8 @@ restarts the `consumers`.
 The boot test proves the sshd host key. With `--ssh-test --tpm` it checks these markers:
 
 - `var-sshd-hostkey`: the unit finished.
-- `hostkey-sealed-with-tpm2`: the credential header says TPM2 and the signed PCR policy; TPM2 alone
-  or the host key alone fails.
+- `hostkey-sealed-with-tpm2`: the credential's TPM2 header has a signed policy for PCR 11; TPM2
+  alone or the host key alone fails.
 - `ssh-after-reboot` and `hostkey-unchanged`: after a reboot sshd presents the first boot's key, the
   credential has the bytes the first boot wrote (it was not sealed again), and sshd runs. With
   `--next`, `hostkey-unchanged` runs again after the update, and with `--next --fail-health` after

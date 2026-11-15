@@ -398,8 +398,8 @@ check_unsealed() {
 # cred_pcrs FILE: the PCRs the sealed credential FILE in the guest is bound to, as
 # "hashed=7 signed=11" ("-" for none): systemd's creds-util.c puts the TPM2 header after the
 # header and its IV, aligned to 8 bytes: the mask of the PCRs bound by value, the blob and the
-# policy hash; then the public key header, with the mask of the PCRs of the signed policy. Only
-# for a credential whose header id says TPM2 and a signed policy (test_ssh checks that)
+# policy hash; then the public key header, with the mask of the PCRs of the signed policy. Another
+# kind of credential gives "unreadable" or masks read from the wrong bytes
 cred_pcrs() {
   guest "base64 -d < $1" > "$WORKDIR/cred.bin" 2>/dev/null || : > "$WORKDIR/cred.bin"
   python3 - "$WORKDIR/cred.bin" <<'EOF'

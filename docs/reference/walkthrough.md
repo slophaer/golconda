@@ -241,7 +241,7 @@ What happens, in order, and which marker or file shows it:
 swtpm, checks the sealing of the host key and reboots the guest. Output *(boot, TPM)*:
 
 ```text
-sshd-hostkey.key sealed with: host key + TPM2 + signed PCR policy (header id afbfeaac...)
+sshd-hostkey.key bound to: hashed=7 signed=11
 PASS: hostkey-sealed-with-tpm2 (and the signed PCR 11 policy)
 ...
 PASS: ssh-after-reboot (boot id 51d88e2a-0ef2-45ca-8e07-2e714be0c46a -> 62599ab5-261d-46f0-b24c-050350876c70)

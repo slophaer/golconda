@@ -44,8 +44,14 @@ done < "$FIXTURES/success-units.log" >> "$WORK/coloured.log"
 SERIAL_LOG=$WORK/coloured.log
 expect_status 0 "coloured target names" check_markers
 
+# sshd-active is sshd.service's own start line, not another unit whose name starts with sshd
+sed 's/Started sshd\.$/Started sshd: plain keys stop once the host certificate is enrolled./' \
+  "$FIXTURES/success-human.log" > "$WORK/other-sshd.log"
+SERIAL_LOG=$WORK/other-sshd.log
+expect_status 1 "another sshd unit is not sshd-active" check_markers
+
 # Each required marker must affect the result.
-for marker in 'Initial Setup' 'Generate var' 'Started OpenSSH' 'Multi-User' 'Boot Complete'; do
+for marker in 'Initial Setup' 'Generate var' 'Started sshd' 'Multi-User' 'Boot Complete'; do
   grep -v "$marker" "$FIXTURES/success-human.log" > "$WORK/incomplete.log"
   SERIAL_LOG=$WORK/incomplete.log
   expect_status 1 "missing $marker" check_markers

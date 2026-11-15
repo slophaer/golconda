@@ -151,21 +151,12 @@ test_ssh() {
     echo ""
     echo "=== $(dirname "$HOSTKEY_CRED") (TPM sealed credentials) ==="
     guest ls -la "$(dirname "$HOSTKEY_CRED")/" 2>&1 || true
-    # the sealing key type is the first 16 bytes of the credential (systemd creds-util.h,
-    # CRED_AES256_GCM_BY_*); the file is base64, so decode its first 24 characters
-    HDR=$(guest "head -c 24 $HOSTKEY_CRED | base64 -d | od -An -tx1 -N4" \
-      2>/dev/null | tr -d ' \n') || true
-    case "$HDR" in
-      5a1c6a86 | 55b9ed1d) KIND="host key only"; RC=1 ;;
-      058469da) KIND="null key"; RC=1 ;;
-      # TPM2 without the signed PCR 11 policy: not what the var asks for (--tpm2-public-key-pcrs=11)
-      0c7cc07b | d4062dfb) KIND="TPM2" ; RC=1 ;;
-      93a89409 | ef4ac136 | 14142588 | 2a1f877a) KIND="host key + TPM2"; RC=1 ;;
-      faf7eb93 | 5e2d5c76) KIND="TPM2 + signed PCR policy"; RC=0 ;;
-      af4950a8 | adbc4ca3 | afbfeaac | 16e49294) KIND="host key + TPM2 + signed PCR policy"; RC=0 ;;
-      *) KIND="unknown"; RC=1 ;;
-    esac
-    echo "sshd-hostkey.key sealed with: $KIND (header id ${HDR:-none}...)"
+    # sealed with TPM2 and the signed policy the var asks for (--tpm2-public-key-pcrs=11): the
+    # credential's signed policy names PCR 11
+    PCRS=$(cred_pcrs "$HOSTKEY_CRED")
+    echo "sshd-hostkey.key bound to: $PCRS"
+    RC=0
+    case $PCRS in *" signed=11") ;; *) RC=1 ;; esac
     verdict "hostkey-sealed-with-tpm2 (and the signed PCR 11 policy)" $RC
     if [ "$SECURE_BOOT" = 1 ]; then
       check_sealed_pcrs hostkey-sealed-pcr7

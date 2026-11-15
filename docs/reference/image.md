@@ -576,7 +576,7 @@ With `--tpm` (and `--ssh-test`):
 
 | marker                         | what it proves                                                                                                                                                                                              |
 | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `hostkey-sealed-with-tpm2`     | the header of `sshd-hostkey.key` says TPM2 and the signed PCR policy                                                                                                                                        |
+| `hostkey-sealed-with-tpm2`     | the TPM2 header of `sshd-hostkey.key` has a signed policy for PCR 11                                                                                                                                        |
 | `hostkey-sealed-pcr7`          | with `--secure-boot`: the credential's TPM2 header binds PCR 7 by value and its public key header PCR 11 by signature (`hostkey-sealed-pcr11-only` without `--secure-boot`: PCR 11 alone)                   |
 | `ssh-after-reboot`             | the guest came back with a new boot id                                                                                                                                                                      |
 | `hostkey-unchanged`            | sshd presents the first boot's host key, the credential has the first boot's bytes (not re-sealed), sshd runs; after the reboot, after an update (`--next`) and after the fallback (`--next --fail-health`) |

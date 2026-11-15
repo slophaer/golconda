@@ -23,7 +23,8 @@ wait_serial() {
 serial_marker_present() {
   case "$1" in
     multi-user-reached) pattern='Reached target[[:space:]]+(Multi-User System|multi-user[.]target)([[:space:].]|$)' ;;
-    sshd-active) pattern='sshd.*Listening|Started.*sshd|Started.*OpenSSH' ;;
+    # sshd.service's start line: its description (sshd), its name, or both
+    sshd-active) pattern='Started sshd([.]service( - [^:]*)?)?[.][[:space:]]*$' ;;
     var-sshd-hostkey) pattern='Finished.*Generate var sshd-hostkey' ;;
     boot-complete) pattern='Reached target[[:space:]]+(Boot Complete|Boot Completion Check|boot-complete[.]target)([[:space:].]|$)' ;;
     no-firstboot-prompt)

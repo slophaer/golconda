@@ -31,7 +31,7 @@
 #
 # Markers checked (each prints PASS/FAIL, only on positive evidence):
 #   - multi-user-reached: multi-user.target reached
-#   - sshd-active: sshd.service started (Listening on port)
+#   - sshd-active: sshd.service started (its start line)
 #   - var-sshd-hostkey: the host key var finished (it needs a writable root)
 #   - boot-complete: boot-complete.target reached
 #   - no-firstboot-prompt: systemd-firstboot.service finished, and no prompt appeared
