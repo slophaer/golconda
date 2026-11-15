@@ -72,6 +72,16 @@ wait_for_old() {
   return 1
 }
 
+# fallback_after KIND: after the fallback to $V the candidate has no try left and the host key
+# unseals; KIND ends the marker names (none for --fail-health), L gets systemd-boot's entries
+fallback_after() {
+  L=$(guest bootctl list --no-pager 2>&1) || true
+  echo "$L" | grep -E " (title|version|tries):" || true
+  RC=0; echo "$L" | grep -q "tries: 0 left; 3 done" || RC=1
+  verdict "counter-exhausted${1:+-$1} (the candidate has tries: 0 left; 3 done)" $RC
+  check_unsealed "after the fallback to $V"
+}
+
 # test_fail_health: the trial boot policy and the three-boot fallback of docs/design/boot.md. A
 # drop-in in /etc breaks golconda-health-network.service: the candidate's first try hangs until the
 # deadline, its second and third fail at once. The reboot timer starts the first try, and the
@@ -123,12 +133,8 @@ EOF
   [ "$REBOOTS" = 3 ] || RC=1
   verdict "trial-fail-rebooted (two failed health units, each try rebooted: $REBOOTS reboots by the policy)" $RC
 
-  check_unsealed "after the fallback to $V"
   check_clock clock-not-reset-after-fallback
-  L=$(guest bootctl list --no-pager 2>&1) || true
-  echo "$L" | grep -E " (title|version|tries):" || true
-  RC=0; echo "$L" | grep -q "tries: 0 left; 3 done" || RC=1
-  verdict "counter-exhausted (the candidate has tries: 0 left; 3 done)" $RC
+  fallback_after ""
   RC=0; echo "$L" | grep "$OLD_VERSION" | grep -q "(selected)" || RC=1
   verdict "old-slot-selected ($OLD_VERSION is the entry systemd-boot picked)" $RC
 
@@ -200,11 +206,7 @@ test_fail_initrd() {
   # the host's generator logs on every counted boot of the host: the candidate's never started
   ! echo "$T" | grep -q "golconda-trial-boot: ${IMAGE_ID}_$NEXT_VERSION+" || RC=1
   verdict "initrd-fail-rebooted (golconda-emergency-reboot.service rebooted each of the three tries)" $RC
-  L=$(guest bootctl list --no-pager 2>&1) || true
-  echo "$L" | grep -E " (title|version|tries):" || true
-  RC=0; echo "$L" | grep -q "tries: 0 left; 3 done" || RC=1
-  verdict "counter-exhausted-initrd (the candidate has tries: 0 left; 3 done)" $RC
-  check_unsealed "after the fallback to $V"
+  fallback_after initrd
   check_reboot_skipped update-reboot-skipped-after-initrd-fallback
   activate_never
 }
@@ -290,11 +292,7 @@ test_fail_tries() {
   done
   [ "$N" = 3 ] || RC=1
   verdict "fail-$1-rebooted (three tries, each counted and rebooted 10 s after its failure:$DELAYS s)" $RC
-  L=$(guest bootctl list --no-pager 2>&1) || true
-  echo "$L" | grep -E " (title|version|tries):" || true
-  RC=0; echo "$L" | grep -q "tries: 0 left; 3 done" || RC=1
-  verdict "counter-exhausted-$1 (the candidate has tries: 0 left; 3 done)" $RC
-  check_unsealed "after the fallback to $V"
+  fallback_after "$1"
   check_reboot_skipped "update-reboot-skipped-after-$1-fallback"
   activate_never
 }
