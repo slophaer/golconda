@@ -163,8 +163,13 @@ in
         args: !(builtins.tryEval (builtins.deepSeq (f.lib.mkImage args).unsigned.drvPath true)).success;
       inStore = p: builtins.match "/nix/store/[a-z0-9]{32}-(db.crt|pcr.pub|index.pgp)" p != null;
     in
-    # the private-key forms of before are refused, whatever the type
+    # an unknown argument is refused, a private-key directory too, whatever the type
     refused {
+      inherit config publicKeys;
+      publicKey = publicKeys;
+      system = "x86_64-linux";
+    }
+    && refused {
       inherit config;
       keys = "/srv/golconda-keys";
       system = "x86_64-linux";

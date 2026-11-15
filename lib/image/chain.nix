@@ -34,20 +34,31 @@
 args:
 let
   inherit (builtins)
+    attrNames
     baseNameOf
+    concatStringsSep
     hasContext
     isAttrs
     isPath
     isString
+    removeAttrs
     substring
     ;
-  # the private-key forms of before: the keys never reach Nix now
-  refused =
-    if args ? keys || args ? pcrKeys || args ? indexKeys then
-      throw "golconda: mkImage reads no private key: give the public halves as publicKeys (and pcrPublicKeys, indexPublicKeys), and sign with `golconda release build` (docs/reference/release.md)"
+  unknown = attrNames (
+    removeAttrs args [
+      "config"
+      "publicKeys"
+      "pcrPublicKeys"
+      "indexPublicKeys"
+      "system"
+    ]
+  );
+  checked =
+    if unknown != [ ] then
+      throw "golconda: mkImage: unknown argument ${concatStringsSep ", " unknown}; it takes config, publicKeys, pcrPublicKeys, indexPublicKeys and system, and no private key (docs/reference/outputs.md)"
     else
       args;
-  inherit (refused) config;
+  inherit (checked) config;
   system = args.system or builtins.currentSystem;
   publicKeys =
     args.publicKeys
