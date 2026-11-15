@@ -87,7 +87,7 @@ in
     principals = {
       type = types.attrsOf (types.listOf types.string);
       default = { };
-      description = "User -> certificate principals allowed to log in as that user (/usr/lib/sshd/principals/<user>, AuthorizedPrincipalsFile).";
+      description = "User -> certificate principals allowed to log in as that user (/usr/lib/sshd/principals/<user>, AuthorizedPrincipalsFile). Needs trustedUserCAKeys.";
     };
     revokedKeys = {
       type = types.bool;
@@ -97,7 +97,7 @@ in
     hostCertificate = {
       type = types.bool;
       default = false;
-      description = "Present the admin-supplied host certificate (admin var sshd-host-cert, file cert) with the host key (HostCertificate). Until it is pushed, sshd logs that it is missing and presents the plain host key; once it is sealed, sshd refuses every plain key (authorizedKeys, /root/.ssh/authorized_keys): only certificates log in.";
+      description = "Present the admin-supplied host certificate (admin var sshd-host-cert, file cert) with the host key (HostCertificate). Until it is pushed, sshd logs that it is missing and presents the plain host key; once it is sealed, sshd refuses every plain key (authorizedKeys, /root/.ssh/authorized_keys): only certificates log in. Needs trustedUserCAKeys.";
     };
   };
 
@@ -297,33 +297,40 @@ in
         };
       };
     in
-    merge (
-      [
-        hostkey
-        service
-        healthService
-        (on options.hostCertificate enrolled)
-        # the privilege-separation user and its empty directory (repkgs
-        # openssh: --with-privsep-path=/var/empty)
-        {
-          sysusers = [ "u sshd - \"SSH privilege separation\" /var/empty" ];
-          tmpfiles = [ "d /var/empty 0755 root root -" ];
-          # sshd execs sshd-session, sshd-auth and sftp-server by the compiled-in
-          # path /usr/lib/ssh (repkgs openssh: --libexecdir=/usr/lib/ssh)
-          links."/usr/lib/ssh" = {
-            target = "${options.package}/lib/ssh";
-            kind = "farm";
-          };
-        }
-      ]
-      # declared whether or not the options use them: a release with the options off
-      # accepts a push that a later release reads (docs/design/trust.md, "Identity")
-      ++ [
-        revokedKeysVar
-        hostCertVar
-      ]
-    )
-    // {
-      name = "/services/sshd";
-    };
+    # without a user CA no certificate logs in: hostCertificate would refuse every login once
+    # the certificate is sealed, and principals would have no effect
+    if !hasCA && options.hostCertificate then
+      throw "/services/sshd: hostCertificate needs trustedUserCAKeys: once the host certificate is sealed, only certificates log in"
+    else if !hasCA && hasPrincipals then
+      throw "/services/sshd: principals needs trustedUserCAKeys: principals select certificates of a user CA"
+    else
+      merge (
+        [
+          hostkey
+          service
+          healthService
+          (on options.hostCertificate enrolled)
+          # the privilege-separation user and its empty directory (repkgs
+          # openssh: --with-privsep-path=/var/empty)
+          {
+            sysusers = [ "u sshd - \"SSH privilege separation\" /var/empty" ];
+            tmpfiles = [ "d /var/empty 0755 root root -" ];
+            # sshd execs sshd-session, sshd-auth and sftp-server by the compiled-in
+            # path /usr/lib/ssh (repkgs openssh: --libexecdir=/usr/lib/ssh)
+            links."/usr/lib/ssh" = {
+              target = "${options.package}/lib/ssh";
+              kind = "farm";
+            };
+          }
+        ]
+        # declared whether or not the options use them: a release with the options off
+        # accepts a push that a later release reads (docs/design/trust.md, "Identity")
+        ++ [
+          revokedKeysVar
+          hostCertVar
+        ]
+      )
+      // {
+        name = "/services/sshd";
+      };
 }

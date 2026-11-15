@@ -238,8 +238,21 @@ in
   (check "sshd: without revokedKeys no fallback list" (
     !hasInfix "SetCredential=" unit
     && !hasInfix "SetCredential="
-      (composeWith { "/services/sshd".hostCertificate = true; }).units."sshd.service"
+      (composeWith {
+        "/services/sshd" = {
+          hostCertificate = true;
+          trustedUserCAKeys = [ "ssh-ed25519 AAAA user-ca" ];
+        };
+      }).units."sshd.service"
   ))
+  # once the host certificate is sealed only certificates log in: without a user CA nobody can
+  (check "sshd: hostCertificate needs a user CA" (sshdThrows {
+    hostCertificate = true;
+  }))
+  # principals select certificates: without a user CA no certificate is accepted
+  (check "sshd: principals need a user CA" (sshdThrows {
+    principals.root = [ "alice@example.com" ];
+  }))
   # the operator compares this line with the key `golconda vars pub` reads before the CA signs
   # it: the serial console is a channel the network cannot change
   (check "sshd: the host key's fingerprint goes to the console at first boot" (

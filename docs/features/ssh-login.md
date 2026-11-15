@@ -56,7 +56,8 @@ root = ["alice@example.com"]
 
 `authorizedKeys` lists plain public keys for root. Use it to bootstrap: with `hostCertificate` on,
 plain keys work only until the host certificate is enrolled. `revokedKeys` and `hostCertificate`
-default to `false`.
+default to `false`. `hostCertificate` and `principals` need `trustedUserCAKeys`: without a user CA,
+the build fails.
 
 A new machine enrols in its first release. Turn both options on, boot, and run one command from the
 deploy host. It needs a plain key that logs in (`authorizedKeys`, or the provisioning credential
