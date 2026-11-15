@@ -137,7 +137,6 @@ fn var_file(var: &str, file: &str) -> String {
 #[derive(Debug, Clone)]
 pub struct Program {
     argv: Vec<OsString>,
-    dir: Option<PathBuf>,
 }
 
 impl Program {
@@ -151,7 +150,6 @@ impl Program {
             .into_owned();
         Program {
             argv: text.split_whitespace().map(OsString::from).collect(),
-            dir: None,
         }
     }
 
@@ -159,16 +157,6 @@ impl Program {
     pub fn at(path: &Path) -> Program {
         Program {
             argv: vec![path.as_os_str().to_owned()],
-            dir: None,
-        }
-    }
-
-    /// The same program, run in `dir`.
-    #[must_use]
-    pub fn in_dir(&self, dir: &Path) -> Program {
-        Program {
-            dir: Some(dir.to_path_buf()),
-            ..self.clone()
         }
     }
 
@@ -210,11 +198,8 @@ impl Program {
             .split_first()
             .ok_or(Error("an empty program".into()))?;
         let spawn = || {
-            let mut c = Command::new(program);
-            if let Some(d) = &self.dir {
-                c.current_dir(d);
-            }
-            c.args(lead)
+            Command::new(program)
+                .args(lead)
                 .args(args)
                 .stdin(if stdin { Stdio::piped() } else { Stdio::null() })
                 .stdout(Stdio::piped())
@@ -708,7 +693,6 @@ mod tests {
     fn program(path: PathBuf) -> Program {
         Program {
             argv: vec![path.into_os_string()],
-            dir: None,
         }
     }
 

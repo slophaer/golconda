@@ -761,7 +761,8 @@ pub fn publish(
 
 /// What `golconda release build` is asked for.
 pub struct BuildRequest<'a> {
-    /// the system's document (server.toml), inside a Golconda checkout and a git repository
+    /// the system's document (server.toml), in a git repository, beside the pin
+    /// `pins/golconda/sources.toml` or inside a Golconda checkout
     pub document: &'a Path,
     /// the build host's Nix system double: pure evaluation has no `builtins.currentSystem`
     pub system: &'a str,
@@ -803,16 +804,34 @@ pub struct Built {
     pub record: Record,
 }
 
-/// The build's expression: Golconda's mkImage on the document, its unsigned outputs. The key
-/// sets are strings: mkImage copies their three public halves into the store, each file alone,
-/// and nothing else of them.
-const BUILD_EXPR: &str = "{ config, keys, pcrKeys, indexKeys, system }: \
-    ((import ./default.nix).lib.mkImage { \
-      inherit config system; \
-      publicKeys = keys; \
-      pcrPublicKeys = pcrKeys; \
-      indexPublicKeys = indexKeys; \
-    }).unsigned";
+/// The build's expression: Golconda's mkImage on the document, its unsigned outputs.
+const BUILD_EXPR: &str = include_str!("../build.nix");
+
+/// Where the build takes Golconda from (docs/reference/pinning.md).
+enum Golconda {
+    /// the uptrack pin beside the document, `pins/golconda/sources.toml`: Nix fetches its tree
+    Pin(PathBuf),
+    /// the Golconda checkout the document is in
+    Checkout(PathBuf),
+}
+
+impl Golconda {
+    /// The pin beside `document`, or else the checkout above it.
+    fn of(document: &Path) -> Option<Golconda> {
+        let pin = document.parent()?.join("pins/golconda/sources.toml");
+        if pin.is_file() {
+            return Some(Golconda::Pin(pin));
+        }
+        find_root(document).map(Golconda::Checkout)
+    }
+
+    fn checkout(&self) -> Option<&Path> {
+        match self {
+            Golconda::Checkout(root) => Some(root),
+            Golconda::Pin(_) => None,
+        }
+    }
+}
 
 fn git_out(git: &Program, dir: &Path, args: &[&str]) -> Result<String> {
     let mut all = vec!["-C", dir.to_str().unwrap_or(".")];
@@ -857,15 +876,15 @@ pub fn build(req: &BuildRequest<'_>, tools: &Tools<'_>) -> Result<Built> {
     let document = path::absolute(req.document).map_err(|e| Error(e.to_string()))?;
     let dir = document.parent().unwrap_or(Path::new("/"));
     let repo = PathBuf::from(git_out(tools.git, dir, &["rev-parse", "--show-toplevel"])?);
-    let root = find_root(&document).ok_or_else(|| {
+    let golconda = Golconda::of(&document).ok_or_else(|| {
         Error(format!(
-            "{}: not inside a Golconda checkout",
+            "{}: no pins/golconda/sources.toml beside it, and not inside a Golconda checkout",
             document.display()
         ))
     })?;
     let text =
         fs::read_to_string(&document).map_err(|e| Error(format!("{}: {e}", document.display())))?;
-    refuse_untracked(tools.git, &repo, &root, dir, &text)?;
+    refuse_untracked(tools.git, &repo, golconda.checkout(), dir, &text)?;
     let (id, current) = system_of(&text)?;
     let mut seen: Vec<Version> = current.into_iter().collect();
     if let Some(d) = req.dest {
@@ -883,7 +902,7 @@ pub fn build(req: &BuildRequest<'_>, tools: &Tools<'_>) -> Result<Built> {
     };
     let edited = with_version(&text, version)?;
     write_document(&document, &edited)?;
-    let built = build_and_check(req, tools, &root, &document, &edited, &id, version).and_then(
+    let built = build_and_check(req, tools, &golconda, &document, &edited, &id, version).and_then(
         |(release, record)| {
             let rel = document.strip_prefix(&repo).unwrap_or(&document);
             let msg = format!("release: {id} {version}\n\n{}", record.trailers());
@@ -906,12 +925,19 @@ pub fn build(req: &BuildRequest<'_>, tools: &Tools<'_>) -> Result<Built> {
 }
 
 /// Refuses a build that could read a file no commit holds. Nix reads the files where they lie:
-/// in the document's repository and in Golconda's, an uncommitted change or an untracked file
-/// can enter the build; in the directories of modules and packages (Golconda's, and the
-/// document's by its `[golconda]` table, default `modules` and `packages` beside it), which the
-/// module walk and the package sources read whole, an ignored file can too. Such a directory
-/// outside a git work tree cannot be checked, and is refused.
-fn refuse_untracked(git: &Program, repo: &Path, root: &Path, dir: &Path, text: &str) -> Result<()> {
+/// in the document's repository and in a Golconda checkout, an uncommitted change or an
+/// untracked file can enter the build; in the directories of modules and packages (the
+/// checkout's, and the document's by its `[golconda]` table, default `modules` and `packages`
+/// beside it), which the module walk and the package sources read whole, an ignored file can
+/// too. Such a directory outside a git work tree cannot be checked, and is refused. A pinned
+/// Golconda is a store path, and has nothing to check.
+fn refuse_untracked(
+    git: &Program,
+    repo: &Path,
+    checkout: Option<&Path>,
+    dir: &Path,
+    text: &str,
+) -> Result<()> {
     let project: toml_edit::DocumentMut = text
         .parse()
         .map_err(|e| Error(format!("the document: {e}")))?;
@@ -923,16 +949,16 @@ fn refuse_untracked(git: &Program, repo: &Path, root: &Path, dir: &Path, text: &
             .unwrap_or(key)
             .to_string()
     };
-    let dirs = [
-        root.join("modules"),
-        root.join("packages"),
-        dir.join(named("modules")),
-        dir.join(named("packages")),
-    ];
-    let mut repos = vec![
-        repo.to_path_buf(),
-        PathBuf::from(git_out(git, root, &["rev-parse", "--show-toplevel"])?),
-    ];
+    let mut dirs = vec![dir.join(named("modules")), dir.join(named("packages"))];
+    let mut repos = vec![repo.to_path_buf()];
+    if let Some(root) = checkout {
+        dirs.extend([root.join("modules"), root.join("packages")]);
+        repos.push(PathBuf::from(git_out(
+            git,
+            root,
+            &["rev-parse", "--show-toplevel"],
+        )?));
+    }
     let mut ignored = Vec::new();
     for d in dirs.iter().filter(|d| d.is_dir()) {
         let top = git_out(git, d, &["rev-parse", "--show-toplevel"]).map_err(|_| {
@@ -970,7 +996,7 @@ fn refuse_untracked(git: &Program, repo: &Path, root: &Path, dir: &Path, text: &
 fn build_and_check(
     req: &BuildRequest<'_>,
     tools: &Tools<'_>,
-    root: &Path,
+    golconda: &Golconda,
     document: &Path,
     text: &str,
     id: &str,
@@ -991,7 +1017,7 @@ fn build_and_check(
     let made = sign_release(
         req,
         tools,
-        root,
+        golconda,
         document,
         &out,
         [&keys, &pcr_keys, &index_keys],
@@ -1043,12 +1069,16 @@ fn build_and_check(
 fn sign_release(
     req: &BuildRequest<'_>,
     tools: &Tools<'_>,
-    root: &Path,
+    golconda: &Golconda,
     document: &Path,
     out: &Path,
     [keys, pcr_keys, index_keys]: [&Path; 3],
 ) -> Result<()> {
     let unsigned = out.join("unsigned");
+    let (name, tree) = match golconda {
+        Golconda::Pin(pin) => ("pin", pin),
+        Golconda::Checkout(root) => ("golconda", root),
+    };
     let args: Vec<&OsStr> = vec![
         "--arg".as_ref(),
         "config".as_ref(),
@@ -1065,6 +1095,9 @@ fn sign_release(
         "--argstr".as_ref(),
         "system".as_ref(),
         req.system.as_ref(),
+        "--arg".as_ref(),
+        name.as_ref(),
+        tree.as_os_str(),
         "--out-link".as_ref(),
         unsigned.as_os_str(),
         "--expr".as_ref(),
@@ -1072,7 +1105,6 @@ fn sign_release(
     ];
     tools
         .nix_build
-        .in_dir(root)
         .run(&args, None)
         .map_err(|e| Error(format!("the build failed: {}", e.0)))?;
     let module = req
@@ -2098,20 +2130,20 @@ mod tests {
                 .unwrap()
         );
         assert_eq!(b.release.dir, s.tmp.path().join("result/release"));
-        // nix-build ran in the checkout with the key sets as strings and absolute paths, for
+        // nix-build got the checkout, and the key sets as strings and absolute paths, for
         // mkImage's unsigned outputs only
         let log = fs::read_to_string(s.tmp.path().join("iets.log")).unwrap();
         let args: Vec<&str> = log.split_whitespace().collect();
         let keys = s.tmp.path().join("keys");
         let keys = keys.to_str().unwrap();
-        assert_eq!(
-            args[0],
-            fs::canonicalize(&s.repo).unwrap().to_str().unwrap()
-        );
         assert_eq!(&args[1..3], &["--arg", "config"]);
         assert_eq!(&args[4..7], &["--argstr", "keys", keys]);
         assert_eq!(&args[7..10], &["--argstr", "pcrKeys", keys]);
         assert_eq!(&args[10..13], &["--argstr", "indexKeys", keys]);
+        assert_eq!(
+            &args[16..19],
+            &["--arg", "golconda", s.repo.to_str().unwrap()]
+        );
         assert!(
             log.contains("publicKeys = keys;") && log.contains(").unsigned"),
             "{log}"

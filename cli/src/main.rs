@@ -74,7 +74,8 @@ enum Releases {
     /// signer signs them with the key set here, outside Nix, check checks the release, and one
     /// commit holds the version line with the release trailers. A failure puts the line back
     Build {
-        /// The system's document, inside a Golconda checkout
+        /// The system's document: beside the pin pins/golconda/sources.toml, or inside a Golconda
+        /// checkout
         #[command(flatten)]
         doc: Doc,
         /// The key set (scripts/make-keys): Nix copies its public halves, the signer reads its

@@ -10,7 +10,8 @@
 #   iets eval -E '(import ./examples/golconda.nix { golconda = import ./default.nix; }).usrTree.outPath'
 #
 # The result is the /usr tree: units, files, packages and symlinks. `lib.mkImage` takes the
-# same `config` and signs it into an image (docs/reference/outputs.md).
+# same `config` and builds the unsigned image (docs/reference/outputs.md). `golconda release
+# build` signs it, with Golconda from pins/golconda/sources.toml (docs/reference/release.md).
 #
 # `config` is a TOML file (like server.toml) validated against the schema.
 # server.toml is the whole configuration. Your own units and files are a module in modules/

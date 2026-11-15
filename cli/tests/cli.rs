@@ -1,7 +1,7 @@
 //! The `golconda` binary: `vars` against stand-ins for age and ssh, `release` against a release
 //! directory in a scratch directory with a stand-in for gpgv, and rclone and git as they are.
-//! `release build` needs a Golconda checkout and nix-build, so its pieces are unit tests
-//! (src/release.rs).
+//! `release build` runs in a copy of examples/ with a stand-in for nix-build; its pieces are unit
+//! tests (src/release.rs).
 
 use ring::digest;
 use std::env;
@@ -475,15 +475,32 @@ fn vars_usage_errors_exit_2() {
     }
 }
 
-/// A copy of `doc` in a directory of its own under target/ (inside the checkout: evaluation is
 /// A release directory of `server` 20261105.1, and a gpgv that accepts or refuses every
 /// signature.
 fn release_fixture(gpgv_ok: bool) -> (TempDir, PathBuf) {
     let tmp = TempDir::new().unwrap();
     let dir = tmp.path().join("release");
     fs::create_dir_all(tmp.path().join("keys/release")).unwrap();
-    fs::create_dir_all(&dir).unwrap();
     fs::write(tmp.path().join("keys/release/index.pgp"), "key").unwrap();
+    write_release(&dir, "server_20261105.1");
+    let gpgv = tmp.path().join("gpgv");
+    fs::write(
+        &gpgv,
+        if gpgv_ok {
+            "#!/bin/sh\nexit 0\n"
+        } else {
+            "#!/bin/sh\necho 'BAD signature' >&2\nexit 1\n"
+        },
+    )
+    .unwrap();
+    fs::set_permissions(&gpgv, fs::Permissions::from_mode(0o755)).unwrap();
+    (tmp, gpgv)
+}
+
+/// A release directory `dir` of `stem` (`<id>_<version>`), with a signature any stand-in gpgv
+/// takes.
+fn write_release(dir: &Path, stem: &str) {
+    fs::create_dir_all(dir).unwrap();
     let root = "ab".repeat(32);
     let uuid = |h: &str| {
         format!(
@@ -495,7 +512,6 @@ fn release_fixture(gpgv_ok: bool) -> (TempDir, PathBuf) {
             &h[20..32]
         )
     };
-    let stem = "server_20261105.1";
     let files = [
         (
             format!("{stem}.usr.{}.raw", uuid(&root[..32])),
@@ -519,18 +535,6 @@ fn release_fixture(gpgv_ok: bool) -> (TempDir, PathBuf) {
     }
     fs::write(dir.join("SHA256SUMS"), index).unwrap();
     fs::write(dir.join("SHA256SUMS.gpg"), "sig").unwrap();
-    let gpgv = tmp.path().join("gpgv");
-    fs::write(
-        &gpgv,
-        if gpgv_ok {
-            "#!/bin/sh\nexit 0\n"
-        } else {
-            "#!/bin/sh\necho 'BAD signature' >&2\nexit 1\n"
-        },
-    )
-    .unwrap();
-    fs::set_permissions(&gpgv, fs::Permissions::from_mode(0o755)).unwrap();
-    (tmp, gpgv)
 }
 
 fn release_check(tmp: &TempDir, gpgv: &PathBuf, json: bool) -> Output {
@@ -655,4 +659,92 @@ fn release_publish_and_list_through_rclone() {
         stdout(&golconda_in(&tmp, &gpgv, &publish)),
         "www serves server 20261105.1 already: nothing to upload\n"
     );
+}
+
+/// Golconda's `examples/`: GOLCONDA_TEST_EXAMPLES in the package build (cli/package.nix), else
+/// the checkout's.
+fn examples() -> PathBuf {
+    env::var_os("GOLCONDA_TEST_EXAMPLES").map_or_else(
+        || Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples"),
+        PathBuf::from,
+    )
+}
+
+fn copy_dir(from: &Path, to: &Path) {
+    fs::create_dir_all(to).unwrap();
+    for e in fs::read_dir(from).unwrap() {
+        let e = e.unwrap();
+        if e.file_type().unwrap().is_dir() {
+            copy_dir(&e.path(), &to.join(e.file_name()));
+        } else {
+            fs::copy(e.path(), to.join(e.file_name())).unwrap();
+        }
+    }
+}
+
+/// `release build` in a repository that pins Golconda, a copy of `examples/` (docs/reference/
+/// pinning.md): Nix gets the pin beside the document, and the release commit lands there. A
+/// stand-in nix-build links unsigned outputs whose signer copies a prepared release.
+#[test]
+fn release_build_in_a_repository_that_pins_golconda() {
+    let (tmp, gpgv) = release_fixture(true);
+    let t = tmp.path();
+    let repo = t.join("my-servers");
+    copy_dir(&examples(), &repo);
+    git_in(&repo, &["init", "-q", "-b", "main"]);
+    git_in(&repo, &["config", "user.name", "t"]);
+    git_in(&repo, &["config", "user.email", "t@t"]);
+    git_in(&repo, &["add", "."]);
+    git_in(&repo, &["commit", "-q", "-m", "servers"]);
+    write_release(&t.join("built"), "server_20261106.1");
+    fs::create_dir_all(t.join("unsigned")).unwrap();
+    exe(
+        &t.join("unsigned"),
+        "sign",
+        &format!(
+            "while [ $# -gt 0 ]; do [ \"$1\" = --out ] && out=$2; shift; done\ncp -R {} \"$out/release\"\n",
+            t.join("built").display()
+        ),
+    );
+    fs::create_dir_all(t.join("bin")).unwrap();
+    exe(
+        &t.join("bin"),
+        "nix-build",
+        &format!(
+            "printf '%s\\n' \"$@\" > {t}/nix-build.log\nwhile [ $# -gt 0 ]; do [ \"$1\" = --out-link ] && link=$2; shift; done\nln -s {t}/unsigned \"$link\"\n",
+            t = t.display()
+        ),
+    );
+    let path = format!("{}:{}", t.join("bin").display(), env::var("PATH").unwrap());
+    let o = Command::new(env!("CARGO_BIN_EXE_golconda"))
+        .current_dir(&repo)
+        .env("PATH", path)
+        .env("GOLCONDA_GPGV", &gpgv)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .args([
+            "release",
+            "build",
+            "--keys",
+            "../keys",
+            "--version",
+            "20261106.1",
+        ])
+        .output()
+        .unwrap();
+    let out = stdout(&o);
+    assert!(out.starts_with("server 20261106.1 built: "), "{out}");
+    let repo = fs::canonicalize(&repo).unwrap();
+    let log = fs::read_to_string(t.join("nix-build.log")).unwrap();
+    let pin = repo.join("pins/golconda/sources.toml");
+    assert!(
+        log.contains(&format!("--arg\npin\n{}\n", pin.display())),
+        "{log}"
+    );
+    assert!(!log.contains("--arg\ngolconda\n"), "{log}");
+    let head = Command::new("git")
+        .current_dir(&repo)
+        .args(["log", "-1", "--format=%s"])
+        .output()
+        .unwrap();
+    assert_eq!(stdout(&head), "release: server 20261106.1\n");
 }
