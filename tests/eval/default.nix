@@ -1,12 +1,12 @@
 # Pure-Nix tests of the module model: types, renderers and the composer.
 # scripts/lint evaluates this file with iets (through nix/tests.nix); it is `true`
-# or throws with the failing check's name. No derivation is instantiated: packages are read as
+# or throws once with the names of all failing checks. No derivation is instantiated: packages are read as
 # data (harness.nix, tests/fixtures/repkgs), and scripts/lint evaluates the file again in
 # restricted mode, where the real repkgs cannot be fetched. Checks that need the real package
 # set are in tests/real-packages (checks.real-packages).
 #   iets eval --expr 'import ./nix/tests.nix { }'
 #
-# harness.nix holds the shared fixtures and `check`; each other file is one area:
+# harness.nix holds the shared fixtures, `check` and `checkEq`; each other file is one area:
 # a function of the harness that returns a list of checks. Add an area by adding
 # its file to `areas`.
 {
@@ -49,8 +49,13 @@ let
     ./imds.nix
     ./components.nix
     ./pins.nix
+    ./check.nix
   ];
   tests = builtins.concatLists areas;
+  # a check gives true or its name
+  failed = builtins.filter builtins.isString tests;
 in
-assert builtins.all (t: t) tests;
-true
+if failed == [ ] then
+  true
+else
+  throw "golconda tests: ${toString (builtins.length failed)} failed:\n${builtins.concatStringsSep "\n" failed}"

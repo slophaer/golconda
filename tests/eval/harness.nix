@@ -20,6 +20,7 @@ let
     genList
     stringLength
     substring
+    toJSON
     tryEval
     ;
 
@@ -228,7 +229,12 @@ let
       ) true
     )).success;
 
-  check = name: cond: if cond then true else throw "golconda tests: ${name} failed";
+  # check NAME COND: true, or NAME when COND is false; default.nix throws once with every name
+  check = name: cond: if cond then true else name;
+  # checkEq NAME EXPECTED ACTUAL: check that they are equal; a failure also names both values
+  checkEq =
+    name: expected: actual:
+    check "${name}: expected ${toJSON expected}, got ${toJSON actual}" (expected == actual);
   # forcing the units is enough: a type error fires before any field; the
   # package derivations stay unevaluated (repkgs needs ca-derivations to instantiate)
   throws = r: !(tryEval (deepSeq r.units r.units)).success;
@@ -303,6 +309,7 @@ in
     binsFor
     binsOf
     check
+    checkEq
     compose
     composeWith
     configLib
