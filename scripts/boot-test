@@ -84,7 +84,8 @@
 #   --next. With --tpm, after the reboot the certificate, the pushed KRL and the refusal of plain
 #   keys hold (host-cert-presented-after-reboot, cert-revoked-refused-after-reboot,
 #   bootstrap-key-refused-after-reboot).
-# With --tpm: the host key is sealed to TPM2 and the signed PCR 11 policy; after a reboot, and
+# With --tpm: the host key is sealed to TPM2 and the signed PCR 11 policy, and with --secure-boot
+#   to PCR 7 too (hostkey-sealed-pcr7: the credential header's PCR masks); after a reboot, and
 #   with --next after the update or --fail-health's fallback, it is the first boot's key, its
 #   credential has the first boot's bytes, and sshd runs (hostkey-unchanged).
 # With --esp-creds (needs --ssh-test): provisions through the ESP instead of SMBIOS and the image's
@@ -233,7 +234,10 @@
 #   beside the old one before the first boot; after the update the harness stops QEMU, rewrites
 #   the variable store (db: the new certificate only; dbx: the old one), boots again and checks
 #   the new chain, then boots the original disk with the rotated store, which firmware must
-#   refuse.
+#   refuse. With --tpm the vars follow the rotation procedure (docs/design/bootloader.md): before
+#   the update they are sealed again without PCR 7 (vars-resealed-without-pcr7), after the rotated
+#   boot with it (vars-resealed-pcr7), and after one more reboot the host key unseals
+#   (hostkey-unchanged).
 # With --factory-reset (needs --ssh-test and the test image; a boot of its own): writes a marker
 #   in /etc, reads /etc/machine-id, runs `systemctl start factory-reset.target` in the guest and
 #   waits for the reset boot. It checks that the marker is gone (state-gone), the machine id

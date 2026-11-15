@@ -14,22 +14,43 @@ pass() { echo "PASS: $1"; }
 fail() { echo "FAIL: $1"; ERRORS=$((ERRORS + 1)); }
 check() { if eval "$2"; then pass "$1"; else fail "$1"; fi; }
 
-# systemd-creds encrypt [options] --name=ID SOURCE TARGET: the stub writes "ID:" and the source
+# systemd-creds encrypt [options] --name=ID SOURCE TARGET: the stub writes "ID:" and the source,
+# and logs the options to $CREDS_LOG. systemd-creds decrypt --name=ID SOURCE TARGET: the body of
+# a credential the stub wrote, when ID is its name; the body BAD does not decrypt
 mkdir -p "$WORK/bin"
 cat > "$WORK/bin/systemd-creds" <<'EOF'
 #!/bin/sh
-[ "$1" = encrypt ] || exit 2
+cmd=$1
 shift
 name=
-for a in "$@"; do case $a in --name=*) name=${a#--name=} ;; esac; done
+opts=
+for a in "$@"; do
+  case $a in
+    --name=*) name=${a#--name=} ;;
+    --*) opts="$opts $a" ;;
+  esac
+done
 eval "src=\${$(($# - 1))}"
 eval "dst=\${$#}"
-case $src in -) body=$(cat) ;; *) body=$(cat "$src") ;; esac
-printf '%s:%s' "$name" "$body" > "$dst"
+case $cmd in
+  encrypt)
+    echo "encrypt $name$opts" >> "$CREDS_LOG"
+    case $src in -) body=$(cat) ;; *) body=$(cat "$src") ;; esac
+    printf '%s:%s' "$name" "$body" > "$dst"
+    ;;
+  decrypt)
+    c=$(cat "$src")
+    [ "${c%%:*}" = "$name" ] && [ "${c#*:}" != BAD ] || exit 1
+    printf '%s' "${c#*:}" > "$dst"
+    ;;
+  *) exit 2 ;;
+esac
 EOF
 chmod +x "$WORK/bin/systemd-creds"
 export PATH="$WORK/bin:$PATH"
-export GOLCONDA_CREDSTORE="$WORK/credstore" GOLCONDA_VARS_D="$WORK/vars.d"
+export GOLCONDA_CREDSTORE="$WORK/credstore" GOLCONDA_VARS_D="$WORK/vars.d" CREDS_LOG="$WORK/creds.log"
+# the reseal's plaintext directory (/run on a machine)
+export TMPDIR="$WORK"
 mkdir -p "$GOLCONDA_VARS_D"
 
 # the manifests mkSystem writes (modules/lib/var.nix), as builtins.toJSON prints them
@@ -80,6 +101,55 @@ check "local: seals the secret" \
 check "local: publishes the public file and marks done" \
   '[ "$(cat "$WORK/state/pub/key.pub")" = public ] && [ -e "$WORK/state/done" ]'
 check "local: removes the plaintext" '[ -z "$(ls -A "$WORK/run")" ]'
+
+# --- the TPM2 policy: the signed PCR 11 policy, and PCR 7 by value on a Secure Boot image ---
+check "policy: without vars.d/tpm2-pcrs, the signed PCR 11 policy only" \
+  'grep -qx "encrypt foo.key --with-key=auto --tpm2-public-key-pcrs=11" "$CREDS_LOG"'
+printf '7\n' > "$GOLCONDA_VARS_D/tpm2-pcrs"
+: > "$CREDS_LOG"
+printf 'CERT' | sh "$RUNNER" --admin sshd-host-cert cert > /dev/null 2>&1
+check "policy: vars.d/tpm2-pcrs (a Secure Boot image) binds PCR 7 by value too" \
+  'grep -qx "encrypt sshd-host-cert.cert --with-key=auto --tpm2-public-key-pcrs=11 --tpm2-pcrs=7" "$CREDS_LOG"'
+
+# --- reseal: every credential of the store, decrypted and sealed again ---
+: > "$CREDS_LOG"
+st=0
+sh "$RUNNER" --reseal > "$WORK/out" 2>&1 || st=$?
+check "reseal: every credential, with the image's policy" \
+  '[ "$st" = 0 ] && grep -qx "resealed foo.key" "$WORK/out" && grep -qx "resealed sshd-host-cert.cert" "$WORK/out" &&
+   grep -qx "encrypt foo.key --with-key=auto --tpm2-public-key-pcrs=11 --tpm2-pcrs=7" "$CREDS_LOG" &&
+   grep -qx "encrypt sshd-host-cert.cert --with-key=auto --tpm2-public-key-pcrs=11 --tpm2-pcrs=7" "$CREDS_LOG"'
+check "reseal: the values stay, and no plaintext or temporary file is left" \
+  '[ "$(cat "$GOLCONDA_CREDSTORE/foo.key")" = "foo.key:secret" ] &&
+   [ "$(cat "$GOLCONDA_CREDSTORE/sshd-host-cert.cert")" = "sshd-host-cert.cert:CERT" ] &&
+   [ "$(ls -A "$GOLCONDA_CREDSTORE" | tr "\n" " ")" = "foo.key sshd-host-cert.cert " ] &&
+   [ -z "$(ls -d "$WORK"/golconda-reseal.* 2>/dev/null)" ]'
+: > "$CREDS_LOG"
+st=0
+sh "$RUNNER" --reseal --without-pcr7 > "$WORK/out" 2>&1 || st=$?
+check "reseal --without-pcr7: the signed PCR 11 policy only" \
+  '[ "$st" = 0 ] && grep -qx "encrypt foo.key --with-key=auto --tpm2-public-key-pcrs=11" "$CREDS_LOG" &&
+   ! grep -q -- "--tpm2-pcrs" "$CREDS_LOG"'
+# until the next --reseal, a push seals without PCR 7 too: PCR 7 changes during a rotation
+: > "$CREDS_LOG"
+printf 'CERT' | sh "$RUNNER" --admin sshd-host-cert cert > /dev/null 2>&1
+check "reseal --without-pcr7: later seals leave PCR 7 out too" \
+  'grep -qx "encrypt sshd-host-cert.cert --with-key=auto --tpm2-public-key-pcrs=11" "$CREDS_LOG"'
+: > "$CREDS_LOG"
+sh "$RUNNER" --reseal > /dev/null 2>&1
+printf 'CERT' | sh "$RUNNER" --admin sshd-host-cert cert > /dev/null 2>&1
+check "reseal: binds PCR 7 again, for the reseal and for later seals" \
+  '[ "$(grep -c -- "--tpm2-pcrs=7" "$CREDS_LOG")" = 3 ] && [ "$(wc -l < "$CREDS_LOG")" = 3 ] &&
+   [ "$(ls -A "$GOLCONDA_CREDSTORE" | tr "\n" " ")" = "foo.key sshd-host-cert.cert " ]'
+printf 'sshd-host-cert.cert:BAD' > "$GOLCONDA_CREDSTORE/sshd-host-cert.cert"
+st=0
+sh "$RUNNER" --reseal > "$WORK/out" 2>&1 || st=$?
+check "reseal: a credential that does not decrypt fails the run and stays as it was" \
+  '[ "$st" != 0 ] && [ "$(cat "$GOLCONDA_CREDSTORE/sshd-host-cert.cert")" = "sshd-host-cert.cert:BAD" ] &&
+   [ -z "$(ls -d "$WORK"/golconda-reseal.* 2>/dev/null)" ]'
+st=0
+sh "$RUNNER" --reseal --with-pcr8 > "$WORK/out" 2>&1 || st=$?
+check "reseal: refuses an unknown option" '[ "$st" = 2 ]'
 
 if [ "$ERRORS" -gt 0 ]; then
   echo "$ERRORS failed"

@@ -59,14 +59,15 @@ let
       )
     );
   # modules.json is the inventory and the fragments, and every included component, and no
-  # other module, emitted something
+  # other module, emitted something. The composer's own fragments (/system's updateSource and
+  # secureBoot) carry its path, and the composer is no component
   agrees =
     sys:
     fromJSON sys.artifacts."/usr/lib/golconda/modules.json".text == {
       modules = sys.inventory;
       inherit (sys) fragments packages;
     }
-    && emittersOf sys.composed sys.inventory == includedOf sys.inventory;
+    && filter (p: p != "/system") (emittersOf sys.composed sys.inventory) == includedOf sys.inventory;
 in
 [
   (check "components: every module has one role" (

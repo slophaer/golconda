@@ -556,6 +556,11 @@ test_next() {
   OLD_LOADER=$(guest_hash "$ESP_REMOVABLE")
   echo "running $OLD_VERSION, installing $NEXT_VERSION from http://$UPDATE_ADDR:$HTTP_PORT/"
   push_admin_vars
+  # --rotate: the next release's loader and UKI are signed with the new db key, so PCR 7 changes
+  # at its first boot; the rotation procedure seals the vars without PCR 7 first
+  if [ "$ROTATE" = 1 ] && [ "$TPM" = 1 ]; then
+    reseal_vars vars-resealed-without-pcr7 --without-pcr7
+  fi
 
   echo ""
   echo "=== the guest's own sysupdate definition ==="
@@ -760,7 +765,8 @@ test_rotate() {
 
   SERIAL_LOG=$WORKDIR/serial-rotated.log
   SAVED_TIMEOUT=$TIMEOUT
-  TIMEOUT=240
+  # with --tpm two boots: the rotated one, and the one after the reseal
+  TIMEOUT=$((TPM == 1 ? 420 : 240))
   rotate_tpm
   start_qemu
   TIMEOUT=$SAVED_TIMEOUT
@@ -791,6 +797,12 @@ test_rotate() {
   test_loader "after the rotation" 0
   check_no_failed no-failed-units-after-rotation
   check_clock clock-not-reset-after-rotate
+  # the last step of the procedure: db and dbx hold their new values, so PCR 7 does too
+  if [ "$TPM" = 1 ]; then
+    reseal_vars vars-resealed-pcr7
+    reboot_guest || return 1
+    check_unsealed "after the rotation, sealed to the new PCR 7"
+  fi
   stop_qemu
 
   echo ""

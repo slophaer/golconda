@@ -49,7 +49,8 @@
 #! 1. Changes to `$RUNTIME_DIRECTORY` and runs the script.
 #! 1. Seals each secret file with
 #!    `systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11 --name=<name>.<file>`
-#!    (host+tpm2 with a TPM2, the host key without one).
+#!    (host+tpm2 with a TPM2, the host key without one), plus `--tpm2-pcrs=7` when the
+#!    image has `/system.secureBoot` (`/usr/lib/golconda/vars.d/tpm2-pcrs`).
 #! 1. Installs the sealed credential to `/etc/credstore.encrypted/<name>.<file>`.
 #! 1. Copies public files to `/var/lib/golconda/vars/<name>/pub/`.
 #! 1. Touches `done` so the unit does not run again.
@@ -58,6 +59,11 @@
 #! `golconda-var-run --admin <name> <file>` over ssh with the value on stdin.
 #! It seals the value the same way, only when the image's manifest declares
 #! that admin var and file; a second push replaces the value.
+#!
+#! `golconda-var-run --reseal [--without-pcr7]` seals every credential of
+#! the store again, with or without PCR 7: a `db` rotation runs it before
+#! and after its changes to PCR 7, and seals in between leave PCR 7 out
+#! too (docs/design/trust.md, "PCR 7").
 #!
 #! ## Example
 #!

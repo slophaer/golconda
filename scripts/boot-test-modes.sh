@@ -160,6 +160,11 @@ test_ssh() {
     esac
     echo "sshd-hostkey.key sealed with: $KIND (header id ${HDR:-none}...)"
     verdict "hostkey-sealed-with-tpm2 (and the signed PCR 11 policy)" $RC
+    if [ "$SECURE_BOOT" = 1 ]; then
+      check_sealed_pcrs hostkey-sealed-pcr7
+    else
+      check_sealed_pcrs hostkey-sealed-pcr11-only
+    fi
     SEALED_HASH=$(guest_hash "$HOSTKEY_CRED")
   fi
   return 0

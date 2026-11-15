@@ -356,6 +356,67 @@ check_unsealed() {
   verdict "hostkey-unchanged ($1: the first boot's host key, credential not re-sealed, sshd $A)" $RC
 }
 
+# cred_pcrs FILE: the PCRs the sealed credential FILE in the guest is bound to, as
+# "hashed=7 signed=11" ("-" for none): systemd's creds-util.c puts the TPM2 header after the
+# header and its IV, aligned to 8 bytes: the mask of the PCRs bound by value, the blob and the
+# policy hash; then the public key header, with the mask of the PCRs of the signed policy. Only
+# for a credential whose header id says TPM2 and a signed policy (test_ssh checks that)
+cred_pcrs() {
+  guest "base64 -d < $1" > "$WORKDIR/cred.bin" 2>/dev/null || : > "$WORKDIR/cred.bin"
+  python3 - "$WORKDIR/cred.bin" <<'EOF'
+import struct, sys
+d = open(sys.argv[1], "rb").read()
+def pcrs(m):
+    return "+".join(str(i) for i in range(64) if m >> i & 1) or "-"
+try:
+    iv = struct.unpack_from("<I", d, 24)[0]
+    p = (32 + iv + 7) & ~7
+    hashed, _bank, _alg, blob, policy = struct.unpack_from("<QHHII", d, p)
+    signed = struct.unpack_from("<Q", d, p + ((20 + blob + policy + 7) & ~7))[0]
+    print(f"hashed={pcrs(hashed)} signed={pcrs(signed)}")
+except struct.error:
+    print("unreadable")
+EOF
+}
+
+# check_sealed_pcrs NAME: the host key is bound to the signed PCR 11 policy and, on a Secure Boot
+# image (--secure-boot), to PCR 7's value too (modules/vars/golconda-var-run)
+check_sealed_pcrs() {
+  WANT="hashed=- signed=11"
+  if [ "$SECURE_BOOT" = 1 ]; then
+    WANT="hashed=7 signed=11"
+  fi
+  PCRS=$(cred_pcrs "$HOSTKEY_CRED")
+  echo "sshd-hostkey.key bound to: $PCRS (want $WANT)"
+  RC=0
+  [ "$PCRS" = "$WANT" ] || RC=1
+  verdict "$1 ($WANT)" $RC
+}
+
+# reseal_vars NAME [--without-pcr7]: golconda-var-run --reseal seals every credential of the
+# store again, as the db rotation procedure does (docs/design/bootloader.md): with the image's
+# policy, or with the signed PCR 11 policy only. The host key credential gets new bytes, so
+# SEALED_HASH follows it; check_unsealed then shows that the reseal kept the key
+reseal_vars() {
+  NAME=$1
+  shift
+  echo ""
+  echo "=== golconda-var-run --reseal $* ==="
+  RC=0
+  OUT=$(guest /usr/lib/golconda/golconda-var-run --reseal "$@" 2>&1) || RC=1
+  echo "$OUT"
+  echo "$OUT" | grep -qx "resealed sshd-hostkey.key" || RC=1
+  PCRS=$(cred_pcrs "$HOSTKEY_CRED")
+  WANT="hashed=7 signed=11"
+  if [ "${1:-}" = --without-pcr7 ]; then
+    WANT="hashed=- signed=11"
+  fi
+  echo "sshd-hostkey.key bound to: $PCRS"
+  [ "$PCRS" = "$WANT" ] || RC=1
+  SEALED_HASH=$(guest_hash "$HOSTKEY_CRED")
+  verdict "$NAME (every credential sealed again, the host key with $WANT)" $RC
+}
+
 # test_loader LABEL COUNTED: on a counted boot (COUNTED=1) golconda-loader-update.service ran
 # after bless-boot, on a blessed one (0) it did not; the ESP's two copies of systemd-boot are
 # /usr's signed file, the loader.conf in effect is /usr's and enrols nothing, and with Secure Boot

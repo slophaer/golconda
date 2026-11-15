@@ -172,8 +172,9 @@ key ([Trust: Deployment keys](trust.md#deployment-keys)). The PK and KEK keys ar
 for a new set of enrolment files: a `db` rotation (`make-keys --reuse-pk-kek OLD`, below) or a newer
 `dbx`. In Setup Mode OVMF (EDK II) writes `db`, `dbx` and `KEK` without checking their signatures,
 and `PK` too unless the build sets `PcdRequireSelfSignedPk`, so a boot alone would not find a wrong
-signature; `make-keys` and the signer check each one. Enrolment changes PCR 7; Golconda's
-credentials are sealed to the PCR 11 signing key, not to PCR 7, so nothing sealed is lost.
+signature; `make-keys` and the signer check each one. Enrolment changes PCR 7 before anything is
+sealed: systemd-boot resets the machine after it, and the first var is sealed on the next boot
+([Trust: PCR 7](trust.md#pcr-7)).
 
 **Once.** Only the first disk's ESP is armed. On the first good boot `golconda-loader-update` puts
 `/usr`'s `loader.conf` on the ESP, which says `secure-boot-enroll off`, and, once the firmware
@@ -203,6 +204,8 @@ console, a real firmware accepting the files, or option ROMs running after the e
 
 A `db` key rotation signs the loader, the UKI and the verity root hash with a new key; they are one
 key ([Trust](trust.md#2-verity-key)). The PCR policy key is a separate key and does not change.
+Every step from 2 on changes PCR 7, to which the vars are sealed ([Trust: PCR 7](trust.md#pcr-7)),
+so the vars are sealed without it first and with it again at the end.
 
 1. Make the new key pair and keep the old one, with `scripts/make-keys --reuse-pk-kek OLD NEW`. The
    new set keeps the old PK and KEK (copies of their certificates, no keys), and its enrolment files
@@ -210,6 +213,9 @@ key ([Trust](trust.md#2-verity-key)). The PCR policy key is a separate key and d
    PK and KEK as the fleet, so one KEK still signs every `db` and `dbx` update. Without
    `--reuse-pk-kek` the set gets a PK and a KEK of its own; `make-keys` cannot tell a rotation from
    a new deployment, so the rotation names the old set.
+
+1. On each machine with a TPM2, seal the vars without PCR 7:
+   `ssh root@HOST /usr/lib/golconda/golconda-var-run --reseal --without-pcr7`.
 
 1. Add the new certificate to `db`, beside the old one. A release signed with a key that is not in
    `db` is refused: firmware rejects its UKI, each attempt counts down, and after three the older
@@ -234,13 +240,19 @@ key ([Trust](trust.md#2-verity-key)). The PCR policy key is a separate key and d
 
 1. Replace `db` with the new certificate alone and add the old certificate to `dbx`.
 
+1. Boot with the new variables, then seal the vars to the new PCR 7:
+   `ssh root@HOST /usr/lib/golconda/golconda-var-run --reseal`.
+
+A `dbx` update, or a firmware update that writes the Secure Boot variables, takes the same two
+reseals around it.
+
 How the variables are written depends on the machine. Firmware setup can enrol a certificate; with
 the KEK's private key, an authenticated `db` append or `dbx` update can be written from the running
 system, but the image has no tool for it. The boot test writes the variable store offline with
-`virt-fw-vars`: `--add-db` for step 2, `--delete db --add-db <new> --add-dbx-cert <old>` for step 5.
+`virt-fw-vars`: `--add-db` for step 3, `--delete db --add-db <new> --add-dbx-cert <old>` for step 6.
 
-Step 4 is there because of what happens without it. In a test run that left `bootctl set-default` on
-the old entry, the boot after step 5 stopped: systemd-boot logged
+Step 5 is there because of what happens without it. In a test run that left `bootctl set-default` on
+the old entry, the boot after step 6 stopped: systemd-boot logged
 `Error loading EFI binary \EFI\Linux\boot-test_20261031.1.efi: Access denied` and returned to
 firmware, which found no other bootable option. A blessed entry has no counter, so systemd-boot does
 not fall back from it by itself.
@@ -258,7 +270,7 @@ not fall back from it by itself.
 | the loader does not start any more                 | at the console, the firmware's boot menu: start `EFI/systemd/systemd-boot-fallbackx64.efi`, or a UKI under `EFI/Linux` as a file; then run `golconda-loader-update` or install a release                                                                           |
 | the ESP is lost                                    | write the ESP partition of the release's `disk.raw` again, from another machine; it carries the loader, `loader.conf` and that release's UKI                                                                                                                       |
 | the `db` key leaks                                 | rotate it, with the old certificate in `dbx` (above)                                                                                                                                                                                                               |
-| the `db` private key is lost                       | running machines keep booting: the signatures they hold stay valid. No new release can be signed for them. Enrol a new key with the KEK (an authenticated write) or in firmware setup, then install a release signed with it (a rotation without step 3's overlap) |
+| the `db` private key is lost                       | running machines keep booting: the signatures they hold stay valid. No new release can be signed for them. Enrol a new key with the KEK (an authenticated write) or in firmware setup, then install a release signed with it (a rotation without step 4's overlap) |
 | certificate login is broken                        | after enrolment no plain key logs in ([Trust: Enrolment](trust.md#enrolment)). At the console, boot the other slot if its release has `hostCertificate` off; else reflash the disk: the state partition and its sealed vars go, and the machine enrols again       |
 
 The firmware path needs the console.

@@ -305,9 +305,10 @@ no-ops ([Updates: Versions](updates.md#versions)).
 
 systemd-stub measures the UKI's parts into PCR 11. `systemd-measure` precomputes those values at
 build time and signs them; the signature travels in the UKI (`.pcrsig`). Credentials are sealed to
-the signing key, not to a PCR value, so a new signed image unseals them without re-enrolment.
-Firmware PCRs (0–7) are not part of the policy; locking them with `systemd-pcrlock` is *(later)*
-([Trust: Rollback weakness](trust.md#rollback-weakness)).
+the signing key, not to a PCR 11 value, so a new signed image unseals them without re-enrolment. Of
+the firmware PCRs (0–7), only PCR 7, the Secure Boot state and keys, is part of the policy, on a
+Secure Boot image ([Trust: PCR 7](trust.md#pcr-7)); locking the rest with `systemd-pcrlock` is
+*(later)* ([Trust: Rollback weakness](trust.md#rollback-weakness)).
 
 ## Secure Boot
 

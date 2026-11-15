@@ -2,6 +2,7 @@
 # A function of the harness (./harness.nix); it returns a list of checks.
 {
   check,
+  composeWith,
   mkSystemFixture,
   platform,
   sources,
@@ -98,6 +99,26 @@ in
       };
     in
     !(builtins.any (p: (p.pname or "") == "linux-kernel") tree.drvAttrs.roots)
+  ))
+  # the vars' TPM2 policy (modules/vars/golconda-var-run reads vars.d/tpm2-pcrs): PCR 7 by value
+  # besides the signed PCR 11 policy, so Secure Boot off or other Secure Boot keys unseal nothing
+  (check "secureBoot: the vars are sealed to PCR 7 too" (
+    (composeWith { }).files."/usr/lib/golconda/vars.d/tpm2-pcrs" == {
+      text = "7\n";
+      mode = "0644";
+    }
+  ))
+  (check "secureBoot: false keeps the signed PCR 11 policy alone" (
+    !(
+      (composeWith {
+        "/system" = {
+          name = "t";
+          version = "20261031.1";
+          secureBoot = false;
+        };
+      }).files
+        ? "/usr/lib/golconda/vars.d/tpm2-pcrs"
+    )
   ))
   (check "secureBoot: false without the image's keys is an error" (
     !(tryEval (deepSeq (kernelOf (sysWith { secureBoot = false; } null)).spec.env true)).success

@@ -17,9 +17,11 @@ policy with keys you make, so a swapped kernel opens nothing.
   `sysinit`. A single signature at `ready` would leave sshd with nothing it may unseal. The build
   recomputes each digest and fails if one is missing.
 - **Sealing.** `golconda-var-sshd-hostkey.service` runs
-  `systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11`. sshd loads the result with
-  `LoadCredentialEncrypted=`. The key is sealed to the PCR key, not to one PCR value, so a new
-  signed image unseals it with no re-enrolment.
+  `systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11 --tpm2-pcrs=7`. sshd loads the
+  result with `LoadCredentialEncrypted=`. The key is sealed to the PCR key, not to one PCR 11 value,
+  so a new signed image unseals it with no re-enrolment. It is also sealed to PCR 7's value, so it
+  does not unseal with Secure Boot off or with other Secure Boot keys; a `db` rotation seals it
+  again ([Trust: PCR 7](../design/trust.md#pcr-7)).
 - **Deployment keys.** `scripts/make-keys` writes `secureboot/db.{key,crt}`, a `PK` and a `KEK`,
   `pcr/pcr.{key,pub}`, the release key, and the Secure Boot variables, signed once by the PK and KEK
   keys. No release needs the PK or KEK key. The private keys never enter the image.
@@ -64,8 +66,9 @@ Proven in QEMU with OVMF: `secure-boot-enabled`, and after a key rotation `old-l
 loader signed with a key now in `dbx`). From an empty variable store systemd-boot enrols the keys
 (`auto-enrolled`, `pk-enrolled`, `kek-enrolled`, `db-enrolled`, `dbx-enrolled`), with Microsoft's
 keys and without them. No marker boots an unsigned loader. `hostkey-sealed-with-tpm2`,
-`ssh-after-reboot` and `hostkey-unchanged` (`--tpm`) show the seal and the unseal, also after an
-update and after a fallback (`--tpm --next`, with `--fail-health`). `boots-after-rotation` and
+`hostkey-sealed-pcr7`, `ssh-after-reboot` and `hostkey-unchanged` (`--tpm`) show the seal and the
+unseal, also after an update and after a fallback (`--tpm --next`, with `--fail-health`) and after a
+`db` rotation with its two reseals (`--tpm --rotate`). `boots-after-rotation` and
 `old-loader-refused` cover a `db` rotation. A deployment key set made by `scripts/make-keys` booted
 on the same markers. The no-Secure-Boot image (`image-smoke-test-nosb`) boots and updates. See
 [What is proven](../proven.md).

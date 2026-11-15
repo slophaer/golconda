@@ -216,8 +216,8 @@ from the same three places (`publicKeys`, `pcrPublicKeys`, `indexPublicKeys` of 
 
 Both certificates must be in `db` while a slot still holds a release signed with the old key, and
 the old certificate goes to `dbx` only after both slots hold a release signed with the new one. The
-order of the steps, and what firmware refuses at each, are in
-[Boot loader: Key rotation](../design/bootloader.md#key-rotation).
+order of the steps, what firmware refuses at each, and the two reseals of the vars around them are
+in [Boot loader: Key rotation](../design/bootloader.md#key-rotation).
 
 The boot test runs a rotation against OVMF with `virt-fw-vars`
 (`scripts/boot-test --next DIR --rotate`). **Unverified:** a rotation on a machine's own firmware. A

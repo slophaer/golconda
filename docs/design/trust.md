@@ -608,12 +608,13 @@ of whoever holds the disk. With Secure Boot and a TPM2, use SMBIOS or fw_cfg for
 
 Sealed today: the sshd host key, and nothing else. `golconda-var-sshd-hostkey.service` runs
 `/usr/lib/golconda/golconda-var-run`, which calls
-`systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11 --name=sshd-hostkey.key` and writes
-`/etc/credstore.encrypted/sshd-hostkey.key`; sshd loads it with `LoadCredentialEncrypted=`. It is
-the only local var in the image. Not sealed: the state partition (unencrypted for now, no LUKS), the
-machine-id (a plain file PID 1 writes), the admin vars (the host certificate and the revocation list
-are sealed once `golconda vars push` delivers them, see [Secrets and vars](#secrets-and-vars)), and
-administrator credentials for the machine itself.
+`systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11 --tpm2-pcrs=7 --name=sshd-hostkey.key`
+(without `--tpm2-pcrs=7` on an image with `/system.secureBoot = false`, see [PCR 7](#pcr-7)) and
+writes `/etc/credstore.encrypted/sshd-hostkey.key`; sshd loads it with `LoadCredentialEncrypted=`.
+It is the only local var in the image. Not sealed: the state partition (unencrypted for now, no
+LUKS), the machine-id (a plain file PID 1 writes), the admin vars (the host certificate and the
+revocation list are sealed once `golconda vars push` delivers them, see
+[Secrets and vars](#secrets-and-vars)), and administrator credentials for the machine itself.
 
 **Status.** A boot with `--secure-boot --tpm` prints
 `sshd-hostkey.key sealed with: host key + TPM2 + signed PCR policy` (`scripts/boot-test` reads the
@@ -636,6 +637,49 @@ both are signed. `lib/image/uki.nu` recomputes each path's PCR 11 policy digest 
 `systemd-measure policy-digest` from the built image's own sections and compares it with the
 `.pcrsig` section; the build fails if a path is missing.
 
+### PCR 7
+
+On an image with `/system.secureBoot` (the default) every var, local or admin, is also bound to the
+value PCR 7 has when it is sealed. `/system` writes `/usr/lib/golconda/vars.d/tpm2-pcrs` (`7`), and
+`golconda-var-run` passes it on as `--tpm2-pcrs=7`. systemd-creds makes one TPM2 policy of both:
+`PolicyAuthorize` for the signed PCR 11 values, then `PolicyPCR` for PCR 7's value
+(`tpm2_calculate_sealing_policy`, systemd 262). The TPM releases the key only when both hold. An
+image with `secureBoot = false` keeps the signed PCR 11 policy alone: its host has no Secure Boot to
+bind to.
+
+The signed policy alone does not need Secure Boot. With Secure Boot off, firmware starts any loader,
+and that loader can extend PCR 11 with the values the signature expects and then unseal. PCR 7 is
+written by the firmware before any loader runs, so no loader can fake it. Firmware measures into it,
+in this order (TCG PC Client firmware profile, as OVMF does it): the `SecureBoot` variable, `PK`,
+`KEK`, `db` and `dbx`, a separator, and then, once for each `db` entry that verified an image in
+this boot, that entry (`EV_EFI_VARIABLE_AUTHORITY`). With Golconda's enrolment that is the
+deployment's `db` certificate, which verified systemd-boot and the UKI. So the vars do not unseal
+when:
+
+- Secure Boot is off, also with the same keys enrolled;
+- `PK`, `KEK`, `db` or `dbx` change: a `db` rotation, a `dbx` update, a firmware update or a
+  firmware reset that writes other keys;
+- another `db` entry verifies an image: a release signed with a new `db` key, or on hardware a card
+  whose option ROM a Microsoft CA signed and that was not there at sealing time.
+
+systemd's `os-separator` follows, which `systemd-pcrosseparator.service` extends in the initrd
+before `sysinit.target`, so before any var is sealed or unsealed.
+
+A change that is planned is wrapped in two reseals. `golconda-var-run --reseal --without-pcr7` seals
+every credential of `/etc/credstore.encrypted` again with the signed PCR 11 policy alone; after the
+change, and a boot with the new values, `golconda-var-run --reseal` binds them to the new PCR 7. The
+[`db` rotation](bootloader.md#key-rotation) does this. Between the two, every new seal, such as a
+push, leaves PCR 7 out too (the first leaves `.without-pcr7` in the store, the second removes it),
+so the vars have the protection of an image without Secure Boot. A change that is not planned, such
+as a firmware update that brings a new `dbx`, leaves the host key, the host certificate and the KRL
+sealed: sshd does not start, and nothing logs in. Undoing the change unseals them again; otherwise
+the way back is a reflash, and the machine enrols again.
+
+**Status.** With `--secure-boot --tpm` the host key's credential header names PCR 7 by value and PCR
+11 by signature (`hostkey-sealed-pcr7`), and the `--rotate` run reseals around the rotation and
+unseals after it ([What is proven](../proven.md)). On hardware, which events firmware measures into
+PCR 7 is **unverified**.
+
 ### Rollback weakness
 
 Any image signed by the same PCR 11 key unseals credentials sealed for that key. An attacker who
@@ -651,8 +695,8 @@ obtains an older, vulnerable image can boot it and decrypt secrets. Mitigations,
 ## Secrets and vars
 
 Secrets never enter the image or the store. Services receive them with `LoadCredentialEncrypted=`
-(`systemd-creds`, TPM2-bound, sealed with the PCR 11 signing key). Nothing reads a secret at
-evaluation time.
+(`systemd-creds`, TPM2-bound, sealed with the PCR 11 signing key and, with Secure Boot, to PCR 7:
+[PCR 7](#pcr-7)). Nothing reads a secret at evaluation time.
 
 A **var** is a value the image names but never contains. Two classes:
 

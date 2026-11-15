@@ -10,10 +10,11 @@ There are two classes of var.
 
 - **local**: the machine generates the value at first boot. `golconda-var-<name>.service` runs
   `/usr/lib/golconda/golconda-var-run`, which runs the generator script, seals each secret with
-  `systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11`, and keeps only the public
-  files. With a TPM2, the credential is bound to that TPM and to the image's PCR 11 signing key.
-  (PCR 11 is a TPM register that holds the measurement of the boot image.) Without a TPM2, it is
-  bound to the host key only.
+  `systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11 --tpm2-pcrs=7`, and keeps only
+  the public files. With a TPM2, the credential is bound to that TPM, to the image's PCR 11 signing
+  key and, on an image with Secure Boot, to PCR 7. (PCR 11 is a TPM register that holds the
+  measurement of the boot image; PCR 7 holds the Secure Boot state and keys:
+  [Trust: PCR 7](../design/trust.md#pcr-7).) Without a TPM2, it is bound to the host key only.
 
   The seal names the key that signs the PCR 11 values, not the values themselves. So the next
   release unseals without re-sealing, as long as it is signed with the same PCR key, and so does the

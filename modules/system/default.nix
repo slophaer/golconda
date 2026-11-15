@@ -14,6 +14,8 @@
 #! With `updateSource` it adds the sysupdate transfers and the update timer,
 #! and, unless `updateReboot` is null, systemd's reboot timer in that window,
 #! behind `golconda-update-pending` (docs/design/updates.md, "Activation").
+#! With `secureBoot` it adds `/usr/lib/golconda/vars.d/tpm2-pcrs`, which seals
+#! the vars to PCR 7 as well (docs/design/trust.md).
 #!
 #! Output: `{ name; version; units; files; sysusers; tmpfiles; packages; packageOrigins; origins; links; programs }`,
 #! every file as `{ text; mode; }` and `links` one map, path under `/usr` ->
@@ -117,6 +119,20 @@ let
           };
         }
       ];
+  # /system.secureBoot -> the vars' TPM2 policy: PCR 7 by value besides the signed PCR 11 policy,
+  # so a boot with Secure Boot off, or with other Secure Boot keys, unseals no var
+  # (modules/vars/golconda-var-run reads the file; docs/design/trust.md)
+  secureBootFragment =
+    options:
+    on options.secureBoot [
+      {
+        files."/usr/lib/golconda/vars.d/tpm2-pcrs" = {
+          text = "7\n";
+          mode = "0644";
+        };
+      }
+    ];
+  on = import ../lib/on.nix;
   inherit (builtins)
     isString
     match
@@ -233,7 +249,7 @@ in
       ++ map (fragment: {
         origin = "/system";
         inherit fragment;
-      }) (sysupdateFragment options)
+      }) (sysupdateFragment options ++ secureBootFragment options)
     )
     // {
       inherit (options)

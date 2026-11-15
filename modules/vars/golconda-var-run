@@ -1,6 +1,7 @@
 #!/bin/sh
 # golconda-var-run NAME SECRETS PUBLICS: generate one local var on the machine, once.
 # golconda-var-run --admin NAME FILE: seal one file of an admin var, read from stdin.
+# golconda-var-run --reseal [--without-pcr7]: seal every credential of the store again.
 #
 # Local: run by golconda-var-NAME.service (modules/lib/var.nix) with RuntimeDirectory=
 # and StateDirectory= set. The generator script /usr/lib/golconda/vars.d/NAME.sh
@@ -16,6 +17,14 @@
 # says what may be pushed. A second push replaces the value (rotation); the deploy
 # tool then restarts the manifest's consumers.
 #
+# Reseal: decrypts each credential of the store and seals it again, with the image's policy,
+# or with --without-pcr7 to the signed PCR 11 policy alone. A db rotation and a dbx update
+# change PCR 7, and the procedure runs both around the change (docs/design/bootloader.md).
+# --without-pcr7 also leaves the file .without-pcr7 in the store, and until the next --reseal
+# removes it, every seal leaves PCR 7 out: a push in between must not bind to a PCR 7 that
+# the change replaces. The plaintext is in a private directory in $TMPDIR (default /run, a
+# tmpfs) for the moment between the two calls.
+#
 # Consumers load a secret with LoadCredentialEncrypted=NAME.SECRET and read
 # a public file at /var/lib/golconda/vars/NAME/pub/PUBLIC.
 # GOLCONDA_CREDSTORE and GOLCONDA_VARS_D move the two directories for
@@ -25,6 +34,14 @@ set -eu
 credstore=${GOLCONDA_CREDSTORE:-/etc/credstore.encrypted}
 varsd=${GOLCONDA_VARS_D:-/usr/lib/golconda/vars.d}
 
+# The PCRs bound by value, from the image: vars.d/tpm2-pcrs holds 7 on a Secure Boot image
+# (/system.secureBoot), so a boot with Secure Boot off or another db, KEK, PK or dbx unseals
+# nothing. Without the file, the signed PCR 11 policy alone.
+pcrs=
+if [ -f "$varsd/tpm2-pcrs" ] && [ ! -e "$credstore/.without-pcr7" ]; then
+  pcrs=$(cat "$varsd/tpm2-pcrs")
+fi
+
 # seal ID SOURCE: SOURCE (a file, or - for stdin) as the credential ID.
 # --with-key=auto: host+tpm2 when a TPM2 is present, the host key otherwise.
 # --name= is the credstore file name, which is also the id the consumer loads
@@ -32,12 +49,40 @@ varsd=${GOLCONDA_VARS_D:-/usr/lib/golconda/vars.d}
 # so a sealed file renamed to another credential fails to decrypt.
 seal() {
   mkdir -p "$credstore"
-  systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11 \
+  systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11 ${pcrs:+--tpm2-pcrs="$pcrs"} \
     --name="$1" "$2" "$credstore/.$1.tmp"
   mv "$credstore/.$1.tmp" "$credstore/$1"
 }
 
 umask 077
+
+if [ "${1:-}" = --reseal ]; then
+  case "$#:${2:-}" in
+    1:)
+      rm -f -- "$credstore/.without-pcr7"
+      if [ -f "$varsd/tpm2-pcrs" ]; then
+        pcrs=$(cat "$varsd/tpm2-pcrs")
+      fi
+      ;;
+    2:--without-pcr7)
+      pcrs=
+      mkdir -p "$credstore"
+      touch "$credstore/.without-pcr7"
+      ;;
+    *) echo "usage: golconda-var-run --reseal [--without-pcr7]" >&2; exit 2 ;;
+  esac
+  plain=$(mktemp -d "${TMPDIR:-/run}/golconda-reseal.XXXXXX")
+  trap 'rm -rf -- "$plain"' EXIT
+  for f in "$credstore"/*; do
+    [ -f "$f" ] || continue
+    id=${f##*/}
+    systemd-creds decrypt --name="$id" "$f" "$plain/value"
+    seal "$id" "$plain/value"
+    rm -f -- "$plain/value"
+    echo "resealed $id"
+  done
+  exit 0
+fi
 
 if [ "${1:-}" = --admin ]; then
   [ $# = 3 ] || { echo "usage: golconda-var-run --admin NAME FILE" >&2; exit 2; }

@@ -573,6 +573,7 @@ With `--tpm` (and `--ssh-test`):
 | marker                         | what it proves                                                                                                                                                                                              |
 | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `hostkey-sealed-with-tpm2`     | the header of `sshd-hostkey.key` says TPM2 and the signed PCR policy                                                                                                                                        |
+| `hostkey-sealed-pcr7`          | with `--secure-boot`: the credential's TPM2 header binds PCR 7 by value and its public key header PCR 11 by signature (`hostkey-sealed-pcr11-only` without `--secure-boot`: PCR 11 alone)                   |
 | `ssh-after-reboot`             | the guest came back with a new boot id                                                                                                                                                                      |
 | `hostkey-unchanged`            | sshd presents the first boot's host key, the credential has the first boot's bytes (not re-sealed), sshd runs; after the reboot, after an update (`--next`) and after the fallback (`--next --fail-health`) |
 | `no-failed-units-after-reboot` | no failed unit on the second boot                                                                                                                                                                           |
@@ -647,15 +648,17 @@ With `--enrol` (and `--ssh-test`; instead of `cert-login`):
 
 With `--rotate`:
 
-| marker                                                       | what it proves                                                                                                                                            |
-| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `loader-signed-again`                                        | a new db key gives new loader bytes                                                                                                                       |
-| `verity-sig-db-only-refused`                                 | before the reboot, with both certificates in db, the running kernel refuses the next release's root hash signature (the new key, not built in): `-ENOKEY` |
-| `boots-after-rotation`, `secure-boot-enabled-after-rotation` | the guest boots the new chain with db = the new certificate alone                                                                                         |
-| `kernel-db-rotated`                                          | the kernel loaded only the new db certificate                                                                                                             |
-| `no-failed-units-after-rotation`                             | no failed unit after the rotation                                                                                                                         |
-| `clock-not-reset-after-rotate`                               | `clock-not-reset` on the journal of the boot after the rotation                                                                                           |
-| `old-loader-refused`                                         | the original disk under the rotated store gets "Access Denied"; no kernel starts                                                                          |
+| marker                                                       | what it proves                                                                                                                                                                         |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `loader-signed-again`                                        | a new db key gives new loader bytes                                                                                                                                                    |
+| `verity-sig-db-only-refused`                                 | before the reboot, with both certificates in db, the running kernel refuses the next release's root hash signature (the new key, not built in): `-ENOKEY`                              |
+| `boots-after-rotation`, `secure-boot-enabled-after-rotation` | the guest boots the new chain with db = the new certificate alone                                                                                                                      |
+| `kernel-db-rotated`                                          | the kernel loaded only the new db certificate                                                                                                                                          |
+| `no-failed-units-after-rotation`                             | no failed unit after the rotation                                                                                                                                                      |
+| `clock-not-reset-after-rotate`                               | `clock-not-reset` on the journal of the boot after the rotation                                                                                                                        |
+| `vars-resealed-without-pcr7`, `vars-resealed-pcr7`           | with `--tpm`: `golconda-var-run --reseal --without-pcr7` before the update and `--reseal` after the rotated boot seal every credential again, the host key without and then with PCR 7 |
+| `hostkey-unchanged`                                          | with `--tpm`, after one more reboot: the resealed host key unseals                                                                                                                     |
+| `old-loader-refused`                                         | the original disk under the rotated store gets "Access Denied"; no kernel starts                                                                                                       |
 
 With `--factory-reset --ssh-test` ([The factory reset test](#the-factory-reset-test)):
 
