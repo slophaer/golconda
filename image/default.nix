@@ -19,7 +19,7 @@
   # systemd-boot: loader.conf and its place on the ESP
   loader = import ./loader.nix;
 
-  # erofs.nix and os-release.nix are imported directly (lib/image/erofs.nix, lib/usr-tree.nix).
+  # os-release.nix is imported directly (lib/usr-tree.nix).
   # The key layout is in nix/default.nix, next to the chain that reads it (lib.mkImage).
 
   # Boot counting and blessing (one source: image/boot-counting.nix)

@@ -348,7 +348,7 @@ export def build [] {
   }
 
   # mtimes are not set here: Nix normalises every store path to mtime 1. The version-derived
-  # timestamp (epoch) is applied by mkfs.erofs -T when the image is made (image/erofs.nix).
+  # timestamp (epoch) is applied by mkfs.erofs -T when the image is made (lib/image/erofs.nix).
 
   # Step 11: Verification
   log "verifying..."

@@ -57,7 +57,6 @@ image's definitions unchanged and serves the release over HTTP
 | file             | content                                                                                     |
 | ---------------- | ------------------------------------------------------------------------------------------- |
 | `default.nix`    | image identity, the key layout, boot counting; imports the other files                      |
-| `erofs.nix`      | erofs compression, the timestamp-from-version rule                                          |
 | `os-release.nix` | os-release template (`ID`, `VERSION_ID`, `IMAGE_ID`, `IMAGE_VERSION`, `ARCHITECTURE`)       |
 | `repart.nix`     | systemd-repart partition definitions (ESP, usr-a/b, verity, sig, root)                      |
 | `sysupdate.nix`  | systemd-sysupdate transfer definitions (usr, verity, sig, UKI), `Path=` from `updateSource` |

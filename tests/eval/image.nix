@@ -291,6 +291,15 @@ in
     e.fileName == "t_20261031.1.usr.raw"
     && e.epoch == imageLib.versionToEpoch "20261031.1"
     && e.uuid == imageLib.uuidOfHex (imageLib.hexOf "t_20261031.1.usr.raw")
+    # the whole record: compression is the one fixed parameter
+    &&
+      builtins.attrNames e == [
+        "compression"
+        "epoch"
+        "fileName"
+        "uuid"
+      ]
+    && e.compression == "lz4hc"
     && v.hashFile == "t_20261031.1.usr-verity.raw"
     && v.sigFile == "t_20261031.1.usr-verity-sig.raw"
     && v.salt == imageLib.hexOf "t_20261031.1.usr-verity.raw"

@@ -10,6 +10,6 @@ use common.nu *
 # whether the build host's store did
 export def make [tree: string, file: string, p: record] {
   log $"mkfs.erofs -z($p.compression) -T ($p.epoch) over ($tree)"
-  ^mkfs.erofs --quiet $"-z($p.compression)" -T $p.epoch -U $p.uuid --all-root --hard-dereference ...$p.extraArgs $file $tree
+  ^mkfs.erofs --quiet $"-z($p.compression)" -T $p.epoch -U $p.uuid --all-root --hard-dereference $file $tree
   log $"($file | path basename): (ls $file | get size.0)"
 }

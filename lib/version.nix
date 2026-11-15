@@ -12,6 +12,10 @@
 #     timestamps.
 # The revision is N in YYYYMMDD.N. It is a second offset for the erofs mtime,
 # not a free counter: unbounded N made 20261031.86400 share 20261101.0's epoch.
+# The epoch is mkfs.erofs -T (lib/image/erofs.nix), and it must grow with each
+# version: systemd-update-done sets /etc/.updated and /var/.updated to /usr's
+# mtime, and the units with ConditionNeedsUpdate= (sysusers, tmpfiles,
+# hwdb-update) run only when /usr is newer (systemd-update-done(8)).
 _:
 let
   inherit (builtins)
