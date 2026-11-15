@@ -136,13 +136,15 @@ golconda release list --to hetzner:updates/web
 
 - `build` needs a clean working tree. It takes Golconda from the pin `pins/golconda/sources.toml`
   beside the document ([Pinning: uptrack](pinning.md#uptrack-recommended)), or else from the
-  Golconda checkout that holds the document. It picks the version, writes it into the document,
-  builds `lib.mkImage`'s unsigned outputs with `nix-build`, runs their signer with the key set on
-  this host, runs `check` and commits the version line as `release: <id> <version>`, with the
-  digests as trailers. Nix copies only the key set's three public halves; the private keys stay
-  where they are ([Trust: Signing outside Nix](../design/trust.md#signing-outside-nix)). `--out`
-  names a new directory for the release (default `result-release`): `disk.raw`, `release/`, and
-  `unsigned`, the link to the unsigned outputs; an existing one is refused, and a failed build
+  Golconda checkout that holds the document. It picks the version, builds `lib.mkImage`'s unsigned
+  outputs with `nix-build` from a copy of the document with that version, runs their signer with the
+  key set on this host, runs `check`, then writes the version line into the document and commits it
+  as `release: <id> <version>`, with the digests as trailers. A run that is stopped (Ctrl-C) leaves
+  the document as it was and the copy (`.server.toml.golconda-release-*`) beside it, and the next
+  run refuses that untracked file. Nix copies only the key set's three public halves; the private
+  keys stay where they are ([Trust: Signing outside Nix](../design/trust.md#signing-outside-nix)).
+  `--out` names a new directory for the release (default `result-release`): `disk.raw`, `release/`,
+  and `unsigned`, the link to the unsigned outputs; an existing one is refused, and a failed build
   removes it. `--pcr-keys` and `--index-keys` name the key sets of the PCR and release keys when a
   `db` rotation keeps them ([Making a release: Rotate a key](release.md#5-rotate-a-key)).
   `--pkcs11-module FILE` names the PKCS#11 module of the token that holds the `db` or PCR key, when

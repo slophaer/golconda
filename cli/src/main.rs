@@ -69,10 +69,11 @@ enum Releases {
         #[arg(long)]
         unrecorded: bool,
     },
-    /// Build a release from a clean tree: the version (auto: today's date, after the document's
-    /// version and DEST's) goes into the document, Nix builds mkImage's unsigned outputs, their
-    /// signer signs them with the key set here, outside Nix, check checks the release, and one
-    /// commit holds the version line with the release trailers. A failure puts the line back
+    /// Build a release from a clean tree: Nix builds mkImage's unsigned outputs from a copy of
+    /// the document with the version (auto: today's date, after the document's version and
+    /// DEST's), their signer signs them with the key set here, outside Nix, check checks the
+    /// release, and one commit writes the version line into the document with the release
+    /// trailers. A failure leaves the document as it was
     Build {
         /// The system's document: beside the pin pins/golconda/sources.toml, or inside a Golconda
         /// checkout

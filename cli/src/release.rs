@@ -869,9 +869,10 @@ fn write_document(document: &Path, text: &str) -> Result<()> {
 }
 
 /// Builds a release: refuses a tree with a file no commit holds (`refuse_untracked`), picks the
-/// version (auto: today, after the document's version and the destination's), writes it into the
-/// document, builds mkImage's disk, checks its release directory and commits the version line with
-/// the release trailers. A failure after the write puts the document back as it was.
+/// version (auto: today, after the document's version and the destination's), builds mkImage's
+/// disk from a copy of the document with that version, checks its release directory, then writes
+/// the version into the document and commits that line with the release trailers. A failed
+/// commit puts the document back as it was and removes `req.out`.
 pub fn build(req: &BuildRequest<'_>, tools: &Tools<'_>) -> Result<Built> {
     let document = path::absolute(req.document).map_err(|e| Error(e.to_string()))?;
     let dir = document.parent().unwrap_or(Path::new("/"));
@@ -901,34 +902,33 @@ pub fn build(req: &BuildRequest<'_>, tools: &Tools<'_>) -> Result<Built> {
         None => Version::next(Version::today(), &seen)?,
     };
     let edited = with_version(&text, version)?;
-    write_document(&document, &edited)?;
-    let built = build_and_check(req, tools, &golconda, &document, &edited, &id, version).and_then(
-        |(release, record)| {
-            let rel = document.strip_prefix(&repo).unwrap_or(&document);
-            let msg = format!("release: {id} {version}\n\n{}", record.trailers());
-            let author = req.author.as_ref().map(|a| format!("--author={a}"));
-            let mut args = vec!["commit", "-q", "-m", &msg];
-            args.extend(author.as_deref());
-            args.extend(["--", rel.to_str().unwrap_or_default()]);
-            let committed = git_out(tools.git, &repo, &args)
-                .and_then(|_| git_out(tools.git, &repo, &["rev-parse", "HEAD"]));
-            match committed {
-                Ok(commit) => Ok(Built {
-                    release,
-                    record: Record { commit, ..record },
-                }),
-                Err(e) => {
-                    // a release no commit records: build_and_check made --out new
-                    let _ = fs::remove_dir_all(&req.out);
-                    Err(e)
-                }
-            }
-        },
-    );
-    if built.is_err() {
-        write_document(&document, &text)?;
+    // Nix reads a copy beside the document (its modules and packages are found beside it);
+    // the copy goes on every return
+    let copy =
+        write_beside(&document, &edited).map_err(|e| Error(format!("{}: {e}", dir.display())))?;
+    let (release, record) = build_and_check(req, tools, &golconda, &copy, &edited, &id, version)?;
+    drop(copy);
+    let rel = document.strip_prefix(&repo).unwrap_or(&document);
+    let msg = format!("release: {id} {version}\n\n{}", record.trailers());
+    let author = req.author.as_ref().map(|a| format!("--author={a}"));
+    let mut args = vec!["commit", "-q", "-m", &msg];
+    args.extend(author.as_deref());
+    args.extend(["--", rel.to_str().unwrap_or_default()]);
+    let committed = write_document(&document, &edited)
+        .and_then(|()| git_out(tools.git, &repo, &args))
+        .and_then(|_| git_out(tools.git, &repo, &["rev-parse", "HEAD"]));
+    match committed {
+        Ok(commit) => Ok(Built {
+            release,
+            record: Record { commit, ..record },
+        }),
+        Err(e) => {
+            // a release no commit records: build_and_check made --out new
+            let _ = fs::remove_dir_all(&req.out);
+            write_document(&document, &text)?;
+            Err(e)
+        }
     }
-    built
 }
 
 /// Refuses a build that could read a file no commit holds. Nix reads the files where they lie:
@@ -1996,7 +1996,8 @@ mod tests {
 
     impl Scene {
         /// The repository as a Golconda checkout with server.toml committed, and a nix-build
-        /// that links unsigned-<version> for the releases `out` prepared (out-<version>/release).
+        /// that links unsigned-<version> for the releases `out` prepared (out-<version>/release)
+        /// and keeps the document as it was during the build (document-at-build).
         fn checkout(&self) -> (PathBuf, Program) {
             fs::create_dir_all(self.repo.join("lib")).unwrap();
             fs::write(self.repo.join("lib/system.nix"), "{ }").unwrap();
@@ -2018,10 +2019,12 @@ mod tests {
             );
             let script = self.tmp.path().join("iets");
             let t = self.tmp.path().display();
+            let doc = self.repo.join("server.toml");
+            let doc = doc.display();
             fs::write(
                 &script,
                 format!(
-                    "#!/bin/sh\necho \"$(pwd) $*\" > {t}/iets.log\nv=$(sed -n 's/^version = \"\\([^\"]*\\)\".*/\\1/p' \"$3\")\n[ -d {t}/out-$v ] || {{ echo \"error: no build for $v\" >&2; exit 1; }}\nwhile [ $# -gt 0 ]; do [ \"$1\" = --out-link ] && link=$2; shift; done\nln -sfn {t}/unsigned-$v \"$link\"\n"
+                    "#!/bin/sh\necho \"$(pwd) $*\" > {t}/iets.log\ncp {doc} {t}/document-at-build\nv=$(sed -n 's/^version = \"\\([^\"]*\\)\".*/\\1/p' \"$3\")\n[ -d {t}/out-$v ] || {{ echo \"error: no build for $v\" >&2; exit 1; }}\nwhile [ $# -gt 0 ]; do [ \"$1\" = --out-link ] && link=$2; shift; done\nln -sfn {t}/unsigned-$v \"$link\"\n"
                 ),
             )
             .unwrap();
@@ -2115,6 +2118,21 @@ mod tests {
         // only the version line changed; the comments stay
         let text = fs::read_to_string(&doc).unwrap();
         assert_eq!(text, DOC.replace("20261105.1", &want));
+        // Nix read a copy beside the document, gone now: the document changed only for the commit
+        let at_build = fs::read_to_string(s.tmp.path().join("document-at-build")).unwrap();
+        assert_eq!(at_build, DOC);
+        let log = fs::read_to_string(s.tmp.path().join("iets.log")).unwrap();
+        let copy = log.split_whitespace().nth(3).unwrap();
+        assert!(
+            copy.starts_with(
+                s.repo
+                    .join(".server.toml.golconda-release-")
+                    .to_str()
+                    .unwrap()
+            ),
+            "{log}"
+        );
+        assert!(!Path::new(copy).exists());
         assert_eq!(s.head(), format!("release: server {want}"));
         assert_eq!(sh(&s.repo, "git", &["status", "--porcelain"]), "");
         // the commit's trailers are found again and match the directory
@@ -2335,14 +2353,8 @@ mod tests {
         assert_eq!(fs::read_to_string(&doc).unwrap(), DOC);
         assert!(!s.tmp.path().join("result").exists());
         assert_eq!(s.head(), "server");
-        assert_eq!(
-            sh(
-                &s.repo,
-                "git",
-                &["status", "--porcelain", "--untracked-files=no"]
-            ),
-            ""
-        );
+        // and no copy of it stays
+        assert_eq!(sh(&s.repo, "git", &["status", "--porcelain"]), "");
     }
 
     #[test]

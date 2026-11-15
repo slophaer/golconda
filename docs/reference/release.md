@@ -84,7 +84,8 @@ golconda release build -f server.toml --keys /srv/golconda-keys
 
 `golconda release build` ([Commands](cli.md#golconda-release)) picks the version (`--version auto`:
 today's date and the revision after the document's `/system.version`, and after what `--to DEST`
-serves) and writes it into `server.toml`. Then it builds and signs in two steps:
+serves). Then it builds and signs in two steps, from a copy of `server.toml` with that version
+beside it:
 
 1. `nix-build` builds `lib.mkImage`'s `unsigned` output: the `/usr` tree, the initrd, the kernel and
    a manifest, all unsigned. Nix gets the key directory as a string and copies its three public
@@ -96,11 +97,12 @@ serves) and writes it into `server.toml`. Then it builds and signs in two steps:
 
 The release goes to `--out`, a new directory (default `result-release`): `disk.raw`, `disk.json`,
 `release/`, and `unsigned`, the link to the unsigned outputs. Then the command checks the release
-directory (step 3) and commits the version line as `release: <id> <version>`. The commit's trailers
-record the document's digest, the four files' digests and the unsigned outputs' store path, so
-`git log` finds the source of each release. A failed build or signature removes the directory and
-puts the line back, and commits nothing. The command refuses an existing `--out`, and a version that
-is not newer than the last one: sysupdate would install nothing and say nothing.
+directory (step 3), writes the version line into `server.toml` and commits it as
+`release: <id> <version>`. The commit's trailers record the document's digest, the four files'
+digests and the unsigned outputs' store path, so `git log` finds the source of each release. A
+failed build, signature, check or commit removes the directory and the copy, leaves `server.toml` as
+it was, and commits nothing. The command refuses an existing `--out`, and a version that is not
+newer than the last one: sysupdate would install nothing and say nothing.
 
 It also refuses a file that no commit holds, before it builds anything, because Nix reads the
 checkout's files where they lie: an uncommitted change or an untracked file in the document's
