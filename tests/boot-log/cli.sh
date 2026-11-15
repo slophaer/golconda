@@ -164,7 +164,7 @@ else
 fi
 # the VM's tools and its firmware are Golconda's packages (scripts/tools.sh), and the boot without
 # Secure Boot or TPM loads the plain OVMF without SMM
-for attr in qemu-system swtpm virt-firmware openssh cpython; do
+for attr in qemu-system swtpm virt-firmware openssh cpython gnupg; do
   if grep -q -- "-A packages\.[^ ]*\.$attr\( \|$\)" "$FAKE_NIX_BUILD_ARGS"; then
     echo "PASS: CLI builds packages.<system>.$attr"
   else

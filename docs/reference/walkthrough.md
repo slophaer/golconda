@@ -304,7 +304,7 @@ HTTP at the image's `updateSource`, lets the guest install it, moves the reboot 
 s, waits for the guest to reboot itself, and checks the result. Output *(boot)*:
 
 ```text
-PASS: release-index (4 lines: usr, verity, signature, UKI; digests match)
+PASS: release-index (golconda release check: 4 lines in order, digests, UUIDs, signature)
 Successfully installed '/var/tmp/next/boot-test_20261031.2.efi' (regular-file) as '/boot/EFI/Linux/boot-test_20261031.2+3-0.efi' (regular-file).
 * Successfully installed update '20261031.2'.
 PASS: sysupdate-installed (20261031.2)

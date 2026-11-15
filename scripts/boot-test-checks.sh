@@ -531,33 +531,14 @@ test_loader() {
   verdict "boot-update-off (systemd-boot-update.service never started: $BU)" $RC
 }
 
-# test_release_index: the release directory a server publishes, as docs/design/releases.md states
-# it: four lines in the fixed order usr, verity, signature, UKI; the digest of each file; no line
-# for the index itself.
+# test_release_index: the release directory a server publishes is the one docs/design/releases.md
+# states, signed by the release key the running image trusts: golconda release check
 test_release_index() {
   echo ""
-  echo "=== release index ($NEXT_RELEASE/SHA256SUMS) ==="
+  echo "=== golconda release check $NEXT_RELEASE ==="
   RC=0
-  N=0
-  while read -r digest name; do
-    [ -n "$digest" ] || continue
-    N=$((N + 1))
-    # the release directory holds symlinks into the store
-    got=$(sha256sum "$(real_path "$NEXT_RELEASE/$name")" 2>/dev/null | cut -c1-64) || got=""
-    OK=ok
-    [ "$got" = "$digest" ] || OK="digest mismatch"
-    echo "$N: $name ($OK)"
-    [ "$OK" = ok ] || RC=1
-    case "$N:$name" in
-      1:"$NEXT_NAME".usr.*.raw) ;;
-      2:"$NEXT_NAME".usr-verity.*.raw) ;;
-      3:"$NEXT_NAME".usr-verity-sig.raw) ;;
-      4:"$NEXT_NAME".efi) ;;
-      *) RC=1 ;;
-    esac
-  done < "$NEXT_RELEASE/SHA256SUMS"
-  [ "$N" = 4 ] || RC=1
-  verdict "release-index (4 lines: usr, verity, signature, UKI; digests match)" $RC
+  "$GOLCONDA" release check "$NEXT_RELEASE" --keys "$KEYS_DIR" || RC=1
+  verdict "release-index (golconda release check: 4 lines in order, digests, UUIDs, signature)" $RC
 }
 
 # --- /imds (docs/features/provisioning.md) ---

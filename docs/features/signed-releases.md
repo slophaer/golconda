@@ -52,7 +52,8 @@ is in `result-release/release/`; serve it at `/system.updateSource`.
 
 The boot test proves this with `--next` ([What is proven](../proven.md)):
 
-- `release-index`: the index has four lines in this order, and each digest matches its file.
+- `release-index`: `golconda release check` passes on the release: the index has four lines in this
+  order, each digest matches its file, and the release key signed it.
 - `index-keyring`, `index-signed`, `sysupdate-installed`: the image's keyring is the release key,
   and the guest checks the signed index.
 - `sysupdate-refused` with `--tamper-index`: a changed index installs nothing, and the old release

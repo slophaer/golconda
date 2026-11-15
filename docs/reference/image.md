@@ -303,14 +303,14 @@ and in the step's `cmdline` output.
 The boot test runs the image in QEMU and checks that it reaches `multi-user.target`. It cannot run
 inside the Nix sandbox (no KVM), so it is a script, not a derivation. Its tools are Golconda's own
 packages, built through `scripts/tools.sh` before the run: `qemu-system` (QEMU's x86_64 system
-emulator and `qemu-img`), `swtpm`, `virt-firmware` (`virt-fw-vars`), `openssh` and `cpython`, first
-on `PATH`; the firmware is the OVMF that comes with `qemu-system` (`share/qemu/edk2-*.fd`): the QEMU
-project builds it from edk2-stable202408 and ships it prebuilt in its release tarball, which
-`packages/qemu-system/sources.toml` pins by hash. Golconda does not rebuild it, and the project's
-own signatures are not checked beyond that hash (`packages/qemu-system/package.nix` has the build
-flags and what that trusts); building edk2 from source stays a later step. QEMU runs with KVM: the
-test stops at the start when it cannot open `/dev/kvm`, and `--allow-tcg` lets QEMU run on TCG,
-which is much slower. Usage:
+emulator and `qemu-img`), `swtpm`, `virt-firmware` (`virt-fw-vars`), `openssh`, `cpython` and
+`gnupg` (`gpgv`), first on `PATH`; the firmware is the OVMF that comes with `qemu-system`
+(`share/qemu/edk2-*.fd`): the QEMU project builds it from edk2-stable202408 and ships it prebuilt in
+its release tarball, which `packages/qemu-system/sources.toml` pins by hash. Golconda does not
+rebuild it, and the project's own signatures are not checked beyond that hash
+(`packages/qemu-system/package.nix` has the build flags and what that trusts); building edk2 from
+source stays a later step. QEMU runs with KVM: the test stops at the start when it cannot open
+`/dev/kvm`, and `--allow-tcg` lets QEMU run on TCG, which is much slower. Usage:
 
 ```sh
 # Build the test image
@@ -587,7 +587,7 @@ With `--next DIR` ([The update test](#the-update-test)):
 
 | marker                                                                    | what it proves                                                                                                                                                                                                                                                                                     |
 | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `release-index`                                                           | `SHA256SUMS` has four lines in the fixed order, the digests match, none lists itself                                                                                                                                                                                                               |
+| `release-index`                                                           | `golconda release check` passes: four lines in the fixed order, the digests, the signature                                                                                                                                                                                                         |
 | `http-source`                                                             | the guest's own `10-usr.transfer` has `Type=url-file` and `Path=http://169.254.169.2:<port>/`                                                                                                                                                                                                      |
 | `http-fetch`                                                              | the sysupdate journal names the release over `http`, so the guest fetched it, not a local file                                                                                                                                                                                                     |
 | `sysupdate-installed`                                                     | `systemd-sysupdate-update.service` installed the release                                                                                                                                                                                                                                           |
@@ -705,7 +705,8 @@ The test SSH keypair is a committed test fixture (`tests/fixtures/snakeoil-ssh*`
 `scripts/boot-test … --next DIR` runs the whole A/B update. No step is manual and the guest need not
 be held. `DIR` is a built release (`DIR/disk/release`, `DIR/keys`). The harness:
 
-1. checks the release's `SHA256SUMS` on the host (`release-index`);
+1. checks the release on the host with `golconda release check` and the running image's release key
+   (`release-index`);
 1. resolves the release's symlinks into `$WORKDIR/http` (`cp -L`) and writes `$WORKDIR/serve-http`,
    an HTTP server over stdin and stdout (Python's `SimpleHTTPRequestHandler`), which it first asks
    for `SHA256SUMS` on the host. QEMU's user network forwards the guest's connections to

@@ -163,8 +163,8 @@
 #   says secure-boot-enroll off) and, with --secure-boot, enrol-keys-removed (no
 #   loader/keys/auto on the ESP).
 # With --next DIR (implies --ssh-test): DIR is the next release's image-smoke output
-#   (DIR/disk/release, DIR/keys). The harness checks that release directory against
-#   docs/design/releases.md (four SHA256SUMS lines, fixed order, digests match), resolves its
+#   (DIR/disk/release, DIR/keys). The harness checks that release directory with golconda release
+#   check and the running image's release key (docs/design/releases.md), resolves its
 #   symlinks into $WORKDIR/http, serves that directory to the guest at 169.254.169.2:8074
 #   (a QEMU guestfwd to a stdio HTTP server in $WORKDIR; no host port), and installs it with
 #   systemd-sysupdate-update.service. The guest reads
@@ -440,10 +440,11 @@ fi
 
 # --- the virtual machine's tools: Golconda's own packages (scripts/tools.sh) ---
 # qemu-system (qemu-system-x86_64, qemu-img), swtpm, virt-firmware (virt-fw-vars), openssh (ssh,
-# ssh-keygen) and cpython (python3) come first on PATH, whatever the caller's PATH has; OVMF is
+# ssh-keygen), cpython (python3) and gnupg (gpgv, for golconda release check) come first on PATH,
+# whatever the caller's PATH has; OVMF is
 # the edk2 build in qemu-system's share/qemu (prebuilt by the QEMU project, in its release tarball)
 . "$SCRIPT_DIR/tools.sh"
-if ! TOOLS=$(tools_path "$REPO_DIR" qemu-system swtpm virt-firmware openssh cpython) ||
+if ! TOOLS=$(tools_path "$REPO_DIR" qemu-system swtpm virt-firmware openssh cpython gnupg) ||
   ! OVMF=$(tools_outs "$REPO_DIR" qemu-system)/share/qemu; then
   echo "Error: cannot build the boot test's tools (packages.<system>.qemu-system and the rest)" >&2
   exit 1
