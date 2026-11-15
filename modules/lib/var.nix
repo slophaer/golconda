@@ -19,7 +19,8 @@
 # An admin-supplied var (`admin`) is the second class (docs/design/trust.md):
 # the value is kept age-encrypted on the deploy host, pushed over ssh and
 # sealed by the machine's own systemd-creds into /etc/credstore.encrypted,
-# so the image carries only its manifest entry, class "admin", and no unit.
+# so the image carries only its manifest entry, class "admin", its file list
+# (<name>.admin), and no unit.
 # The deploy tool reads the manifest from the image. The credential id is
 # the same `<name>.<file>`, so a consumer does not know the class:
 #   v.admin { name = "foo-cert"; files = [ "cert" ]; consumers = [ "foo.service" ]; }
@@ -176,6 +177,8 @@ let
         credentials = map (credentialId v.name) v.files;
         consumers = v.consumers or [ ];
       };
+      # the files a push may seal, one per line: what golconda-var-run --admin compares
+      files."/usr/lib/golconda/vars.d/${v.name}.admin" = concatStringsSep "" (map (f: "${f}\n") v.files);
     };
 in
 {

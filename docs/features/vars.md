@@ -33,7 +33,8 @@ The program reads the value from its credentials directory: in `app.argv`, a typ
 as `%d/<id>`. No path to a secret appears in the image.
 
 The image lists every var in `/usr/lib/golconda/vars.d/<name>.json`: name, class, files and
-credential ids. A local var also has `<name>.sh`, its generator script.
+credential ids. A local var also has `<name>.sh`, its generator script; an admin var has
+`<name>.admin`, its files one per line, which the runner compares with the file a push names.
 
 Local vars run once. The runner writes `/var/lib/golconda/vars/<name>/done` last, and the unit has
 `ConditionPathExists=!` on that marker. It puts public files in `/var/lib/golconda/vars/<name>/pub/`

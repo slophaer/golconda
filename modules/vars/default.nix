@@ -34,9 +34,10 @@
 #! - `files."/usr/lib/golconda/vars.d/<name>.sh"`: the script.
 #! - `packages`: the packages the script needs.
 #!
-#! `admin adminVar` returns a fragment with one file, `vars.d/<name>.json`
-#! (`name`, `class: "admin"`, `files`, `credentials`, `consumers`), and no
-#! unit: the consumer's unit waits for the push. The deploy host keeps the
+#! `admin adminVar` returns a fragment with two files, `vars.d/<name>.json`
+#! (`name`, `class: "admin"`, `files`, `credentials`, `consumers`) and
+#! `<name>.admin` (the files, one per line), and no unit: the consumer's
+#! unit waits for the push. The deploy host keeps the
 #! value age-encrypted, pushes it over ssh, and the machine seals it with its
 #! own `systemd-creds` into `/etc/credstore.encrypted/<name>.<file>`; the
 #! deploy tool (`golconda vars push`, cli/) then restarts the

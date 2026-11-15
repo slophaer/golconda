@@ -16,12 +16,24 @@ check() { if eval "$2"; then pass "$1"; else fail "$1"; fi; }
 
 # systemd-creds encrypt [options] --name=ID SOURCE TARGET: the stub writes "ID:" and the source,
 # and logs the options to $CREDS_LOG. systemd-creds decrypt --name=ID SOURCE TARGET: the body of
-# a credential the stub wrote, when ID is its name; the body BAD does not decrypt
+# a credential the stub wrote, when ID is its name; the body BAD does not decrypt.
+# systemd-creds has-tpm2: true when STUB_TPM2 is set. systemd-cat -p PRIORITY: the line and its
+# priority in $JOURNAL
 mkdir -p "$WORK/bin"
+cat > "$WORK/bin/systemd-cat" <<'EOF'
+#!/bin/sh
+prio=info
+while [ $# -gt 0 ]; do
+  case $1 in -p) prio=$2; shift ;; esac
+  shift
+done
+sed "s/^/$prio: /" >> "$JOURNAL"
+EOF
 cat > "$WORK/bin/systemd-creds" <<'EOF'
 #!/bin/sh
 cmd=$1
 shift
+[ "$cmd" = has-tpm2 ] && { [ -n "${STUB_TPM2:-}" ]; exit; }
 name=
 opts=
 for a in "$@"; do
@@ -46,9 +58,10 @@ case $cmd in
   *) exit 2 ;;
 esac
 EOF
-chmod +x "$WORK/bin/systemd-creds"
+chmod +x "$WORK/bin/systemd-creds" "$WORK/bin/systemd-cat"
 export PATH="$WORK/bin:$PATH"
 export GOLCONDA_CREDSTORE="$WORK/credstore" GOLCONDA_VARS_D="$WORK/vars.d" CREDS_LOG="$WORK/creds.log"
+export JOURNAL="$WORK/journal"
 # the reseal's plaintext directory (/run on a machine)
 export TMPDIR="$WORK"
 mkdir -p "$GOLCONDA_VARS_D"
@@ -56,6 +69,11 @@ mkdir -p "$GOLCONDA_VARS_D"
 # the manifests mkSystem writes (modules/lib/var.nix), as builtins.toJSON prints them
 printf '%s' '{"class":"admin","consumers":["sshd.service"],"credentials":["sshd-host-cert.cert"],"files":["cert"],"name":"sshd-host-cert"}' \
   > "$GOLCONDA_VARS_D/sshd-host-cert.json"
+printf 'cert\n' > "$GOLCONDA_VARS_D/sshd-host-cert.admin"
+# an admin var whose files are a prefix and a suffix of another name: a file must match a whole line
+printf '%s' '{"class":"admin","consumers":[],"credentials":["pair.cert-chain"],"files":["cert-chain"],"name":"pair"}' \
+  > "$GOLCONDA_VARS_D/pair.json"
+printf 'cert-chain\n' > "$GOLCONDA_VARS_D/pair.admin"
 printf '%s' '{"after":[],"class":"local","credentials":["foo.key"],"name":"foo","publics":["key.pub"],"secrets":["key"]}' \
   > "$GOLCONDA_VARS_D/foo.json"
 printf '%s\n' 'echo secret > key' 'echo public > key.pub' > "$GOLCONDA_VARS_D/foo.sh"
@@ -91,6 +109,18 @@ refused "admin: refuses a local var" --admin foo key
 refused "admin: refuses a path as a name" --admin ../sshd-host-cert cert
 refused "admin: refuses a path as a file" --admin sshd-host-cert ../cert
 refused "admin: needs a name and a file" --admin sshd-host-cert
+refused "admin: a file matches a whole line of NAME.admin, not a part" --admin pair cert
+refused "admin: a file matches a whole line of NAME.admin, not more" --admin pair cert-chain-2
+mv "$GOLCONDA_VARS_D/sshd-host-cert.admin" "$WORK/sshd-host-cert.admin"
+refused "admin: a var without NAME.admin is not an admin var" --admin sshd-host-cert cert
+mv "$WORK/sshd-host-cert.admin" "$GOLCONDA_VARS_D/sshd-host-cert.admin"
+
+# --- no TPM2: the seal goes on, to the host key alone, and the journal says so ---
+check "no TPM2: every seal logs a warning" \
+  'grep -qx "warning: golconda-var-run: no TPM2: sshd-host-cert.cert is sealed to the host key alone (docs/features/vars.md)" "$JOURNAL"'
+: > "$JOURNAL"
+printf 'CERT' | STUB_TPM2=1 sh "$RUNNER" --admin sshd-host-cert cert > /dev/null 2>&1
+check "TPM2: no warning" '[ ! -s "$JOURNAL" ]'
 
 # --- local: generate, seal, publish, done (unchanged behaviour) ---
 mkdir -p "$WORK/run" "$WORK/state"

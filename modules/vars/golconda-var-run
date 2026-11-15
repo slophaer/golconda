@@ -7,14 +7,14 @@
 # and StateDirectory= set. The generator script /usr/lib/golconda/vars.d/NAME.sh
 # runs in $RUNTIME_DIRECTORY (tmpfs) and writes its files there. Then every
 # SECRET is sealed as the credential NAME.SECRET (to the host key and, when the
-# machine has a TPM2, to the TPM too), every PUBLIC is kept in
-# $STATE_DIRECTORY/pub, the plaintext is removed and `done` is touched. SECRETS
-# and PUBLICS are space-separated file names.
+# machine has a TPM2, to the TPM too; without one, a warning goes to the journal),
+# every PUBLIC is kept in $STATE_DIRECTORY/pub, the plaintext is removed and `done`
+# is touched. SECRETS and PUBLICS are space-separated file names.
 #
 # Admin: the deploy host (golconda vars push) runs this over ssh with the value on
-# stdin. It seals FILE as the credential NAME.FILE, the same way, only when the
-# image's manifest declares NAME as an admin var with that credential: the image
-# says what may be pushed. A second push replaces the value (rotation); the deploy
+# stdin. It seals FILE as the credential NAME.FILE, the same way, only when FILE is
+# a line of the image's vars.d/NAME.admin, the files of the admin var NAME: the
+# image says what may be pushed. A second push replaces the value (rotation); the deploy
 # tool then restarts the manifest's consumers.
 #
 # Reseal: decrypts each credential of the store and seals it again, with the image's policy,
@@ -48,6 +48,10 @@ fi
 # (LoadCredentialEncrypted=ID): PID 1 checks the embedded name against that id,
 # so a sealed file renamed to another credential fails to decrypt.
 seal() {
+  if ! systemd-creds has-tpm2 --quiet; then
+    echo "golconda-var-run: no TPM2: $1 is sealed to the host key alone (docs/features/vars.md)" |
+      systemd-cat -t golconda-var-run -p warning
+  fi
   mkdir -p "$credstore"
   systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11 ${pcrs:+--tpm2-pcrs="$pcrs"} \
     --name="$1" "$2" "$credstore/.$1.tmp"
@@ -91,12 +95,14 @@ if [ "${1:-}" = --admin ]; then
   for w in "$name" "$file"; do
     case $w in "" | . | .. | */* | *'"'*) echo "golconda-var-run: '$w' is not a word" >&2; exit 2 ;; esac
   done
-  manifest=$varsd/$name.json
-  [ -f "$manifest" ] || { echo "golconda-var-run: no var $name in this image" >&2; exit 1; }
-  # the manifest is builtins.toJSON's output: no spaces, and ids are words
-  m=$(cat "$manifest")
-  case $m in *'"class":"admin"'*) ;; *) echo "golconda-var-run: $name is not an admin var" >&2; exit 1 ;; esac
-  case $m in *"\"$name.$file\""*) ;; *) echo "golconda-var-run: $name has no file $file" >&2; exit 1 ;; esac
+  [ -f "$varsd/$name.json" ] || { echo "golconda-var-run: no var $name in this image" >&2; exit 1; }
+  # NAME.admin: the files of an admin var, one name per line (modules/lib/var.nix). A whole
+  # line must match; the image has no grep
+  admin=$varsd/$name.admin
+  [ -f "$admin" ] || { echo "golconda-var-run: $name is not an admin var" >&2; exit 1; }
+  found=
+  while IFS= read -r line; do [ "$line" = "$file" ] && found=1; done < "$admin"
+  [ -n "$found" ] || { echo "golconda-var-run: $name has no file $file" >&2; exit 1; }
   seal "$name.$file" -
   exit 0
 fi

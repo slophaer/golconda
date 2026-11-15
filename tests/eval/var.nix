@@ -28,7 +28,7 @@ in
   (check "vars: runner is executable" (
     system.files."/usr/lib/golconda/golconda-var-run".mode == "0755"
   ))
-  (check "var: an admin var is a manifest entry and nothing else" (
+  (check "var: an admin var is a manifest entry and its file list, nothing else" (
     let
       frag = v.admin {
         name = "root-password";
@@ -39,7 +39,13 @@ in
       };
     in
     attrNames frag == [ "files" ]
-    && attrNames frag.files == [ "/usr/lib/golconda/vars.d/root-password.json" ]
+    &&
+      attrNames frag.files == [
+        "/usr/lib/golconda/vars.d/root-password.admin"
+        "/usr/lib/golconda/vars.d/root-password.json"
+      ]
+    # golconda-var-run --admin compares whole lines of this file
+    && frag.files."/usr/lib/golconda/vars.d/root-password.admin" == "hash\nsalt\n"
     &&
       builtins.fromJSON frag.files."/usr/lib/golconda/vars.d/root-password.json" == {
         name = "root-password";
