@@ -15,7 +15,7 @@
 #   pcr/pcr.key, pcr/pcr.pub               the PCR 11 policy and its public half
 #   release/index.key, release/index.pgp   SHA256SUMS (OpenPGP: armored secret, binary public)
 #
-# DIR must be absolute: lib.mkImage takes the key directory as a string path and
+# A relative DIR is made absolute: lib.mkImage takes the key directory as a string path and
 # refuses a relative one. No private key enters the store: Nix copies the public halves
 # alone, and the signer reads the private keys here. DIR must not be in a git work tree, where a
 # file can reach the store with the checkout. DIR must not exist with anything in it, and is made
@@ -76,19 +76,8 @@ if [ -n "$old" ]; then
   old=$(realpath "$old")
 fi
 
-dir=$1
-case $dir in
-  /*) ;;
-  *) [ "$auth_only" = 0 ] || dir=$(realpath "$dir") ;;
-esac
-case $dir in
-  /*) ;;
-  *)
-    echo "make-keys: DIR must be an absolute path, not '$dir': lib.mkImage reads" >&2
-    echo "make-keys: the key directory as a string, and a relative string is an error" >&2
-    exit 2
-    ;;
-esac
+# absolute, as lib.mkImage needs it; -s: a symlink stays one, and is refused below
+dir=$(realpath -ms -- "$1")
 # Not in a git work tree: Nix reads a checkout's files where they lie, and a file there that
 # reaches the store is world-readable. The nearest directory that exists decides.
 at=$dir
@@ -113,19 +102,28 @@ PATH="$TOOLS:$PATH"
 # would add its v3_ca ones; lib/image/keys.nu does the same)
 export OPENSSL_CONF=/dev/null
 
-# keypair DIR NAME: a self-signed PK or KEK pair in DIR/secureboot, as below for a new set
+# run_openssl ARGS...: openssl prints key-generation progress on stderr; keep it in $work, and
+# print it only on failure
+run_openssl() {
+  if ! openssl "$@" 2>"$work/openssl.log"; then
+    echo "make-keys: openssl failed:" >&2
+    cat "$work/openssl.log" >&2
+    exit 1
+  fi
+}
+
+# keypair DIR NAME [-addext EXT]...: a self-signed CA pair DIR/NAME.key and DIR/NAME.crt, with
+# the extensions of a Secure Boot key and the ones given
 keypair() {
-  openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 3650 \
-    -subj "/CN=golconda deployment $2 $(date -u +%Y%m%d)" \
+  d=$1
+  n=$2
+  shift 2
+  run_openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 3650 \
+    -subj "/CN=golconda deployment $n $(date -u +%Y%m%d)" \
     -addext "basicConstraints=critical,CA:TRUE" \
     -addext "keyUsage=critical,digitalSignature,keyCertSign,cRLSign" \
-    -addext "subjectKeyIdentifier=hash" \
-    -keyout "$1/secureboot/$2.key" -out "$1/secureboot/$2.crt" 2>"$1/secureboot/.openssl.log" || {
-    cat "$1/secureboot/.openssl.log" >&2
-    rm -f "$1/secureboot/.openssl.log"
-    exit 1
-  }
-  rm -f "$1/secureboot/.openssl.log"
+    "$@" -addext "subjectKeyIdentifier=hash" \
+    -keyout "$d/$n.key" -out "$d/$n.crt"
 }
 
 if [ "$auth_only" = 1 ]; then
@@ -135,6 +133,10 @@ if [ "$auth_only" = 1 ]; then
     exit 1
   }
   umask 077
+  # written beside the set from copies of its certificates, then swapped in: the old files stay
+  # until the new ones are written and checked
+  work=$(mktemp -d "$sb/.auth.XXXXXX")
+  trap 'rm -rf "$work"' EXIT
   if [ -n "$old" ]; then
     for k in PK KEK; do
       if [ -e "$sb/$k.crt" ]; then
@@ -147,18 +149,14 @@ if [ "$auth_only" = 1 ]; then
       fi
     done
   elif [ ! -e "$sb/PK.crt" ] && [ ! -e "$sb/KEK.crt" ]; then
-    keypair "$dir" PK
-    keypair "$dir" KEK
+    keypair "$sb" PK
+    keypair "$sb" KEK
     echo "made $sb/PK.key, PK.crt, KEK.key, KEK.crt"
   elif [ ! -f "$sb/PK.key" ] || [ ! -f "$sb/KEK.key" ]; then
     echo "make-keys: $sb has PK.crt or KEK.crt but not both keys; name the set that holds" >&2
     echo "make-keys: secureboot/PK.key and KEK.key: scripts/make-keys --auth-only --reuse-pk-kek DIR $dir" >&2
     exit 1
   fi
-  # written beside the set from copies of its certificates, then swapped in: the old files stay
-  # until the new ones are written and checked
-  work=$(mktemp -d "$sb/.auth.XXXXXX")
-  trap 'rm -rf "$work"' EXIT
   mkdir "$work/secureboot"
   cp "$sb/PK.crt" "$sb/KEK.crt" "$sb/db.crt" "$work/secureboot/"
   if ! golconda-enrol-auth --keys "$work" --signing-keys "${old:-$dir}" >"$work/log" 2>&1; then
@@ -193,26 +191,12 @@ mkdir -p "$dir"
 chmod 700 "$dir"
 # generate beside the final names, so a failed run leaves no half key set behind
 stage=$(mktemp -d "$dir/.new-keys.XXXXXX")
+work=$stage
 trap 'rm -rf "$stage"' EXIT
 trap 'exit 1' HUP INT TERM
 
-# openssl prints key-generation progress on stderr; keep it, and print it only on failure
-run_openssl() {
-  if ! openssl "$@" 2>"$stage/openssl.log"; then
-    echo "make-keys: openssl failed:" >&2
-    cat "$stage/openssl.log" >&2
-    exit 1
-  fi
-}
-
 mkdir "$stage/secureboot" "$stage/pcr"
-run_openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 3650 \
-  -subj "/CN=golconda deployment db $(date -u +%Y%m%d)" \
-  -addext "basicConstraints=critical,CA:TRUE" \
-  -addext "keyUsage=critical,digitalSignature,keyCertSign,cRLSign" \
-  -addext "extendedKeyUsage=codeSigning" \
-  -addext "subjectKeyIdentifier=hash" \
-  -keyout "$stage/secureboot/db.key" -out "$stage/secureboot/db.crt"
+keypair "$stage/secureboot" db -addext "extendedKeyUsage=codeSigning"
 # the PK and the KEK: self-signed, as the db certificate, without codeSigning; they sign only the
 # Secure Boot variables (PK signs PK and KEK, KEK signs db and dbx). A rotation copies the old
 # set's certificates and leaves their keys there.
@@ -221,12 +205,7 @@ for k in PK KEK; do
     cp "$old/secureboot/$k.crt" "$stage/secureboot/$k.crt"
     continue
   fi
-  run_openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 3650 \
-    -subj "/CN=golconda deployment $k $(date -u +%Y%m%d)" \
-    -addext "basicConstraints=critical,CA:TRUE" \
-    -addext "keyUsage=critical,digitalSignature,keyCertSign,cRLSign" \
-    -addext "subjectKeyIdentifier=hash" \
-    -keyout "$stage/secureboot/$k.key" -out "$stage/secureboot/$k.crt"
+  keypair "$stage/secureboot" "$k"
 done
 # the enrolment files, signed now by this set's PK and KEK keys (or the old set's), so that no
 # release needs them; their output on failure only

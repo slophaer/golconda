@@ -2,7 +2,7 @@
 # scripts/make-keys: run it into a temporary directory and check what lib.mkImage and the
 # firmware need: the layout in the script header, mode 0600 on every file and 0700 on every
 # directory, the db certificate's extensions and validity, the key pairs matching, and the
-# OpenPGP files. The refusals (relative path, non-empty directory, a git work tree) too. Run from anywhere with
+# OpenPGP files. A relative DIR, and the refusals (non-empty directory, a git work tree) too. Run from anywhere with
 # nix on PATH and a Nix daemon; scripts/lint runs it.
 set -u
 repo=$(dirname "$(dirname "$(dirname "$(realpath "$0")")")")
@@ -180,8 +180,14 @@ grep -qF -- "--reuse-pk-kek" "$tmp/stderr6" || fail "--auth-only without the key
   fail "--auth-only --reuse-pk-kek refuses another PK than the set's"
 "$repo/scripts/make-keys" --auth-only "$tmp/nothing" >/dev/null 2>&1 && fail "--auth-only needs a key set"
 
+# a relative DIR is made absolute, for both modes: the report names the absolute path
+mkdir "$tmp/cwd"
+(cd "$tmp/cwd" && "$repo/scripts/make-keys" rel/keys) >"$tmp/out-rel" 2>&1 || fail "relative DIR: make-keys exits 0"
+[ -f "$tmp/cwd/rel/keys/secureboot/db.crt" ] || fail "relative DIR: the set is made under the working directory"
+grep -qF "deployment key set: $tmp/cwd/rel/keys" "$tmp/out-rel" || fail "relative DIR: the report names the absolute path"
+(cd "$tmp/cwd" && "$repo/scripts/make-keys" --auth-only rel/keys) >/dev/null 2>&1 || fail "relative DIR: --auth-only exits 0"
+
 # refusals
-"$repo/scripts/make-keys" relative/dir >/dev/null 2>&1 && fail "relative DIR is refused"
 "$repo/scripts/make-keys" "$keys" >/dev/null 2>&1 && fail "non-empty DIR is refused"
 "$repo/scripts/make-keys" >/dev/null 2>&1 && fail "no argument is refused"
 # a directory in a git work tree: a file there can reach the store with the checkout, so a set
