@@ -111,7 +111,7 @@
   };
 
   network = {
-    description = "A .network file: `match` (the Match section) and the optional sections network, link, dhcpv4, address and route. Any other key is an error.";
+    description = "A .network file: `match` (the Match section) and the optional sections network, link, dhcpv4 and address, and route, a list of Route sections. Any other key is an error.";
     type = "object";
     properties = {
       match = {
@@ -130,7 +130,10 @@
         "$ref" = "#/$defs/networkSection";
       };
       route = {
-        "$ref" = "#/$defs/networkSection";
+        type = "array";
+        items = {
+          "$ref" = "#/$defs/networkSection";
+        };
       };
     };
     required = [ "match" ];

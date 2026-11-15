@@ -156,7 +156,7 @@ in
               ];
               IPv6AcceptRA = false;
             };
-            route.Gateway = "10.0.0.254";
+            route = [ { Gateway = "10.0.0.254"; } ];
           };
         };
       };
@@ -232,6 +232,42 @@ in
     &&
       good."/usr/lib/systemd/network/50-lan.network".text
       == "[Match]\nName=eth0\n\n[Network]\nAddress=10.0.0.5/24\n"
+  ))
+  # systemd reads one route from each [Route] section: several routes are several sections.
+  # The TOML text is the example in docs/reference/config.md.
+  (check "network: each route is its own [Route] section" (
+    let
+      inherit
+        (configLib.loadConfigText ''
+          ["/network"]
+          defaultDhcp = false
+
+          ["/network".networks.lan]
+          match = { Name = "eth0" }
+          network = { Address = "192.0.2.10/24", DNS = "192.0.2.1" }
+
+          [["/network".networks.lan.route]]
+          Gateway = "192.0.2.1"
+
+          [["/network".networks.lan.route]]
+          Destination = "198.51.100.0/24"
+          Gateway = "192.0.2.254"
+        '')
+        options
+        ;
+      text = (composeWith options).files."/usr/lib/systemd/network/50-lan.network".text;
+      networksType = (f.modules { }).modules.network.options.networks.type;
+    in
+    text
+    == "[Match]\nName=eth0\n\n[Network]\nAddress=192.0.2.10/24\nDNS=192.0.2.1\n\n[Route]\nGateway=192.0.2.1\n\n[Route]\nDestination=198.51.100.0/24\nGateway=192.0.2.254\n"
+    # one table is not a list of routes
+    &&
+      networksType.verify {
+        lan = {
+          match.Name = "eth0";
+          route.Gateway = "192.0.2.1";
+        };
+      } != null
   ))
   (check "schema: a network is a closed object with match required" (
     let

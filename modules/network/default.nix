@@ -5,10 +5,10 @@
 #!
 #! Options: `networks` is a map from network name to network config. Each
 #! config has a `match` table (the Match section) and may have `network`,
-#! `link`, `dhcpv4`, `address` and `route` tables, one for each section of
-#! the same name. Any other key is an error, so a misspelt section cannot
-#! leave a machine without an address.
-#! Example: `{ networks.static = { match.Name = "eth0"; network.Address = "10.0.0.1/24"; }; }`
+#! `link`, `dhcpv4` and `address` tables, one for each section of the same
+#! name, and `route`, a list of tables, one `[Route]` section for each. Any
+#! other key is an error, so a misspelt section cannot leave a machine without
+#! an address. Example: `{ networks.static = { match.Name = "eth0"; network.Address = "10.0.0.1/24"; }; }`
 #!
 #! The `dns` option sets the global fallback DNS servers (used when no
 #! interface-specific DNS is configured).
@@ -55,7 +55,8 @@ let
       link = optionalAttr section;
       dhcpv4 = optionalAttr section;
       address = optionalAttr section;
-      route = optionalAttr section;
+      # systemd reads one route from each [Route] section
+      route = optionalAttr (listOf section);
     }).override
       { unknown = false; };
 
@@ -77,14 +78,13 @@ let
   );
 
   # Render a .network file: the Match section plus each of the others that cfg has (cfg key ->
-  # section name). Sections come out in ini.nix's order (sorted by name); systemd reads them in
-  # any order.
+  # section name), then one [Route] section for each route. Sections come out in ini.nix's
+  # order (sorted by name); systemd reads them in any order.
   sectionNames = {
     network = "Network";
     link = "Link";
     dhcpv4 = "DHCPv4";
     address = "Address";
-    route = "Route";
   };
   renderNetwork =
     _name: cfg:
@@ -98,7 +98,8 @@ let
           value = cfg.${k};
         }) (builtins.filter (k: cfg ? ${k}) (attrNames sectionNames))
       )
-    );
+    )
+    + concatStringsSep "" (map (r: "\n" + ini.render { Route = r; }) (cfg.route or [ ]));
 in
 {
   name = "network";

@@ -50,8 +50,25 @@ The option types, defaults and descriptions are on the generated module pages
 ([Modules](modules/README.md)).
 
 A `/network.networks` entry takes the required table `match`, plus the optional tables `network`,
-`link`, `dhcpv4`, `address` and `route`, one for each section of a `.network` file. Any other key,
-including a capitalised `Network`, is refused by name when the document is evaluated.
+`link`, `dhcpv4` and `address`, one for each section of a `.network` file. `route` is a list of
+tables, one `[Route]` section for each route. Any other key, including a capitalised `Network`, is
+refused by name when the document is evaluated. A static network with two routes:
+
+```toml
+["/network"]
+defaultDhcp = false
+
+["/network".networks.lan]
+match = { Name = "eth0" }
+network = { Address = "192.0.2.10/24", DNS = "192.0.2.1" }
+
+[["/network".networks.lan.route]]
+Gateway = "192.0.2.1"
+
+[["/network".networks.lan.route]]
+Destination = "198.51.100.0/24"
+Gateway = "192.0.2.254"
+```
 
 ## Your own modules
 
