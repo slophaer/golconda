@@ -132,3 +132,15 @@ export def verify-index [release: string, keyring: string] {
     error make {msg: $"SHA256SUMS.gpg does not verify against ($keyring | path basename), the key the image carries: ($v.stderr | str trim)"}
   }
 }
+
+# check-uki-size UKI ESP: the ESP of ESP bytes holds two UKIs, the booted one and an update
+# (InstancesMax=2, image/sysupdate.nix), and 8 MiB for systemd-boot, loader.conf and the
+# enrolment files. A larger UKI boots, and then every update fails on the machine
+export def check-uki-size [uki: string, esp: int] {
+  let size = (ls $uki | get size.0 | into int)
+  let max = (($esp - 8 * 1024 * 1024) // 2)
+  if $size > $max {
+    error make {msg: $"($uki | path basename) is ($size) bytes, but the ESP of ($esp) bytes holds two UKIs and 8 MiB: a UKI may have ($max) bytes \(image/repart.nix\)"}
+  }
+  log $"($uki | path basename): ($size) of ($max) bytes, two fit on the ESP"
+}

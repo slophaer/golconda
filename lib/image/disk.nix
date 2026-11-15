@@ -10,7 +10,8 @@
 #   Rendered with modules/lib/ini.nix.
 #
 # diskParams { imageId; version; platform; } → the manifest's `disk` (lib/image/manifest.nix):
-#   definitions (the above), architecture, seed (from the version), epoch. The signer
+#   definitions (the above), architecture, seed (from the version), epoch, espBytes (the ESP's
+#   size: the signer refuses a UKI larger than half of it without 8 MiB). The signer
 #   (lib/image/disk.nu) runs systemd-repart --empty=create --size=auto --offline=yes --seed: no
 #   loop device, no root. It writes
 #   disk.raw        GPT: ESP (the signed systemd-boot as EFI/systemd/systemd-boot<arch>.efi and
@@ -30,7 +31,10 @@ let
   inherit (builtins)
     attrNames
     filter
+    fromJSON
+    head
     listToAttrs
+    match
     replaceStrings
     stringLength
     ;
@@ -118,5 +122,17 @@ rec {
       architecture = platform.names.systemd;
       seed = common.uuidOfHex (common.hexOf "${imageId}_${version}.disk");
       epoch = common.versionToEpoch version;
+      inherit espBytes;
     };
+
+  # the ESP's size in bytes, from image/repart.nix (`<n>M`, MiB as repart reads it)
+  espBytes =
+    let
+      size = image.repart."00-esp".Partition.SizeMaxBytes;
+      mib = match "([0-9]+)M" size;
+    in
+    if mib == null then
+      throw "golconda: the ESP's SizeMaxBytes '${size}' in image/repart.nix is not <n>M"
+    else
+      fromJSON (head mib) * 1024 * 1024;
 }

@@ -259,6 +259,7 @@ def release [m: record, priv: record, sets: record, out: string] {
 
   let uki = $"($work)/($m.uki.fileName)"
   let cmdline = (uki make $m.uki $roothash $sig {dbKey: $priv.dbKey dbCert: $pub.dbCert pcrKey: $priv.pcrKey pcrPublic: $pub.pcrPublicKey} $uki)
+  disk check-uki-size $uki $m.disk.espBytes
 
   # the disk: the ESP starts as the machine's golconda-loader-update would leave it
   let uuids = (disk partition-uuids $roothash)

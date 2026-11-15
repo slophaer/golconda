@@ -15,9 +15,11 @@ The exact on-disk layout. Type GUIDs are the Discoverable Partitions Specificati
 | `root`                                      | `root`           | ext4       | growfs, factory-reset | the rest of the disk, created on first boot (unencrypted for now, LUKS2+TPM2 later) |
 
 The slots are fixed at 10 GiB so an update of a grown image always fits; both slots must hold any
-release. The image builder sets the verity partitions to one fixed size as well (128 MiB,
-`image/repart.nix`). The partition UUIDs of `usr-a` and `usr-a-verity` are derived from the verity
-root hash, which is how gpt-auto finds the pair the UKI's `usrhash=` names.
+release. The ESP holds two UKIs and 8 MiB for the loader and its files, so the signer refuses a UKI
+larger than (512 MiB − 8 MiB) / 2 = 252 MiB. The image builder sets the verity partitions to one
+fixed size as well (128 MiB, `image/repart.nix`). The partition UUIDs of `usr-a` and `usr-a-verity`
+are derived from the verity root hash, which is how gpt-auto finds the pair the UKI's `usrhash=`
+names.
 
 ## Paths
 

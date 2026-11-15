@@ -18,7 +18,7 @@ use sign.nu
 use sign.nu [private-keys check-keys use-token]
 use verity.nu [sign-roothash]
 use uki.nu [roothash-signature certificate-table-size]
-use disk.nu [sign-index verify-index]
+use disk.nu [sign-index verify-index check-uki-size]
 
 $env.OPENSSL_CONF = "/dev/null"
 let tmp = (mktemp -d -t "golconda-sign-test-XXXXXX")
@@ -138,6 +138,15 @@ if (certificate-table-size $"($tmp)/unsigned.efi") != 0 or (certificate-table-si
 ok "the size of a PE file's certificate table: 0 unsigned, its size signed"
 "MZ" | save -f $"($tmp)/short.efi"
 fails "a file that is not PE is refused" "is not a PE file" {|| certificate-table-size $"($tmp)/short.efi" }
+
+# --- the ESP holds two UKIs and 8 MiB besides: on an ESP of 24 MiB, a UKI may have 8 MiB
+^truncate -s 8M $"($tmp)/fits.efi"
+check-uki-size $"($tmp)/fits.efi" (24 * 1024 * 1024)
+ok "a UKI of half the ESP without 8 MiB fits"
+^truncate -s 8388609 $"($tmp)/large.efi"
+fails "a UKI larger than half the ESP without 8 MiB is refused" "8388609 bytes" {||
+  check-uki-size $"($tmp)/large.efi" (24 * 1024 * 1024)
+}
 
 # --- the release index: SHA256SUMS.gpg by the release key, checked with gpgv against the keyring
 let rel = $"($tmp)/release"
