@@ -4,3 +4,5 @@ name = "fragment-test"
 version = "20261031.1"
 
 ["/local/marker"]
+
+["/services/sshd"]

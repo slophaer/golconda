@@ -117,7 +117,7 @@ let
     buildSystem = system;
     publicKey = indexPublicKey;
   };
-  sys = mkSystem {
+  composed = mkSystem {
     inherit system config;
     platform = system;
     verityCert = dbCert;
@@ -128,6 +128,13 @@ let
       })
     ];
   };
+  # sshd is the only login, and the health checks pass without it: an image without it would
+  # bless itself and stay unreachable
+  sys =
+    if composed.inventory."/services/sshd".included or false then
+      composed
+    else
+      throw "golconda: mkImage: the document has no [\"/services/sshd\"] table, so the image has no login; add the table (docs/features/ssh-login.md)";
   stepArgs = {
     imageId = sys.name;
     inherit (sys) version platform pkgs;

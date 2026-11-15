@@ -7,3 +7,5 @@ replaces = ["tzdata"]
 ["/system"]
 name = "downstream-initrd"
 version = "20261103.1"
+
+["/services/sshd"]

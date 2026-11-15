@@ -86,7 +86,8 @@ target by a `boot-complete.target.requires/` link, the same shape as systemd's o
 `systemd-boot-check-no-failures.service`. A failed predicate fails the target's start job;
 `systemd-bless-boot.service` requires the target and is ordered after it, so it does not run. The
 counter stays and one attempt is lost. systemd's own bless-boot ordering is not changed and no
-orchestrator is added.
+orchestrator is added. sshd is the only login, so `lib.mkImage` refuses a document without a
+`["/services/sshd"]` table: that image would pass the network predicate and have no way in.
 
 What the predicate leaves out, on purpose: DNS and resolved, a default route to the administrator's
 network, reachability from outside the machine (firewall, NAT, the client side), and every step of a

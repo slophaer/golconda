@@ -19,6 +19,7 @@ let
       version = "20261031.1";
     };
     "/local/marker" = { };
+    "/services/sshd" = { };
   };
   # the public halves of a key set, committed: the chain reads nothing else of a key set
   publicKeys = ../fixtures/public-keys;
@@ -145,12 +146,18 @@ in
           name = "downstream-initrd";
           version = "20261103.1";
         };
+        "/services/sshd" = { };
       };
       tree = i: builtins.unsafeDiscardStringContext (toString i.initrd.usrTree);
     in
     # the fixture's tzdata (0.0.4) is in the chain's set, and the initrd tree that the
     # chain builds differs from the one without the downstream packages
     replaced.pkgs.tzdata.version == "0.0.4" && tree replaced != tree plain
+  ))
+  (check "mkImage: refuses a document without sshd: the image would have no login" (
+    !(builtins.tryEval (
+      builtins.deepSeq (image (removeAttrs config [ "/services/sshd" ])).unsigned.drvPath true
+    )).success
   ))
   (check "mkImage: rejects a user claim on its keyring destination" (
     !(builtins.tryEval (builtins.deepSeq (image duplicateConfig).usrTree.links true)).success
