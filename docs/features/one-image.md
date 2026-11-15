@@ -30,8 +30,8 @@ flowchart LR
   at `/usr/nix/store` inside the read-only image. `/usr/bin`, `/usr/lib` and `/usr/share` are links
   into it. The store is a build-time artifact: a configuration change is a new image.
 - **The build checks the tree.** `scripts/lint` rejects a `/nix/store` literal in `modules/` and
-  `lib/`. The `/usr` tree builder refuses an absolute symlink target, a setuid bit and an unknown
-  top-level directory.
+  `lib/`. The `/usr` tree builder refuses an absolute symlink target and an unknown top-level
+  directory. Nix refuses a setuid bit.
 - **The same inputs give the same image.** The version sets the erofs timestamp, the verity salt and
   the filesystem UUID. A rebuild is byte-identical.
 

@@ -90,8 +90,9 @@ the artifacts added ([Configuration](config.md#the-entry-point)):
 | other `lib/`, `share/`                           | files from `composerOutput.files` (paths under `/usr/`, with their mode)                                                                                                                                                                                                                                                                                                                |
 
 Build-time verification: no absolute symlink target; every `dlopen` link resolves and every `farm`
-link names a directory; no setuid or setgid bit; no top-level directory other than `bin`, `lib`,
-`share`, `nix`, `libexec` and the `sbin` link.
+link names a directory; no top-level directory other than `bin`, `lib`, `share`, `nix`, `libexec`
+and the `sbin` link. No file has a setuid or setgid bit: the Nix sandbox refuses a `chmod` that sets
+one, and the store keeps only the modes `0444` and `0555`.
 
 A Nix store path carries no mtimes (Nix sets them to 1), so the tree itself has none. The erofs step
 applies the timestamp derived from the version (`YYYYMMDD.N` → epoch seconds, `versionToEpoch`) with

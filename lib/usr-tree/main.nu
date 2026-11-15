@@ -383,16 +383,6 @@ export def build [] {
     }
   }
 
-  # 11c: No setuid/setgid bits
-  let found_setuid = (^find $out -perm /6000 -type f -print | complete)
-  if $found_setuid.exit_code != 0 {
-    error make {msg: $"find failed while checking setuid bits: ($found_setuid.stderr)"}
-  }
-  let setuid = ($found_setuid.stdout | lines | where { $in != "" })
-  if ($setuid | length) > 0 {
-    error make {msg: $"setuid/setgid files found: ($setuid | str join ', ')"}
-  }
-
   # 11d: No files outside allowed top-level dirs
   let top_level = (ls $out | get name | each { $in | path basename })
   let allowed = $attrs.allowedDirs

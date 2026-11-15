@@ -20,7 +20,7 @@ the machine and gives a revocation path.
   `PermitRootLogin prohibit-password`. No option turns them on.
 - **PAM does account and session only.** `/etc/pam.d/sshd` has no `auth` line, and
   `/etc/pam.d/other` denies every type. linux-pam ships without `unix_chkpwd`, and the image has no
-  setuid binary (the build checks this). A non-root process cannot verify a password at all.
+  setuid binary (Nix refuses the bit). A non-root process cannot verify a password at all.
 - **Root only, for now.** There are no per-human accounts. `LogLevel VERBOSE` writes the certificate
   principal and key id to the log, and that is the audit trail.
 - **One ssh server.** `sshd.service` with the generated `sshd_config` is the only one. systemd's ssh

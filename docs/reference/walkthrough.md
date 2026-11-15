@@ -151,8 +151,8 @@ nix-build -E '(import ./examples/golconda.nix { golconda = import ./default.nix;
 (relative, `farm` links expanded file by file), writes the units, `sysusers.d/golconda.conf`,
 `tmpfiles.d/golconda.conf`, `os-release`, every file of `files`, and the artifacts
 `lib/golconda/{config,schema,sbom,packages}.json`. Then it checks the tree: no absolute symlink,
-every dlopen link resolves, no setuid bit, only the allowed top-level directories. The output is
-named `golconda-usr-20261031.1` *(eval of `usrTree.name`)* and is a directory that is `/usr`
+every dlopen link resolves, only the allowed top-level directories. The output is named
+`golconda-usr-20261031.1` *(eval of `usrTree.name`)* and is a directory that is `/usr`
 ([Image artifacts](image.md#usr-tree-libusr-treenix)).
 
 ## 5. The image

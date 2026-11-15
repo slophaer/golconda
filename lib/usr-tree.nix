@@ -29,8 +29,8 @@
 #
 # The tree is reproducible. mtimes cannot live in a store path (Nix sets them to 1); the
 # version-derived timestamp is passed on for mkfs.erofs -T, see image/erofs.nix.
-# Build-time verification: no absolute symlinks, dlopen links resolve, no setuid/setgid, every
-# program a unit runs is in bin/.
+# Build-time verification: no absolute symlinks, dlopen links resolve, every program a unit runs
+# is in bin/. Nix refuses setuid and setgid bits (docs/reference/image.md).
 #
 # See: docs/design/layout.md, docs/reference/image.md
 _:
