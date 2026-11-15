@@ -4,9 +4,9 @@ purl = "pkg:github/slophaer/repkgs?branch=golconda"
 [[source]]
 key = "default"
 url = "https://github.com/slophaer/repkgs/archive/{rev}.tar.gz"
-hash = "sha256-949x9vRpb6qBXLpkAWZ1As0ADBAXmR9pHHHHLZLTnmk="
+hash = "sha256-RH2hCvJFMAY8u0EJ+TCJyicqQrbKF9xCHiWN6dlASww="
 
 [pin]
 version = "0-unstable-2026-11-14"
 date = "2026-11-14"
-rev = "4506d97634eba525d317c5811d38dbe4396db3bb"
+rev = "f927002ca9269a87a6ca090f102fed96c1a83568"
