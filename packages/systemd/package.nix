@@ -6,18 +6,6 @@
   buildPkgs,
 }:
 let
-  # systemd's built-in clock epoch (`time-epoch`): PID 1 and timesyncd never set the clock before
-  # it, and PID 1 sets a clock more than 15 years past it back to it. Left unset, meson takes
-  # SOURCE_DATE_EPOCH, 1980-01-01 in a reproducible build, so every boot reset the RTC's right time
-  # to 1980 until timesyncd synced (DNSSEC and TLS failed meanwhile). It is the pin's date from
-  # sources.toml, midnight UTC: a fixed instant in the source, so the build stays reproducible, no
-  # earlier than the release the tarball is, and no later than any build of it; each bump of the pin
-  # moves it, so the 15 years run from the pin. The first sync, and every later boot, uses the mtime
-  # of /var/lib/systemd/timesync/clock when that is newer.
-  pinDate = (builtins.fromTOML (builtins.readFile ./sources.toml)).pin.date;
-  versionLib = import ../../lib/version.nix { };
-  timeEpoch = versionLib.toEpoch "${builtins.replaceStrings [ "-" ] [ "" ] pinDate}.0";
-
   deps = [
     pkgs.util-linux # libmount, libblkid, libuuid, libfdisk
     pkgs.libcap
@@ -72,7 +60,11 @@ package {
   meson.defs = {
     # === Build mode ===
     mode = "release";
-    time-epoch = timeEpoch;
+    # systemd's built-in clock epoch (`time-epoch`) is unset, so meson takes SOURCE_DATE_EPOCH:
+    # repkgs sets it to the [pin] date of sources.toml, midnight UTC, a fixed instant of the
+    # source. PID 1 and timesyncd never set the clock before it, and PID 1 sets a clock more than
+    # 15 years past it back to it, so the 15 years run from the pin. timesyncd uses the mtime of
+    # /var/lib/systemd/timesync/clock when that is newer.
     split-bin = "false"; # no /sbin, everything in /usr/bin
 
     # === Disabled features (not in Golconda) ===

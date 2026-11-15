@@ -292,12 +292,12 @@ check_no_failed() {
 
 # check_clock NAME: the clock the kernel read at boot was kept in the running boot (every boot is
 # checked: the first, and each later one under its own NAME). PID 1 resets a clock more than 15
-# years past systemd's built-in epoch (`time-epoch`, the pin date of packages/systemd): with the
-# build's SOURCE_DATE_EPOCH, 1980, that was every boot, and until timesyncd synced, DNSSEC
-# validation and TLS certificate times failed. Under KVM the guest reads the host's time (kvm-clock,
+# years past systemd's built-in epoch (`time-epoch`: repkgs sets SOURCE_DATE_EPOCH to the pin date
+# of packages/systemd), and until timesyncd syncs, DNSSEC validation and TLS certificate times
+# fail. Under KVM the guest reads the host's time (kvm-clock,
 # not the CMOS RTC, so QEMU's -rtc base does not move it), so it shows here. The journal of this
 # boot (journalctl -b) has no "further ahead than" reset message, and its oldest entry is not before
-# the epoch's year (the entries after a reset would be 1980).
+# the epoch's year.
 check_clock() {
   echo ""
   echo "=== the clock ($1) ==="

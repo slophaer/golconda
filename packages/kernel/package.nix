@@ -44,8 +44,7 @@ package {
       "HOSTCXX=c++"
       "HOSTLD=ld.lld"
       "HOSTAR=llvm-ar"
-      # Reproducibility
-      "KBUILD_BUILD_TIMESTAMP=@315532800"
+      # Reproducibility. KBUILD_BUILD_TIMESTAMP comes from repkgs: the [pin] date of sources.toml
       "KBUILD_BUILD_USER=golconda"
       "KBUILD_BUILD_HOST=build"
       "KBUILD_BUILD_VERSION=1"
