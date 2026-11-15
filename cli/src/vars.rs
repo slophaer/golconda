@@ -53,7 +53,7 @@ pub fn err<T>(msg: impl Into<String>) -> Result<T> {
     Err(Error(msg.into()))
 }
 
-/// A host, var or file name: one path component, no shell or JSON metacharacters.
+/// A host or file name: one path component, no shell or JSON metacharacters.
 pub fn word(s: &str) -> Result<&str> {
     let ok = !s.is_empty()
         && s != "."
@@ -65,6 +65,20 @@ pub fn word(s: &str) -> Result<&str> {
         Ok(s)
     } else {
         err(format!("'{s}' is not a name (letters, digits, - _ .)"))
+    }
+}
+
+/// A var name as Golconda's grammar has it (modules/lib/grammar.nix varName): letters, digits,
+/// `_` and `-`, not first a dash. A dot separates a var from its file in a credential id.
+pub fn var_name(s: &str) -> Result<&str> {
+    let ok = !s.is_empty()
+        && !s.starts_with('-')
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'));
+    if ok {
+        Ok(s)
+    } else {
+        err(format!("'{s}' is not a var name (letters, digits, - _)"))
     }
 }
 
@@ -103,7 +117,7 @@ pub fn parse_manifests(text: &str) -> Result<Vec<Manifest>> {
     let mut out = Vec::new();
     for v in serde_json::Deserializer::from_str(text).into_iter::<Value>() {
         let v = v.map_err(|e| Error(format!("a manifest is not JSON: {e}")))?;
-        let name = word(v["name"].as_str().unwrap_or_default())?.to_owned();
+        let name = var_name(v["name"].as_str().unwrap_or_default())?.to_owned();
         let (class, files) = match v["class"].as_str() {
             Some("admin") => (Class::Admin, strings(&v, "files")?),
             Some("local") => (Class::Local, strings(&v, "secrets")?),
@@ -253,7 +267,7 @@ impl Store {
         Ok(self
             .root
             .join(word(host)?)
-            .join(word(var)?)
+            .join(var_name(var)?)
             .join(format!("{}.age", word(file)?)))
     }
 
@@ -347,7 +361,7 @@ impl Remote {
     /// A public file of a local var (`/var/lib/golconda/vars/<var>/pub/<file>`).
     pub fn public(&self, var: &str, file: &str) -> Result<Vec<u8>> {
         self.run(
-            &format!("cat {PUB_DIR}/{}/pub/{}", word(var)?, word(file)?),
+            &format!("cat {PUB_DIR}/{}/pub/{}", var_name(var)?, word(file)?),
             None,
         )
     }
@@ -771,6 +785,23 @@ esac
         ] {
             assert!(word(bad).is_err(), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn var_names_have_no_dots() {
+        for ok in ["sshd-host-cert", "a_b", "web1"] {
+            assert!(var_name(ok).is_ok(), "{ok}");
+        }
+        // a dot separates the var from its file in a credential id (modules/lib/grammar.nix)
+        for bad in ["", ".", "a.b", "-x", "a/b", "a b"] {
+            assert!(var_name(bad).is_err(), "{bad:?}");
+        }
+        assert!(parse_manifests(r#"{"class":"admin","name":"a.b","files":[]}"#).is_err());
+        let (_scratch, store, remote, _) = setup("varnames");
+        assert!(store.set("web1", "sshd.host", "cert", b"x").is_err());
+        assert!(remote.public("sshd.hostkey", "key.pub").is_err());
+        // host and file names keep their dots
+        assert!(store.path("web1.example.com", "v", "key.pub").is_ok());
     }
 
     #[test]
