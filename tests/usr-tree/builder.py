@@ -209,6 +209,8 @@ class BuilderTests(unittest.TestCase):
             link("/usr/lib/security/pam", FIXTURES / "a/lib/security"),
         ]
         self.attrs["units"] = {"demo.service": "[Unit]\n"}
+        # a tmpfiles link to a file in the tree, through the zoneinfo link
+        self.attrs["tmpfiles"] = ["L /etc/localtime - - - - /usr/share/zoneinfo/UTC"]
         self.succeeds()
         self.assertEqual((self.out / "lib/shared/a").read_text(), "a")
         self.assertEqual((self.out / "lib/shared/b").read_text(), "b")
@@ -287,6 +289,12 @@ class BuilderTests(unittest.TestCase):
         self.attrs["links"] = [link("/usr/bin/tool", "missing")]
         self.attrs["programs"] = [{"name": "tool", "origins": ["/x"]}]
         self.fails("/usr/bin/tool does not exist")
+
+    def test_a_tmpfiles_link_to_a_missing_usr_path_fails(self):
+        # a misspelt time zone: /etc/localtime would dangle on the machine
+        self.attrs["links"] = [link("/usr/share/zoneinfo", FIXTURES / "a/share/zoneinfo")]
+        self.attrs["tmpfiles"] = ["L /etc/localtime - - - - /usr/share/zoneinfo/Europe/Berln"]
+        self.fails("/etc/localtime", "/usr/share/zoneinfo/Europe/Berln", "does not exist")
 
     def test_initrd_without_system_metadata_or_sbom_succeeds(self):
         self.succeeds()

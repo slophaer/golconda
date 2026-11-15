@@ -410,6 +410,18 @@ export def build [] {
     }
   }
 
+  # 11f: The target of each tmpfiles L line under /usr exists: a misspelt time zone
+  # would leave /etc/localtime dangling on the machine
+  for line in $attrs.tmpfiles {
+    let fields = ($line | split row -r '\s+' | where { $in != "" })
+    if ($fields | length) < 7 or not ($fields.0 | str starts-with "L") { continue }
+    let target = ($fields | skip 6 | str join " ")
+    if not ($target | str starts-with "/usr/") { continue }
+    if not ($"($out)/($target | str replace "/usr/" "")" | path exists) {
+      error make {msg: $"golconda: tmpfiles link ($fields.1) -> ($target): ($target) does not exist in the /usr tree"}
+    }
+  }
+
   log "verification passed"
   log $"usr tree complete: ($out)"
 }
