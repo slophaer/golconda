@@ -68,7 +68,8 @@
 #! - `/usr/share/zoneinfo`: tzdata's zone database, the one time zone source.
 #!
 #! Files: the timesyncd and journald drop-ins, PID 1's `golconda-caps.conf`
-#! (no `CAP_MAC_ADMIN` or `CAP_MAC_OVERRIDE`), `00-golconda.preset`, and
+#! (no `CAP_MAC_ADMIN` or `CAP_MAC_OVERRIDE`), an empty `/usr/lib/clock-epoch`
+#! (the clock's floor is the release's date), `00-golconda.preset`, and
 #! `/usr/lib/repart.d/30-root.conf` (the root partition systemd-repart makes
 #! at first boot, rendered from `image/repart.nix`). Tmpfiles lines: `L /bin`, `L /sbin` and `L /lib`, the
 #! merged-`/usr` links on the root partition.
@@ -280,6 +281,9 @@ in
           "/usr/lib/systemd/journald.conf.d/golconda.conf" = journaldConf;
           "/usr/lib/systemd/system.conf.d/golconda-caps.conf" = capsConf;
           "/usr/lib/locale.conf" = localeConf;
+          # the clock's floor: PID 1 moves a clock that is behind this file's mtime forward to it,
+          # and erofs gives every file the release's date (docs/design/updates.md)
+          "/usr/lib/clock-epoch" = "";
           "/usr/lib/repart.d/30-root.conf" = rootRepart;
           "/usr/lib/systemd/system-preset/00-golconda.preset" = presetFile;
         };

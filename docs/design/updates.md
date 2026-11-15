@@ -91,6 +91,11 @@ boot at switch-root). What is lost is the boot-time check of the UKI. After an i
 write the ESP can replace the UKI, and with it the kernel that holds the trusted key
 ([Trust: Verity key](trust.md#2-verity-key)). With Secure Boot, firmware also refuses such a UKI.
 
+The clock must be after the creation of the release key: `gpg` refuses a key from the future.
+timesyncd sets the clock from the network. Without it, PID 1 moves a clock that is behind the
+release's date forward to that date (the mtime of the empty `/usr/lib/clock-epoch`) *(being built)*.
+A release key made later than 00:00 UTC of that date is still ahead of that clock.
+
 Proven: `index-signed` and `sysupdate-installed` (`--next`), and `sysupdate-refused` with
 `boots-old` for a changed index (`--next --tamper-index`); the no-Secure-Boot image passed
 `--ssh-test --next`, and its update on Hetzner Cloud logged `Good signature`

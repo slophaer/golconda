@@ -255,6 +255,11 @@ in
     hasInfix "\n[Manager]\nCapabilityBoundingSet=~CAP_MAC_ADMIN CAP_MAC_OVERRIDE\n"
       (compose [ ]).files."/usr/lib/systemd/system.conf.d/golconda-caps.conf".text
   ))
+  # PID 1 takes the mtime of /usr/lib/clock-epoch as the clock's floor, and erofs gives every file
+  # the release's date (docs/design/updates.md)
+  (check "base: /usr/lib/clock-epoch is an empty file" (
+    (compose [ ]).files."/usr/lib/clock-epoch".text == ""
+  ))
   (check "base: no unit is masked by a link (the systemd farm owns those paths)" (
     !(builtins.any (l: l.target == "/dev/null") (builtins.attrValues (compose [ ]).links))
   ))
