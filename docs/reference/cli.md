@@ -58,6 +58,10 @@ age-encrypted in the configuration repository (`vars/<host>/<var>/<file>.age`, t
 `vars/recipients.txt`; `--vars DIR` names another directory) and pushes it over ssh. The machine
 seals it with its own `systemd-creds`, and the units that read it restart.
 
+HOST is the name that ssh reaches the machine by, and the directory of its vars in the store. It is
+one word, so `user@host` is refused: give the machine an alias in `~/.ssh/config` (`Host web1` with
+`HostName` and `User root`).
+
 ```sh
 golconda vars pub web1 sshd-hostkey key.pub > host.pub
 ssh-keygen -s host_ca -h -I web1 -n web1 host.pub    # the host CA signs it: host-cert.pub
@@ -69,8 +73,9 @@ golconda vars list web1                              # stored here? sealed there
 
 - `set HOST VAR FILE` reads the value from standard input and stores it encrypted.
 - `push HOST [VAR…]` reads the manifests from the machine itself, never from an evaluation. It
-  checks that every file is stored before it sends any, and restarts each consumer once. `-i` (or
-  `GOLCONDA_AGE_IDENTITY`) names the identity that decrypts.
+  checks that every file is stored before it sends any, and restarts each consumer once. When
+  `enrol` stored the host key (`vars/<host>/.hostkey`), it refuses a machine with another one. `-i`
+  (or `GOLCONDA_AGE_IDENTITY`) names the identity that decrypts.
 - `list HOST` says, for each file, whether it is stored here and sealed there.
 - `pub HOST VAR FILE` prints the public file of a local var, such as the host key that a CA signs.
 - `enrol HOST --ca-key FILE` enrols a machine in one command ([below](#golconda-vars-enrol)).
@@ -101,7 +106,8 @@ order, and stops at the first failure:
    (`ssh-keygen -D MODULE -s CA.pub`): ssh-keygen finds a token's key by its public half, not by a
    `pkcs11:` URI, and `ssh-keygen -D MODULE` prints the token's public keys. It asks for the token's
    PIN itself.
-1. Stores the KRL (when `--krl` is given) and the certificate, as `vars set` does.
+1. Stores the KRL (when `--krl` is given) and the certificate, as `vars set` does, and the host key
+   in plain text as `vars/HOST/.hostkey`.
 1. Pushes both, as `vars push HOST sshd-revoked-keys sshd-host-cert` does: the KRL first and the
    certificate last, then one restart of sshd.
 
@@ -113,9 +119,10 @@ new KRL, or both when only the restart failed. The error says how to push again.
 command before the certificate expires.
 
 To rotate a var, `set` and `push` again. A pushed value goes to whichever machine answers for the
-host name, so ssh's own host-key check is what makes it the right one. Keep that check on
-(`known_hosts`, or step-ca host certificates with a `@cert-authority` line), and never give
-`GOLCONDA_SSH` an option that turns it off, such as `StrictHostKeyChecking=no`.
+host name. `push` compares the host key with `.hostkey`, but the machine reports that key itself, so
+ssh's own host-key check is what makes it the right one. Keep that check on (`known_hosts`, or
+step-ca host certificates with a `@cert-authority` line), and never give `GOLCONDA_SSH` an option
+that turns it off, such as `StrictHostKeyChecking=no`.
 
 ### `golconda release`
 

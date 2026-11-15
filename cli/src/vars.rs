@@ -322,6 +322,21 @@ impl Store {
     pub fn has(&self, host: &str, var: &str, file: &str) -> bool {
         self.path(host, var, file).is_ok_and(|p| p.is_file())
     }
+
+    /// `<root>/<host>/.hostkey`, in plain text: the host key `enrol` signed, which `push`
+    /// compares with the machine's.
+    pub fn hostkey(&self, host: &str) -> Result<PathBuf> {
+        Ok(self.root.join(word(host)?).join(".hostkey"))
+    }
+}
+
+/// A public key file's key, its type and base64 without the comment.
+fn key_of(public: &[u8]) -> String {
+    String::from_utf8_lossy(public)
+        .split_whitespace()
+        .take(2)
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// A machine, reached with `ssh <destination> <command>`.
@@ -351,7 +366,7 @@ impl Remote {
     /// The credential ids sealed on the machine.
     pub fn sealed(&self) -> Result<BTreeSet<String>> {
         // the directory is missing until the first var is sealed: that is an empty list
-        let out = self.run(&format!("ls -1A {CREDSTORE} 2>/dev/null || true"), None)?;
+        let out = self.run(&format!("[ ! -d {CREDSTORE} ] || ls -1A {CREDSTORE}"), None)?;
         Ok(String::from_utf8_lossy(&out)
             .lines()
             .map(str::to_owned)
@@ -377,8 +392,9 @@ pub struct Pushed {
 }
 
 /// Pushes the admin vars `only` (every admin var the machine declares when empty) from the
-/// store to `host`: checks that every file is stored before it sends any, seals each on the
-/// machine, then restarts the union of their consumers once.
+/// store to `host`: checks that the machine has the host key `enrol` stored (when it stored
+/// one) and that every file is stored before it sends any, seals each on the machine, then
+/// restarts the union of their consumers once.
 pub fn push(
     store: &Store,
     identity: &Path,
@@ -411,6 +427,17 @@ pub fn push(
         .collect();
     if !missing.is_empty() {
         return err(format!("not stored for {host}: {}", missing.join(", ")));
+    }
+    let pinned = store.hostkey(host)?;
+    if let Ok(want) = fs::read(&pinned) {
+        let got = key_of(&remote.public(HOSTKEY.0, HOSTKEY.1)?);
+        if key_of(&want) != got {
+            return err(format!(
+                "{host} has the host key {got}, not the one enrolled ({}): another machine, or \
+                 this one after a factory reset (enrol it again); nothing is pushed",
+                pinned.display()
+            ));
+        }
     }
     let mut pushed = Pushed::default();
     let mut consumers = BTreeSet::new();
@@ -521,6 +548,10 @@ pub fn enrol(
             .set(host, cert_var, cert_file, &cert)
             .map_err(|e| Error(format!("{e}: nothing is pushed")))?,
     );
+    let pinned = store.hostkey(host)?;
+    fs::write(&pinned, format!("{}\n", key_of(&public)))
+        .map_err(|e| Error(format!("{}: {e}: nothing is pushed", pinned.display())))?;
+    stored.push(pinned);
     // the KRL first: the certificate is sealed last, and sshd restarts after both
     let only: Vec<String> = ENROL_VARS.iter().map(|(v, _)| (*v).to_owned()).collect();
     let pushed = push(store, identity, remote, host, &only).map_err(|e| {
@@ -692,6 +723,7 @@ pub fn list(store: &Store, remote: &Remote, host: &str) -> Result<String> {
 mod tests {
     use super::*;
     use std::env;
+    use std::os::unix::fs::PermissionsExt;
     use tempfile::{Builder, TempDir};
 
     fn script(dir: &Path, name: &str, body: &str) -> Program {
@@ -717,7 +749,8 @@ esac
     }
 
     /// A stand-in for ssh: logs "DEST: COMMAND" and the stdin it got to LOG, and answers the
-    /// commands the tool sends from a machine tree under ROOT.
+    /// commands the tool sends from a machine tree under ROOT (a command on the credstore runs
+    /// as it is, there).
     fn fake_ssh(dir: &Path) -> Program {
         let root = dir.join("machine");
         let log = dir.join("ssh.log");
@@ -735,10 +768,10 @@ printf '%s: %s\n' "$dest" "$cmd" >> "$log"
 [ -z "$in" ] || printf '  stdin: %s\n' "$in" >> "$log"
 case $cmd in
   "cat {VARS_D}/"*) cat "$root{VARS_D}"/*.json ;;
-  "ls -1A {CREDSTORE}"*) ls -1A "$root{CREDSTORE}" 2>/dev/null || true ;;
   "{RUNNER} --admin "*) set -- $cmd; mkdir -p "$root{CREDSTORE}"; printf '%s' "$in" > "$root{CREDSTORE}/$3.$4" ;;
   "cat {PUB_DIR}/"*) cat "$root${{cmd#cat }}" ;;
   "systemctl try-restart "*) ;;
+  *"{CREDSTORE}"*) sh -c "$(printf '%s' "$cmd" | sed "s|{CREDSTORE}|$root{CREDSTORE}|g")" ;;
   *) echo "unknown command: $cmd" >&2; exit 9 ;;
 esac
 "#,
@@ -1028,6 +1061,9 @@ esac
         // the operator saw the fingerprint once, before anything was signed
         assert_eq!(asked, ["256 SHA256:fakefp root@web1 (ED25519)"]);
         assert_eq!(e.fingerprint, "256 SHA256:fakefp root@web1 (ED25519)");
+        // the host key, for later pushes to compare with
+        let hostkey = s.path().join("vars/web1/.hostkey");
+        assert_eq!(fs::read_to_string(&hostkey).unwrap(), "ssh-ed25519 AAAA\n");
         // a host certificate, named for the machine, its name the principal
         let keygen = log(s.path(), "keygen.log");
         let ca = s.path().join("ca");
@@ -1047,7 +1083,7 @@ esac
             store.get(&id, "web1", "sshd-revoked-keys", "krl").unwrap(),
             b"KRL"
         );
-        assert_eq!(e.stored.len(), 2);
+        assert_eq!(e.stored.len(), 3);
         // the KRL is sealed before the certificate, and sshd restarts once, last
         assert_eq!(
             e.pushed,
@@ -1190,7 +1226,11 @@ esac
             &mut |_| true,
         )
         .unwrap();
-        assert_eq!(e.stored.len(), 1, "only the certificate is written");
+        assert_eq!(
+            e.stored.len(),
+            2,
+            "only the certificate and the host key are written"
+        );
         assert_eq!(
             store.get(&id, "web1", "sshd-revoked-keys", "krl").unwrap(),
             b"OLD-KRL"
@@ -1237,6 +1277,43 @@ esac
         assert!(e.0.contains("sshd-host-cert"), "{e}");
         assert!(!log(s.path(), "keygen.log").contains("-s "), "signed");
         untouched(&s, &store);
+    }
+
+    #[test]
+    fn list_fails_when_the_credstore_cannot_be_read() {
+        let (s, store, remote, _) = setup("listerror");
+        // no credstore yet: nothing is sealed
+        assert!(
+            list(&store, &remote, "web1")
+                .unwrap()
+                .contains("not-sealed")
+        );
+        let credstore = s.path().join(format!("machine{CREDSTORE}"));
+        fs::create_dir_all(&credstore).unwrap();
+        fs::set_permissions(&credstore, fs::Permissions::from_mode(0o0)).unwrap();
+        if fs::read_dir(&credstore).is_err() {
+            // root reads it anyway
+            let e = list(&store, &remote, "web1").unwrap_err();
+            assert!(e.0.contains("ls"), "{e}");
+        }
+        fs::set_permissions(&credstore, fs::Permissions::from_mode(0o700)).unwrap();
+    }
+
+    #[test]
+    fn push_refuses_a_machine_with_another_host_key() {
+        let (s, store, remote, id) = setup("pushhostkey");
+        store
+            .set("web1", "sshd-host-cert", "cert", b"CERT")
+            .unwrap();
+        // what enrol stores: the host key, without its comment
+        fs::write(s.path().join("vars/web1/.hostkey"), "ssh-ed25519 BBBB\n").unwrap();
+        let only = ["sshd-host-cert".to_owned()];
+        let e = push(&store, &id, &remote, "web1", &only).unwrap_err();
+        assert!(e.0.contains(".hostkey"), "{e}");
+        let ssh = log(s.path(), "ssh.log");
+        assert!(!ssh.contains("--admin"), "something was sealed: {ssh}");
+        fs::write(s.path().join("vars/web1/.hostkey"), "ssh-ed25519 AAAA\n").unwrap();
+        push(&store, &id, &remote, "web1", &only).unwrap();
     }
 
     #[test]

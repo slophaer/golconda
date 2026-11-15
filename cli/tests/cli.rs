@@ -75,7 +75,7 @@ fn vars_set_push_list() {
         &format!(
             "shift; case \"$*\" in\n\
              \"cat /usr/lib/golconda/vars.d/\"*) printf '%s' '{{\"class\":\"admin\",\"consumers\":[\"sshd.service\"],\"credentials\":[\"c.cert\"],\"files\":[\"cert\"],\"name\":\"c\"}}' ;;\n\
-             \"ls -1A \"*) ;;\n\
+             \"[ ! -d \"*) ;;\n\
              *) printf '%s|%s\\n' \"$*\" \"$(cat)\" >> {} ;;\n\
              esac\n",
             log.display()
