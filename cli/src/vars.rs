@@ -693,7 +693,8 @@ impl Signer {
     }
 }
 
-/// One line per file of each admin var: stored here, sealed there.
+/// One line per file of each admin var: stored here, sealed there. Then one line when the
+/// machine seals without PCR 7 (the marker of `golconda-var-run --reseal --without-pcr7`).
 pub fn list(store: &Store, remote: &Remote, host: &str) -> Result<String> {
     let sealed = remote.sealed()?;
     let mut out = String::new();
@@ -715,6 +716,9 @@ pub fn list(store: &Store, remote: &Remote, host: &str) -> Result<String> {
             };
             out.push_str(&format!("{} {f} {stored} {on}\n", m.name));
         }
+    }
+    if sealed.contains(".without-pcr7") {
+        out.push_str("PCR 7 is off the seals (.without-pcr7) until golconda-var-run --reseal\n");
     }
     Ok(out)
 }
@@ -1318,7 +1322,7 @@ esac
 
     #[test]
     fn list_and_public() {
-        let (_scratch, store, remote, id) = setup("list");
+        let (scratch, store, remote, id) = setup("list");
         store
             .set("web1", "sshd-host-cert", "cert", b"CERT")
             .unwrap();
@@ -1326,6 +1330,16 @@ esac
         assert_eq!(
             list(&store, &remote, "web1").unwrap(),
             "sshd-host-cert cert stored sealed\nsshd-revoked-keys krl missing not-sealed\n"
+        );
+        // golconda-var-run --reseal --without-pcr7 left its marker
+        let marker = scratch
+            .path()
+            .join(format!("machine{CREDSTORE}/.without-pcr7"));
+        fs::write(marker, "").unwrap();
+        let out = list(&store, &remote, "web1").unwrap();
+        assert!(
+            out.ends_with("not-sealed\nPCR 7 is off the seals (.without-pcr7) until golconda-var-run --reseal\n"),
+            "{out}"
         );
         assert_eq!(
             remote.public("sshd-hostkey", "key.pub").unwrap(),

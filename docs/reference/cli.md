@@ -76,7 +76,9 @@ golconda vars list web1                              # stored here? sealed there
   checks that every file is stored before it sends any, and restarts each consumer once. When
   `enrol` stored the host key (`vars/<host>/.hostkey`), it refuses a machine with another one. `-i`
   (or `GOLCONDA_AGE_IDENTITY`) names the identity that decrypts.
-- `list HOST` says, for each file, whether it is stored here and sealed there.
+- `list HOST` says, for each file, whether it is stored here and sealed there. One more line says
+  when the machine seals without PCR 7, from `golconda-var-run --reseal --without-pcr7` until the
+  next `--reseal` ([Trust: PCR 7](../design/trust.md#pcr-7)).
 - `pub HOST VAR FILE` prints the public file of a local var, such as the host key that a CA signs.
 - `enrol HOST --ca-key FILE` enrols a machine in one command ([below](#golconda-vars-enrol)).
 
