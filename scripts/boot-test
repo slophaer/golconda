@@ -6,7 +6,7 @@
 #                  [--ssh-test [--esp-creds | --imds | --enrol]]
 #                  [--next DIR [--rotate | --fail-health | --fail-initrd | --fail-blessed --later DIR | --fail-panic |
 #                   --fail-pid1 | --tamper-index]]
-#                  [--factory-reset]
+#                  [--factory-reset] [--allow-tcg]
 #
 # The script boots the image in QEMU with:
 #   - a 40 GiB qcow2 overlay (room for root partition)
@@ -20,6 +20,8 @@
 #     without it, the first free port from 10022 up, printed)
 #   - serial console logged to a file
 #   - an i6300esb watchdog, which PID 1 arms (watchdog-armed)
+#   - KVM: the run stops at the start when it cannot open /dev/kvm. --allow-tcg lets QEMU run
+#     without KVM, on TCG, which is much slower
 #
 # --keys DIR: the throwaway keys directory (from image-smoke-test's keys symlink
 #   or the path to golconda-throwaway-keys directly).
@@ -344,6 +346,7 @@ ESP_CREDS=0
 IMDS=0
 ENROL=0
 SECURE_BOOT_OFF=0
+ALLOW_TCG=0
 STUB_CMDLINE=""
 # --imds: Hetzner's metadata address, and the user data's IPv6 address and .network credential
 # (boot-test-http.sh serves them; no host port is opened)
@@ -371,7 +374,7 @@ IMDS_NET_CRED=60-imds-ipv6
 . "$SCRIPT_DIR/boot-test-update.sh"
 
 usage() {
-  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot [--auto-enrol [--no-microsoft-keys]]] [--tpm [--secure-boot-off]] [--timeout SECONDS] [--ssh-test [--esp-creds | --imds | --enrol]] [--next DIR [--rotate | --fail-health | --fail-initrd | --fail-blessed --later DIR | --fail-panic | --fail-pid1 | --tamper-index]] [--factory-reset]"
+  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot [--auto-enrol [--no-microsoft-keys]]] [--tpm [--secure-boot-off]] [--timeout SECONDS] [--ssh-test [--esp-creds | --imds | --enrol]] [--next DIR [--rotate | --fail-health | --fail-initrd | --fail-blessed --later DIR | --fail-panic | --fail-pid1 | --tamper-index]] [--factory-reset] [--allow-tcg]"
   exit 1
 }
 
@@ -398,6 +401,7 @@ while [ $# -gt 0 ]; do
     --imds) IMDS=1; shift ;;
     --enrol) ENROL=1; shift ;;
     --secure-boot-off) SECURE_BOOT_OFF=1; shift ;;
+    --allow-tcg) ALLOW_TCG=1; shift ;;
     --help|-h) usage ;;
     -*)
       echo "Unknown option: $1" >&2
@@ -432,6 +436,11 @@ fi
 
 if [ ! -d "$KEYS_DIR" ]; then
   echo "Error: keys directory not found: $KEYS_DIR" >&2
+  exit 1
+fi
+
+if [ "$ALLOW_TCG" = 0 ] && ! { [ -c /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; }; then
+  echo "Error: cannot open /dev/kvm, and QEMU needs KVM; --allow-tcg runs it on TCG, which is much slower" >&2
   exit 1
 fi
 

@@ -308,7 +308,9 @@ on `PATH`; the firmware is the OVMF that comes with `qemu-system` (`share/qemu/e
 project builds it from edk2-stable202408 and ships it prebuilt in its release tarball, which
 `packages/qemu-system/sources.toml` pins by hash. Golconda does not rebuild it, and the project's
 own signatures are not checked beyond that hash (`packages/qemu-system/package.nix` has the build
-flags and what that trusts); building edk2 from source stays a later step. Usage:
+flags and what that trusts); building edk2 from source stays a later step. QEMU runs with KVM: the
+test stops at the start when it cannot open `/dev/kvm`, and `--allow-tcg` lets QEMU run on TCG,
+which is much slower. Usage:
 
 ```sh
 # Build the test image

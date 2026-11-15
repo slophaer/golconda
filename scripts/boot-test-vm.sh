@@ -369,7 +369,11 @@ start_qemu() {
     NET_TLS=",guestfwd=tcp:$TLS_ADDR_ANCHOR:443-cmd:$WORKDIR/serve-tls-anchor,guestfwd=tcp:$TLS_ADDR_DISTRUSTED:443-cmd:$WORKDIR/serve-tls-distrusted"
   fi
 
-  QEMU_ARGS="-machine q35,accel=kvm:tcg \
+  ACCEL=kvm
+  if [ "$ALLOW_TCG" = 1 ]; then
+    ACCEL=kvm:tcg
+  fi
+  QEMU_ARGS="-machine q35,accel=$ACCEL \
     -cpu max \
     -m 2G \
     -smp 2 \

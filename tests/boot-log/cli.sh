@@ -96,7 +96,7 @@ for mode in delayed success-systemd mentions-systemd dependency-failed multi-use
   expected=1
   case "$mode" in delayed|success-systemd) expected=0 ;; esac
   actual=0
-  sh "$ROOT/scripts/boot-test" "$WORK/disk.raw" --keys "$WORK/keys" --timeout 3 \
+  sh "$ROOT/scripts/boot-test" "$WORK/disk.raw" --keys "$WORK/keys" --allow-tcg --timeout 3 \
     > "$WORK/$mode.out" 2>&1 || actual=$?
   if [ "$actual" = "$expected" ] && [ -f "$FAKE_STOPPED" ]; then
     echo "PASS: CLI $mode (exit $actual; guest stopped)"
@@ -139,7 +139,7 @@ FAKE_MODE=empty FAKE_STOPPED=$WORK/stopped-xdg FAKE_RELEASE=$WORK/release-xdg \
   FAKE_TIMEOUT_PID=$WORK/timeout-pid-xdg
 export FAKE_MODE FAKE_STOPPED FAKE_RELEASE FAKE_TIMEOUT_PID
 env -u BOOT_TEST_CACHE XDG_CACHE_HOME="$WORK/xdg" \
-  sh "$ROOT/scripts/boot-test" "$WORK/disk.raw" --keys "$WORK/keys" --timeout 3 \
+  sh "$ROOT/scripts/boot-test" "$WORK/disk.raw" --keys "$WORK/keys" --allow-tcg --timeout 3 \
   > "$WORK/xdg.out" 2>&1 || true
 run_dir=$(awk '/^Work directory:/ { print $3 }' "$WORK/xdg.out")
 case $run_dir in
@@ -154,7 +154,7 @@ esac
 FAKE_MODE=success-systemd FAKE_STOPPED=$WORK/stopped-net FAKE_RELEASE=$WORK/release-net \
   FAKE_TIMEOUT_PID=$WORK/timeout-pid-net FAKE_QEMU_ARGS=$WORK/qemu-args
 export FAKE_MODE FAKE_STOPPED FAKE_RELEASE FAKE_TIMEOUT_PID FAKE_QEMU_ARGS
-sh "$ROOT/scripts/boot-test" "$WORK/disk.raw" --keys "$WORK/keys" --timeout 3 \
+sh "$ROOT/scripts/boot-test" "$WORK/disk.raw" --keys "$WORK/keys" --allow-tcg --timeout 3 \
   > "$WORK/net.out" 2>&1 || true
 if grep -q -- '-netdev user,[^ ]*net=169\.254\.169\.0/24' "$WORK/qemu-args" && ! grep -q '10\.0\.2\.' "$WORK/qemu-args"; then
   echo "PASS: CLI the default boot's user network is 169.254.169.0/24"
@@ -187,7 +187,7 @@ fi
 # --secure-boot loads the Secure Boot OVMF, with SMM and secure pflash
 FAKE_STOPPED=$WORK/stopped-sb FAKE_RELEASE=$WORK/release-sb FAKE_TIMEOUT_PID=$WORK/timeout-pid-sb
 export FAKE_STOPPED FAKE_RELEASE FAKE_TIMEOUT_PID
-sh "$ROOT/scripts/boot-test" "$WORK/disk.raw" --keys "$WORK/keys" --secure-boot --timeout 3 \
+sh "$ROOT/scripts/boot-test" "$WORK/disk.raw" --keys "$WORK/keys" --allow-tcg --secure-boot --timeout 3 \
   > "$WORK/sb.out" 2>&1 || true
 if grep -q "file=$FAKE_FIRMWARE/share/qemu/edk2-x86_64-secure-code\.fd" "$WORK/qemu-args" &&
    grep -q 'smm=on' "$WORK/qemu-args" && grep -q 'cfi.pflash01,property=secure,value=on' "$WORK/qemu-args"; then
@@ -199,7 +199,7 @@ fi
 unset FAKE_QEMU_ARGS
 # --imds and --next together are accepted: the run goes on to --next's own checks of DIR
 actual=0
-sh "$ROOT/scripts/boot-test" "$WORK/disk.raw" --keys "$WORK/keys" --imds --next "$WORK/no-next" \
+sh "$ROOT/scripts/boot-test" "$WORK/disk.raw" --keys "$WORK/keys" --allow-tcg --imds --next "$WORK/no-next" \
   > "$WORK/imds-next.out" 2>&1 || actual=$?
 if [ "$actual" = 1 ] && grep -q 'no-next has no disk/release/SHA256SUMS' "$WORK/imds-next.out" &&
    ! grep -q -- '--imds.*excludes\|--imds needs' "$WORK/imds-next.out"; then
@@ -208,4 +208,35 @@ else
   echo "FAIL: CLI --imds with --next (exit $actual): $(cat "$WORK/imds-next.out")"
   ERRORS=$((ERRORS + 1))
 fi
+# QEMU runs with KVM alone: without a /dev/kvm to open the run stops before QEMU starts, and
+# --allow-tcg lets QEMU fall back to TCG
+FAKE_MODE=success-systemd FAKE_STOPPED=$WORK/stopped-kvm FAKE_RELEASE=$WORK/release-kvm \
+  FAKE_TIMEOUT_PID=$WORK/timeout-pid-kvm FAKE_QEMU_ARGS=$WORK/qemu-args-kvm
+export FAKE_MODE FAKE_STOPPED FAKE_RELEASE FAKE_TIMEOUT_PID FAKE_QEMU_ARGS
+actual=0
+sh "$ROOT/scripts/boot-test" "$WORK/disk.raw" --keys "$WORK/keys" --timeout 3 \
+  > "$WORK/kvm.out" 2>&1 || actual=$?
+if [ -c /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+  if grep -q 'accel=kvm ' "$WORK/qemu-args-kvm" && ! grep -q tcg "$WORK/qemu-args-kvm"; then
+    echo "PASS: CLI QEMU runs with accel=kvm"
+  else
+    echo "FAIL: CLI QEMU's accelerator: $(cat "$WORK/qemu-args-kvm" 2>&1)"
+    ERRORS=$((ERRORS + 1))
+  fi
+elif [ "$actual" = 1 ] && grep -q 'cannot open /dev/kvm' "$WORK/kvm.out" && [ ! -e "$WORK/qemu-args-kvm" ]; then
+  echo "PASS: CLI without KVM the run stops before QEMU"
+else
+  echo "FAIL: CLI without KVM (exit $actual): $(cat "$WORK/kvm.out")"
+  ERRORS=$((ERRORS + 1))
+fi
+FAKE_STOPPED=$WORK/stopped-tcg FAKE_QEMU_ARGS=$WORK/qemu-args-tcg
+sh "$ROOT/scripts/boot-test" "$WORK/disk.raw" --keys "$WORK/keys" --allow-tcg --timeout 3 \
+  > "$WORK/tcg.out" 2>&1 || true
+if grep -q 'accel=kvm:tcg ' "$WORK/qemu-args-tcg"; then
+  echo "PASS: CLI --allow-tcg lets QEMU fall back to TCG"
+else
+  echo "FAIL: CLI --allow-tcg: $(cat "$WORK/qemu-args-tcg" 2>&1) $(cat "$WORK/tcg.out")"
+  ERRORS=$((ERRORS + 1))
+fi
+unset FAKE_QEMU_ARGS
 [ "$ERRORS" -eq 0 ]
