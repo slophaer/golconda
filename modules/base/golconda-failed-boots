@@ -189,6 +189,7 @@ complete() {
   [ "$n" -le 1 ] || log "this boot completed after $((n - 1)) failed boots: the count is reset"
 }
 
+# shellcheck disable=SC3044 # complete is the function above, not bash's builtin
 case ${1:-} in
   count) count ;;
   complete) complete ;;

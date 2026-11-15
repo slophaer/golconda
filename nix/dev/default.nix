@@ -171,6 +171,8 @@ let
         command = "${rp.shellcheck}/bin/shellcheck";
         includes = [
           "*.sh"
+          "modules/**/golconda-*"
+          "packages/*/bin/*"
           "scripts/boot-test"
           "scripts/docs"
           "scripts/lint"
@@ -178,6 +180,7 @@ let
           "scripts/tool"
           "scripts/provision-esp"
           "scripts/pins"
+          "scripts/verify"
         ];
       };
     }}
