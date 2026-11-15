@@ -177,6 +177,12 @@ sh "$RUNNER" --reseal > "$WORK/out" 2>&1 || st=$?
 check "reseal: a credential that does not decrypt fails the run and stays as it was" \
   '[ "$st" != 0 ] && [ "$(cat "$GOLCONDA_CREDSTORE/sshd-host-cert.cert")" = "sshd-host-cert.cert:BAD" ] &&
    [ -z "$(ls -d "$WORK"/golconda-reseal.* 2>/dev/null)" ]'
+# a failed --reseal keeps .without-pcr7: some credentials are still sealed without PCR 7
+touch "$GOLCONDA_CREDSTORE/.without-pcr7"
+st=0
+sh "$RUNNER" --reseal > "$WORK/out" 2>&1 || st=$?
+check "reseal: a failed run keeps .without-pcr7" \
+  '[ "$st" != 0 ] && [ -e "$GOLCONDA_CREDSTORE/.without-pcr7" ]'
 st=0
 sh "$RUNNER" --reseal --with-pcr8 > "$WORK/out" 2>&1 || st=$?
 check "reseal: refuses an unknown option" '[ "$st" = 2 ]'

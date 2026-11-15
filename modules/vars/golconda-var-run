@@ -20,7 +20,7 @@
 # Reseal: decrypts each credential of the store and seals it again, with the image's policy,
 # or with --without-pcr7 to the signed PCR 11 policy alone. A db rotation and a dbx update
 # change PCR 7, and the procedure runs both around the change (docs/design/bootloader.md).
-# --without-pcr7 also leaves the file .without-pcr7 in the store, and until the next --reseal
+# --without-pcr7 also leaves the file .without-pcr7 in the store, and until a --reseal succeeds and
 # removes it, every seal leaves PCR 7 out: a push in between must not bind to a PCR 7 that
 # the change replaces. The plaintext is in a private directory in $TMPDIR (default /run, a
 # tmpfs) for the moment between the two calls.
@@ -63,7 +63,6 @@ umask 077
 if [ "${1:-}" = --reseal ]; then
   case "$#:${2:-}" in
     1:)
-      rm -f -- "$credstore/.without-pcr7"
       if [ -f "$varsd/tpm2-pcrs" ]; then
         pcrs=$(cat "$varsd/tpm2-pcrs")
       fi
@@ -85,6 +84,8 @@ if [ "${1:-}" = --reseal ]; then
     rm -f -- "$plain/value"
     echo "resealed $id"
   done
+  # a reseal with the image's policy: only now is every credential bound to PCR 7 again
+  [ "$#" = 2 ] || rm -f -- "$credstore/.without-pcr7"
   exit 0
 fi
 
