@@ -1,7 +1,7 @@
 #!/bin/sh
 # The failed-boot counter (modules/base/golconda-failed-boots) without a machine:
 # GOLCONDA_FAILED_BOOTS_ROOT points it at a scratch tree with a fake efivarfs, /proc/sys, /run and
-# /dev/kmsg; stub chattr, bootctl and systemctl on PATH record what it asks for. With the defaults
+# /dev/kmsg; stub chattr, bootctl and systemctl on PATH record what it asks for. With its thresholds
 # (3 and 6): the third boot in a row that does not complete sets a one-shot boot of the other slot
 # and records its own entry, the seventh reboots on no failure, and a complete boot resets the count
 # and, on the other slot, renames the recorded entry's UKI on the fake ESP to +0-3
@@ -16,7 +16,7 @@ pass() { echo "PASS: $1"; }
 fail() { echo "FAIL: $1"; ERRORS=$((ERRORS + 1)); }
 check() { if eval "$2"; then pass "$1"; else fail "$1"; fi; }
 
-# the program as /base renders it with the default thresholds
+# the program as /base renders it, with its thresholds
 PROG=$WORK/golconda-failed-boots
 while IFS= read -r line; do
   case $line in

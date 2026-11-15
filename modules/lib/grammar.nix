@@ -87,6 +87,12 @@ in
   # An IANA zone name, a path under /usr/share/zoneinfo such as Europe/Berlin.
   timezone = "[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*";
 
+  # An NTP server for timesyncd's NTP=: a host name or an IP address, one word.
+  ntpServer = "[A-Za-z0-9_.:-]+";
+
+  # A size for journald's SystemMaxUse=: bytes, or K, M, G or T (base 1024), such as 512M.
+  byteSize = "[0-9]+[KMGT]?";
+
   credentialId = "[A-Za-z0-9_.:@-]+";
   credentialPrefix = "[A-Za-z0-9_=:/.,+-]*";
   envName = "[A-Za-z_][A-Za-z0-9_]*";

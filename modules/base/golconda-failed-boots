@@ -30,7 +30,7 @@
 set -u
 
 root=${GOLCONDA_FAILED_BOOTS_ROOT:-}
-# /base.failedBootsFallback and /base.failedBootsHalt
+# the tries a release starts with, and twice that (parts/failed-boots.nix)
 fallback=@fallback@
 halt=@halt@
 efi=$root/sys/firmware/efi/efivars

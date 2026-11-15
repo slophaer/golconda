@@ -109,15 +109,15 @@ A trial boot is a counted boot whose entry had a try left before systemd-boot st
 counting needs a reboot to count, so `/base` reboots a boot that fails
 (`modules/base/parts/trial-boot.nix`), except where a reboot cannot help:
 
-| failure                                                                     | what reboots it                                                                                                                                                            | when              |
-| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
-| a kernel panic                                                              | `panic=10` on the UKI cmdline: the kernel reboots after 10 s                                                                                                               | every boot        |
-| PID 1 crashes, or cannot execute the host's (IPE denies an unsigned `/usr`) | `CrashAction=reboot` (`system.conf.d/golconda-crash.conf`): PID 1 reboots after 10 s                                                                                       | every boot        |
-| the initrd fails (a unit fails into `emergency.target`)                     | `golconda-initrd-failed.service`, wanted by `emergency.target`, runs only in the initrd: `SuccessAction=reboot`                                                            | every boot        |
-| the initrd hangs                                                            | `initrd.target`: `JobTimeoutSec=10min`, `JobTimeoutAction=reboot`                                                                                                          | every boot        |
-| the kernel hangs: a soft or hard lockup, a task blocked for 120 s           | `softlockup_panic=1 nmi_watchdog=panic hung_task_panic=1` on the UKI cmdline: the kernel's detectors panic, and `panic=10` reboots                                         | every boot        |
-| PID 1 or the kernel stops for 30 s, also a hang no detector sees            | the hardware watchdog, which PID 1 runs (`system.conf.d/golconda-watchdog.conf`: `RuntimeWatchdogSec=30s`, `RebootWatchdogSec=10min` for a reboot)                         | every boot        |
-| a health unit fails, or `boot-complete.target` is not reached in time       | the generator's drop-in for `boot-complete.target`: `JobTimeoutSec=` (`/base.trialBootDeadline`, 15 min) and `OnFailure=golconda-trial-boot-failed.service`, which reboots | a trial boot only |
+| failure                                                                     | what reboots it                                                                                                                                    | when              |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| a kernel panic                                                              | `panic=10` on the UKI cmdline: the kernel reboots after 10 s                                                                                       | every boot        |
+| PID 1 crashes, or cannot execute the host's (IPE denies an unsigned `/usr`) | `CrashAction=reboot` (`system.conf.d/golconda-crash.conf`): PID 1 reboots after 10 s                                                               | every boot        |
+| the initrd fails (a unit fails into `emergency.target`)                     | `golconda-initrd-failed.service`, wanted by `emergency.target`, runs only in the initrd: `SuccessAction=reboot`                                    | every boot        |
+| the initrd hangs                                                            | `initrd.target`: `JobTimeoutSec=10min`, `JobTimeoutAction=reboot`                                                                                  | every boot        |
+| the kernel hangs: a soft or hard lockup, a task blocked for 120 s           | `softlockup_panic=1 nmi_watchdog=panic hung_task_panic=1` on the UKI cmdline: the kernel's detectors panic, and `panic=10` reboots                 | every boot        |
+| PID 1 or the kernel stops for 30 s, also a hang no detector sees            | the hardware watchdog, which PID 1 runs (`system.conf.d/golconda-watchdog.conf`: `RuntimeWatchdogSec=30s`, `RebootWatchdogSec=10min` for a reboot) | every boot        |
+| a health unit fails, or `boot-complete.target` is not reached in time       | the generator's drop-in for `boot-complete.target`: `JobTimeoutSec=15min` and `OnFailure=golconda-trial-boot-failed.service`, which reboots        | a trial boot only |
 
 The first six rows end a boot that nobody can reach: no getty runs, and sshd is not up. On a counted
 entry the reboot is the next try; on a blessed one it is a retry that may succeed (a disk that was
@@ -153,29 +153,28 @@ of its own *(being built)*. Of the two hang rows, every `--ssh-test` boot proves
 
 ### Failed boots
 
-Boot counting counts only an entry with a counter, and a blessed entry has none. `/base` counts
+Boot counting counts only an entry with a counter, and a blessed entry has none. So `/base` counts
 every boot itself (`modules/base/parts/failed-boots.nix`). Early in the initrd,
 `golconda-failed-boots.service` adds one to the EFI variable
-`GolcondaFailedBoots-d1b3416f-c0f9-44e8-8b5a-cbb64676bdef`, and
-`golconda-failed-boots-complete.service` removes it once the boot completed: on a counted boot when
-`boot-complete.target` is active, on an uncounted one, which has no `boot-complete.target`, at
-`multi-user.target`. An EFI variable, not a file: PID 1 mounts efivarfs before any unit, so the
-count waits for no disk and no file system, which may be what fails.
+`GolcondaFailedBoots-d1b3416f-c0f9-44e8-8b5a-cbb64676bdef`. `golconda-failed-boots-complete.service`
+removes it when the boot completes: on a counted boot when `boot-complete.target` is active, on an
+uncounted boot at `multi-user.target`. The count is an EFI variable, not a file, so it waits for no
+disk and no file system.
 
-After `/base.failedBootsFallback` boots in a row that did not complete (3), the next boot starts the
-other slot: the third sets systemd-boot's one-shot entry (`bootctl set-oneshot`) to the image's
-other entry and records its own in `GolcondaFailedEntry-<the same guid>`. When the other entry's
-boot completes, the counter renames the failed entry's UKI on the ESP to the name systemd-boot gives
-an entry with no try left (`<id>_<version>+0-3.efi`). systemd-boot sorts it after every good entry,
-so later boots keep to the release that works, and `golconda-update-pending` finds nothing for the
-update reboot timer to activate. A newer release that sysupdate installs sorts first and is tried as
-usual. No default entry is set. When the failed entry's own boot completes, it is not marked, and
-its one-shot goes. After `/base.failedBootsHalt` (6), a boot reboots on no failure: the counter sets
-`kernel.panic=0` and, in `/run`, `CrashAction=freeze`, no watchdog and no deadline for
-`initrd.target` (PID 1 reads them at once and again after switch-root), and the two reboot units of
-the trial boot policy skip themselves. The console keeps the last messages. Each step is a line in
-the kernel log (`golconda-failed-boots: …`). `--next --fail-blessed` proves both on a blessed entry
-whose PID 1 crashes at every boot ([What is proven](../proven.md)).
+The thresholds are constants. After 3 boots in a row that did not complete (the tries a release
+starts with, `image/boot-counting.nix`), the next boot starts the other slot: the third boot sets
+the one-shot entry (`bootctl set-oneshot`) and records its own entry in
+`GolcondaFailedEntry-<the same guid>`. When the other entry's boot completes, the counter renames
+the failed UKI on the ESP to `<id>_<version>+0-3.efi`, the name of an entry with no try left.
+systemd-boot sorts it last, so later boots and `golconda-update-pending` keep to the release that
+works. A newer release that sysupdate installs sorts first. When the failed entry's own boot
+completes, nothing is marked, and its one-shot goes.
+
+After 6 boots in a row, a boot reboots on no failure: the counter sets `kernel.panic=0` and, in
+`/run`, `CrashAction=freeze`, no watchdog and no deadline for `initrd.target`. The two reboot units
+of the trial boot policy skip themselves, and the console keeps the last messages. Each step is a
+line in the kernel log (`golconda-failed-boots: …`). `--next --fail-blessed` proves both on a
+blessed entry whose PID 1 crashes at every boot ([What is proven](../proven.md)).
 
 Limits:
 

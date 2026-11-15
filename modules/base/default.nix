@@ -32,16 +32,16 @@
 #! hangs reboot on every boot, and so does a hang: PID 1 runs the hardware
 #! watchdog (`RuntimeWatchdogSec=30s`, `RebootWatchdogSec=10min`). `golconda-trial-boot-generator` recognises a
 #! trial boot (a counted entry that had a try left, from `LoaderBootCountPath`)
-#! and links a drop-in for boot-complete.target there: a deadline
-#! (`/base.trialBootDeadline`) and `OnFailure=` a unit that reboots. A blessed
+#! and links a drop-in for boot-complete.target there: a deadline (15 min)
+#! and `OnFailure=` a unit that reboots. A blessed
 #! entry, or one with no try left, stays up when its health check fails.
 #!
 #! Failed boots (`parts/failed-boots.nix`): the initrd counts each boot in an
-#! EFI variable, and a boot that completes resets the count. After
-#! `/base.failedBootsFallback` boots in a row that did not complete, the next
+#! EFI variable, and a boot that completes resets the count. After 3 boots in
+#! a row that did not complete (the tries a release starts with), the next
 #! starts the other slot, and once that boot completes the failed entry's UKI
-#! is marked bad (`+0-N`, systemd-boot's form); after `/base.failedBootsHalt`,
-#! a boot reboots on no failure, so its console stays readable.
+#! is marked bad (`+0-3`, systemd-boot's form); after 6, a boot reboots on no
+#! failure, so its console stays readable.
 #!
 #! Bootstrap credentials: `golconda-esp-credentials.service` removes the ESP's
 #! `loader/credentials/*.cred` (and a UKI's `.extra.d/*.cred`) at every boot,
@@ -90,16 +90,35 @@
 #! Locale: C.UTF-8 via /usr/lib/locale.conf (PID 1 reads it before /etc
 #! exists, so the factory cannot provide it).
 #!
-#! Options: `/base.ntp` (NTP servers for timesyncd), `/base.journalMaxUse`
-#! (journal retention), `/base.trialBootDeadline` (how long a trial boot may take
-#! to reach boot-complete.target), `/base.failedBootsFallback` and
-#! `/base.failedBootsHalt` (the failed-boot counter's thresholds).
+#! Options: `/base.ntp` (NTP servers for timesyncd) and `/base.journalMaxUse`
+#! (journal retention).
 { types, ... }:
 let
-  inherit (builtins) concatStringsSep;
-  inherit (types) int listOf string;
+  inherit (builtins)
+    concatStringsSep
+    isString
+    match
+    ;
+  inherit (types) listOf;
 
   inherit (import ../lib/text.nix) lines;
+  ini = import ../lib/ini.nix;
+  grammar = import ../lib/grammar.nix;
+
+  # a value of a systemd setting, by its grammar (modules/lib/grammar.nix)
+  word =
+    name: example:
+    types.typedef' name (
+      v:
+      if !isString v then
+        "Expected a string"
+      else if match grammar.${name} v == null then
+        "'${v}' is not a value like \"${example}\""
+      else
+        null
+    );
+  ntpServer = word "ntpServer" "0.pool.ntp.org";
+  byteSize = word "byteSize" "512M";
 
   # systemd's fallback NTP pool (from timesyncd.c)
   defaultNtp = [
@@ -117,29 +136,14 @@ in
 
   options = {
     ntp = {
-      type = listOf string;
+      type = listOf ntpServer;
       default = defaultNtp;
       description = "NTP server pool for systemd-timesyncd. Default: systemd's fallback pool.";
     };
     journalMaxUse = {
-      type = string;
+      type = byteSize;
       default = "512M";
       description = "SystemMaxUse= for journald: maximum disk space the journal may use.";
-    };
-    trialBootDeadline = {
-      type = string;
-      default = "15min";
-      description = "JobTimeoutSec= of boot-complete.target on a trial boot (a counted boot entry with a try left): a systemd time span. A trial boot that has not reached boot-complete.target by then reboots, and systemd-boot takes the next try or the other slot (docs/design/boot.md, \"Trial boot\").";
-    };
-    failedBootsFallback = {
-      type = int;
-      default = 3;
-      description = "After this many boots in a row that did not complete, the next boot starts the other /usr slot (systemd-boot's one-shot entry), and once that boot completes the failed entry is marked bad, as systemd-boot marks an entry with no try left. 1 or more (docs/design/boot.md, \"Failed boots\").";
-    };
-    failedBootsHalt = {
-      type = int;
-      default = 6;
-      description = "After this many boots in a row that did not complete, a boot reboots on no failure: kernel.panic=0, CrashAction=freeze, no hardware watchdog and no trial boot reboot, so the console stays readable. More than failedBootsFallback (docs/design/boot.md, \"Failed boots\").";
     };
   };
 
@@ -156,37 +160,33 @@ in
       dropIns = import ./parts/drop-ins.nix; # conditions for units the systemd farm ships
       imds = import ./parts/imds.nix; # systemd's IMDS units: off without /imds
       # what reboots a failed boot: panic, crash, initrd, and a trial boot's boot-complete.target
-      trialBoot = import ./parts/trial-boot.nix { deadline = options.trialBootDeadline; };
+      trialBoot = import ./parts/trial-boot.nix;
       # a failure that repeats on every boot: the other slot once, then no reboot
-      failedBoots = import ./parts/failed-boots.nix {
-        fallback = options.failedBootsFallback;
-        halt = options.failedBootsHalt;
-      };
+      failedBoots = import ./parts/failed-boots.nix;
       espCredentials = import ./parts/esp-credentials.nix; # the ESP's credentials hold for one boot
       usrLinks = import ./parts/links.nix { inherit p; }; # the /usr links into the packages
 
       # timesyncd drop-in
-      timesyncdConf = lines [
-        "# Generated by Golconda (/base)"
-        "[Time]"
-        "NTP=${concatStringsSep " " options.ntp}"
-      ];
+      timesyncdConf =
+        "# Generated by Golconda (/base)\n" + ini.render { Time.NTP = concatStringsSep " " options.ntp; };
 
       # journald drop-in
-      journaldConf = lines [
-        "# Generated by Golconda (/base)"
-        "[Journal]"
-        "SystemMaxUse=${options.journalMaxUse}"
-        # the screen (tty1) shows the journal as the serial console shows the boot
-        "ForwardToConsole=yes"
-        "TTYPath=/dev/tty1"
-        "MaxLevelConsole=info"
-      ];
+      journaldConf =
+        "# Generated by Golconda (/base)\n"
+        + ini.render {
+          Journal = {
+            SystemMaxUse = options.journalMaxUse;
+            # the screen (tty1) shows the journal as the serial console shows the boot
+            ForwardToConsole = true;
+            TTYPath = "/dev/tty1";
+            MaxLevelConsole = "info";
+          };
+        };
 
       # repart.d: the root partition, made by systemd-repart in the initrd at first boot
       # (docs/design/layout.md); the image's own partitions are the image builder's
       # (lib/image/disk.nix renders the rest of image/repart.nix)
-      rootRepart = (import ../lib/ini.nix).render (import ../../image/repart.nix)."30-root";
+      rootRepart = ini.render (import ../../image/repart.nix)."30-root";
 
       # locale.conf: PID 1 reads /usr/lib/locale.conf before /etc exists
       # (the factory uses tmpfiles, which runs after PID 1 sets the locale)

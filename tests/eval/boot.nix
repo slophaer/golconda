@@ -3,11 +3,10 @@
 {
   check,
   compose,
-  composeWith,
+  f,
   hasInfix,
   hasPrefix,
   system,
-  throws,
   ...
 }:
 (
@@ -123,7 +122,6 @@
       replaceStrings
       ;
     baseOnly = compose [ ];
-    later = composeWith { "/base".trialBootDeadline = "7min"; };
     file = sys: p: sys.files.${p}.text;
     generatorPath = "/usr/lib/systemd/system-generators/golconda-trial-boot-generator";
     counting = (import ../../image).bootCounting;
@@ -184,7 +182,6 @@
       hasInfix "\n[Unit]\n" t
       && hasInfix "\nJobTimeoutSec=15min\n" t
       && hasInfix "\nOnFailure=golconda-trial-boot-failed.service\n" t
-      && hasInfix "\nJobTimeoutSec=7min\n" (file later "/usr/lib/golconda/trial-boot.conf")
       # nothing applies it statically: only the generator links it, on a trial boot
       && !(baseOnly.files ? "/usr/lib/systemd/system/boot-complete.target.d/golconda-trial-boot.conf")
       && filter (p: hasInfix "boot-complete.target.d" p) (attrNames baseOnly.files) == [ ]
@@ -201,17 +198,14 @@
 )
 ++ (
   # The failed-boot counter (docs/design/boot.md, "Failed boots"): the initrd counts each boot in an
-  # EFI variable before anything can fail, a complete boot resets it; after failedBootsFallback
-  # boots in a row the next starts the other slot once, after failedBootsHalt nothing reboots.
+  # EFI variable before anything can fail, a complete boot resets it; after the tries a release
+  # starts with, boots in a row, the next starts the other slot once, after twice that nothing
+  # reboots.
   let
-    inherit (builtins) readFile replaceStrings;
+    inherit (builtins) attrNames readFile replaceStrings;
     baseOnly = compose [ ];
-    other = composeWith {
-      "/base" = {
-        failedBootsFallback = 2;
-        failedBootsHalt = 4;
-      };
-    };
+    counting = (import ../../image).bootCounting;
+    tries = counting.triesLeft + counting.triesDone;
     program = "/usr/lib/golconda/golconda-failed-boots";
     count = baseOnly.units."golconda-failed-boots.service";
     complete = baseOnly.units."golconda-failed-boots-complete.service";
@@ -245,13 +239,24 @@
           kind = "explicit";
         }
     ))
-    (check "failed boots: the program carries the thresholds, 3 and 6 by default" (
+    (check "failed boots: the program carries the thresholds, the tries of a release and twice that" (
       baseOnly.files.${program}.mode == "0755"
       &&
-        baseOnly.files.${program}.text == replaceStrings [ "@fallback@" "@halt@" ] [ "3" "6" ] (
-          readFile ../../modules/base/golconda-failed-boots
-        )
-      && hasInfix "\nfallback=2\nhalt=4\n" other.files.${program}.text
+        baseOnly.files.${program}.text == replaceStrings
+          [ "@fallback@" "@halt@" ]
+          [
+            (toString tries)
+            (toString (2 * tries))
+          ]
+          (readFile ../../modules/base/golconda-failed-boots)
+      && hasInfix "\nfallback=3\nhalt=6\n" baseOnly.files.${program}.text
+      # constants: the document sets neither threshold nor the trial boot deadline, so the
+      # initrd, built from /base alone, has the same program as the host
+      &&
+        attrNames (f.modules { }).modules.base.options == [
+          "journalMaxUse"
+          "ntp"
+        ]
     ))
     (check "failed boots: chattr is in /usr/bin (efivarfs makes the variable immutable)" (
       baseOnly.links ? "/usr/bin/chattr"
@@ -259,17 +264,6 @@
     (check "failed boots: on a halted boot the trial boot policy's reboot units skip themselves" (
       hasInfix haltSkips baseOnly.units."golconda-initrd-failed.service"
       && hasInfix haltSkips baseOnly.units."golconda-trial-boot-failed.service"
-    ))
-    (check "failed boots: the halt must come after the fallback" (
-      throws (composeWith {
-        "/base" = {
-          failedBootsFallback = 3;
-          failedBootsHalt = 3;
-        };
-      })
-      && throws (composeWith {
-        "/base".failedBootsFallback = 0;
-      })
     ))
   ]
 )

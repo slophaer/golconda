@@ -34,6 +34,18 @@
     pattern = pattern "timezone";
   };
 
+  # modules/base
+  ntpServer = {
+    description = "An NTP server for systemd-timesyncd: a host name or an IP address, with no white space.";
+    type = "string";
+    pattern = pattern "ntpServer";
+  };
+  byteSize = {
+    description = "A size: bytes, or a number with K, M, G or T (base 1024), such as 512M.";
+    type = "string";
+    pattern = pattern "byteSize";
+  };
+
   # modules/services/sshd
   port = {
     description = "A TCP port: 1 to 65535.";

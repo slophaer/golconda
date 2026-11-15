@@ -2,6 +2,7 @@
 # A function of the harness (./harness.nix); it returns a list of checks.
 {
   check,
+  composeWith,
   f,
   factoryOf,
   factoryThrows,
@@ -59,6 +60,26 @@ let
     "a\nb"
     ""
   ];
+  baseTypes = (f.modules { }).modules.base.options;
+  ntpSamples = [
+    "0.pool.ntp.org"
+    "192.0.2.1"
+    "2001:db8::1"
+    "time.example.com"
+    "a b"
+    "a\nFallbackNTP=x"
+    ""
+  ];
+  sizeSamples = [
+    "512M"
+    "1G"
+    "4096"
+    "1.5G"
+    "512 M"
+    "512M\nForwardToConsole=no"
+    "M"
+    ""
+  ];
   zoneSamples = [
     "UTC"
     "Europe/Berlin"
@@ -94,4 +115,21 @@ in
     && agree reg.timezone.pattern factoryTypes.timezone.type.verify zoneSamples
     && !(any hasControl zoneSamples)
   ))
+  (check "grammar: /base's NTP servers and journal size are typed, and the schema has their grammars"
+    (
+      reg.ntpServer.pattern == grammar.anchored grammar.ntpServer
+      && reg.byteSize.pattern == grammar.anchored grammar.byteSize
+      && agree reg.ntpServer.pattern (x: baseTypes.ntp.type.verify [ x ]) ntpSamples
+      && agree reg.byteSize.pattern baseTypes.journalMaxUse.type.verify sizeSamples
+      && throws (composeWith {
+        "/base".ntp = [ "a\nFallbackNTP=x" ];
+      })
+      && throws (composeWith {
+        "/base".journalMaxUse = "512M\nForwardToConsole=no";
+      })
+      && !(throws (composeWith {
+        "/base".journalMaxUse = "1G";
+      }))
+    )
+  )
 ]

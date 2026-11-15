@@ -42,11 +42,10 @@ A boot is good only if it reaches `boot-complete.target`. Two health units gate 
 - `golconda-health-sshd.service` needs `sshd.service` active.
 
 When both pass, `systemd-bless-boot` removes the suffix. When one fails, or the target is not
-reached within 15 minutes (`/base.trialBootDeadline`), the machine reboots by itself and the next
-try starts; a kernel panic, a PID 1 crash and an initrd failure reboot it too
-([Boot: Trial boot](../design/boot.md#trial-boot)). After a good boot,
-`golconda-loader-update.service` copies this release's signed systemd-boot to the ESP. A release
-that fails its health gate never touches the loader.
+reached within 15 minutes, the machine reboots by itself and the next try starts; a kernel panic, a
+PID 1 crash and an initrd failure reboot it too ([Boot: Trial boot](../design/boot.md#trial-boot)).
+After a good boot, `golconda-loader-update.service` copies this release's signed systemd-boot to the
+ESP. A release that fails its health gate never touches the loader.
 
 ## Using it
 

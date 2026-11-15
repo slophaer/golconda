@@ -36,7 +36,20 @@ flowchart LR
   `pins/default.nix` reads them purely.
 - **systemd** does the rest: repart makes the partitions, ukify the unified kernel image, sysupdate
   the A/B updates, systemd-boot the counting, veritysetup and cryptsetup the integrity and the
-  unlock. Golconda adds configuration, never a second mechanism.
+  unlock. Golconda adds configuration, and six small shell programs where systemd has no unit for
+  the job:
+  - `golconda-trial-boot-generator` turns on the [trial boot](boot.md#trial-boot) policy only on a
+    counted boot with a try left. No unit condition can read that.
+  - `golconda-failed-boots` counts every boot, also of a blessed entry, which boot counting does not
+    count, and starts the other slot after 3 ([Failed boots](boot.md#failed-boots)).
+  - `golconda-loader-update` copies the signed systemd-boot to the ESP when its content differs.
+    `bootctl update` compares versions only ([Boot loader](bootloader.md)).
+  - `golconda-update-pending` lets the update reboot timer reboot only when systemd-boot would start
+    another entry. `systemd-sysupdate reboot` compares versions only
+    ([Activation](updates.md#activation)).
+  - `golconda-esp-credentials` removes the ESP's credentials after one boot. systemd-stub passes
+    them at every boot ([Bootstrap credentials](boot.md#bootstrap-credentials)).
+  - `golconda-var-run` makes a var on the machine once and seals it ([Vars](../features/vars.md)).
 
 ## What every image contains
 

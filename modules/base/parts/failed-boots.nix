@@ -7,10 +7,16 @@
 # `fallback` boots in a row that did not complete, the next one starts the other slot, which marks
 # the failed entry bad once it completes; after `halt`, a boot reboots on no failure (the program,
 # ../golconda-failed-boots, says how).
-{ fallback, halt }:
 let
   inherit (import ../../lib/text.nix) lines;
+  counting = import ../../../image/boot-counting.nix;
   program = "/usr/lib/golconda/golconda-failed-boots";
+
+  # constants: the initrd, which counts, is built from /base alone. The fallback comes after as
+  # many boots as a release has tries, so the failed UKI's new name, +0-<fallback>, is the one
+  # systemd-boot gives an entry with no try left (docs/design/boot.md, "Failed boots")
+  fallback = counting.triesLeft + counting.triesDone;
+  halt = 2 * fallback;
 
   # before sysinit.target: PID 1 mounts efivarfs before any unit, and nothing that can fail runs
   # this early. After the Secure Boot check (lib/image/initrd.nix): a boot that it halts is not
@@ -47,12 +53,6 @@ let
     "ExecStart=${program} complete"
   ];
 in
-assert
-  fallback >= 1
-  || throw "/base.failedBootsFallback must be 1 or more: the boots in a row that fail before the next starts the other slot";
-assert
-  halt > fallback
-  || throw "/base.failedBootsHalt (${toString halt}) must be more than /base.failedBootsFallback (${toString fallback}): the other slot gets its boot before the machine stops rebooting";
 {
   units = {
     "golconda-failed-boots.service" = countUnit;
