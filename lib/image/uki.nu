@@ -3,7 +3,6 @@
 # osRelease, cmdlineTemplate, phases (the phase paths to sign, a list).
 
 use common.nu *
-use initrd.nu [rdinit]
 
 # make P ROOTHASH SIGPART KEYS OUT: the UKI at OUT, its cmdline with ROOTHASH and the signature
 # from the usr-verity-sig partition SIGPART, Secure Boot signed with KEYS.dbKey/dbCert
@@ -16,7 +15,7 @@ export def make [p: record, roothash: string, sigpart: string, keys: record, out
   let uname = ($moddir | path basename)
   let linux = $"($moddir)/vmlinuz"
   let usrhash_sig = (roothash-signature $sigpart $roothash $keys.dbCert)
-  let cmdline = ($"($p.cmdlineTemplate) rdinit=(rdinit)"
+  let cmdline = ($p.cmdlineTemplate
     | str replace "{usrhash}" $roothash | str replace "{usrhashSig}" $usrhash_sig
     | str replace -ra ' +' ' ' | str trim)
   # the EFI stub cuts a longer cmdline at COMMAND_LINE_SIZE (2048 on x86-64 and arm64) without a

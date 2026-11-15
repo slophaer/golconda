@@ -4,11 +4,6 @@
 
 use common.nu *
 
-# The path rdinit= names: /init, the link to systemd (initrd.nix says why it can be a link)
-export def rdinit []: nothing -> string {
-  "/init"
-}
-
 export def build [] {
   let a = (attrs)
   let out = $a.outputs.out
@@ -37,9 +32,9 @@ export def build [] {
     if not ($"($root)/usr/lib/udev/rules.d/($r)" | path exists) { error make {msg: $"lvm2's ($r) missing from the initrd"} }
   }
 
-  # what the kernel execs (rdinit=) must lead to a real file in the cpio, through its links
-  let init = (rdinit)
-  if ($"($root)($init)" | path expand | path type) != file { error make {msg: $"($init) does not lead to a file in the initrd"} }
+  # /init, what the kernel execs, must lead to a real file in the cpio, through its links
+  # (initrd.nix says why it can be a link)
+  if ($"($root)/init" | path expand | path type) != file { error make {msg: "/init does not lead to a file in the initrd"} }
   for p in [/usr/lib/systemd/systemd /usr/lib/systemd/systemd-executor /usr/lib/systemd/systemd-udevd /usr/lib/systemd/systemd-veritysetup /usr/lib/systemd/system-generators/systemd-veritysetup-generator /usr/lib/systemd/system-generators/systemd-gpt-auto-generator /usr/bin/dmsetup /usr/bin/systemctl] {
     if not ($"($root)($p)" | path exists) { error make {msg: $"($p) missing from the initrd"} }
   }
@@ -68,6 +63,5 @@ export def build [] {
   let cpio = $"($env.NIX_BUILD_TOP)/initrd.cpio"
   ^gen_init_cpio -t 1 -o $cpio $list
   ^zstd -q -19 -T1 --rm -o $"($out)/initrd.cpio.zst" $"($env.NIX_BUILD_TOP)/initrd.cpio"
-  $init | save -f $"($out)/rdinit"
-  log $"initrd.cpio.zst: (ls $"($out)/initrd.cpio.zst" | get size.0), rdinit=($init)"
+  log $"initrd.cpio.zst: (ls $"($out)/initrd.cpio.zst" | get size.0)"
 }

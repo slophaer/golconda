@@ -198,7 +198,7 @@ of `examples/server.toml` and writes `proof.txt` (sizes, `veritysetup verify`, t
 
 | step     | where                                          | output                                                                                                                                                                             |
 | -------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| initrd   | Nix: `initrdTree { … }`, `initrd { usrTree; }` | `initrd.cpio.zst`, `rdinit` ([Boot: the initrd](../design/boot.md#the-initrd))                                                                                                     |
+| initrd   | Nix: `initrdTree { … }`, `initrd { usrTree; }` | `initrd.cpio.zst` ([Boot: the initrd](../design/boot.md#the-initrd))                                                                                                               |
 | unsigned | Nix: `manifest { usrTree; initrd; signer; … }` | `manifest.json` (the inputs and every step's parameters), `keys/` (`db.crt`, `pcr.pub`, `index.pgp`), `sign` (`image-smoke-unsigned`)                                              |
 | loader   | signer: `lib/image/loader.nu`                  | `systemd-boot<arch>.efi.signed`, put into the copy of the `/usr` tree and on the ESP ([Boot loader](../design/bootloader.md))                                                      |
 | erofs    | signer: `lib/image/erofs.nu`                   | `<id>_<version>.usr.raw`: `mkfs.erofs -zlz4hc -T <epoch> -U <uuid> --all-root --hard-dereference`; epoch and UUID from the version (`erofsParams`)                                 |
@@ -281,11 +281,10 @@ This section is the only copy of the command line in the documentation. Other pa
 usrhash={usrhash} systemd.verity_usr_options=root-hash-signature=base64:{usrhashSig} rw panic=10 softlockup_panic=1 nmi_watchdog=panic hung_task_panic=1 lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=1 systemd.imds.import=0 console=tty0 console=ttyS0,115200
 ```
 
-The UKI step (`lib/image/uki.nu`) fills `{usrhash}` and `{usrhashSig}`, appends `rdinit=/init`
-(`rdinit` in `lib/image/initrd.nu`), and appends `cmdlineExtra` (empty; for debug flags only). It
-squeezes repeated spaces and fails the build at 2048 bytes, where the EFI stub would cut the line
-after the signature. The result is in the UKI's `.cmdline` section and in the step's `cmdline`
-output.
+The UKI step (`lib/image/uki.nu`) fills `{usrhash}` and `{usrhashSig}` and appends `cmdlineExtra`
+(empty; for debug flags only). It squeezes repeated spaces and fails the build at 2048 bytes, where
+the EFI stub would cut the line after the signature. The result is in the UKI's `.cmdline` section
+and in the step's `cmdline` output.
 
 | parameter                                                 | meaning                                                                                                                                                   |
 | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -299,7 +298,6 @@ output.
 | `ipe.enforce=1`                                           | IPE runs only the initramfs and verity volumes whose signature the kernel verified                                                                        |
 | `systemd.imds.import=0`                                   | systemd-imds-generator does not pull `systemd-imds-import.service` into the initrd, which has no network; `/imds` pulls it into the host, on a cloud only |
 | `console=tty0 console=ttyS0,115200`                       | the local console and the serial line; output only, there is no getty                                                                                     |
-| `rdinit=/init`                                            | what the kernel execs; `/init` links to systemd (`lib/image/initrd.nix` says why a link works before `/proc` exists)                                      |
 
 ## Boot test (`scripts/boot-test`)
 

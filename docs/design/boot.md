@@ -40,8 +40,8 @@ link to `os-release`, how systemd knows it is in an initrd), the merged-usr link
 `/lib`, and the empty mount points. There is no machine-id, no shadow, no getty, no static init. It
 needs no root partition to find `/usr`: `usrhash=` on the cmdline names the verity root hash, the
 generators derive the two DPS partition UUIDs from it, veritysetup attaches `/dev/mapper/usr`, and
-repart makes the root partition from `/usr/lib/repart.d/30-root.conf` on first boot. The cmdline
-also carries `rdinit=/init`: a repkgs binary maps its dynamic linker relative to its own path, which
+repart makes the root partition from `/usr/lib/repart.d/30-root.conf` on first boot. The kernel
+execs `/init`, its default: a repkgs binary maps its dynamic linker relative to its own path, which
 before `/proc` exists is the path the kernel execs; the fork's crt-interp and glibc follow the
 `/init` link to the real file without `/proc`. The kernel's configuration is in [Kernel](kernel.md).
 

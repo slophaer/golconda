@@ -22,7 +22,7 @@
 # static /init: systemd itself is PID 1 and finds the /usr partition by usrhash= (its
 # veritysetup and gpt-auto generators).
 #
-# The cmdline (uki.nix) names /init as rdinit=. repkgs binaries find ld.so and their libraries
+# The kernel execs /init, its default. repkgs binaries find ld.so and their libraries
 # relative to their own path, and before /proc is mounted that path is AT_EXECFN as the kernel
 # spelled it: the fork's crt-interp and glibc resolve its symlinks (/init -> usr/lib/systemd/
 # systemd -> the store) without /proc.

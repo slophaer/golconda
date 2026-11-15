@@ -7,10 +7,10 @@
 #   manifest's `uki` (lib/image/manifest.nix): the kernel from the linux-kernel package, systemd's
 #   stub and tools, the initrd, the system's os-release, image/uki.nix's cmdline template and
 #   phase list. The signer (lib/image/uki.nu) runs ukify build: the cmdline gets usrhash= and the
-#   root hash signature, which exist only after the signer made the erofs image, plus rdinit= as
-#   lib/image/initrd.nix explains. Secure Boot: systemd-sbsign with the db key. Measured boot: one
-#   PCR 11 signature per phase path (ukify --phases), with the PCR key; the built .pcrsig section
-#   is checked against the list (docs/design/trust.md). The kernel trusts the root hash signature
+#   root hash signature, which exist only after the signer made the erofs image. Secure Boot:
+#   systemd-sbsign with the db key. Measured boot: one PCR 11 signature per phase path (ukify
+#   --phases), with the PCR key; the built .pcrsig section is checked against the list
+#   (docs/design/trust.md). The kernel trusts the root hash signature
 #   only if the firmware db holds its signer, so the signer checks it against the db certificate.
 _:
 let

@@ -50,7 +50,6 @@
   # systemd.imds.import=0: systemd-imds-generator does not pull systemd-imds-import.service. Its
   # default pulls it into the initrd, which has no network here; /imds pulls it into the host
   # instead, on a cloud only (modules/imds), and without /imds it never runs.
-  # The builder appends rdinit= (lib/image/initrd.nix says why)
   cmdlineTemplate = "usrhash={usrhash} systemd.verity_usr_options=root-hash-signature=base64:{usrhashSig} rw panic=10 softlockup_panic=1 nmi_watchdog=panic hung_task_panic=1 lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=1 systemd.imds.import=0 console=tty0 console=ttyS0,115200";
 
   # PCR policy signing (for measured boot and credential decryption): the phase paths to
