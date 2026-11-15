@@ -99,24 +99,6 @@ in
           xs = versions;
         }
         {
-          s = reg.fileMode;
-          t = fr.mode.verify;
-          xs = [
-            "0644"
-            "644"
-            "0844"
-            "00644"
-          ];
-        }
-        {
-          s = (elemAt reg.file.anyOf 1).properties.mode;
-          t = fr.mode.verify;
-          xs = [
-            "0755"
-            "755"
-          ];
-        }
-        {
           s = reg.unitName;
           t = fr.unitName.verify;
           xs = [

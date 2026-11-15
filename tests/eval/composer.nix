@@ -77,6 +77,23 @@ in
         };
       }
     ]
+    # /usr is a store path: a file is 0644 or 0755, nothing else
+    && filesThrow [
+      {
+        files."/usr/lib/a/key" = {
+          text = "x";
+          mode = "0600";
+        };
+      }
+    ]
+    && filesThrow [
+      {
+        files."/usr/lib/a/run" = {
+          text = "x";
+          mode = "4755";
+        };
+      }
+    ]
   ))
   (check "files: a record needs text and nothing else" (
     filesThrow [

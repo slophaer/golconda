@@ -78,8 +78,7 @@
             type = "string";
           };
           mode = {
-            type = "string";
-            pattern = pattern "fileMode";
+            "$ref" = "#/$defs/fileMode";
           };
         };
         required = [ "text" ];
@@ -89,9 +88,11 @@
   };
 
   fileMode = {
-    description = "Four octal digits, like 0644 or 0755.";
-    type = "string";
-    pattern = pattern "fileMode";
+    description = "A file mode in /usr: 0644 or 0755.";
+    enum = [
+      "0644"
+      "0755"
+    ];
   };
 
   unitName = {

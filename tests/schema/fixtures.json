@@ -446,6 +446,15 @@
     }
   },
   {
+    "name": "file mode 0600, which the store cannot keep",
+    "definition": "file",
+    "accepted": false,
+    "value": {
+      "text": "hello",
+      "mode": "0600"
+    }
+  },
+  {
     "name": "unknown file field",
     "definition": "file",
     "accepted": false,

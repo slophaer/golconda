@@ -30,16 +30,12 @@ let
     split
     ;
 
-  # A file mode as four octal digits, "0644" or "0755".
-  mode = typedef' "fileMode" (
-    v:
-    if !isString v then
-      "Expected a file mode string like \"0644\", got ${builtins.typeOf v}"
-    else if match grammar.fileMode v == null then
-      "'${v}' is not a file mode: four octal digits, like \"0644\" or \"0755\""
-    else
-      null
-  );
+  # A file mode: "0644" or "0755". /usr is a store path, which keeps one mode
+  # bit only (docs/reference/modules/README.md).
+  mode = enum "fileMode" [
+    "0644"
+    "0755"
+  ];
 
   # A file in a fragment: the text (installed with mode 0644), or
   # { text; mode ? "0644"; } when the mode matters (an executable). The

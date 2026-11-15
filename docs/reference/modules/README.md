@@ -106,8 +106,9 @@ control character), is a type error that names the path. An `app` file name is r
 leave `/usr/lib/<service>/`.
 
 A `file` is either the text (installed with mode `0644`) or `{ text; mode ? "0644"; }`, where `mode`
-is four octal digits (`"0755"` for an executable). The composer's output always has the record
-shape. An `app`'s files are text only.
+is `"0644"` or `"0755"` (an executable). `/usr` has these 2 modes only: it is a store path, and the
+store keeps the executable bit and nothing else. The composer's output always has the record shape.
+An `app`'s files are text only.
 
 A `unitName` is a stem of letters, digits, `: _ . @ -` and one of `.service`, `.target`, `.socket`,
 `.timer`, `.path`, `.mount`, `.slice` (`unitSuffixes`); a `unitText` is a string with at least one

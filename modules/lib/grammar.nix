@@ -51,8 +51,6 @@ in
 
   version = "(${year}(${monthDay})|${leapYear}0229)\\.${revision}";
 
-  fileMode = "[0-7]{4}";
-
   # A unit name stem and the names built on it.
   serviceName = "[A-Za-z0-9:_.-]+";
   unitName = "[A-Za-z0-9:_.@-]+\\.(${concatStringsSep "|" unitSuffixes})";
