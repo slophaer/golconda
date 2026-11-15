@@ -168,7 +168,7 @@ let rotated = (enrol verify $"($b)/secureboot/auth/microsoft/db.auth" db $secdb 
 if ($rotated | bytes at 0..<((x509-list $"($b)/secureboot/db.crt" $golconda_owner) | bytes length)) != (x509-list $"($b)/secureboot/db.crt" $golconda_owner) { error make {msg: "the rotated db.auth does not enrol B's db"} }
 enrol check-set $"($b)/secureboot/auth/microsoft" (set-of $b) | ignore
 ok "a rotation: B's db.auth enrols B's db, signed by A's KEK, and B needs no PK or KEK key"
-fails "a PK that is not the set's own cannot sign it" "not the ones the set enrols" {||
+fails "a PK that is not the set's own cannot sign it" "but the set enrols" {||
   enrol write $"($tmp)/auth" (set-of $b) ((signers-of $a) | upsert pkCert $"($b)/secureboot/db.crt" | upsert pkKey $"($b)/secureboot/db.key") $ms $epoch
 }
 fails "a key that is not its certificate's is refused" "is not the key of" {||

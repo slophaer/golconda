@@ -47,7 +47,6 @@ in
       module = "manifest";
       tools = [
         pkgs.openssl
-        pkgs.gnupg
       ];
       attrs = {
         signer = "${signer}";

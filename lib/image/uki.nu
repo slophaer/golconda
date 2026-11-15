@@ -22,7 +22,7 @@ export def make [p: record, roothash: string, sigpart: string, keys: record, out
   # word, and the cut lands on the parameters after the signature
   let cmdline_bytes = ($cmdline | encode utf-8 | bytes length)
   if $cmdline_bytes >= 2048 {
-    error make { msg: $"cmdline is ($cmdline_bytes) bytes; the kernel keeps 2047" }
+    error make { msg: $"cmdline is ($cmdline_bytes) bytes; the kernel keeps 2047: shorten cmdlineTemplate in image/uki.nix" }
   }
   log $"kernel ($uname), cmdline: ($cmdline)"
 

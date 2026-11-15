@@ -172,8 +172,15 @@ let homes = {|| glob $"($env.TMPDIR? | default /tmp)/golconda-gnupg-*" | sort | 
 let before = (do $homes)
 open --raw $"($a)/release/index.key" | save -f $"($tmp)/two.key"
 open --raw $"($b)/release/index.key" | save -a $"($tmp)/two.key"
-fails "a key file with two secret keys is refused" "expected one secret key" {||
+fails "a key file with two secret keys is refused" "expected one sec OpenPGP key and no other, found 0 pub and 2 sec" {||
   sign-index $rel $"($tmp)/two.key" 1793404801 $"($a)/release/index.pgp"
+}
+fails "a keyring with a secret key is refused" "expected one pub OpenPGP key and no other, found 0 pub and 1 sec" {||
+  check-keys $priv_a (public-of $a | upsert indexKeyring $"($a)/release/index.key")
+}
+# gpg fails after the import: no SHA256SUMS to sign
+fails "an index signature that gpg cannot make fails" "non-zero exit code" {||
+  sign-index $"($tmp)/none" $priv_a.indexKey 1793404801 $"($a)/release/index.pgp"
 }
 if (do $homes) != $before {
   error make {msg: "a failed index signature left its GNUPGHOME, with a copy of the release key"}

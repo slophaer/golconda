@@ -105,7 +105,7 @@ fi
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 . "$SCRIPT_DIR/tools.sh"
 TOOLS=$(tools_path "$(dirname "$SCRIPT_DIR")" openssl gnupg golconda-enrol-auth) || {
-  echo "make-keys: cannot build the tools (packages: openssl gnupg golconda-enrol-auth)" >&2
+  echo "make-keys: cannot build the tools (packages: openssl gnupg golconda-enrol-auth); the nix-build error is above" >&2
   exit 1
 }
 PATH="$TOOLS:$PATH"

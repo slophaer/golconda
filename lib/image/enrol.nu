@@ -205,7 +205,7 @@ export def write [dir: string, certs: record, signers: record, ms: string, epoch
   key-pair $signers.pkKey $signers.pkCert
   key-pair $signers.kekKey $signers.kekCert
   if (der $signers.pkCert) != (der $certs.pk) or (der $signers.kekCert) != (der $certs.kek) {
-    error make {msg: "the PK and KEK that sign are not the ones the set enrols"}
+    error make {msg: $"($signers.pkCert) and ($signers.kekCert) sign, but the set enrols ($certs.pk) and ($certs.kek); a db rotation keeps the PK and KEK \(make-keys --reuse-pk-kek\)"}
   }
   let key = {PK: {key: $signers.pkKey cert: $signers.pkCert} KEK: {key: $signers.kekKey cert: $signers.kekCert}}
   for set in [[name ms]; [microsoft $ms] [golconda null]] {

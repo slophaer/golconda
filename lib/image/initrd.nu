@@ -29,14 +29,14 @@ export def build [] {
   # lvm2's device-mapper rules: the tree has them (/base links them; not 95-dm-notify, which
   # answers udev cookies, and lvm2 has no udev_sync)
   for r in [10-dm.rules 13-dm-disk.rules] {
-    if not ($"($root)/usr/lib/udev/rules.d/($r)" | path exists) { error make {msg: $"lvm2's ($r) missing from the initrd"} }
+    if not ($"($root)/usr/lib/udev/rules.d/($r)" | path exists) { error make {msg: $"lvm2's ($r) missing from the initrd: /base links it \(modules/base/parts/links.nix\)"} }
   }
 
   # /init, what the kernel execs, must lead to a real file in the cpio, through its links
   # (initrd.nix says why it can be a link)
   if ($"($root)/init" | path expand | path type) != file { error make {msg: "/init does not lead to a file in the initrd"} }
   for p in [/usr/lib/systemd/systemd /usr/lib/systemd/systemd-executor /usr/lib/systemd/systemd-udevd /usr/lib/systemd/systemd-veritysetup /usr/lib/systemd/system-generators/systemd-veritysetup-generator /usr/lib/systemd/system-generators/systemd-gpt-auto-generator /usr/bin/dmsetup /usr/bin/systemctl] {
-    if not ($"($root)($p)" | path exists) { error make {msg: $"($p) missing from the initrd"} }
+    if not ($"($root)($p)" | path exists) { error make {msg: $"($p) missing from the initrd: its package is not in the initrd's /base \(lib/image/initrd.nix\)"} }
   }
 
   # newc cpio by gen_init_cpio (packages/gen-init-cpio), from a list of the entries sorted by

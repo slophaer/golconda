@@ -142,8 +142,8 @@ export def check-keys [priv: record, pub: record] {
   if $pcr_pub != $pcr_key {
     error make {msg: $"($priv.pcrKey) is not the key of the PCR public key this image carries"}
   }
-  let want = (pgp-fingerprint $pub.indexKeyring "pub")
-  let have = (pgp-fingerprint $priv.indexKey "sec")
+  let want = (pgp-keys $pub.indexKeyring pub).fpr
+  let have = (pgp-keys $priv.indexKey sec).fpr
   if $want != $have {
     error make {msg: $"($priv.indexKey) is the OpenPGP key ($have), but this image trusts ($want)"}
   }
@@ -154,20 +154,6 @@ export def check-keys [priv: record, pub: record] {
 # The SHA-256 fingerprint of a PEM certificate
 def fingerprint [cert: string]: nothing -> string {
   ^openssl x509 -in $cert -noout -fingerprint -sha256 | str trim | split row "=" | last
-}
-
-# The fingerprint of the one primary key of KIND (pub or sec) in an OpenPGP file
-def pgp-fingerprint [file: string, kind: string]: nothing -> string {
-  let home = (mktemp -d -t "golconda-gnupg-XXXXXX")
-  ^chmod 700 $home
-  let rows = (with-env {GNUPGHOME: $home} { ^gpg --batch --with-colons --show-keys $file e> /dev/null | lines })
-  rm -rf $home
-  let primaries = ($rows | where {|l| $l starts-with $"($kind):" })
-  if ($primaries | length) != 1 {
-    error make {msg: $"($file): expected one ($kind) key, found ($primaries | length)"}
-  }
-  # the first fpr line follows the primary key
-  $rows | where {|l| $l starts-with "fpr:" } | first | split row ':' | get 9
 }
 
 # enrol-files MANIFEST SET DBCERT: the enrolment files of the db key set SET for the ESP

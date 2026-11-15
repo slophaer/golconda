@@ -14,17 +14,9 @@ export def build [] {
   if ($raw | bytes starts-with ("-----" | into binary)) {
     error make {msg: $"($a.publicKey) is ASCII armor; give the binary export \(gpg --export\)"}
   }
-  $env.GNUPGHOME = $"($env.TMPDIR? | default /tmp)/g"
-  mkdir $env.GNUPGHOME
-  ^chmod 700 $env.GNUPGHOME
-  let keys = (^gpg --batch --with-colons --show-keys $a.publicKey | lines)
-  let pubs = ($keys | where {|l| $l starts-with "pub:" })
-  let secs = ($keys | where {|l| $l starts-with "sec:" })
-  if ($pubs | length) != 1 or ($secs | length) != 0 {
-    error make {msg: $"($a.publicKey): expected one public key and no secret key, found ($pubs | length) public and ($secs | length) secret"}
-  }
+  let key = (pgp-keys $a.publicKey pub)
   mkdir $out
   ^cp $a.publicKey $"($out)/import-pubring.pgp"
   ^chmod 0444 $"($out)/import-pubring.pgp"
-  log $"import-pubring.pgp: ($keys | where {|l| $l starts-with "fpr:" } | first | split row ':' | get 9)"
+  log $"import-pubring.pgp: ($key.fpr)"
 }

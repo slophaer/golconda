@@ -101,14 +101,10 @@ export def sign-index [release: string, key: string, epoch: int, keyring: string
     rm -rf $home
   }
   try {
+    let created = (pgp-keys $key sec).created
     ^chmod 700 $home
     with-env {GNUPGHOME: $home} {
       ^gpg --batch --pinentry-mode loopback --passphrase '' --import $key e> /dev/null
-      let sec = (^gpg --batch --with-colons --list-secret-keys | lines | where {|l| $l starts-with "sec:" })
-      if ($sec | length) != 1 {
-        error make {msg: $"($key): expected one secret key, found ($sec | length)"}
-      }
-      let created = ($sec | first | split row ':' | get 5 | into int)
       let at = ([$epoch ($created + 1)] | math max)
       ^gpg --batch --yes --pinentry-mode loopback --passphrase '' --faked-system-time $"($at)!" --detach-sign --output $"($release)/SHA256SUMS.gpg" $"($release)/SHA256SUMS" e> /dev/null
     }
