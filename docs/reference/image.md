@@ -194,8 +194,7 @@ Nix builds the parts that need no key, each a content-addressed derivation with 
 assembles the rest outside Nix, with the deployment's keys where they lie
 ([Trust: Signing outside Nix](../design/trust.md#signing-outside-nix)). A test image runs the same
 signer in a derivation with throwaway keys; `packages.<system>.image-smoke` does so for the system
-of `examples/server.toml` and writes `proof.txt` (sizes, `veritysetup verify`, the cpio listing,
-`ukify inspect`, repart's table).
+of `examples/server.toml`, and links `unsigned`, `disk` and `keys`, which `scripts/boot-test` reads.
 
 | step     | where                                          | output                                                                                                                                                                             |
 | -------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

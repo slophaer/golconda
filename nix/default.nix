@@ -215,9 +215,9 @@ in
       kernel = pkgs.linux-kernel;
 
       # The image chain (lib/image) over the /base system, signed in the store with throwaway
-      # keys, and the proofs in proof.txt. A release signs with the deployment's keys outside the
-      # store (lib.mkImage, `golconda release build`). The parts: the unsigned outputs, the
-      # initrd, the signer, and the signed disk and release directory.
+      # keys. A release signs with the deployment's keys outside the store (lib.mkImage,
+      # `golconda release build`). The parts: the unsigned outputs, the initrd, the signer, and
+      # the signed disk and release directory.
       image-smoke = imageSmoke.smoke;
       image-smoke-unsigned = imageSmoke.unsigned;
       image-smoke-initrd = imageSmoke.initrd;
