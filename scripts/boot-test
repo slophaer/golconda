@@ -241,13 +241,14 @@
 # With --secure-boot --tpm --secure-boot-off (needs --ssh-test; not with --next, --auto-enrol,
 #   --factory-reset, --enrol, --esp-creds or --imds): a Secure Boot image on firmware with Secure
 #   Boot off (docs/design/boot.md, "Secure Boot off"). After the first boot and its reboot the
-#   harness keeps PK, KEK and db and sets SecureBootEnable false. The initrd must refuse: the
-#   console has its line and "System halted", and nothing reboots or switches root
+#   harness keeps PK, KEK and db and sets SecureBootEnable false. On 3 power-ons the initrd must
+#   refuse: the console has its line and "System halted", and nothing reboots or switches root
 #   (secure-boot-off-refused). Then the refusal is bypassed: the SMBIOS string
 #   io.systemd.stub.kernel-cmdline-extra (systemd-stub appends it) masks the refusal unit, and PID 1
 #   logs to the console. The system starts, but the host key, sealed to PCR 7, does not unseal: the
 #   TPM policy does not match, sshd fails to set up its credentials and no login works
-#   (secure-boot-off-vars-sealed). Last, Secure Boot on again with the same TPM: the key unseals
+#   (secure-boot-off-vars-sealed). The failed-boot counter of that boot finds no failed boot
+#   before it: the halted boots are not counted (secure-boot-off-not-counted). Last, Secure Boot on again with the same TPM: the key unseals
 #   (hostkey-unchanged).
 # With --factory-reset (needs --ssh-test and the test image; a boot of its own): writes a marker
 #   in /etc, reads /etc/machine-id, runs `systemctl start factory-reset.target` in the guest and

@@ -391,28 +391,31 @@ test_secure_boot_off() {
   set_secure_boot false
   SAVED_TIMEOUT=$TIMEOUT
 
-  echo ""
-  echo "=== Secure Boot off: the initrd must refuse ==="
-  SERIAL_LOG=$WORKDIR/serial-secure-boot-off.log
   TIMEOUT=180
-  rotate_tpm
-  start_qemu
-  W=0
-  while qemu_running && [ "$W" -lt 150 ] && ! grep -aq 'System halted' "$SERIAL_LOG"; do
-    sleep 1
-    W=$((W + 1))
-  done
-  # a halted machine stays halted: give a reboot time to show
-  sleep 10
-  stop_qemu
-  tr -d '\033\r' < "$SERIAL_LOG" | grep -a 'Secure boot \(dis\|en\)abled\|golconda: Secure Boot\|System halted\|Linux version' || true
   RC=0
-  grep -aq 'Secure boot disabled' "$SERIAL_LOG" || RC=1
-  grep -aq 'golconda: Secure Boot is off' "$SERIAL_LOG" || RC=1
-  grep -aq 'System halted' "$SERIAL_LOG" || RC=1
-  [ "$(grep -ac 'Linux version' "$SERIAL_LOG")" = 1 ] || RC=1
-  ! grep -aqi 'Switching root\|Reached target.*Multi-User' "$SERIAL_LOG" || RC=1
-  verdict "secure-boot-off-refused (the initrd named the reason on the console and halted: no switch root, no reboot)" $RC
+  # three power-ons, as many as the failed-boot counter's fallback needs
+  for n in 1 2 3; do
+    echo ""
+    echo "=== Secure Boot off, power-on $n: the initrd must refuse ==="
+    SERIAL_LOG=$WORKDIR/serial-secure-boot-off-$n.log
+    rotate_tpm
+    start_qemu
+    W=0
+    while qemu_running && [ "$W" -lt 150 ] && ! grep -aq 'System halted' "$SERIAL_LOG"; do
+      sleep 1
+      W=$((W + 1))
+    done
+    # a halted machine stays halted: give a reboot time to show
+    sleep 10
+    stop_qemu
+    tr -d '\033\r' < "$SERIAL_LOG" | grep -a 'Secure boot \(dis\|en\)abled\|golconda: Secure Boot\|System halted\|Linux version\|golconda-failed-boots' || true
+    grep -aq 'Secure boot disabled' "$SERIAL_LOG" || RC=1
+    grep -aq 'golconda: Secure Boot is off' "$SERIAL_LOG" || RC=1
+    grep -aq 'System halted' "$SERIAL_LOG" || RC=1
+    [ "$(grep -ac 'Linux version' "$SERIAL_LOG")" = 1 ] || RC=1
+    ! grep -aqi 'Switching root\|Reached target.*Multi-User' "$SERIAL_LOG" || RC=1
+  done
+  verdict "secure-boot-off-refused (on 3 power-ons the initrd named the reason on the console and halted: no switch root, no reboot)" $RC
 
   echo ""
   echo "=== Secure Boot off, the refusal bypassed: the vars must not unseal ==="
@@ -442,6 +445,10 @@ test_secure_boot_off() {
   grep -a 'sshd.service' "$SERIAL_LOG" | grep -aq 'TPM policy does not match current system state' || RC=1
   grep -a 'sshd.service' "$SERIAL_LOG" | grep -aq 'Failed to set up credentials' || RC=1
   verdict "secure-boot-off-vars-sealed (refusal masked, multi-user reached; the TPM policy refused sshd's host key credential, no login)" $RC
+  # the first boot that the check does not halt finds no failed boot before it
+  RC=0
+  ! grep -aq 'golconda-failed-boots: failed boots in a row' "$SERIAL_LOG" || RC=1
+  verdict "secure-boot-off-not-counted (the 3 halted boots left no failed-boot count)" $RC
 
   echo ""
   echo "=== Secure Boot on again ==="

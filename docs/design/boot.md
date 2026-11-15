@@ -338,7 +338,8 @@ firmware that does not, nothing checked the loader or the UKI, so the initrd ref
 kernel log, which reaches the serial console and the screen, and halts the machine with
 `SuccessAction=halt-force`, which stops no unit: the initrd's TPM measurement units reboot when they
 are stopped mid-run (`FailureAction=reboot-force`). Nothing in the initrd that comes after it runs:
-no root partition is made or mounted, and no switch to it happens.
+no root partition is made or mounted, and no switch to it happens. The
+[failed-boot counter](#failed-boots) comes after it too, so a halted boot is not a failed boot.
 
 It halts, and does not reboot into the firmware setup (`systemctl reboot --firmware-setup`): the
 line stays on the console for the operator, the machine stays off the network, and nothing loops. To
@@ -348,5 +349,5 @@ which holds the Secure Boot state ([Trust: PCR 7](trust.md#pcr-7)). An image wit
 `secureBoot = false` has no such unit.
 
 **Status.** Proven with `--secure-boot --tpm --secure-boot-off`, on OVMF with the same keys and
-Secure Boot off: `secure-boot-off-refused`, `secure-boot-off-vars-sealed`
-([What is proven](../proven.md)).
+Secure Boot off: `secure-boot-off-refused`, `secure-boot-off-vars-sealed`,
+`secure-boot-off-not-counted` ([What is proven](../proven.md)).

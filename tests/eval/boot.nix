@@ -224,6 +224,8 @@
       && hasInfix "\nDefaultDependencies=no\n" count
       && hasInfix "\nBefore=sysinit.target\n" count
       && hasInfix "\nExecStart=${program} count\n" count
+      # a boot that the Secure Boot check halts is not a failed boot: the halt comes first
+      && hasInfix "\nAfter=golconda-secure-boot-required.service\n" count
       &&
         baseOnly.links."/usr/lib/systemd/system/sysinit.target.wants/golconda-failed-boots.service" == {
           target = "../golconda-failed-boots.service";
