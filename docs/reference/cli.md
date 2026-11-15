@@ -1,24 +1,24 @@
 # Commands
 
-The commands a developer and a release run. Most are `iets` invocations or scripts in `scripts/`;
-the `golconda` command line has two commands, `vars` and `release`.
+The commands a developer and a release run. Most are `nix-build` and `iets` invocations or scripts
+in `scripts/`; the `golconda` command line has two commands, `vars` and `release`.
 
-| command                                                                                                                                                                                      | does                                                                                                                                                                  |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `iets build -A packages.<system>.<name>`                                                                                                                                                     | build one package or `/usr` tree through the configured builder                                                                                                       |
-| `nix-build -E '(import ./examples/golconda.nix { golconda = import ./default.nix; }).usrTree'`                                                                                               | the `/usr` tree of the example configuration ([Configuration](config.md#the-entry-point))                                                                             |
-| `iets build -A packages.<system>.image-smoke`                                                                                                                                                | the image chain over `examples/server.toml`, with `proof.txt`                                                                                                         |
-| `scripts/boot-test <disk.raw> --keys DIR [--secure-boot] [--tpm] [--timeout SECONDS] [--ssh-test [--esp-creds]] [--next DIR [--rotate \| --fail-health \| --fail-initrd]] [--factory-reset]` | boot an image in QEMU and check it; needs KVM, not the sandbox ([Image artifacts](image.md#boot-test-scriptsboot-test))                                               |
-| `scripts/provision-esp <disk.raw> [--hostname NAME] [--authorized-keys FILE] [--credential NAME=FILE]...`                                                                                    | write null-key credentials, which hold for one boot, to `loader/credentials/` on the ESP of a disk image, in place ([Boot test](image.md#boot-test-scriptsboot-test)) |
-| `nix-build -A checks.x86_64-linux.docs`                                                                                                                                                      | the book in the sandbox (generates the pages itself)                                                                                                                  |
-| `iets build --impure -A checks.<system>`                                                                                                                                                     | the sandboxed checks ([Outputs](outputs.md#outputs)); `--impure` because their source is the files git tracks (`builtins.fetchGit`)                                   |
-| `iets eval --expr 'import ./nix/tests.nix { }'`                                                                                                                                              | the module tests alone                                                                                                                                                |
-| `./scripts/lint`                                                                                                                                                                             | strict iets lint of the whole evaluation, the module tests, then the checks                                                                                           |
-| `golconda vars set\|push\|list\|pub\|enrol HOST …`                                                                                                                                           | the admin vars of a machine, from the deploy host ([below](#golconda-vars))                                                                                           |
-| `golconda release check\|publish\|build\|list …`                                                                                                                                             | the release directory of an image: build, check, publish, list ([below](#golconda-release))                                                                           |
-| `nix fmt`                                                                                                                                                                                    | treefmt (the formatter output, built by repkgs): format in place and run the linters                                                                                  |
-| `scripts/docs serve`                                                                                                                                                                         | check the module list in `docs/SUMMARY.md`, generate the module pages, then serve the book                                                                            |
-| `scripts/pins check`, `scripts/pins apply NAME`                                                                                                                                              | show and bump the pins in `pins/` with uptrack (`CONTRIBUTING.md`, "The repkgs fork")                                                                                 |
+| command                                                                                                   | does                                                                                                                                                                  |
+| --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `nix-build -A packages.<system>.<name>`                                                                   | build one package or `/usr` tree                                                                                                                                      |
+| `nix-build -E '(import ./examples/golconda.nix { golconda = import ./default.nix; }).usrTree'`            | the `/usr` tree of the example configuration ([Configuration](config.md#the-entry-point))                                                                             |
+| `nix-build -A packages.<system>.image-smoke`                                                              | the image chain over `examples/server.toml`, with `proof.txt`                                                                                                         |
+| `scripts/boot-test <disk.raw> --keys DIR [FLAGS]`                                                         | boot an image in QEMU and check it; needs KVM, not the sandbox. The flags are in [Image artifacts](image.md#boot-test-scriptsboot-test)                               |
+| `scripts/provision-esp <disk.raw> [--hostname NAME] [--authorized-keys FILE] [--credential NAME=FILE]...` | write null-key credentials, which hold for one boot, to `loader/credentials/` on the ESP of a disk image, in place ([Boot test](image.md#boot-test-scriptsboot-test)) |
+| `nix-build -A checks.x86_64-linux.docs`                                                                   | the book in the sandbox (generates the pages itself)                                                                                                                  |
+| `nix-build -A checks.<system>`                                                                            | the sandboxed checks ([Outputs](outputs.md#outputs))                                                                                                                  |
+| `iets eval --expr 'import ./nix/tests.nix { }'`                                                           | the module tests alone                                                                                                                                                |
+| `./scripts/lint`                                                                                          | strict iets lint of the whole evaluation, the module tests, then the checks                                                                                           |
+| `golconda vars set\|push\|list\|pub\|enrol HOST …`                                                        | the admin vars of a machine, from the deploy host ([below](#golconda-vars))                                                                                           |
+| `golconda release check\|publish\|build\|list …`                                                          | the release directory of an image: build, check, publish, list ([below](#golconda-release))                                                                           |
+| `nix fmt`                                                                                                 | treefmt (the formatter output, built by repkgs): format in place and run the linters                                                                                  |
+| `scripts/docs serve`                                                                                      | check the module list in `docs/SUMMARY.md`, generate the module pages, then serve the book                                                                            |
+| `scripts/pins check`, `scripts/pins apply NAME`                                                           | show and bump the pins in `pins/` with uptrack (`CONTRIBUTING.md`, "The repkgs fork")                                                                                 |
 
 The update test needs two releases with the same keys, and both are outputs:
 
@@ -38,13 +38,13 @@ image. The source is `cli/` (`cli/README.md` is for developers). It calls other 
 `PATH`: `age`, `ssh`, `ssh-keygen`, `gpgv`, `git`, `rclone` and `nix-build`. A variable replaces
 some of them, with arguments if you like (`GOLCONDA_SSH="ssh -p 2222"`):
 
-| variable                | program                                         | used by                            |
-| ----------------------- | ----------------------------------------------- | ---------------------------------- |
-| `GOLCONDA_AGE`          | `age` (or `rage`)                               | `vars`                             |
-| `GOLCONDA_SSH`          | `ssh`                                           | `vars`                             |
-| `GOLCONDA_SSH_KEYGEN`   | `ssh-keygen`                                    | `vars enrol`                       |
-| `GOLCONDA_AGE_IDENTITY` | the age identity file that `vars push -i` names | `vars push`, `vars enrol`          |
-| `GOLCONDA_GPGV`         | `gpgv`                                          | `release check`, `release publish` |
+| variable                | program                                         | used by                                             |
+| ----------------------- | ----------------------------------------------- | --------------------------------------------------- |
+| `GOLCONDA_AGE`          | `age` (or `rage`)                               | `vars`                                              |
+| `GOLCONDA_SSH`          | `ssh`                                           | `vars`                                              |
+| `GOLCONDA_SSH_KEYGEN`   | `ssh-keygen`                                    | `vars enrol`                                        |
+| `GOLCONDA_AGE_IDENTITY` | the age identity file that `vars push -i` names | `vars push`, `vars enrol`                           |
+| `GOLCONDA_GPGV`         | `gpgv`                                          | `release check`, `release publish`, `release build` |
 
 Golconda packages age as `packages.<system>.age` (`age` and `age-keygen`). Put it on `PATH` beside
 `golconda`, with any `age-plugin-*` that the operators' keys need: age finds its plugins on `PATH`,
@@ -90,8 +90,8 @@ golconda vars enrol -i ~/.config/age/key.txt web1 --ca-key host_ca.pub \
   --pkcs11-module "$(ykcs11-module)" --principal web1.example.com --fingerprint SHA256:…
 ```
 
-It does what the six steps of [Certificate login](../features/ssh-login.md#using-it) did, in this
-order, and stops at the first failure:
+It runs the six steps of [Certificate login](../features/ssh-login.md#using-it) in one command, in
+this order, and stops at the first failure:
 
 1. Checks the request before it touches anything: each principal is one name, a KRL is given with
    `--krl` or already stored for HOST, and HOST declares both admin vars, `sshd-host-cert` and
@@ -134,7 +134,7 @@ A release is the directory `release/` that an image build writes: four files and
 take the key set made by `scripts/make-keys`.
 
 ```sh
-golconda release build -f server.toml --keys /srv/golconda-keys [--version auto] [--to DEST] [--out DIR]
+golconda release build -f server.toml --keys /srv/golconda-keys [--version auto] [--to DEST] [--out DIR] [--system SYSTEM]
 golconda release check result-release/release --keys /srv/golconda-keys [--json]
 golconda release publish result-release/release --to hetzner:updates/web --keys /srv/golconda-keys
 golconda release list --to hetzner:updates/web
@@ -152,15 +152,17 @@ golconda release list --to hetzner:updates/web
   `--out` names a new directory for the release (default `result-release`): `disk.raw`, `release/`,
   and `unsigned`, the link to the unsigned outputs; an existing one is refused, and a failed build
   removes it. `--pcr-keys` and `--index-keys` name the key sets of the PCR and release keys when a
-  `db` rotation keeps them ([Making a release: Rotate a key](release.md#5-rotate-a-key)).
-  `--pkcs11-module FILE` names the PKCS#11 module of the token that holds the `db` or PCR key, when
-  the key set names it by URI ([Making a release: Keys on a token](release.md#6-keys-on-a-token)).
+  `db` rotation keeps them ([Making a release: Rotate a key](release.md#5-rotate-a-key)). `--system`
+  is the Nix system to evaluate for (default: this host's). `--pkcs11-module FILE` names the PKCS#11
+  module of the token that holds the `db` or PCR key, when the key set names it by URI
+  ([Making a release: Keys on a token](release.md#6-keys-on-a-token)).
 - `check` verifies the index (the four lines in their fixed order), every digest, the shared image
   id and version in the names, the UUIDs against the root hash, and the signature against the key
   set's `release/index.pgp`.
 - `publish` checks the directory, then uploads it with rclone to a local directory or a
-  `remote:path`. It refuses a version that is not newer than the one the destination serves, and a
-  release whose commit (`--repo`, default `.`) records other digests, unless `--unrecorded`. It
-  deletes nothing and commits nothing.
+  `remote:path`. It refuses a version that is not newer than the one the destination serves, the
+  same version with other files, and a release whose commit (`--repo`, default `.`) records other
+  digests. A release that no commit records needs `--unrecorded`. It deletes nothing and commits
+  nothing.
 - `list` prints the release commits, newest first; with `--to` it marks the one the destination
   serves and those it still holds.

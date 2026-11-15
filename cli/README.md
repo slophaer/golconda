@@ -27,13 +27,13 @@ The crate has no library for age, ssh, ssh-keygen, git, gpgv, nix-build or rclon
 Each is found on `PATH`. A variable names age, ssh, ssh-keygen or gpgv instead, with arguments split
 at spaces (`GOLCONDA_SSH="ssh -p 2222"`):
 
-| variable                | program or value                                 |
-| ----------------------- | ------------------------------------------------ |
-| `GOLCONDA_AGE`          | `age` (or `rage`)                                |
-| `GOLCONDA_SSH`          | `ssh`                                            |
-| `GOLCONDA_SSH_KEYGEN`   | `ssh-keygen` (`vars enrol`)                      |
-| `GOLCONDA_AGE_IDENTITY` | the identity file for `vars push` (same as `-i`) |
-| `GOLCONDA_GPGV`         | `gpgv`                                           |
+| variable                | program or value                                                  |
+| ----------------------- | ----------------------------------------------------------------- |
+| `GOLCONDA_AGE`          | `age` (or `rage`)                                                 |
+| `GOLCONDA_SSH`          | `ssh`                                                             |
+| `GOLCONDA_SSH_KEYGEN`   | `ssh-keygen` (`vars enrol`)                                       |
+| `GOLCONDA_AGE_IDENTITY` | the identity file for `vars push` and `vars enrol` (same as `-i`) |
+| `GOLCONDA_GPGV`         | `gpgv`                                                            |
 
 Variables that start with `GOLCONDA_TEST_` belong to the tests: `GOLCONDA_TEST_PKCS11_MODULE` names
 SoftHSM's `libsofthsm2.so`, for the test that signs with a CA key on a token.
