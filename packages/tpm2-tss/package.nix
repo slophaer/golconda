@@ -19,17 +19,14 @@ package {
     "--disable-tcti-i2c-ftdi"
     # no --enable-nodl: systemd dlopens the TCTI itself (src/shared/tpm2-util.c) and calls its
     # Tss2_Tcti_Info, which the TCTI exports only when it is not linked into tctildr/esys. The
-    # TCTIs are dlopen()ed by soname, so they need their own directory on RUNPATH ($ORIGIN below)
+    # TCTIs are dlopen()ed by soname (tctildr-dl.c: libtss2-tcti-<name>.so.0) from tctildr's own
+    # directory: repkgs keeps a library's own directory on its RUNPATH ($ORIGIN)
     "--disable-doxygen-doc"
     "--disable-unit"
     "--disable-integration"
     "--disable-defaultflags" # its own -D_FORTIFY_SOURCE=2 and stack protector flags: cc has them
     "--with-runstatedir=/run"
   ];
-  # libtss2-tctildr dlopens the TCTIs by soname (tctildr-dl.c: libtss2-tcti-<name>.so.0), and a
-  # relocatable library has no default search path. Its own directory on RUNPATH ($ORIGIN, kept
-  # because no NEEDED is served by it) is what makes the dlopen find the sibling TCTIs
-  cc.ldflags = [ "-Wl,-rpath,$ORIGIN" ];
   # make install creates the FAPI keystore under var/ even without FAPI, and installs the sysusers
   # file for the `tss` group (tpm-udev.rules) only when systemd-sysusers is on PATH
   phases.after."autotools.install" = {

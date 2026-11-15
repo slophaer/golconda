@@ -40,9 +40,8 @@ package {
     '';
   };
   # libpcsclite.so.1 only forwards: it dlopen()s libpcsclite_real.so.1 by soname (libredirect.c).
-  # ld.so searches the caller's RUNPATH and Golconda has no ld.so.cache, so the library's own
-  # directory goes there
-  cc.ldflags = [ "-Wl,-rpath,$ORIGIN" ];
+  # ld.so searches the caller's RUNPATH and Golconda has no ld.so.cache: repkgs keeps a library's
+  # own directory there ($ORIGIN)
   buildDependencies = [
     buildPkgs.flex # the reader.conf and driver plist parsers
     buildPkgs.perl # pod2man, for the pcsc-spy page that meson makes while it configures

@@ -181,11 +181,10 @@ package {
     buildPkgs.python-pyelftools
   ];
 
-  dependencies = deps;
   # systemd 262 dlopen()s most of these by soname (.note.dlopen), from libsystemd-shared: ld.so
-  # looks in the caller's RUNPATH (Golconda has no ld.so.cache), so their lib dirs go there.
-  # finish's dlopen-check holds every binary to it
-  cc.ldflags = map (d: "-Wl,-rpath,${d}/lib") deps;
+  # looks in the caller's RUNPATH (Golconda has no ld.so.cache). repkgs' link puts the lib dir of
+  # each soname the notes name there, and finish's dlopen-check holds every binary to it
+  dependencies = deps;
 
   # meson installs below /usr, /etc and /var. The builder's staged install takes /usr as the
   # output and makes the .pc files relative; /etc holds sample configuration files, which become
