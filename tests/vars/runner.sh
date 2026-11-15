@@ -132,6 +132,16 @@ check "local: publishes the public file and marks done" \
   '[ "$(cat "$WORK/state/pub/key.pub")" = public ] && [ -e "$WORK/state/done" ]'
 check "local: removes the plaintext" '[ -z "$(ls -A "$WORK/run")" ]'
 
+# a generator that fails after it wrote a file: the run fails, seals nothing, and the unit runs
+# again at the next boot (no done)
+printf '%s\n' 'echo secret > key' 'exit 1' > "$GOLCONDA_VARS_D/broken.sh"
+mkdir -p "$WORK/run-broken" "$WORK/state-broken"
+before=$(ls -A "$GOLCONDA_CREDSTORE")
+st=0
+RUNTIME_DIRECTORY=$WORK/run-broken STATE_DIRECTORY=$WORK/state-broken sh "$RUNNER" broken key "" > "$WORK/out" 2>&1 || st=$?
+check "local: a failed generator fails the run, seals nothing and writes no done" \
+  '[ "$st" != 0 ] && [ "$(ls -A "$GOLCONDA_CREDSTORE")" = "$before" ] && [ ! -e "$WORK/state-broken/done" ]'
+
 # --- the TPM2 policy: the signed PCR 11 policy, and PCR 7 by value on a Secure Boot image ---
 check "policy: without vars.d/tpm2-pcrs, the signed PCR 11 policy only" \
   'grep -qx "encrypt foo.key --with-key=auto --tpm2-public-key-pcrs=11" "$CREDS_LOG"'
