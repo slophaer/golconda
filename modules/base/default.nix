@@ -177,10 +177,12 @@ in
         + ini.render {
           Journal = {
             SystemMaxUse = options.journalMaxUse;
-            # the screen (tty1) shows the journal as the serial console shows the boot
+            # the screen (tty1) shows the journal as the serial console shows the boot. journald
+            # writes to it synchronously, so only notice and higher: info messages would slow
+            # every service that logs (journald.conf(5))
             ForwardToConsole = true;
             TTYPath = "/dev/tty1";
-            MaxLevelConsole = "info";
+            MaxLevelConsole = "notice";
           };
         };
 

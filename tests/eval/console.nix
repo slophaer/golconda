@@ -7,7 +7,8 @@
   ...
 }:
 # The screen mirrors the serial console: the kernel draws its console on the firmware
-# framebuffer, and journald forwards to tty1.
+# framebuffer, and journald forwards notice and higher to tty1: journald writes to the console
+# synchronously, so info messages stay off it (journald.conf(5)).
 let
   inherit (builtins) all;
   kconfig = builtins.readFile ../../packages/kernel/golconda.config;
@@ -22,7 +23,9 @@ in
       "CONFIG_FRAMEBUFFER_CONSOLE"
     ]
   ))
-  (check "console: journald forwards to tty1, the screen" (
-    hasInfix "\nForwardToConsole=yes\n" journald && hasInfix "\nTTYPath=/dev/tty1\n" journald
+  (check "console: journald forwards notice and higher to tty1, the screen" (
+    hasInfix "\nForwardToConsole=yes\n" journald
+    && hasInfix "\nTTYPath=/dev/tty1\n" journald
+    && hasInfix "\nMaxLevelConsole=notice\n" journald
   ))
 ]

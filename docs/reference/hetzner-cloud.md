@@ -15,7 +15,7 @@ What Hetzner Cloud gives and lacks, and what Golconda does about it:
 | no Secure Boot                                   | `/system.secureBoot = false`: the kernel carries the `db` certificate                                           |
 | no TPM                                           | vars seal to the host key alone ([Trust](../design/trust.md#secrets-and-vars))                                  |
 | user data and ssh keys for cloud-init (metadata) | no cloud-init: the host name and ssh key are credentials on the ESP, or come from the metadata with `["/imds"]` |
-| a console that is a screen (VNC)                 | the kernel's console and the journal on the framebuffer (`tty0`, `tty1`)                                        |
+| a console that is a screen (VNC)                 | the kernel's console and the journal's notice and higher on the framebuffer (`tty0`, `tty1`)                    |
 | no image upload                                  | write the disk from the rescue system                                                                           |
 | virtio-scsi disk, virtio-net, DHCPv4             | built into the kernel; DHCP on every wired link (`/network`)                                                    |
 | IPv6: a static `/64`, no router advertisements   | a static `.network` file; with `["/imds"]`, a user data credential `network.network.*` (step 4)                 |
