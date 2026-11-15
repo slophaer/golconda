@@ -4,7 +4,8 @@
 # Usage: boot-test <disk.raw> --keys DIR [--secure-boot [--auto-enrol [--no-microsoft-keys]]]
 #                  [--tpm] [--timeout SECONDS]
 #                  [--ssh-test [--esp-creds | --imds | --enrol]]
-#                  [--next DIR [--rotate | --fail-health | --fail-initrd | --tamper-index]] [--factory-reset]
+#                  [--next DIR [--rotate | --fail-health | --fail-initrd | --fail-blessed --later DIR | --tamper-index]]
+#                  [--factory-reset]
 #
 # The script boots the image in QEMU with:
 #   - a 40 GiB qcow2 overlay (room for root partition)
@@ -200,6 +201,21 @@
 #   never started), and the fourth boot must run the old release (fallback-to-old-slot-initrd,
 #   counter-exhausted-initrd), where the timer reboots nothing
 #   (update-reboot-skipped-after-initrd-fallback). This mode skips the loader and recovery checks.
+# With --next DIR --fail-blessed --later LATER: the failed-boot counter (docs/design/boot.md, "Failed
+#   boots") on a blessed entry. LATER is a third release's image-smoke output
+#   (image-smoke-test-later). After the update is activated and blessed (next-blessed), the harness
+#   arms the test image's boot-test-crash.service for the next release
+#   (/var/lib/boot-test/crash-VERSION), which crashes PID 1 before multi-user.target on each of its
+#   boots, and reboots once. PID 1 reboots each crash; the third boot sets a one-shot boot of the
+#   old release, which runs, resets the count and marks the next release bad (failed-boots-fallback,
+#   failed-boots-reset, failed-boots-marked-bad: its UKI is +0-3, the old entry is the default).
+#   With the reboot timer every 10 s nothing reboots (update-reboot-skipped-after-failed-boots), and
+#   a reboot starts the old release with no one-shot (failed-boots-fallback-holds). The server then
+#   serves LATER: sysupdate installs it (later-release-installed), and the timer starts its first
+#   try, which is blessed (later-release-tried). Then the harness arms LATER and the old release and
+#   reboots once more: three crashes, the old release once, two more, and the seventh boot in a row
+#   crashes and nothing reboots it for 60 s (failed-boots-halt). The run ends there; it skips the
+#   loader and recovery checks. Give it a --timeout of 1800.
 # With --next DIR --rotate: DIR is signed with a new db key. Its certificate is enrolled in db
 #   beside the old one before the first boot; after the update the harness stops QEMU, rewrites
 #   the variable store (db: the new certificate only; dbx: the old one), boots again and checks
@@ -281,6 +297,8 @@ NEXT=""
 ROTATE=0
 FAIL_HEALTH=0
 FAIL_INITRD=0
+FAIL_BLESSED=0
+LATER=""
 TAMPER_INDEX=0
 FACTORY_RESET=0
 ESP_CREDS=0
@@ -312,7 +330,7 @@ IMDS_NET_CRED=60-imds-ipv6
 . "$SCRIPT_DIR/boot-test-update.sh"
 
 usage() {
-  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot [--auto-enrol [--no-microsoft-keys]]] [--tpm] [--timeout SECONDS] [--ssh-test [--esp-creds | --imds | --enrol]] [--next DIR [--rotate | --fail-health | --fail-initrd | --tamper-index]] [--factory-reset]"
+  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot [--auto-enrol [--no-microsoft-keys]]] [--tpm] [--timeout SECONDS] [--ssh-test [--esp-creds | --imds | --enrol]] [--next DIR [--rotate | --fail-health | --fail-initrd | --fail-blessed --later DIR | --tamper-index]] [--factory-reset]"
   exit 1
 }
 
@@ -329,6 +347,8 @@ while [ $# -gt 0 ]; do
     --rotate) ROTATE=1; shift ;;
     --fail-health) FAIL_HEALTH=1; shift ;;
     --fail-initrd) FAIL_INITRD=1; shift ;;
+    --fail-blessed) FAIL_BLESSED=1; shift ;;
+    --later) LATER="$2"; shift 2 ;;
     --tamper-index) TAMPER_INDEX=1; shift ;;
     --factory-reset) FACTORY_RESET=1; shift ;;
     --esp-creds) ESP_CREDS=1; shift ;;
@@ -415,6 +435,17 @@ fi
 if [ "$FAIL_INITRD" = 1 ] && { [ -z "$NEXT" ] || [ "$FAIL_HEALTH" = 1 ] || [ "$ROTATE" = 1 ] || [ "$TAMPER_INDEX" = 1 ]; }; then
   echo "Error: --fail-initrd needs --next, and is a fallback of its own: not with --fail-health, --rotate or --tamper-index" >&2
   exit 1
+fi
+if [ "$FAIL_BLESSED" = 1 ] && { [ -z "$NEXT" ] || [ -z "$LATER" ] || [ "$FAIL_HEALTH" = 1 ] || [ "$FAIL_INITRD" = 1 ] || [ "$ROTATE" = 1 ] || [ "$TAMPER_INDEX" = 1 ]; }; then
+  echo "Error: --fail-blessed needs --next and --later, and ends on a halted machine: not with --fail-health, --fail-initrd, --rotate or --tamper-index" >&2
+  exit 1
+fi
+if [ -n "$LATER" ]; then
+  LATER_RELEASE=$(real_path "$LATER/disk")/release
+  if [ "$FAIL_BLESSED" = 0 ] || [ ! -f "$LATER_RELEASE/SHA256SUMS" ]; then
+    echo "Error: --later is for --fail-blessed, and $LATER must have disk/release/SHA256SUMS" >&2
+    exit 1
+  fi
 fi
 if [ "$FAIL_HEALTH" = 1 ] && [ -z "$NEXT" ]; then
   echo "Error: --fail-health needs --next" >&2

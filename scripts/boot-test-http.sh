@@ -56,6 +56,19 @@ probe_http_server() {
   return 1
 }
 
+# serve_release DIR: the release directory DIR is what the server serves from now on. It holds
+# symlinks into the store, and a chroot store's /nix/store is not the host's: resolve each file the
+# way the rest of this script does, then copy the bytes.
+serve_release() {
+  rm -f "$HTTP_ROOT"/*
+  for f in "$1"/*; do
+    if ! cp "$(real_path "$f")" "$HTTP_ROOT/$(basename "$f")"; then
+      echo "Error: cannot copy $f into $HTTP_ROOT" >&2
+      return 1
+    fi
+  done
+}
+
 # start_http_server: copy the release into $WORKDIR/http, write the server, and prove it answers
 # on the host (QEMU starts it later, for each guest connection)
 start_http_server() {
@@ -63,14 +76,7 @@ start_http_server() {
   HTTP_LOG="$WORKDIR/http.log"
   mkdir -p "$HTTP_ROOT"
   : > "$HTTP_LOG"
-  # The release directory holds symlinks into the store, and a chroot store's /nix/store is not
-  # the host's: resolve each file the way the rest of this script does, then copy the bytes.
-  for f in "$NEXT_RELEASE"/*; do
-    if ! cp "$(real_path "$f")" "$HTTP_ROOT/$(basename "$f")"; then
-      echo "Error: cannot copy $f into $HTTP_ROOT" >&2
-      return 1
-    fi
-  done
+  serve_release "$NEXT_RELEASE" || return 1
 
   # the negative control of the signed index: one byte more in SHA256SUMS, the signature unchanged
   if [ "$TAMPER_INDEX" = 1 ]; then

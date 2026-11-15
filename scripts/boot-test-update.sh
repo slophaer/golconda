@@ -214,6 +214,172 @@ test_fail_initrd() {
   activate_never
 }
 
+# failed_trace MARK: the failed-boot counter's lines in the serial log after byte MARK, one per
+# line, from the first crash of the test unit on: the crash, the kernel's reboot, the counter
+failed_trace() {
+  tail -c +"$(($1 + 1))" "$SERIAL_LOG" | tr -d '\033\r' \
+    | grep -ao "boot-test: crash PID 1 ([0-9.]*)\|reboot: Restarting system\|golconda-failed-boots: .*" \
+    | sed -n '/^boot-test: crash/,$p' || true
+}
+
+# crash_line VERSION: the trace of one crash of VERSION that PID 1 rebooted (CrashAction=reboot)
+crash_line() { echo "boot-test: crash PID 1 ($1)"; echo "reboot: Restarting system"; }
+
+# failed_count_gone: the counter's variable is gone, golconda-failed-boots-complete.service ran
+failed_count_gone() {
+  N=0
+  while [ "$N" -lt 30 ]; do
+    [ "$(guest systemctl is-active golconda-failed-boots-complete.service 2>/dev/null)" = active ] && break
+    sleep 2
+    N=$((N + 1))
+  done
+  guest "! ls /sys/firmware/efi/efivars/GolcondaFailedBoots-* 2>/dev/null"
+}
+
+# wait_blessed: wait until systemd-bless-boot.service ran on this boot
+wait_blessed() {
+  N=0
+  while [ "$N" -lt 30 ]; do
+    [ "$(guest systemctl is-active systemd-bless-boot.service 2>/dev/null)" = active ] && return 0
+    sleep 2
+    N=$((N + 1))
+  done
+  return 1
+}
+
+# test_fail_blessed: the failed-boot counter (docs/design/boot.md, "Failed boots") on a blessed
+# entry, which boot counting no longer counts. $NEXT_VERSION, blessed, crashes PID 1 on every boot
+# (boot-test-crash.service): after three boots the fourth starts $OLD_VERSION once, which completes,
+# resets the count and marks $NEXT_VERSION bad (+0-3). From then on systemd-boot's default is
+# $OLD_VERSION: the reboot timer finds nothing to activate and a reboot starts $OLD_VERSION again.
+# A later release ($LATER_VERSION, served in place of $NEXT_VERSION) is installed and tried as
+# usual. Then it and $OLD_VERSION crash: the seventh boot in a row reboots on no failure. The
+# harness reboots at the start of each half and then only watches.
+test_fail_blessed() {
+  echo ""
+  echo "=== failed boots: the blessed $NEXT_VERSION crashes PID 1 on every boot ==="
+  LATER_NAME=$(basename "$(ls "$LATER_RELEASE"/*.efi)" .efi)
+  LATER_VERSION=${LATER_NAME##*_}
+  RC=0
+  wait_blessed || RC=1
+  D=$(guest ls /boot/EFI/Linux 2>&1) || true
+  echo "$D"
+  echo "$D" | grep -qxF "${IMAGE_ID}_$NEXT_VERSION.efi" || RC=1
+  failed_count_gone || RC=1
+  verdict "next-blessed ($NEXT_VERSION's UKI has no counter, the failed-boot count is reset)" $RC
+
+  MARK=$(wc -c < "$SERIAL_LOG")
+  guest "mkdir -p /var/lib/boot-test && touch /var/lib/boot-test/crash-$NEXT_VERSION && sync" || true
+  guest systemctl reboot 2>&1 || true
+  if ! wait_for_old "$BOOT_ID"; then
+    verdict "failed-boots-fallback (no login of $OLD_VERSION before the timeout)" 1
+    failed_trace "$MARK"
+    return 1
+  fi
+  RC_GONE=0
+  failed_count_gone || RC_GONE=1
+  T=$(failed_trace "$MARK")
+  echo "the crashes and the counter's lines on the serial console:"
+  echo "$T"
+  F="golconda-failed-boots: failed boots in a row:"
+  E=$(
+    crash_line "$NEXT_VERSION"
+    echo "$F 1"
+    crash_line "$NEXT_VERSION"
+    echo "$F 2"
+    echo "golconda-failed-boots: the next boot starts ${IMAGE_ID}_$OLD_VERSION.efi once"
+    crash_line "$NEXT_VERSION"
+    echo "$F 3"
+    echo "golconda-failed-boots: ${IMAGE_ID}_$NEXT_VERSION.efi failed 3 boots in a row: marked bad, ${IMAGE_ID}_$NEXT_VERSION+0-3.efi"
+    echo "golconda-failed-boots: this boot completed after 3 failed boots: the count is reset"
+  )
+  RC=0
+  [ "$T" = "$E" ] || { RC=1; printf 'expected:\n%s\n' "$E"; }
+  verdict "failed-boots-fallback (3 crashes of the blessed $NEXT_VERSION, each rebooted and counted; the fourth boot ran $V)" $RC
+  verdict "failed-boots-reset ($V completed: the count is gone)" $RC_GONE
+
+  D=$(guest ls /boot/EFI/Linux 2>&1) || true
+  L=$(guest bootctl list --no-pager 2>&1) || true
+  echo "$D"
+  echo "$L" | grep -E " (title|tries):" || true
+  RC=0
+  echo "$D" | grep -qxF "${IMAGE_ID}_$NEXT_VERSION+0-3.efi" || RC=1
+  ! echo "$D" | grep -qxF "${IMAGE_ID}_$NEXT_VERSION.efi" || RC=1
+  echo "$L" | grep -q "title: Golconda $OLD_VERSION (default) (selected)" || RC=1
+  echo "$L" | grep -q "tries: 0 left; 3 done" || RC=1
+  verdict "failed-boots-marked-bad ($NEXT_VERSION's UKI is +0-3, systemd-boot's default is the running $OLD_VERSION)" $RC
+  # the timer fires every 10 s: golconda-update-pending must find nothing to activate
+  activate_soon || true
+  check_reboot_skipped update-reboot-skipped-after-failed-boots
+  activate_never
+  RC=0
+  guest "! ls /sys/firmware/efi/efivars/LoaderEntryOneShot-* 2>/dev/null" || RC=1
+  reboot_guest || return 1
+  V=$(guest_version)
+  [ "$V" = "$OLD_VERSION" ] || RC=1
+  verdict "failed-boots-fallback-holds (no one-shot set; a reboot starts $V)" $RC
+
+  echo "--- a later release, $LATER_VERSION, is installed and tried ---"
+  serve_release "$LATER_RELEASE" || return 1
+  RC=0
+  guest systemctl start --wait systemd-sysupdate-update.service || RC=1
+  J=$(guest journalctl -b -u systemd-sysupdate-update.service -o cat --no-pager 2>&1) || true
+  echo "$J" | grep "Successfully installed" || true
+  echo "$J" | grep -q "Successfully installed 'http://$UPDATE_ADDR:$HTTP_PORT/${IMAGE_ID}_$LATER_VERSION" || RC=1
+  D=$(guest ls /boot/EFI/Linux 2>&1) || true
+  echo "$D"
+  echo "$D" | grep -qxF "${IMAGE_ID}_$LATER_VERSION+3-0.efi" || RC=1
+  echo "$D" | grep -qxF "${IMAGE_ID}_$OLD_VERSION.efi" || RC=1
+  verdict "later-release-installed ($LATER_VERSION, with three tries, beside the running $OLD_VERSION)" $RC
+  MARK=$(wc -c < "$SERIAL_LOG")
+  activate_soon || true
+  RC=0
+  wait_for_ssh "$BOOT_ID" || RC=1
+  V=$(guest_version)
+  [ "$V" = "$LATER_VERSION" ] || RC=1
+  trial_trace "$MARK" | grep -qxF "golconda-trial-boot: ${IMAGE_ID}_$LATER_VERSION+2-1.efi is on trial" || RC=1
+  wait_blessed || RC=1
+  failed_count_gone || RC=1
+  activate_never
+  verdict "later-release-tried (the reboot timer started $V's first try, which was blessed)" $RC
+
+  echo "--- $LATER_VERSION and $OLD_VERSION crash ---"
+  MARK=$(wc -c < "$SERIAL_LOG")
+  guest "touch /var/lib/boot-test/crash-$LATER_VERSION /var/lib/boot-test/crash-$OLD_VERSION && sync" || true
+  guest systemctl reboot 2>&1 || true
+  # until the halted boot's crash, then a minute without a reboot: more than PID 1's 10 s
+  while qemu_running && ! failed_trace "$MARK" | grep -q "reboots on no failure"; do
+    sleep 5
+  done
+  while qemu_running && [ "$(failed_trace "$MARK" | tail -1)" != "boot-test: crash PID 1 ($LATER_VERSION)" ]; do
+    sleep 2
+  done
+  sleep 60
+  T=$(failed_trace "$MARK")
+  echo "$T"
+  E=$(
+    crash_line "$LATER_VERSION"
+    echo "$F 1"
+    crash_line "$LATER_VERSION"
+    echo "$F 2"
+    echo "golconda-failed-boots: the next boot starts ${IMAGE_ID}_$OLD_VERSION.efi once"
+    crash_line "$LATER_VERSION"
+    echo "$F 3"
+    crash_line "$OLD_VERSION"
+    echo "$F 4"
+    crash_line "$LATER_VERSION"
+    echo "$F 5"
+    crash_line "$LATER_VERSION"
+    echo "$F 6: this boot reboots on no failure (kernel.panic=0, CrashAction=freeze)"
+    echo "boot-test: crash PID 1 ($LATER_VERSION)"
+  )
+  RC=0
+  qemu_running || RC=1
+  [ "$T" = "$E" ] || { RC=1; printf 'expected:\n%s\n' "$E"; }
+  verdict "failed-boots-halt (both slots crash: the fourth boot ran $OLD_VERSION once, the seventh crashed and nothing rebooted it for 60 s)" $RC
+  stop_qemu
+}
+
 # refusal_evidence JOURNAL: true when sysupdate's journal shows the index check failing (a bad
 # signature of SHA256SUMS) and no install
 refusal_evidence() {
@@ -365,6 +531,11 @@ test_next() {
   verdict "boots-next ($OLD_VERSION -> $V)" $RC
   check_reboot_skipped update-reboot-skipped
   activate_never
+  if [ "$FAIL_BLESSED" = 1 ]; then
+    # the run ends on a halted machine: no loader and no recovery checks
+    test_fail_blessed
+    return
+  fi
   check_unsealed "after the update to $V"
   check_units_composed -after-update
   check_no_failed no-failed-units-after-update

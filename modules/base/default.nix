@@ -34,6 +34,13 @@
 #! (`/base.trialBootDeadline`) and `OnFailure=` a unit that reboots. A blessed
 #! entry, or one with no try left, stays up when its health check fails.
 #!
+#! Failed boots (`parts/failed-boots.nix`): the initrd counts each boot in an
+#! EFI variable, and a boot that completes resets the count. After
+#! `/base.failedBootsFallback` boots in a row that did not complete, the next
+#! starts the other slot, and once that boot completes the failed entry's UKI
+#! is marked bad (`+0-N`, systemd-boot's form); after `/base.failedBootsHalt`,
+#! a boot reboots on no failure, so its console stays readable.
+#!
 #! Bootstrap credentials: `golconda-esp-credentials.service` removes the ESP's
 #! `loader/credentials/*.cred` (and a UKI's `.extra.d/*.cred`) at every boot,
 #! after firstboot, sysusers and tmpfiles applied them, so an ESP credential
@@ -83,11 +90,12 @@
 #!
 #! Options: `/base.ntp` (NTP servers for timesyncd), `/base.journalMaxUse`
 #! (journal retention), `/base.trialBootDeadline` (how long a trial boot may take
-#! to reach boot-complete.target).
+#! to reach boot-complete.target), `/base.failedBootsFallback` and
+#! `/base.failedBootsHalt` (the failed-boot counter's thresholds).
 { types, ... }:
 let
   inherit (builtins) concatStringsSep;
-  inherit (types) listOf string;
+  inherit (types) int listOf string;
 
   inherit (import ../lib/text.nix) lines;
 
@@ -121,6 +129,16 @@ in
       default = "15min";
       description = "JobTimeoutSec= of boot-complete.target on a trial boot (a counted boot entry with a try left): a systemd time span. A trial boot that has not reached boot-complete.target by then reboots, and systemd-boot takes the next try or the other slot (docs/design/boot.md, \"Trial boot\").";
     };
+    failedBootsFallback = {
+      type = int;
+      default = 3;
+      description = "After this many boots in a row that did not complete, the next boot starts the other /usr slot (systemd-boot's one-shot entry), and once that boot completes the failed entry is marked bad, as systemd-boot marks an entry with no try left. 1 or more (docs/design/boot.md, \"Failed boots\").";
+    };
+    failedBootsHalt = {
+      type = int;
+      default = 6;
+      description = "After this many boots in a row that did not complete, a boot reboots on no failure: kernel.panic=0, CrashAction=freeze and no trial boot reboot, so the console stays readable. More than failedBootsFallback (docs/design/boot.md, \"Failed boots\").";
+    };
   };
 
   impl =
@@ -137,6 +155,11 @@ in
       imds = import ./parts/imds.nix; # systemd's IMDS units: off without /imds
       # what reboots a failed boot: panic, crash, initrd, and a trial boot's boot-complete.target
       trialBoot = import ./parts/trial-boot.nix { deadline = options.trialBootDeadline; };
+      # a failure that repeats on every boot: the other slot once, then no reboot
+      failedBoots = import ./parts/failed-boots.nix {
+        fallback = options.failedBootsFallback;
+        halt = options.failedBootsHalt;
+      };
       espCredentials = import ./parts/esp-credentials.nix; # the ESP's credentials hold for one boot
       usrLinks = import ./parts/links.nix { inherit p; }; # the /usr links into the packages
 
@@ -228,13 +251,14 @@ in
         p.linux-kernel # kernel; UKI builder consumes it
       ];
 
-      units = boot.units // trialBoot.units // espCredentials.units;
+      units = boot.units // trialBoot.units // failedBoots.units // espCredentials.units;
 
       files =
         dropIns.files
         // imds.files
         // boot.files
         // trialBoot.files
+        // failedBoots.files
         // espCredentials.files
         // {
           "/usr/lib/systemd/timesyncd.conf.d/golconda.conf" = timesyncdConf;
@@ -246,7 +270,13 @@ in
 
       # path -> { target; kind; }, the shape the composer takes
       links =
-        wantsLinks // boot.links // trialBoot.links // espCredentials.links // dbus.links // usrLinks.links;
+        wantsLinks
+        // boot.links
+        // trialBoot.links
+        // failedBoots.links
+        // espCredentials.links
+        // dbus.links
+        // usrLinks.links;
 
       inherit (dbus) sysusers;
 

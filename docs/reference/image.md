@@ -577,46 +577,52 @@ With `--tpm` (and `--ssh-test`):
 
 With `--next DIR` ([The update test](#the-update-test)):
 
-| marker                                                                 | what it proves                                                                                                                                              |
-| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `release-index`                                                        | `SHA256SUMS` has four lines in the fixed order, the digests match, none lists itself                                                                        |
-| `http-source`                                                          | the guest's own `10-usr.transfer` has `Type=url-file` and `Path=http://169.254.169.2:<port>/`                                                               |
-| `http-fetch`                                                           | the sysupdate journal names the release over `http`, so the guest fetched it, not a local file                                                              |
-| `sysupdate-installed`                                                  | `systemd-sysupdate-update.service` installed the release                                                                                                    |
-| `verity-sig-builtin-accepted`                                          | without `--rotate`: the running kernel activates the newly filled slot's `/usr` with its root hash signature, with no unsigned retry                        |
-| `sysupdate-refused`                                                    | with `--tamper-index`: the service failed, its journal names the index signature and no install, and the next release is on no partition or ESP entry       |
-| `boots-old`                                                            | with `--tamper-index`, after the reboot `IMAGE_VERSION` is still the old version                                                                            |
-| `no-failed-units-after-refused-update`                                 | with `--tamper-index`, the system has no failed unit after the refused update                                                                               |
-| `clock-not-reset-after-refused-update`                                 | with `--tamper-index`, `clock-not-reset` on the journal of the boot after the refused update                                                                |
-| `hostkey-fingerprint-on-console`                                       | the key `golconda vars pub` reads has the fingerprint the first boot wrote on the console                                                                   |
-| `admin-vars-pushed`                                                    | before the update, `golconda vars` stored and pushed the host certificate (the guest's host key signed by `snakeoil-host-ca`) and a KRL, and restarted sshd |
-| `admin-vars-sealed`                                                    | `golconda vars list` says both are stored and sealed                                                                                                        |
-| `host-cert-presented`                                                  | the next release presents the host certificate to a strict `@cert-authority` known_hosts                                                                    |
-| `cert-login-after-update`, `cert-revoked-refused`                      | the good certificate logs in; the one the KRL names is refused                                                                                              |
-| `krl-pushed-again`, `krl-rotated`                                      | a second KRL, pushed while the release runs, refuses the good certificate too                                                                               |
-| `update-reboot-window`                                                 | `systemd-sysupdate-reboot.timer` is active, with the image's `OnCalendar=*-*-* 04:10:00`                                                                    |
-| `update-activated`                                                     | with the timer's window moved to every 10 s, the guest reboots into the new release by itself (with `--fail-health`, into its first try)                    |
-| `update-reboot-skipped`, `update-reboot-skipped-after-fallback`        | the timer fires on the new release, or after `--fail-health`'s fallback on the old one, `golconda-update-pending` finds nothing to activate, and no reboot  |
-| `boots-next`                                                           | after the reboot `IMAGE_VERSION` is the new version                                                                                                         |
-| `units-composed-only-after-update`, `no-sysext-after-update`           | `units-composed-only` and `no-sysext` on the updated release; with `--fail-health`, `-after-fallback` on the old release                                    |
-| `no-failed-units-after-update`                                         | the updated system has no failed unit                                                                                                                       |
-| `clock-not-reset-after-update`                                         | `clock-not-reset` on the updated release's first boot                                                                                                       |
-| `clock-not-reset-after-fallback`                                       | with `--fail-health`, `clock-not-reset` on the fallback boot of the old release                                                                             |
-| `health-check-broken`                                                  | with `--fail-health`, the drop-ins that hang and then fail `golconda-health-network.service`, and the 90 s deadline, are in place                           |
-| `trial-boot-counted`                                                   | with `--fail-health`, the generator logged each try of the candidate (`+2-1`, `+1-2`, `+0-3`) as on trial                                                   |
-| `trial-hang-rebooted`, `trial-fail-rebooted`                           | with `--fail-health`, the hung try reboots at the deadline and the two failed ones at once, three reboots by the policy and none by the harness             |
-| `fallback-to-old-slot`, `counter-exhausted`, `old-slot-selected`       | with `--fail-health`, the fourth boot runs the old release, the candidate has `tries: 0 left; 3 done`, the old entry is selected                            |
-| `blessed-no-trial-policy`                                              | with `--fail-health`, the blessed old release runs no health unit and has no trial drop-in                                                                  |
-| `initrd-broken`, `initrd-fail-rebooted`                                | with `--fail-initrd`, the candidate's hash partition is zeroed at the start, and `golconda-initrd-failed.service` reboots each of its three tries           |
-| `fallback-to-old-slot-initrd`, `counter-exhausted-initrd`              | with `--fail-initrd`, the fourth boot runs the old release, and the candidate has `tries: 0 left; 3 done`                                                   |
-| `exhausted-entry-stays-up`, `oneshot-exhausted-is-once`                | with `--fail-health`, the candidate started with no try left fails its health check and is not rebooted; the next boot is the old release                   |
-| `hwdb-after-update`                                                    | the updated release's `/usr/lib/udev/hwdb.bin` answers for DMI, PCI and USB; none in `/etc`                                                                 |
-| `loader-replaced`                                                      | when the loader bytes differ, the new loader is on the ESP and the old one is `systemd-boot-fallbackx64.efi`                                                |
-| `bootctl-list-both-slots`                                              | `bootctl list` shows the entries of both versions                                                                                                           |
-| `loader-reinstall`                                                     | a damaged `BOOTX64.EFI` is reinstalled by `golconda-loader-update`                                                                                          |
-| `set-oneshot-other-slot`, `other-slot-keeps-loader`, `oneshot-is-once` | `bootctl set-oneshot` boots the other slot once and installs nothing                                                                                        |
-| `set-default-other-slot`, `set-default-cleared`                        | `bootctl set-default` boots the other slot until it is cleared                                                                                              |
-| `reboot-to-firmware`                                                   | `bootctl reboot-to-firmware` reaches OVMF's boot menu                                                                                                       |
+| marker                                                                    | what it proves                                                                                                                                                                      |
+| ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `release-index`                                                           | `SHA256SUMS` has four lines in the fixed order, the digests match, none lists itself                                                                                                |
+| `http-source`                                                             | the guest's own `10-usr.transfer` has `Type=url-file` and `Path=http://169.254.169.2:<port>/`                                                                                       |
+| `http-fetch`                                                              | the sysupdate journal names the release over `http`, so the guest fetched it, not a local file                                                                                      |
+| `sysupdate-installed`                                                     | `systemd-sysupdate-update.service` installed the release                                                                                                                            |
+| `verity-sig-builtin-accepted`                                             | without `--rotate`: the running kernel activates the newly filled slot's `/usr` with its root hash signature, with no unsigned retry                                                |
+| `sysupdate-refused`                                                       | with `--tamper-index`: the service failed, its journal names the index signature and no install, and the next release is on no partition or ESP entry                               |
+| `boots-old`                                                               | with `--tamper-index`, after the reboot `IMAGE_VERSION` is still the old version                                                                                                    |
+| `no-failed-units-after-refused-update`                                    | with `--tamper-index`, the system has no failed unit after the refused update                                                                                                       |
+| `clock-not-reset-after-refused-update`                                    | with `--tamper-index`, `clock-not-reset` on the journal of the boot after the refused update                                                                                        |
+| `hostkey-fingerprint-on-console`                                          | the key `golconda vars pub` reads has the fingerprint the first boot wrote on the console                                                                                           |
+| `admin-vars-pushed`                                                       | before the update, `golconda vars` stored and pushed the host certificate (the guest's host key signed by `snakeoil-host-ca`) and a KRL, and restarted sshd                         |
+| `admin-vars-sealed`                                                       | `golconda vars list` says both are stored and sealed                                                                                                                                |
+| `host-cert-presented`                                                     | the next release presents the host certificate to a strict `@cert-authority` known_hosts                                                                                            |
+| `cert-login-after-update`, `cert-revoked-refused`                         | the good certificate logs in; the one the KRL names is refused                                                                                                                      |
+| `krl-pushed-again`, `krl-rotated`                                         | a second KRL, pushed while the release runs, refuses the good certificate too                                                                                                       |
+| `update-reboot-window`                                                    | `systemd-sysupdate-reboot.timer` is active, with the image's `OnCalendar=*-*-* 04:10:00`                                                                                            |
+| `update-activated`                                                        | with the timer's window moved to every 10 s, the guest reboots into the new release by itself (with `--fail-health`, into its first try)                                            |
+| `update-reboot-skipped`, `update-reboot-skipped-after-fallback`           | the timer fires on the new release, or after `--fail-health`'s fallback on the old one, `golconda-update-pending` finds nothing to activate, and no reboot                          |
+| `boots-next`                                                              | after the reboot `IMAGE_VERSION` is the new version                                                                                                                                 |
+| `units-composed-only-after-update`, `no-sysext-after-update`              | `units-composed-only` and `no-sysext` on the updated release; with `--fail-health`, `-after-fallback` on the old release                                                            |
+| `no-failed-units-after-update`                                            | the updated system has no failed unit                                                                                                                                               |
+| `clock-not-reset-after-update`                                            | `clock-not-reset` on the updated release's first boot                                                                                                                               |
+| `clock-not-reset-after-fallback`                                          | with `--fail-health`, `clock-not-reset` on the fallback boot of the old release                                                                                                     |
+| `health-check-broken`                                                     | with `--fail-health`, the drop-ins that hang and then fail `golconda-health-network.service`, and the 90 s deadline, are in place                                                   |
+| `trial-boot-counted`                                                      | with `--fail-health`, the generator logged each try of the candidate (`+2-1`, `+1-2`, `+0-3`) as on trial                                                                           |
+| `trial-hang-rebooted`, `trial-fail-rebooted`                              | with `--fail-health`, the hung try reboots at the deadline and the two failed ones at once, three reboots by the policy and none by the harness                                     |
+| `fallback-to-old-slot`, `counter-exhausted`, `old-slot-selected`          | with `--fail-health`, the fourth boot runs the old release, the candidate has `tries: 0 left; 3 done`, the old entry is selected                                                    |
+| `blessed-no-trial-policy`                                                 | with `--fail-health`, the blessed old release runs no health unit and has no trial drop-in                                                                                          |
+| `initrd-broken`, `initrd-fail-rebooted`                                   | with `--fail-initrd`, the candidate's hash partition is zeroed at the start, and `golconda-initrd-failed.service` reboots each of its three tries                                   |
+| `fallback-to-old-slot-initrd`, `counter-exhausted-initrd`                 | with `--fail-initrd`, the fourth boot runs the old release, and the candidate has `tries: 0 left; 3 done`                                                                           |
+| `next-blessed`                                                            | with `--fail-blessed`, the activated release was blessed (its UKI has no counter) and its complete boot removed the failed-boot count                                               |
+| `failed-boots-fallback`, `failed-boots-reset`                             | with `--fail-blessed`, the blessed release crashed PID 1 on three boots, each rebooted and counted, the third set a one-shot boot of the old release, which ran and reset the count |
+| `failed-boots-marked-bad`                                                 | with `--fail-blessed`, after the fallback the failed release's UKI is `+0-3` and the old release is systemd-boot's default and the running entry                                    |
+| `update-reboot-skipped-after-failed-boots`, `failed-boots-fallback-holds` | with `--fail-blessed`, the reboot timer, moved to every 10 s, finds nothing to activate, and with no one-shot set a reboot starts the old release                                   |
+| `later-release-installed`, `later-release-tried`                          | with `--fail-blessed`, sysupdate installs `--later`'s release with three tries beside the old one, and the timer starts its first try, which is blessed                             |
+| `failed-boots-halt`                                                       | with `--fail-blessed` and both releases crashing, the seventh boot in a row logged `kernel.panic=0` and `CrashAction=freeze`, crashed, and nothing rebooted it for 60 s             |
+| `exhausted-entry-stays-up`, `oneshot-exhausted-is-once`                   | with `--fail-health`, the candidate started with no try left fails its health check and is not rebooted; the next boot is the old release                                           |
+| `hwdb-after-update`                                                       | the updated release's `/usr/lib/udev/hwdb.bin` answers for DMI, PCI and USB; none in `/etc`                                                                                         |
+| `loader-replaced`                                                         | when the loader bytes differ, the new loader is on the ESP and the old one is `systemd-boot-fallbackx64.efi`                                                                        |
+| `bootctl-list-both-slots`                                                 | `bootctl list` shows the entries of both versions                                                                                                                                   |
+| `loader-reinstall`                                                        | a damaged `BOOTX64.EFI` is reinstalled by `golconda-loader-update`                                                                                                                  |
+| `set-oneshot-other-slot`, `other-slot-keeps-loader`, `oneshot-is-once`    | `bootctl set-oneshot` boots the other slot once and installs nothing                                                                                                                |
+| `set-default-other-slot`, `set-default-cleared`                           | `bootctl set-default` boots the other slot until it is cleared                                                                                                                      |
+| `reboot-to-firmware`                                                      | `bootctl reboot-to-firmware` reaches OVMF's boot menu                                                                                                                               |
 
 With `--enrol` (and `--ssh-test`; instead of `cert-login`):
 
@@ -748,6 +754,23 @@ host's generator (`initrd-fail-rebooted`), then the old release (`fallback-to-ol
 the candidate at `tries: 0 left; 3 done` (`counter-exhausted-initrd`), where the timer reboots
 nothing (`update-reboot-skipped-after-initrd-fallback`). It skips the loader and recovery checks
 too.
+
+`--next DIR --fail-blessed --later DIR` proves the
+[failed-boot counter](../design/boot.md#failed-boots). After the update is activated and blessed
+(`next-blessed`), the harness arms the test image's `boot-test-crash.service` for the new release
+(`/var/lib/boot-test/crash-<version>`, from the module
+`tests/fixtures/image-workload/modules/boot-test-faults`), which crashes PID 1 before
+`multi-user.target` at each boot, and reboots once. From there on it only watches the serial
+console: three crashes, each followed by the kernel's `reboot: Restarting system` and the counter's
+line, the one-shot of the old release on the third, then the old release, which completes, resets
+the count and marks the new release bad (`failed-boots-fallback`, `failed-boots-reset`,
+`failed-boots-marked-bad`). With the reboot timer every 10 s nothing reboots, and a reboot starts
+the old release with no one-shot. The server then serves `--later`'s release
+(`image-smoke-test-later`, `20261031.3`): sysupdate installs it and the timer starts its first try,
+which is blessed. It then arms that release and the old one and reboots: three crashes, one of the
+old release, two more, and the seventh boot logs the halt, crashes, and stays up for 60 s with no
+reboot (`failed-boots-halt`). The run ends there, without the loader and recovery checks; give it a
+`--timeout` of 1800.
 
 What this test does not prove:
 

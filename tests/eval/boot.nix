@@ -7,6 +7,7 @@
   hasInfix,
   hasPrefix,
   system,
+  throws,
   ...
 }:
 (
@@ -60,6 +61,8 @@
     (check "boot health: a configuration without /services/sshd still gates the network" (
       attrNames baseOnly.units == [
         "golconda-esp-credentials.service"
+        "golconda-failed-boots-complete.service"
+        "golconda-failed-boots.service"
         "golconda-health-network.service"
         "golconda-initrd-failed.service"
         "golconda-loader-update.service"
@@ -185,6 +188,78 @@
       && hasInfix "\nDefaultDependencies=no\n" trialFailed
       && !(hasInfix "WantedBy=" trialFailed)
       && filter (p: hasInfix "golconda-trial-boot-failed" p) (attrNames baseOnly.links) == [ ]
+    ))
+  ]
+)
+++ (
+  # The failed-boot counter (docs/design/boot.md, "Failed boots"): the initrd counts each boot in an
+  # EFI variable before anything can fail, a complete boot resets it; after failedBootsFallback
+  # boots in a row the next starts the other slot once, after failedBootsHalt nothing reboots.
+  let
+    inherit (builtins) readFile replaceStrings;
+    baseOnly = compose [ ];
+    other = composeWith {
+      "/base" = {
+        failedBootsFallback = 2;
+        failedBootsHalt = 4;
+      };
+    };
+    program = "/usr/lib/golconda/golconda-failed-boots";
+    count = baseOnly.units."golconda-failed-boots.service";
+    complete = baseOnly.units."golconda-failed-boots-complete.service";
+    haltSkips = "\nConditionPathExists=!/run/golconda/failed-boots-halt\n";
+  in
+  [
+    (check "failed boots: the initrd counts the boot early, from sysinit.target" (
+      hasInfix "\nConditionPathExists=/etc/initrd-release\n" count
+      && hasInfix "\nConditionFirmware=uefi\n" count
+      && hasInfix "\nDefaultDependencies=no\n" count
+      && hasInfix "\nBefore=sysinit.target\n" count
+      && hasInfix "\nExecStart=${program} count\n" count
+      &&
+        baseOnly.links."/usr/lib/systemd/system/sysinit.target.wants/golconda-failed-boots.service" == {
+          target = "../golconda-failed-boots.service";
+          kind = "explicit";
+        }
+    ))
+    (check "failed boots: the host resets the count after multi-user.target and boot-complete.target" (
+      hasInfix "\nConditionPathExists=!/etc/initrd-release\n" complete
+      && hasInfix "\nAfter=multi-user.target boot-complete.target\n" complete
+      && hasInfix "\nExecStart=${program} complete\n" complete
+      # no Requires=: an uncounted boot has no boot-complete.target, and must not pull it in
+      && !(hasInfix "Requires=" complete)
+      &&
+        baseOnly.links."/usr/lib/systemd/system/multi-user.target.wants/golconda-failed-boots-complete.service"
+        == {
+          target = "../golconda-failed-boots-complete.service";
+          kind = "explicit";
+        }
+    ))
+    (check "failed boots: the program carries the thresholds, 3 and 6 by default" (
+      baseOnly.files.${program}.mode == "0755"
+      &&
+        baseOnly.files.${program}.text == replaceStrings [ "@fallback@" "@halt@" ] [ "3" "6" ] (
+          readFile ../../modules/base/golconda-failed-boots
+        )
+      && hasInfix "\nfallback=2\nhalt=4\n" other.files.${program}.text
+    ))
+    (check "failed boots: chattr is in /usr/bin (efivarfs makes the variable immutable)" (
+      baseOnly.links ? "/usr/bin/chattr"
+    ))
+    (check "failed boots: on a halted boot the trial boot policy's reboot units skip themselves" (
+      hasInfix haltSkips baseOnly.units."golconda-initrd-failed.service"
+      && hasInfix haltSkips baseOnly.units."golconda-trial-boot-failed.service"
+    ))
+    (check "failed boots: the halt must come after the fallback" (
+      throws (composeWith {
+        "/base" = {
+          failedBootsFallback = 3;
+          failedBootsHalt = 3;
+        };
+      })
+      && throws (composeWith {
+        "/base".failedBootsFallback = 0;
+      })
     ))
   ]
 )

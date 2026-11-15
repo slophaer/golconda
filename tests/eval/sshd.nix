@@ -294,6 +294,8 @@ in
   (check "sshd: the fixture composes exactly these units" (
     attrNames system.units == [
       "golconda-esp-credentials.service"
+      "golconda-failed-boots-complete.service"
+      "golconda-failed-boots.service"
       "golconda-health-network.service"
       "golconda-health-sshd.service"
       "golconda-initrd-failed.service"

@@ -4,8 +4,9 @@
 # Two kinds of failure, two rules:
 # - before the machine can be reached (a kernel panic, a PID 1 crash, an initrd that fails or
 #   hangs): it reboots on every boot. Nothing could reach it anyway, and on a counted entry the
-#   reboot is the next try. A crash that repeats on a blessed entry repeats the reboot: nothing
-#   counts a blessed entry's boots;
+#   reboot is the next try. A failure that repeats on every boot is the failed-boot counter's
+#   (parts/failed-boots.nix): the other slot once, then a boot that reboots on no failure, where
+#   both reboot units below skip themselves;
 # - after (boot-complete.target failed, or not reached by the deadline): it reboots only on a
 #   trial boot, a counted boot that had a try left. golconda-trial-boot-generator decides that at
 #   each boot from LoaderBootCountPath and links the drop-in. A blessed entry, or one with no try
@@ -38,6 +39,7 @@ let
     "Description=Golconda: the initrd failed, reboot"
     "DefaultDependencies=no"
     "ConditionPathExists=/etc/initrd-release"
+    "ConditionPathExists=!/run/golconda/failed-boots-halt"
     "SuccessAction=reboot"
     "FailureAction=reboot"
     ""
@@ -74,6 +76,7 @@ let
     "Description=Golconda: the trial boot failed, reboot to the next try"
     "Documentation=man:systemd-bless-boot.service(8)"
     "DefaultDependencies=no"
+    "ConditionPathExists=!/run/golconda/failed-boots-halt"
     "SuccessAction=reboot"
     "FailureAction=reboot"
     ""

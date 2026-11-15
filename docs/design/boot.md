@@ -117,8 +117,8 @@ counting needs a reboot to count, so `/base` reboots a boot that fails
 
 The first four rows end a boot that nobody can reach: no getty runs, and sshd is not up. On a
 counted entry the reboot is the next try; on a blessed one it is a retry that may succeed (a disk
-that was slow to appear). A crash at every boot of a blessed entry reboots at every boot: nothing
-counts a blessed entry's boots, and the machine is down either way.
+that was slow to appear). A failure at every boot, also of a blessed entry, is the
+[failed-boot counter](#failed-boots)'s.
 
 The last row judges a machine that may answer ssh, so it reboots only when that moves the counter.
 `golconda-trial-boot-generator` (`/usr/lib/systemd/system-generators/`) reads `LoaderBootCountPath`
@@ -139,6 +139,41 @@ never starts the loader, need a hardware watchdog; the image sets none up.
 In QEMU, with no reboot from the harness, `--next --fail-health` proves the health row and
 `--next --fail-initrd` the initrd failure row ([What is proven](../proven.md)). The panic, crash and
 initrd hang rows have no test of their own *(being built)*.
+
+### Failed boots
+
+Boot counting counts only an entry with a counter, and a blessed entry has none. `/base` counts
+every boot itself (`modules/base/parts/failed-boots.nix`). Early in the initrd,
+`golconda-failed-boots.service` adds one to the EFI variable
+`GolcondaFailedBoots-d1b3416f-c0f9-44e8-8b5a-cbb64676bdef`, and
+`golconda-failed-boots-complete.service` removes it once the boot completed: on a counted boot when
+`boot-complete.target` is active, on an uncounted one, which has no `boot-complete.target`, at
+`multi-user.target`. An EFI variable, not a file: PID 1 mounts efivarfs before any unit, so the
+count waits for no disk and no file system, which may be what fails.
+
+After `/base.failedBootsFallback` boots in a row that did not complete (3), the next boot starts the
+other slot: the third sets systemd-boot's one-shot entry (`bootctl set-oneshot`) to the image's
+other entry and records its own in `GolcondaFailedEntry-<the same guid>`. When the other entry's
+boot completes, the counter renames the failed entry's UKI on the ESP to the name systemd-boot gives
+an entry with no try left (`<id>_<version>+0-3.efi`). systemd-boot sorts it after every good entry,
+so later boots keep to the release that works, and `golconda-update-pending` finds nothing for the
+update reboot timer to activate. A newer release that sysupdate installs sorts first and is tried as
+usual. No default entry is set. When the failed entry's own boot completes, it is not marked, and
+its one-shot goes. After `/base.failedBootsHalt` (6), a boot reboots on no failure: the counter sets
+`kernel.panic=0` and, in `/run`, `CrashAction=freeze` and no deadline for `initrd.target` (PID 1
+reads them at once and again after switch-root), and the two reboot units of the trial boot policy
+skip themselves. The console keeps the last messages. Each step is a line in the kernel log
+(`golconda-failed-boots: …`). `--next --fail-blessed` proves both on a blessed entry whose PID 1
+crashes at every boot ([What is proven](../proven.md)).
+
+Limits:
+
+- A failure before the initrd's PID 1 runs (firmware, loader, early kernel) is not counted.
+- The failed release stays on the ESP and its slot until sysupdate replaces it;
+  `bootctl set-oneshot` starts it by hand.
+- A halted machine stays down until someone resets it, and its next boot is halted again, until a
+  boot completes.
+- Each boot writes the variable to the firmware's non-volatile store, and a complete one removes it.
 
 systemd-sysupdate tells the slots apart by GPT label: an installed slot carries its version
 (`usr_20261031.1`, `usr-verity_…`, `usr-verity-sig_…`), a free one `_empty`, which gpt-auto also

@@ -366,6 +366,17 @@ in
           };
         }).smoke;
 
+      # A third release of the test image, with the same keys: scripts/boot-test --fail-blessed
+      # --later <it> installs it after the failed-boot fallback, which must not keep it from
+      # being tried.
+      image-smoke-test-later =
+        (testImage {
+          config = testConfig {
+            version = "20261031.3";
+            adminVars = true;
+          };
+        }).smoke;
+
       # The next release of the test image, signed with a new db key: the loader, the UKI and
       # the verity root hash take rotatedKeys; the PCR policy key stays, so a credential sealed
       # by 20261031.1 still unseals. scripts/boot-test --next <this> --rotate installs it and

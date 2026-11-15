@@ -127,6 +127,11 @@ let
         target = "${p.e2fsprogs}/bin/fsck.ext4";
         kind = "explicit";
       };
+      # golconda-failed-boots writes its EFI variable, which efivarfs makes immutable
+      "/usr/bin/chattr" = {
+        target = "${p.e2fsprogs}/bin/chattr";
+        kind = "explicit";
+      };
     };
 in
 {

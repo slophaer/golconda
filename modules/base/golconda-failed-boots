@@ -1,0 +1,187 @@
+#!/usr/bin/sh
+# golconda-failed-boots: count the boots in a row that do not complete; start the other slot once,
+# then stop rebooting (docs/design/boot.md, "Failed boots").
+#
+# The count is the EFI variable GolcondaFailedBoots-d1b3416f-c0f9-44e8-8b5a-cbb64676bdef: the boots
+# started since the last complete one, in ASCII digits. An EFI variable, not a file on the ESP or
+# the root: the initrd can write it before any disk is up, and a failure of a disk or a file system
+# cannot keep it from counting.
+#
+# count (golconda-failed-boots.service, early in the initrd): N boots before this one did not
+#   complete. It writes N + 1 first, then
+#   - N + 1 = fallback: should this boot fail too, the next one starts the other /usr slot once
+#     (bootctl set-oneshot), and GolcondaFailedEntry-<the same guid> names this boot's entry;
+#   - N >= halt: this boot reboots on no failure. kernel.panic=0, and drop-ins in /run that PID 1
+#     reads at once (daemon-reload) and again after switch-root: CrashAction=freeze, and no
+#     deadline on initrd.target. The trial boot policy's reboot units skip themselves. The console
+#     stays readable.
+# complete (golconda-failed-boots-complete.service, in the host after multi-user.target and
+#   boot-complete.target): this boot completed, on a counted boot only when boot-complete.target
+#   is active. It removes the variable, and the one-shot entry `count` set if it is still unused.
+#   When GolcondaFailedEntry names another entry than this boot's, that entry failed `fallback`
+#   boots in a row and this one completed: it renames that entry's UKI on the ESP to the form
+#   systemd-boot gives an entry with no try left (<id>_<version>+0-<fallback>.efi). systemd-boot
+#   then sorts it after every good entry, so a later boot, and the update reboot timer
+#   (golconda-update-pending), keep to this release, and a newer release that sysupdate installs
+#   still comes first.
+#
+# The kernel log reaches the serial console and the journal. GOLCONDA_FAILED_BOOTS_ROOT prefixes
+# every path, for the test (tests/trial-boot/failed-boots.sh).
+set -u
+
+root=${GOLCONDA_FAILED_BOOTS_ROOT:-}
+# /base.failedBootsFallback and /base.failedBootsHalt
+fallback=@fallback@
+halt=@halt@
+efi=$root/sys/firmware/efi/efivars
+loader=4a67b082-0a4c-41cf-b6c7-440b29bb8c4f
+var=$efi/GolcondaFailedBoots-d1b3416f-c0f9-44e8-8b5a-cbb64676bdef
+failed_entry=$efi/GolcondaFailedEntry-d1b3416f-c0f9-44e8-8b5a-cbb64676bdef
+state=$root/run/golconda
+
+log() {
+  printf '<5>golconda-failed-boots: %s\n' "$*" >>"$root/dev/kmsg" 2>/dev/null ||
+    printf 'golconda-failed-boots: %s\n' "$*" >&2
+}
+
+# strings NAME: the loader variable NAME, a list of NUL-terminated UTF-16LE strings, one per line.
+# ASCII only: each character is followed by a zero byte (a newline after tr), and each NUL is two
+strings() {
+  tail -c +5 "$efi/$1-$loader" 2>/dev/null | tr '\000' '\n' | {
+    s=
+    gap=0
+    while IFS= read -r c; do
+      if [ -n "$c" ]; then
+        s=$s$c
+        gap=0
+      elif [ "$gap" = 0 ]; then
+        [ -z "$s" ] || printf '%s\n' "$s"
+        s=
+        gap=1
+      else
+        gap=0
+      fi
+    done
+    [ -z "$s" ] || printf '%s\n' "$s"
+  }
+}
+
+# the count in the variable, 0 when there is none or it is not a number
+current() {
+  n=$(tail -c +5 "$var" 2>/dev/null) || n=
+  case $n in '' | *[!0-9]*) n=0 ;; esac
+  echo "$n"
+}
+
+# unlock VAR: efivarfs marks a variable of an unknown vendor immutable, and a write or a removal
+# needs -i first
+unlock() {
+  [ ! -e "$1" ] || chattr -i "$1" || log "chattr -i $1 failed"
+}
+
+# mark_bad ID: rename the UKI of entry ID (<id>_<version>.efi, with or without a counter) on the
+# ESP to <id>_<version>+0-<fallback>.efi, unless it has no try left already
+mark_bad() {
+  esp=$(bootctl --print-esp-path 2>/dev/null) || {
+    log "no ESP: $1 is not marked bad"
+    return 0
+  }
+  dir=$esp/EFI/Linux
+  stem=${1%.efi}
+  for f in "$dir/$stem.efi" "$dir/$stem"+*-*.efi; do
+    [ -e "$f" ] || continue
+    case ${f##*/} in
+      "$stem"+0-*)
+        log "$1 has no try left already"
+        return 0
+        ;;
+    esac
+    if mv "$f" "$dir/$stem+0-$fallback.efi" && sync; then
+      log "$1 failed $fallback boots in a row: marked bad, $stem+0-$fallback.efi"
+    else
+      log "cannot rename ${f##*/}: $1 is not marked bad"
+    fi
+    return 0
+  done
+  log "$1 has no UKI in $dir: not marked bad"
+}
+
+count() {
+  failed=$(current)
+  unlock "$var"
+  # one write: the attributes (non-volatile, boot and run time) and the number
+  printf '\007\000\000\000%s' "$((failed + 1))" >"$var" || log "cannot write $var: this boot is not counted"
+  [ "$failed" = 0 ] && return 0
+
+  if [ "$failed" -ge "$halt" ]; then
+    echo 0 >"$root/proc/sys/kernel/panic"
+    mkdir -p "$root/run/systemd/system.conf.d" "$root/run/systemd/system/initrd.target.d" "$state"
+    # the same names as /base's files in /usr: these replace them
+    printf '# golconda-failed-boots: %s failed boots in a row\n[Manager]\nCrashAction=freeze\n' "$failed" \
+      >"$root/run/systemd/system.conf.d/golconda-crash.conf"
+    printf '# golconda-failed-boots: %s failed boots in a row, no deadline\n[Unit]\n' "$failed" \
+      >"$root/run/systemd/system/initrd.target.d/golconda-trial-boot.conf"
+    : >"$state/failed-boots-halt"
+    systemctl daemon-reload || log "systemctl daemon-reload failed"
+    log "failed boots in a row: $failed: this boot reboots on no failure (kernel.panic=$(cat "$root/proc/sys/kernel/panic"), CrashAction=freeze)"
+    return 0
+  fi
+
+  log "failed boots in a row: $failed"
+  [ "$((failed + 1))" = "$fallback" ] || return 0
+  # the other slot: another entry of this image (<id>_<version>.efi), the first in the menu's order
+  selected=$(strings LoaderEntrySelected)
+  other=
+  for e in $(strings LoaderEntries); do
+    case $e in
+      "$selected") ;;
+      "${selected%_*}"_*.efi) other=${other:-$e} ;;
+    esac
+  done
+  if [ -z "$other" ]; then
+    log "no other entry than $selected: no fallback"
+    return 0
+  fi
+  mkdir -p "$state"
+  unlock "$failed_entry"
+  printf '\007\000\000\000%s' "$selected" >"$failed_entry" || log "cannot write $failed_entry"
+  if bootctl set-oneshot "$other"; then
+    echo "$other" >"$state/failed-boots-oneshot"
+    log "the next boot starts $other once"
+  else
+    log "bootctl set-oneshot $other failed"
+  fi
+}
+
+complete() {
+  [ -e "$var" ] || return 0
+  n=$(current)
+  # a counted boot completes at boot-complete.target; systemd has none on an uncounted one
+  if [ -e "$efi/LoaderBootCountPath-$loader" ] && ! systemctl is-active --quiet boot-complete.target; then
+    log "boot-complete.target was not reached: the count stays at $n"
+    return 0
+  fi
+  if [ -e "$failed_entry" ]; then
+    bad=$(tail -c +5 "$failed_entry")
+    [ "$bad" = "$(strings LoaderEntrySelected)" ] || mark_bad "$bad"
+    unlock "$failed_entry"
+    rm -f "$failed_entry" || log "cannot remove $failed_entry"
+  fi
+  unlock "$var"
+  rm -f "$var" || log "cannot remove $var"
+  # the one-shot that count set, if systemd-boot has not used it: this boot did not fail
+  if [ -e "$state/failed-boots-oneshot" ] && [ -e "$efi/LoaderEntryOneShot-$loader" ] &&
+    [ "$(strings LoaderEntryOneShot)" = "$(cat "$state/failed-boots-oneshot")" ]; then
+    bootctl set-oneshot '' || log "bootctl set-oneshot '' failed"
+  fi
+  [ "$n" -le 1 ] || log "this boot completed after $((n - 1)) failed boots: the count is reset"
+}
+
+case ${1:-} in
+  count) count ;;
+  complete) complete ;;
+  *)
+    echo "usage: golconda-failed-boots count|complete" >&2
+    exit 2
+    ;;
+esac
