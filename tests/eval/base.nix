@@ -249,6 +249,12 @@ in
     hasInfix "ConditionPathExists=/usr/bin/agetty"
       (compose [ ]).files."/usr/lib/systemd/system/serial-getty@.service.d/golconda.conf".text
   ))
+  # no process can switch IPE off: PID 1 drops the capability that ipe/enforce needs, for itself
+  # and every process it starts (docs/features/execution-policy.md)
+  (check "base: PID 1 drops CAP_MAC_ADMIN and CAP_MAC_OVERRIDE from its bounding set" (
+    hasInfix "\n[Manager]\nCapabilityBoundingSet=~CAP_MAC_ADMIN CAP_MAC_OVERRIDE\n"
+      (compose [ ]).files."/usr/lib/systemd/system.conf.d/golconda-caps.conf".text
+  ))
   (check "base: no unit is masked by a link (the systemd farm owns those paths)" (
     !(builtins.any (l: l.target == "/dev/null") (builtins.attrValues (compose [ ]).links))
   ))

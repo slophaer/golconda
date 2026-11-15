@@ -2,7 +2,8 @@
 
 The kernel runs a program only if it comes from the signed `/usr` (or the initramfs). A program that
 an intruder copies to `/var` or `/tmp` gets `Permission denied`. The rule lives in the kernel and
-the signed boot image, so a service cannot switch it off.
+the signed boot image. A service in the default sandbox cannot switch it off, and root cannot
+either. Root can still run scripts (see [Limits](#limits)).
 
 ## How it works
 
@@ -18,6 +19,10 @@ the signed boot image, so a service cannot switch it off.
   ([Trust: Verity key](../design/trust.md#2-verity-key)).
 - **Lockdown.** `lockdown=integrity` blocks `/dev/mem` writes, unsigned kexec and unsigned module
   loads. The kernel has no modules and no kexec.
+- **No switch.** IPE turns off when a process with `CAP_MAC_ADMIN` writes `0` to
+  `/sys/kernel/security/ipe/enforce`. `/base`'s `system.conf.d/golconda-caps.conf` removes
+  `CAP_MAC_ADMIN` and `CAP_MAC_OVERRIDE` from the bounding set of PID 1, and so from every process.
+  Nothing in the image needs them: the kernel has no Smack, SELinux or AppArmor.
 - **Yama.** It restricts ptrace.
 - **Sysctl hardening.** `/security` installs `/usr/lib/sysctl.d/50-golconda.conf`. It sets
   `kernel.yama.ptrace_scope=2`, `kernel.kptr_restrict=2`, `kernel.dmesg_restrict=1`,
@@ -50,13 +55,16 @@ signature and runs `/usr`. The proof table has no marker of its own for this
 ([What is proven](../proven.md)). The same holds without Secure Boot (`image-smoke-test-nosb`).
 `verity-sig-builtin-accepted` (`--next`) and `verity-sig-db-only-refused` (`--next --rotate`) check
 the keyring: a root hash signed by the kernel's key activates as signed, one signed by a key that
-only `db` holds is refused. `ipe-denies-copy` (`--ssh-test`, with and without Secure Boot) copies
-`/usr`'s shell to `/var/tmp` and runs it: the exec fails with `Permission denied`, and the kernel
-logs IPE's `DEFAULT op=EXECUTE action=DENY` for that path. Eval tests check the command line, the
-kernel options and the policy text.
+only `db` holds is refused. `ipe-denies-copy` (`--ssh-test`, with and without Secure Boot) writes
+`0` to `ipe/enforce` as root, which fails, and `enforce` stays `1`. Then it copies `/usr`'s shell to
+`/var/tmp` and runs it: the exec fails with `Permission denied`, and the kernel logs IPE's
+`DEFAULT op=EXECUTE action=DENY` for that path. Eval tests check the command line, the kernel
+options and the policy text.
 
 ## Limits
 
+- IPE checks only what the kernel executes or maps. A signed interpreter runs a script from
+  anywhere: `/usr/bin/sh /var/tmp/script` works.
 - Phase 2, the BPF LSM for `RestrictFileSystems=`, and phase 3, AppArmor profiles from the typed
   service, are *(later)*. `CONFIG_BPF_LSM=y` is on, nothing uses it yet. SELinux is rejected.
 - A rotated `db` key needs new images and new firmware enrolment.

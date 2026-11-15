@@ -104,23 +104,28 @@ test_ssh() {
   check_ca_store
 
   # IPE (docs/design/kernel.md): only files on a dm-verity volume with a verified signature run.
-  # A copy of /usr's shell on the root partition must be refused with EACCES, and the kernel must
-  # log a new IPE denial; the count before and after keeps an earlier denial from passing. The
-  # image has no grep, so the journal is filtered here.
+  # Root cannot switch it off: PID 1 dropped CAP_MAC_ADMIN, so a write of 0 to ipe/enforce fails
+  # and enforce stays 1. Then a copy of /usr's shell on the root partition must be refused with
+  # EACCES, and the kernel must log a new IPE denial; the count before and after keeps an earlier
+  # denial from passing. The image has no grep, so the journal is filtered here.
   echo ""
   echo "=== IPE: a copy outside /usr ==="
   RC=0
   DENY='ipe_op=EXECUTE.* path="/var/tmp/ipe-sh".* action=DENY'
   D0=$(guest journalctl -b -o cat --no-pager 2>/dev/null | grep -c "$DENY") || D0=0
-  OUT=$(guest 'cp /usr/bin/sh /var/tmp/ipe-sh && /var/tmp/ipe-sh -c true 2>&1; echo "rc=$?"; rm -f /var/tmp/ipe-sh' 2>&1) || true
+  OUT=$(guest 'e=/sys/kernel/security/ipe/enforce; echo 0 > $e 2>/dev/null; echo "enforce-write-rc=$?"; echo "enforce=$(cat $e)"
+    cp /usr/bin/sh /var/tmp/ipe-sh && /var/tmp/ipe-sh -c true 2>&1; echo "rc=$?"; rm -f /var/tmp/ipe-sh' 2>&1) || true
   D1=$(guest journalctl -b -o cat --no-pager 2>/dev/null | grep -c "$DENY") || D1=0
   echo "$OUT"
   echo "IPE denials in the journal: $D0 before, $D1 after"
   guest journalctl -b -o cat --no-pager 2>/dev/null | grep "$DENY" | tail -1 || true
+  ! echo "$OUT" | grep -q "^enforce-write-rc=0$" || RC=1
+  echo "$OUT" | grep -q "^enforce-write-rc=" || RC=1
+  echo "$OUT" | grep -q "^enforce=1$" || RC=1
   echo "$OUT" | grep -q "Permission denied" || RC=1
   echo "$OUT" | grep -q "^rc=126$" || RC=1
   [ "$D1" -gt "$D0" ] || RC=1
-  verdict "ipe-denies-copy (/var/tmp/ipe-sh: EACCES, and IPE logged the denial)" $RC
+  verdict "ipe-denies-copy (root's write of 0 to ipe/enforce failed, enforce is 1; /var/tmp/ipe-sh: EACCES, and IPE logged the denial)" $RC
 
   # the signed index's keyring is the key set's release key and nothing else: systemd's own vendor
   # keyring (image vendors' keys) is not in the image (packages/systemd)
