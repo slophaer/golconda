@@ -4,8 +4,6 @@
   check,
   composeWith,
   f,
-  factoryOf,
-  factoryThrows,
   s,
   schemaLib,
   standIn,
@@ -43,23 +41,6 @@ let
     pat: verify: xs:
     all (x: (match (whole pat) x != null) == (verify x == null)) xs;
   factoryTypes = (f.modules { }).modules.factory.options;
-  etcSamples = [
-    "rc.local"
-    "security/limits.conf"
-    "a/...b"
-    "..."
-    "a/./b"
-    "./a"
-    "."
-    "a/../b"
-    ".."
-    "a//b"
-    "a/"
-    "/a"
-    "a b"
-    "a\nb"
-    ""
-  ];
   baseTypes = (f.modules { }).modules.base.options;
   ntpSamples = [
     "0.pool.ntp.org"
@@ -100,18 +81,8 @@ in
     in
     str.not.pattern == grammar.controlSchema
   ))
-  (check "grammar: an /etc path has no . or .. component" (
-    factoryThrows { extraFiles."a/./b" = "x"; }
-    && factoryThrows { extraFiles."." = "x"; }
-    && factoryThrows { extraFiles."a/../b" = "x"; }
-    && (factoryOf { extraFiles."a/...b" = "x"; }) ? files
-  ))
-  (check "grammar: the etcPath and timezone schemas are the typedefs' grammars" (
-    reg.etcFiles.propertyNames.pattern == grammar.anchored grammar.etcPath
-    && reg.timezone.pattern == grammar.anchored grammar.timezone
-    && agree reg.etcFiles.propertyNames.pattern (
-      p: factoryTypes.extraFiles.type.verify { ${p} = "x"; }
-    ) etcSamples
+  (check "grammar: the timezone schema is the typedef's grammar" (
+    reg.timezone.pattern == grammar.anchored grammar.timezone
     && agree reg.timezone.pattern factoryTypes.timezone.type.verify zoneSamples
     && !(any hasControl zoneSamples)
   ))

@@ -78,23 +78,15 @@ in
   (check "factory: no machine-id, shadow, passwd, group or hostname in the factory" (
     all (n: !(factory.files ? "${factoryDir}/${n}")) neverSeeded
   ))
-  (check "factory: extraFiles refuse the names sysusers and PID 1 and bootstrap own" (
-    all (n: factoryThrows { extraFiles.${n} = "x"; }) neverSeeded
-  ))
-  (check "factory: extraFiles cannot replace generated static links" (
-    factoryThrows { extraFiles.localtime = "x"; } && factoryThrows { extraFiles."os-release" = "x"; }
-  ))
   (check "factory: generated static links each appear once with the configured timezone" (
     let
       r = factoryOf {
         timezone = "Europe/Berlin";
-        extraFiles.motd = "Welcome\n";
       };
       linesFor = path: builtins.filter (hasPrefix "L ${path} ") r.tmpfiles;
     in
     linesFor "/etc/localtime" == [ "L /etc/localtime - - - - /usr/share/zoneinfo/Europe/Berlin" ]
     && linesFor "/etc/os-release" == [ "L /etc/os-release - - - - ../usr/lib/os-release" ]
-    && r.files."${factoryDir}/motd" == "Welcome\n"
   ))
   (check "factory: the L lines and the static links" (
     elem "L /etc/localtime - - - - /usr/share/zoneinfo/UTC" factory.tmpfiles
@@ -121,6 +113,10 @@ in
   (check "factory: no hostname option (it is a bootstrap credential)" (
     !((f.modules { }).modules.factory.args.options ? hostname)
   ))
+  # the seeds are the built-in ones only: a document cannot write /etc
+  (check "factory: no extraFiles option" (
+    !((f.modules { }).modules.factory.args.options ? extraFiles)
+  ))
   (check "factory: timezone changes the link and is a zone name" (
     elem "L /etc/localtime - - - - /usr/share/zoneinfo/Europe/Berlin"
       (factoryOf {
@@ -129,35 +125,8 @@ in
     && factoryThrows { timezone = "../etc/shadow"; }
     && factoryThrows { timezone = "/usr/share/zoneinfo/UTC"; }
   ))
-  (check "factory: extraFiles are seeded with L lines" (
-    let
-      r = factoryOf {
-        extraFiles."security/limits.conf" = "* hard core 0\n";
-        extraFiles."rc.local" = {
-          text = "#!/bin/sh\n";
-          mode = "0755";
-        };
-      };
-    in
-    r.files."${factoryDir}/security/limits.conf" == "* hard core 0\n"
-    && elem "L /etc/security/limits.conf - - - - ${factoryDir}/security/limits.conf" r.tmpfiles
-    && elem "L /etc/rc.local - - - - ${factoryDir}/rc.local" r.tmpfiles
-  ))
-  (check "factory: an extra file at a built-in path throws" (factoryThrows {
-    extraFiles."pam.d/sshd" = "auth sufficient pam_permit.so\n";
-  }))
-  (check "factory: an extra file path is relative and plain" (
-    factoryThrows { extraFiles."/etc/motd" = "x"; }
-    && factoryThrows { extraFiles."../usr/lib/os-release" = "x"; }
-    && factoryThrows { extraFiles."a/../shadow" = "x"; }
-    && factoryThrows { extraFiles."motd" = 1; }
-  ))
   (check "factory: valid options compose (factoryThrows has teeth)" (
-    !(factoryThrows { })
-    && !(factoryThrows {
-      timezone = "Europe/Berlin";
-      extraFiles."motd" = "hi\n";
-    })
+    !(factoryThrows { }) && !(factoryThrows { timezone = "Europe/Berlin"; })
   ))
   # /factory is a built-in component: compose always has one
   (check "factory: a second module at a factory path is a composer error" (filesThrow [

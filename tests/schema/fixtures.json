@@ -269,8 +269,8 @@
     }
   },
   {
-    "name": "extra factory file",
-    "accepted": true,
+    "name": "/factory has no extraFiles",
+    "accepted": false,
     "value": {
       "/system": {
         "name": "test",
@@ -279,51 +279,6 @@
       "/factory": {
         "extraFiles": {
           "motd": "Welcome\n"
-        }
-      }
-    }
-  },
-  {
-    "name": "reserved factory localtime",
-    "accepted": false,
-    "value": {
-      "/system": {
-        "name": "test",
-        "version": "20261031.1"
-      },
-      "/factory": {
-        "extraFiles": {
-          "localtime": "override"
-        }
-      }
-    }
-  },
-  {
-    "name": "reserved factory OS identity",
-    "accepted": false,
-    "value": {
-      "/system": {
-        "name": "test",
-        "version": "20261031.1"
-      },
-      "/factory": {
-        "extraFiles": {
-          "os-release": "override"
-        }
-      }
-    }
-  },
-  {
-    "name": "reserved factory password file",
-    "accepted": false,
-    "value": {
-      "/system": {
-        "name": "test",
-        "version": "20261031.1"
-      },
-      "/factory": {
-        "extraFiles": {
-          "shadow": "override"
         }
       }
     }

@@ -41,7 +41,7 @@ iets eval --json -E '(import ./default.nix).configLib.validPaths'
 | ---------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `/base`          | `ntp`, `journalMaxUse`                                                                                            |
 | `/trust`         | `anchors` (PEM certificates), `distrust` (SHA-256 fingerprints)                                                   |
-| `/factory`       | `timezone`, `extraFiles`                                                                                          |
+| `/factory`       | `timezone`                                                                                                        |
 | `/network`       | `networks`, `dns`, `defaultDhcp`                                                                                  |
 | `/system`        | `name`, `version`, `updateSource`, `updateReboot`                                                                 |
 | `/services/sshd` | `package` (a name), `port`, `authorizedKeys`, `trustedUserCAKeys`, `principals`, `revokedKeys`, `hostCertificate` |

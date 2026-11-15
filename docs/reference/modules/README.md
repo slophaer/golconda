@@ -309,10 +309,9 @@ One fragment: the files under `/usr/share/factory/etc` and the tmpfiles lines th
 only `/etc` content is here (`pam.d/sshd`, which sshd refuses to start without). `mkSystem` always
 adds `/factory`.
 
-| option       | type                             | rendered as                                                                                                                       |
-| ------------ | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `timezone`   | zone name, default `"UTC"`       | `L /etc/localtime - - - - /usr/share/zoneinfo/<timezone>`                                                                         |
-| `extraFiles` | attrs path under `/etc` → `file` | more seeds; a built-in path or `passwd`, `group`, `shadow`, `gshadow`, `machine-id`, `hostname`, `localtime`, `os-release` throws |
+| option     | type                       | rendered as                                               |
+| ---------- | -------------------------- | --------------------------------------------------------- |
+| `timezone` | zone name, default `"UTC"` | `L /etc/localtime - - - - /usr/share/zoneinfo/<timezone>` |
 
 Built-in seeds:
 

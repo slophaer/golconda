@@ -7,27 +7,6 @@
 { pattern, ... }:
 {
   # modules/factory
-  etcFiles = {
-    description = "Path under /etc -> file: factory files seeded with tmpfiles L lines. Machine-owned names and generated static links are reserved.";
-    type = "object";
-    propertyNames = {
-      type = "string";
-      pattern = pattern "etcPath";
-      not.enum = [
-        "passwd"
-        "group"
-        "shadow"
-        "gshadow"
-        "machine-id"
-        "hostname"
-        "localtime"
-        "os-release"
-      ];
-    };
-    additionalProperties = {
-      "$ref" = "#/$defs/file";
-    };
-  };
   timezone = {
     description = "An IANA zone name, such as UTC or Europe/Berlin: /etc/localtime links to `/usr/share/zoneinfo/<timezone>`.";
     type = "string";

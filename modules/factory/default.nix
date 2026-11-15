@@ -16,66 +16,14 @@
 let
   inherit (builtins)
     attrNames
-    concatStringsSep
-    elem
     isString
     listToAttrs
     match
     sort
     ;
-  inherit (import ../lib/fragment.nix { inherit types; }) file;
   grammar = import ../lib/grammar.nix;
 
   factoryDir = "/usr/share/factory/etc";
-
-  # Files the factory must not hold, whoever asks (see the header).
-  denied = [
-    "passwd"
-    "group"
-    "shadow"
-    "gshadow"
-    "machine-id"
-    "hostname"
-    "localtime"
-    "os-release"
-  ];
-
-  # A path under /etc: relative, plain components, none of the denied names.
-  etcPath = types.typedef' "etcPath" (
-    v:
-    if !isString v then
-      "Expected a string"
-    else if match grammar.etcPath v == null then
-      "'${v}' is not a path under /etc: relative components of letters, digits and _ . + -, none . or .."
-    else if elem v denied then
-      "'${v}' is reserved: sysusers, PID 1, bootstrap credentials or generated factory links own it (modules/factory)"
-    else
-      null
-  );
-
-  # path under /etc -> file; the key is checked too (attrsOf checks values only)
-  etcFiles = types.typedef' "etcFiles" (
-    v:
-    if !builtins.isAttrs v then
-      "Expected type 'etcFiles' (path under /etc -> file)"
-    else
-      builtins.foldl' (
-        err: p:
-        if err != null then
-          err
-        else
-          let
-            k = etcPath.verify p;
-            f = file.verify v.${p};
-          in
-          if k != null then
-            k
-          else if f != null then
-            "in extraFiles.'${p}': ${f}"
-          else
-            null
-      ) null (attrNames v)
-  );
 
   # An IANA zone name as a path under /usr/share/zoneinfo.
   timezone = types.typedef' "timezone" (
@@ -98,11 +46,6 @@ in
       type = timezone;
       default = "UTC";
       description = "Time zone name; /etc/localtime links to /usr/share/zoneinfo/<timezone>.";
-    };
-    extraFiles = {
-      type = etcFiles;
-      default = { };
-      description = "More seeds for /etc: path under /etc -> file (text, or { text; mode; }). A built-in path or a name sysusers owns is an error.";
     };
   };
 
@@ -147,13 +90,7 @@ in
         ];
       };
 
-      clash = builtins.filter (p: builtIn ? ${p}) (attrNames options.extraFiles);
-      seeds =
-        if clash != [ ] then
-          throw "golconda: factory extraFiles redefine built-in [${concatStringsSep ", " clash}]: the factory has one source per path"
-        else
-          builtIn // options.extraFiles;
-      paths = sort (a: b: a < b) (attrNames seeds);
+      paths = sort (a: b: a < b) (attrNames builtIn);
 
       # Links the tmpfiles lines make under /etc.
       links = {
@@ -173,7 +110,7 @@ in
       files = listToAttrs (
         map (p: {
           name = "${factoryDir}/${p}";
-          value = seeds.${p};
+          value = builtIn.${p};
         }) paths
       );
       tmpfiles = tmpfilesLines;

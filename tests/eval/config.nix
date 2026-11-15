@@ -6,7 +6,6 @@
   configLib,
   f,
   factoryDir,
-  factoryOf,
   filesThrow,
   hasInfix,
   pamSshd,
@@ -80,13 +79,6 @@ in
     # The composer only accepts files under /usr; /etc files must go through /factory
     filesThrow [ { files."/etc/motd" = "hello"; } ]
     && filesThrow [ { files."/etc/ssh/sshd_config" = "Port 22"; } ]
-  ))
-  # 10e. Positive: factory extraFile with plain text passes
-  (check "boundary: factory extraFile with plain text passes" (
-    let
-      r = factoryOf { extraFiles."motd" = "Welcome to Golconda\n"; };
-    in
-    r.files."${factoryDir}/motd" == "Welcome to Golconda\n"
   ))
   # 10f. Negative: the composer refuses files outside /usr
   (check "boundary: composer refuses files outside /usr" (
