@@ -24,7 +24,8 @@ export def build [] {
   let a = (attrs)
   let out = $a.outputs.out
   $env.PATH = $a.PATH
-  # repkgs' openssl reads /etc/ssl/openssl.cnf (OPENSSLDIR); there is none in the sandbox
+  # no configuration: the certificates carry only the extensions named here (openssl.cnf's [req]
+  # would add its v3_ca ones)
   $env.OPENSSL_CONF = "/dev/null"
   # a variant (lib/image/default.nix throwawayKeys) is named in the CN, so the certificates
   # tell the sets apart in the firmware's db and the kernel's keyrings

@@ -6,7 +6,6 @@
 use checks.nu *
 let s = $"($env.pkg)/share/secureboot-objects"
 let openssl = $"($env.openssl)/bin/openssl"
-$env.OPENSSL_CONF = "/dev/null"
 
 let certs = [
   [file cn sha1];

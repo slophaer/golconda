@@ -11,7 +11,6 @@ export def build [] {
   let a = (attrs)
   let out = $a.outputs.out
   $env.PATH = $a.PATH
-  $env.OPENSSL_CONF = "/dev/null"
   let t = $"($env.TMPDIR? | default /tmp)/token"
   mkdir $"($t)/tokens"
   $"directories.tokendir = ($t)/tokens\nobjectstore.backend = file\nlog.level = ERROR\n" | save -f $"($t)/softhsm2.conf"

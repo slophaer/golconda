@@ -62,10 +62,9 @@ check("no certificate twice", len(got) == len(set(got)))
 
 
 def verify(leaf):
-    env = dict(os.environ, OPENSSL_CONF="/dev/null")
     r = subprocess.run(
         [openssl, "verify", "-purpose", "sslserver", "-CAfile", bundle, os.path.join(fixtures, leaf)],
-        env=env, capture_output=True, text=True,
+        capture_output=True, text=True,
     )
     return r.returncode == 0
 

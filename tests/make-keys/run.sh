@@ -13,7 +13,6 @@ TOOLS=$(tools_path "$repo" openssl gnupg) || {
   exit 1
 }
 PATH="$TOOLS:$PATH"
-export OPENSSL_CONF=/dev/null
 
 failures=0
 fail() {

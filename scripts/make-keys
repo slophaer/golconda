@@ -109,8 +109,8 @@ TOOLS=$(tools_path "$(dirname "$SCRIPT_DIR")" openssl gnupg golconda-enrol-auth)
   exit 1
 }
 PATH="$TOOLS:$PATH"
-# repkgs' openssl reads /etc/ssl/openssl.cnf (its OPENSSLDIR), which a host may not have
-# (lib/image/keys.nu does the same)
+# no configuration: the certificates carry only the extensions named below (openssl.cnf's [req]
+# would add its v3_ca ones; lib/image/keys.nu does the same)
 export OPENSSL_CONF=/dev/null
 
 # keypair DIR NAME: a self-signed PK or KEK pair in DIR/secureboot, as below for a new set

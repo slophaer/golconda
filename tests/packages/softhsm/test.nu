@@ -10,7 +10,6 @@ rm -rf $t
 mkdir $"($t)/tokens"
 $"directories.tokendir = ($t)/tokens\nobjectstore.backend = file\nlog.level = ERROR\n" | save -f $"($t)/softhsm2.conf"
 $env.SOFTHSM2_CONF = $"($t)/softhsm2.conf"
-$env.OPENSSL_CONF = "/dev/null"
 let module = $"($p)/lib/softhsm/libsofthsm2.so"
 let util = $"($p)/bin/softhsm2-util"
 

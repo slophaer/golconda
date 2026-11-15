@@ -10,7 +10,6 @@ export def build [] {
   let a = (attrs)
   let out = $a.outputs.out
   $env.PATH = $a.PATH
-  $env.OPENSSL_CONF = "/dev/null" # no /etc/ssl/openssl.cnf in the sandbox
   mkdir $"($out)/keys"
   let p = $a.manifest.publicKeys
 

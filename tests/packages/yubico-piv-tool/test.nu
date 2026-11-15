@@ -26,7 +26,6 @@ for o in [--pin-policy --touch-policy --key-format --new-key --new-pin --pin] {
 let t = $"($env.TMPDIR? | default /tmp)/yubico-piv-tool-test"
 rm -rf $t
 mkdir $"($t)/run" $"($t)/drivers" $"($t)/xdg/pkcs11/modules"
-$env.OPENSSL_CONF = "/dev/null"
 $env.PCSCLITE_IPC_DIR = $"($t)/run"
 $env.PCSCLITE_HP_DROPDIR = $"($t)/drivers"
 
