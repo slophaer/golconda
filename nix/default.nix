@@ -9,14 +9,35 @@ let
   # Nothing per-system: a configuration passes its repkgs set as options."/pkgs".target.
   tree = import ../modules { inherit (adios) adios; };
 
-  # mkSystem: the entry point for a complete Golconda system.
-  # See lib/system.nix for the full interface.
+  # mkSystem: the entry point for a complete Golconda system, with every argument of
+  # lib/system.nix; the image chain and the smoke tests call it.
   # A path is the configuration alone: mkSystem ./server.toml.
   mkSystem =
     args:
     import ../lib/system.nix (
       (if builtins.isPath args then { config = args; } else args) // { inherit sources; }
     );
+
+  # lib.mkSystem takes the document (a TOML path), the build host and the target platform only
+  # (docs/reference/config.md, "The entry point").
+  publicMkSystem =
+    args:
+    let
+      a = if builtins.isPath args then { config = args; } else args;
+      extra = builtins.attrNames (
+        removeAttrs a [
+          "config"
+          "system"
+          "platform"
+        ]
+      );
+    in
+    if extra != [ ] then
+      throw "golconda: lib.mkSystem takes config, system and platform, not ${builtins.concatStringsSep ", " extra}"
+    else if !builtins.isPath (a.config or null) then
+      throw "golconda: lib.mkSystem: config must be a path to the TOML document"
+    else
+      mkSystem a;
 
   docsFromSchema =
     let
@@ -39,7 +60,7 @@ let
   # mkImage { config; publicKeys; pcrPublicKeys ? publicKeys; indexPublicKeys ? publicKeys;
   #   system ? builtins.currentSystem; } →
   #   { unsigned; usrTree; initrd; signer; pkgs; signWithTestKeys; }
-  # `config` is what lib.mkSystem takes (a TOML path or options); `publicKeys` is the key set's
+  # `config` is a TOML path or options (as lib/system.nix takes it); `publicKeys` is the key set's
   # directory, of which the chain reads the public halves only (lib/image/chain.nix). Nothing is
   # signed: `golconda release build` runs `unsigned`'s signer with the private keys, outside the
   # store. `signWithTestKeys` signs in the store, for throwaway keys only.
@@ -488,7 +509,8 @@ in
   };
 
   lib = {
-    inherit mkSystem mkImage;
+    mkSystem = publicMkSystem;
+    inherit mkImage;
     readPins = (import ../lib/pins.nix).read;
   };
 }

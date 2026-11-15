@@ -175,10 +175,10 @@ for editors and external tools.
 
 ## The entry point
 
-`lib/system.nix` turns a document into a system:
-`mkSystem { config; platform?; system?; sources?; extraFragments?; }` (or `mkSystem ./server.toml`),
-exposed as the output `lib.mkSystem`. `examples/golconda.nix` is the template: copy it next to your
-`server.toml`, with `examples/pins/golconda/sources.toml` as `pins/golconda/sources.toml`. It
+`lib/system.nix` turns a document into a system. The output
+`lib.mkSystem { config; system?; platform?; }` (or `lib.mkSystem ./server.toml`) calls it with the
+document and refuses any other argument. `examples/golconda.nix` is the template: copy it next to
+your `server.toml`, with `examples/pins/golconda/sources.toml` as `pins/golconda/sources.toml`. It
 fetches Golconda from that pin, a pin in uptrack's format; a flake and a plain `fetchTarball` work
 too ([Pinning Golconda](pinning.md)). Inside this repository, pass the tree itself:
 `import ./examples/golconda.nix { golconda = import ./default.nix; }`. `lib.mkImage` takes the same
@@ -196,16 +196,18 @@ golconda.lib.mkSystem {
 }
 ```
 
-| argument         | meaning                                                                                                                     |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `config`         | a path to a TOML file, or an attribute set of options already loaded                                                        |
-| `platform`       | the target platform, default `system`                                                                                       |
-| `system`         | the build host, default `builtins.currentSystem`, which `iets eval` refuses unless `--impure`: pass it explicitly           |
-| `sources`        | the pins, default `pins/` (`import ./pins`)                                                                                 |
-| `extraFragments` | the build's own fragments, each with a `name` (`lib/image`: the update index, the initrd's tools); listed in `modules.json` |
+| argument   | meaning                                                                                                           |
+| ---------- | ----------------------------------------------------------------------------------------------------------------- |
+| `config`   | a path to the TOML document                                                                                       |
+| `platform` | the target platform, default `system`                                                                             |
+| `system`   | the build host, default `builtins.currentSystem`, which `iets eval` refuses unless `--impure`: pass it explicitly |
 
-`extraFragments` adds the image's own fragments (`mkImage`'s keyring) beside the components; a
-duplicate claim still fails rather than overrides. It is not configuration: the document is.
+`lib.mkSystem` uses the pins of the Golconda tree it comes from. `lib/system.nix` takes more
+arguments, for the image chain and the tests: an attribute set of options as `config`, `sources`,
+`verityCert`, and `extraFragments`, the build's own fragments, each with a `name` (`lib/image`: the
+update index, the initrd's tools), listed in `modules.json`. `extraFragments` adds them beside the
+components; a duplicate claim still fails rather than overrides. They are not configuration: the
+document is.
 
 `mkSystem` binds `/pkgs.target` to the platform's set, selects the components (the built-ins, then
 every optional component the document has a table for; an empty table selects one with its defaults;
@@ -235,8 +237,8 @@ nix-build -E '(import ./examples/golconda.nix { golconda = import ./default.nix;
 
 `mkSystem` is the one entry point that applies a document. The loader alone is `configLib`
 ([Outputs](outputs.md#configlib)): it turns a document into checked options and applies nothing.
-`mkSystem` runs the same option check over an attribute-set `config`, so every route into the tree
-is checked.
+`lib/system.nix` runs the same option check over an attribute-set `config`, so every route into the
+tree is checked.
 
 ## Nix escapes
 

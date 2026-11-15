@@ -5,6 +5,7 @@
   check,
   f,
   hasInfix,
+  sources,
   ...
 }:
 let
@@ -37,8 +38,9 @@ let
       expectedKeyring = (import ../../lib/image { }).indexKeyring {
         buildSystem = "x86_64-linux";
         inherit
-          (f.lib.mkSystem {
-            inherit config;
+          # the internal entry point: an attrset config (lib.mkSystem takes a TOML path)
+          (import ../../lib/system.nix {
+            inherit config sources;
             system = "x86_64-linux";
           })
           pkgs
