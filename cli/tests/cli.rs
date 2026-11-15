@@ -52,6 +52,42 @@ fn version_and_help() {
     assert!(help.contains("vars") && help.contains("release"), "{help}");
 }
 
+#[test]
+fn help_names_each_argument_and_step() {
+    for (cmd, args) in [
+        ("set", &["HOST", "VAR", "FILE"][..]),
+        ("push", &["HOST", "VARS"]),
+        ("list", &["HOST"]),
+        ("pub", &["HOST", "VAR", "FILE"]),
+        ("enrol", &["HOST"]),
+    ] {
+        let help = stdout(&golconda(&["vars", cmd, "-h"]));
+        for a in args {
+            // `  <HOST>  The machine's …`, or `  [VARS]...  The admin vars …`
+            let described = help.lines().map(str::trim_start).any(|l| {
+                (l.starts_with(&format!("<{a}>")) || l.starts_with(&format!("[{a}]")))
+                    && l.split_once("  ")
+                        .is_some_and(|(_, h)| !h.trim().is_empty())
+            });
+            assert!(described, "vars {cmd}: no help for {a}\n{help}");
+        }
+    }
+    let publish = stdout(&golconda(&["release", "publish", "--help"]));
+    assert!(
+        publish.contains("the same version with other files"),
+        "{publish}"
+    );
+    for cmd in [&["release", "build"][..], &["vars", "enrol"]] {
+        let short = stdout(&golconda(&[cmd[0], cmd[1], "-h"]));
+        let long = stdout(&golconda(&[cmd[0], cmd[1], "--help"]));
+        assert!(
+            short.lines().next().is_some_and(|l| l.len() <= 80),
+            "{short}"
+        );
+        assert!(long.contains("\n1. ") && long.contains("\n2. "), "{long}");
+    }
+}
+
 /// `golconda vars` with stand-ins for age and ssh (GOLCONDA_AGE, GOLCONDA_SSH): the wiring of
 /// set, push and list. The logic is tested in src/vars.rs.
 #[test]

@@ -35,6 +35,29 @@ enum Command {
     Release(Releases),
 }
 
+const BUILD_STEPS: &str = "\
+Build, sign and check a release from a clean tree, and commit its version
+
+1. Pick the version: --version, or auto (today's date, after the document's version and DEST's).
+2. Build mkImage's unsigned outputs with nix-build, from a copy of the document with that
+   version. Golconda comes from pins/golconda/sources.toml beside the document, or else from the
+   Golconda checkout that holds it.
+3. Sign them outside Nix with the key set here, into --out.
+4. Check the release, as release check does.
+5. Write the version line into the document and commit it with the release trailers.
+
+A failure leaves the document as it was and removes --out.";
+
+const ENROL_STEPS: &str = "\
+Sign HOST's host key as a host certificate, and push it with the KRL
+
+1. Read HOST's host key over ssh and print its fingerprint.
+2. Compare it with --fingerprint, or ask: type yes when it is the fingerprint on HOST's console
+   or journal.
+3. Sign it as a host certificate with ssh-keygen.
+4. Store the certificate, the KRL and the host key (vars/HOST/.hostkey).
+5. Push the KRL, then the certificate, and restart sshd.";
+
 #[derive(Subcommand)]
 enum Releases {
     /// Check a release directory: SHA256SUMS has the four files in their fixed order with
@@ -50,9 +73,10 @@ enum Releases {
         #[arg(long)]
         json: bool,
     },
-    /// Check a release directory, then upload it to DEST: refused when DEST serves a newer or
-    /// the same version, or when the release commit records other digests (or there is none).
-    /// The files go first, the signature and the index last; nothing is deleted
+    /// Check a release directory, then upload it to DEST: refused when DEST serves a newer
+    /// version, or the same version with other files, or when the release commit records other
+    /// digests (or there is none). The files go first, the signature and the index last; nothing
+    /// is deleted
     Publish {
         /// The release directory
         dir: PathBuf,
@@ -69,11 +93,8 @@ enum Releases {
         #[arg(long)]
         unrecorded: bool,
     },
-    /// Build a release from a clean tree: Nix builds mkImage's unsigned outputs from a copy of
-    /// the document with the version (auto: today's date, after the document's version and
-    /// DEST's), their signer signs them with the key set here, outside Nix, check checks the
-    /// release, and one commit writes the version line into the document with the release
-    /// trailers. A failure leaves the document as it was
+    /// Build, sign and check a release from a clean tree, and commit its version
+    #[command(long_about = BUILD_STEPS)]
     Build {
         /// The system's document: beside the pin pins/golconda/sources.toml, or inside a Golconda
         /// checkout
@@ -125,8 +146,11 @@ enum Vars {
     Set {
         #[command(flatten)]
         store: VarStore,
+        /// The machine's ssh name (an alias, not user@host), also its directory in the store
         host: String,
+        /// The admin var, as the machine declares it
         var: String,
+        /// The file of the var
         file: String,
     },
     /// Push every admin var HOST declares (or only the VARs named), and restart their units
@@ -136,30 +160,36 @@ enum Vars {
         /// The age identity that decrypts them (or GOLCONDA_AGE_IDENTITY)
         #[arg(short = 'i', long)]
         identity: Option<PathBuf>,
+        /// The machine's ssh name (an alias, not user@host), also its directory in the store
         host: String,
+        /// The admin vars to push (default: every one HOST declares)
         vars: Vec<String>,
     },
     /// Per file: stored here? sealed there?
     List {
         #[command(flatten)]
         store: VarStore,
+        /// The machine's ssh name (an alias, not user@host), also its directory in the store
         host: String,
     },
     /// Print a local var's public file, such as the host key a CA signs
     Pub {
+        /// The machine's ssh name (an alias, not user@host), also its directory in the store
         host: String,
+        /// The local var, such as sshd-hostkey
         var: String,
+        /// Its public file, such as key.pub
         file: String,
     },
-    /// Enrol HOST in its first boot: read its host key, show the fingerprint to compare with
-    /// the console's line (or compare it with --fingerprint), sign it as a host certificate with
-    /// ssh-keygen, store the certificate and the KRL, and push both (the KRL first)
+    /// Sign HOST's host key as a host certificate, and push it with the KRL
+    #[command(long_about = ENROL_STEPS)]
     Enrol {
         #[command(flatten)]
         store: VarStore,
         /// The age identity that decrypts the stored vars (or GOLCONDA_AGE_IDENTITY)
         #[arg(short = 'i', long)]
         identity: Option<PathBuf>,
+        /// The machine's ssh name (an alias, not user@host), also its directory in the store
         host: String,
         /// The host CA's private key file; with --pkcs11-module its public key file (ca.pub),
         /// whose private half is on the token
