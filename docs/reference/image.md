@@ -212,7 +212,8 @@ systemd-veritysetup documents; the `-sig.raw` file is systemd's partition conten
 `{ rootHash, certificateFingerprint, signature }` NUL-padded to 4096 bytes. The UKI step runs
 `ukify build` (`packages/ukify`, systemd's `ukify.py` as a build-time package) with `--linux` from
 the kernel package, `--os-release` from the tree, `--uname`, `--phases` from `image/uki.nix`, Secure
-Boot signing by `systemd-sbsign` and the PCR 11 policy by `systemd-measure`. The disk step runs
+Boot signing of the UKI by `systemd-sbsign` (`--no-sign-kernel`; the step fails when the `.linux`
+section has a certificate table) and the PCR 11 policy by `systemd-measure`. The disk step runs
 `systemd-repart --empty=create --size=auto --offline=yes --seed=<from the version>` over
 `image/repart.nix` rendered to `.conf` files (`repartDefinitions`, `modules/lib/ini.nix`) with the
 builder's fields added: the ESP's `CopyFiles=` (systemd-boot as `EFI/systemd/systemd-boot<arch>.efi`

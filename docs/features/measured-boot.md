@@ -8,7 +8,8 @@ policy with keys you make, so a swapped kernel opens nothing.
 
 - **Signed boot.** The `db` key signs systemd-boot (`lib/image/loader.nu`) and each UKI (unified
   kernel image, `lib/image/uki.nu`). Firmware checks both against its `db`. With only your
-  certificate enrolled, it refuses an unsigned loader.
+  certificate enrolled, it refuses an unsigned loader. The kernel inside the UKI has no signature of
+  its own, so firmware refuses it outside the UKI. The build fails when it has one.
 - **PCR 11.** systemd-stub measures the UKI's parts into PCR 11, a TPM2 register. At build time
   `systemd-measure` computes the expected values and signs them with the PCR key. The signatures
   travel in the UKI as `.pcrsig`. The public key is `.pcrpkey`.

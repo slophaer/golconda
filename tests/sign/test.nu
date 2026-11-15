@@ -16,7 +16,7 @@
 
 use sign.nu [private-keys check-keys use-token]
 use verity.nu [sign-roothash]
-use uki.nu [roothash-signature]
+use uki.nu [roothash-signature certificate-table-size]
 use disk.nu [sign-index verify-index]
 
 $env.OPENSSL_CONF = "/dev/null"
@@ -106,6 +106,25 @@ partition $"($tmp)/sig-other.raw" ($roothash | str replace "4b1a" "4b1b") $sig_a
 fails "a signature of another root hash is refused" "signs" {||
   roothash-signature $"($tmp)/sig-other.raw" $roothash $"($a)/secureboot/db.crt"
 }
+
+# --- the kernel in the UKI: a PE32+ header whose certificate table (data directory 4) has SIZE
+def pe-file [file: string, size: int] {
+  let zeros = {|n: int| 0..<$n | each { 0x[00] } | bytes collect }
+  let u32 = {|n: int| $n | into binary | bytes at 0..<4 }
+  0x[4d 5a] | bytes add --end (do $zeros 58) | bytes add --end (do $u32 64)
+    | bytes add --end 0x[50 45 00 00] | bytes add --end (do $zeros 20) | bytes add --end 0x[0b 02]
+    | bytes add --end (do $zeros 106) | bytes add --end (do $u32 16) | bytes add --end (do $zeros 36)
+    | bytes add --end (do $u32 $size) | bytes add --end (do $zeros 88)
+    | save -f $file
+}
+pe-file $"($tmp)/unsigned.efi" 0
+pe-file $"($tmp)/signed.efi" 1440
+if (certificate-table-size $"($tmp)/unsigned.efi") != 0 or (certificate-table-size $"($tmp)/signed.efi") != 1440 {
+  error make {msg: "certificate-table-size does not read data directory 4"}
+}
+ok "the size of a PE file's certificate table: 0 unsigned, its size signed"
+"MZ" | save -f $"($tmp)/short.efi"
+fails "a file that is not PE is refused" "is not a PE file" {|| certificate-table-size $"($tmp)/short.efi" }
 
 # --- the release index: SHA256SUMS.gpg by the release key, checked with gpgv against the keyring
 let rel = $"($tmp)/release"

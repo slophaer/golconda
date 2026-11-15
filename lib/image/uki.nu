@@ -31,13 +31,49 @@ export def make [p: record, roothash: string, sigpart: string, keys: record, out
   # signature for a chain permits only that chain's last state.
   let phases = ($p.phases | str join ",")
 
-  # --sign-kernel: the kernel is unsigned; said so because systemd-sbsign cannot check (ukify)
-  ^ukify build --linux $linux --initrd $p.initrd --cmdline $cmdline --os-release $"@($p.osRelease)" --uname $uname --stub $p.stub --tools $"($p.systemd)/lib/systemd" --signtool systemd-sbsign --sign-kernel --secureboot-private-key $keys.dbKey --secureboot-certificate $keys.dbCert --pcr-private-key $keys.pcrKey ...(pcr-key-args $keys $out) --phases $phases --pcr-banks sha256 --measure --output $out
+  # --no-sign-kernel: only the UKI is signed. A signed inner kernel would boot alone, with any
+  # initrd and cmdline (docs/features/measured-boot.md). ukify asks systemd-sbsign without the
+  # flag, and systemd-sbsign cannot answer
+  ^ukify build --linux $linux --initrd $p.initrd --cmdline $cmdline --os-release $"@($p.osRelease)" --uname $uname --stub $p.stub --tools $"($p.systemd)/lib/systemd" --signtool systemd-sbsign --no-sign-kernel --secureboot-private-key $keys.dbKey --secureboot-certificate $keys.dbCert --pcr-private-key $keys.pcrKey ...(pcr-key-args $keys $out) --phases $phases --pcr-banks sha256 --measure --output $out
   rm -rf $"($out).pcr"
   log $"($out | path basename): (ls $out | get size.0)"
 
+  check-unsigned-linux $out
   check-pcrsig $out $p.phases
   $cmdline
+}
+
+# check-unsigned-linux UKI: the .linux section must have no Authenticode signature, so firmware
+# refuses the kernel when it is not inside the signed UKI
+export def check-unsigned-linux [uki: string] {
+  let tdir = (mktemp -d -t "golconda-linux-XXXXXX")
+  ^ukify inspect $uki --json=off $"--section=.linux:binary@($tdir)/linux" | ignore
+  let size = (certificate-table-size $"($tdir)/linux")
+  rm -rf $tdir
+  if $size != 0 {
+    error make {msg: $"($uki | path basename): its .linux section has a certificate table of ($size) bytes; the kernel must be unsigned \(ukify --no-sign-kernel\)"}
+  }
+  log ".linux: unsigned, firmware starts it only inside the UKI"
+}
+
+# certificate-table-size FILE: the size of the certificate table of the PE file FILE (data
+# directory entry 4 of the optional header, PE/COFF specification); 0 for an unsigned file
+export def certificate-table-size [file: string]: nothing -> int {
+  let b = (open --raw $file | into binary)
+  let u32 = {|at: int| $b | bytes at $at..<($at + 4) | into int --endian little }
+  let pe = (do $u32 0x3c)
+  if ($b | bytes at $pe..<($pe + 4)) != 0x[50 45 00 00] {
+    error make {msg: $"($file) is not a PE file"}
+  }
+  let opt = $pe + 24
+  let dirs = match ($b | bytes at $opt..<($opt + 2) | into int --endian little) {
+    0x10b => ($opt + 96)
+    0x20b => ($opt + 112)
+    $m => { error make {msg: $"($file): unknown PE optional header magic ($m)"} }
+  }
+  # NumberOfRvaAndSizes, just before the data directories
+  if (do $u32 ($dirs - 4)) < 5 { return 0 }
+  do $u32 ($dirs + 36)
 }
 
 # pcr-key-args KEYS OUT: ukify's arguments for the PCR public half and for a key on a token.
