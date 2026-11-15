@@ -4,14 +4,12 @@
 # shellcheck disable=SC2154 # the globals are set by scripts/boot-test and the other parts
 # shellcheck disable=SC2034 # and read there
 
-# real_path PATH: PATH with its symlinks followed; a target in /nix/store is looked up under
-# $BOOT_TEST_STORE_ROOT, so a chroot store's outputs resolve on the host
+# real_path PATH: PATH with its symlinks followed
 real_path() {
   rp=$1
   while [ -L "$rp" ]; do
     rt=$(readlink "$rp")
     case $rt in
-      /nix/store/*) rp=${BOOT_TEST_STORE_ROOT:-}$rt ;;
       /*) rp=$rt ;;
       *) rp=$(dirname "$rp")/$rt ;;
     esac

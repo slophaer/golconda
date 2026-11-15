@@ -16,18 +16,13 @@ fail() {
 mkdir -p "$WORK/bin"
 cat >"$WORK/bin/nix-shell" <<'EOF'
 #!/bin/sh
-echo "nix-shell remote=${NIX_REMOTE:-none} $*" >>"$CALLS"
-while [ $# -gt 0 ]; do
-  case "$1" in --run) script=$2; shift 2 ;; *) shift ;; esac
-done
-[ "$script" = true ] && exit 0
+echo "nix-shell $*" >>"$CALLS"
 [ "${FAKE_TREEFMT:-}" = change ] && echo changed >>README.md
 [ "${FAKE_LINT:-}" = fail ] && { echo "lint: finding"; exit 3; }
 exit 0
 EOF
-# nix-build makes the out-link (-o): straight to a folder named after the attribute
-# ($FAKE_IMAGES/ATTR), or, with FAKE_ROOT, into /nix/store as a chroot store's out-link does, with
-# the image under FAKE_ROOT and its disk/ a further store link. FAKE_IMAGE=fail fails every build,
+# nix-build makes the out-link (-o) to a folder named after the attribute ($FAKE_IMAGES/ATTR).
+# FAKE_IMAGE=fail fails every build,
 # FAKE_IMAGE=ATTR the build of ATTR. Each build makes $RV/started-ATTR first; FAKE_WAIT=ATTR:NAME
 # makes the build of ATTR wait for $RV/NAME, and fail when it does not come.
 cat >"$WORK/bin/nix-build" <<'EOF'
@@ -49,16 +44,9 @@ case "${FAKE_WAIT:-}" in
 esac
 case "${FAKE_IMAGE:-}" in fail | "$attr") exit 4 ;; esac
 rm -f "$link"
-if [ -n "${FAKE_ROOT:-}" ]; then
-  mkdir -p "$FAKE_ROOT/nix/store/aaa-image/keys" "$FAKE_ROOT/nix/store/bbb-disk"
-  : >"$FAKE_ROOT/nix/store/bbb-disk/disk.raw"
-  ln -sfn /nix/store/bbb-disk "$FAKE_ROOT/nix/store/aaa-image/disk"
-  ln -s /nix/store/aaa-image "$link"
-else
-  mkdir -p "$FAKE_IMAGES/$attr/disk" "$FAKE_IMAGES/$attr/keys"
-  : >"$FAKE_IMAGES/$attr/disk/disk.raw"
-  ln -s "$FAKE_IMAGES/$attr" "$link"
-fi
+mkdir -p "$FAKE_IMAGES/$attr/disk" "$FAKE_IMAGES/$attr/keys"
+: >"$FAKE_IMAGES/$attr/disk/disk.raw"
+ln -s "$FAKE_IMAGES/$attr" "$link"
 exit 0
 EOF
 cat >"$WORK/bin/nix-instantiate" <<'EOF'
@@ -67,7 +55,6 @@ echo '"245843bcafe"'
 EOF
 chmod +x "$WORK/bin/"*
 export BOOT_TEST_CACHE="$WORK/cache" RV="$WORK" PATH="$WORK/bin:$PATH" CALLS="$WORK/calls" FAKE_IMAGES="$WORK/images"
-unset BOOT_TEST_STORE_ROOT NIX_REMOTE || true
 
 # A repository with scripts/verify, a fake boot-test, and two commits.
 repo=$WORK/repo
@@ -210,22 +197,11 @@ run scripts/verify --no-boot --image image-nosb
 grep -q boot-test "$CALLS" && fail "booted despite --no-boot"
 grep -q '\.image-nosb -o result-verify' "$CALLS" || fail "--image ignored: $(cat "$CALLS")"
 
-# 6 on a chroot store the dev shell is realised in the host store first
-BOOT_TEST_STORE_ROOT=/srv/store NIX_REMOTE=unix:///x run scripts/verify --no-boot
-[ $rc = 0 ] || fail "chroot-store run exited $rc: $out"
-first=$(head -1 "$CALLS")
-case "$first" in "nix-shell remote=none "*"--run true") ;; *) fail "dev shell not realised on the host first: $first" ;; esac
-sed -n 2p "$CALLS" | grep -q 'remote=unix:///x' || fail "lint left the chroot store"
-
-# 6b on a chroot store the out-link is followed under the store root, link by link, and
-#    --boot-args replaces the smoke flags
-FAKE_ROOT=$WORK/root BOOT_TEST_STORE_ROOT=$WORK/root run scripts/verify --boot-args '--timeout 480'
-[ $rc = 0 ] || fail "chroot-store boot exited $rc: $out"
-grep -q "boot-test $WORK/root/nix/store/bbb-disk/disk.raw --keys $WORK/root/nix/store/aaa-image/keys --timeout 480\$" "$CALLS" ||
-  fail "chroot-store paths or --boot-args wrong: $(grep boot-test "$CALLS")"
-
-# 7 --each-commit lints every commit since BASE and builds and boots only the last
-run scripts/verify --each-commit "$(git rev-list --max-parents=0 HEAD)"
+# 7 --each-commit lints every commit since BASE and builds and boots only the last, and leaves
+#   no scratch worktree and no temporary directory
+mkdir "$WORK/tmp"
+TMPDIR=$WORK/tmp run scripts/verify --each-commit "$(git rev-list --max-parents=0 HEAD)"
+[ -z "$(ls -A "$WORK/tmp")" ] || fail "temporary files left behind: $(ls -A "$WORK/tmp")"
 [ $rc = 0 ] || fail "--each-commit exited $rc: $out"
 [ "$(grep -c '^nix-shell' "$CALLS")" = 1 ] || fail "want lint of 1 commit after the root: $(cat "$CALLS")"
 echo "$out" | grep -qE "^PASS $head second" || fail "no per-commit line: $out"

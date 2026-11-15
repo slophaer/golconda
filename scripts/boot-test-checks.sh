@@ -547,7 +547,7 @@ test_release_index() {
   while read -r digest name; do
     [ -n "$digest" ] || continue
     N=$((N + 1))
-    # the release directory holds symlinks into the store, absolute or in $BOOT_TEST_STORE_ROOT
+    # the release directory holds symlinks into the store
     got=$(sha256sum "$(real_path "$NEXT_RELEASE/$name")" 2>/dev/null | cut -c1-64) || got=""
     OK=ok
     [ "$got" = "$digest" ] || OK="digest mismatch"

@@ -285,8 +285,6 @@
 # Runs at the same time: every run has its own work directory (mktemp), its own ssh port (a flock
 #   in $BOOT_TEST_PORT_LOCKS, default $XDG_RUNTIME_DIR/boot-test-ports-UID), swtpm socket, firmware
 #   variables, disk overlay and keys, and its own update server; nothing else is shared.
-# BOOT_TEST_STORE_ROOT: the root of a chroot store (nix --store 'local?root=DIR'); a symlink
-#   into /nix/store under DIR is followed there.
 # With --ssh-test --tpm: also checks that the host key is sealed with the TPM
 #   (credential header), reboots the guest in the same QEMU (swtpm keeps its
 #   state) and checks the second boot: a new boot id, sshd active, the same

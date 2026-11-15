@@ -51,9 +51,7 @@
 #
 # The tree must be clean: the result belongs to one commit and one repkgs pin, named on the first
 # line. No untracked file either, and no ignored one in modules/ or packages/: the build reads
-# them where they lie. With BOOT_TEST_STORE_ROOT set (a chroot store, nix --store local?root=DIR), the dev shell is
-# realised in the host store first (nix-shell runs it from /nix/store, the daemon builds it under
-# its root), and the image's links into /nix/store are followed under that root.
+# them where they lie.
 #
 # The logs of --boot-set are in $BOOT_TEST_CACHE/verify.XXXXXX (default
 # ${XDG_CACHE_HOME:-$HOME/.cache}/golconda-boot-test, which is also where scripts/boot-test keeps
@@ -111,9 +109,10 @@ if [ -n "$untracked" ]; then
 fi
 
 if [ -n "$each" ]; then
-  wt=$(mktemp -d)/verify-each
+  tmp=$(mktemp -d)
+  wt=$tmp/verify-each
   git worktree add -q --detach "$wt" HEAD || exit 1
-  trap 'git worktree remove --force "$wt" >/dev/null 2>&1' EXIT
+  trap 'git worktree remove --force "$wt" >/dev/null 2>&1; rm -rf "$tmp"' EXIT
   last=$(git rev-parse HEAD)
   results=
   rc=0
@@ -195,12 +194,7 @@ finish() {
   exit "$1"
 }
 
-shell=devShells.$system.default
-if [ -n "${BOOT_TEST_STORE_ROOT:-}" ]; then
-  (unset NIX_REMOTE; nix-shell -A "$shell" --run true) >/dev/null ||
-    { echo "verify: the dev shell does not build in the host store" >&2; exit 1; }
-fi
-step lint nix-shell -A "$shell" --run ./scripts/lint || finish 1
+step lint nix-shell -A "devShells.$system.default" --run ./scripts/lint || finish 1
 if ! git diff --quiet; then
   echo "verify: the lint step changed files; commit them or find out why:"
   git diff --stat
@@ -297,49 +291,26 @@ done
 checks=$bgs
 join "$need" || finish 1
 [ $boot = 1 ] || finish 0
-# resolve PATH: PATH with every symlink on the way followed, a target in /nix/store looked up
-# under $BOOT_TEST_STORE_ROOT (boot-test itself follows only a final link)
-resolve() {
-  python3 - "${BOOT_TEST_STORE_ROOT:-}" "$1" <<'PY'
-import os, sys
-root, path = sys.argv[1], os.path.abspath(sys.argv[2])
-parts, cur, hops = path.strip("/").split("/"), "/", 0
-while parts:
-    nxt = os.path.join(cur, parts.pop(0))
-    if os.path.islink(nxt):
-        hops += 1
-        if hops > 64:
-            sys.exit("verify: symlink loop at " + nxt)
-        t = os.readlink(nxt)
-        if t.startswith("/nix/store/") and root:
-            t = root + t
-        parts = os.path.normpath(os.path.join(cur, t)).strip("/").split("/") + parts
-        cur = "/"
-    else:
-        cur = nxt
-print(cur)
-PY
-}
 if [ -n "$nexts" ] || [ $enrol = 1 ]; then
-  BOOT_TEST_GOLCONDA=$(resolve result-verify-golconda-cli)/bin/golconda
-  PATH=$(resolve result-verify-age)/bin:$PATH
+  BOOT_TEST_GOLCONDA=$(realpath result-verify-golconda-cli)/bin/golconda
+  PATH=$(realpath result-verify-age)/bin:$PATH
   export BOOT_TEST_GOLCONDA PATH
 fi
 # boot_cmd ATTR FLAGS: three lines for boot-test, the image's disk, its keys and FLAGS with each
 # @next word replaced by its image's path
 boot_cmd() {
-  img=$(resolve "$(link "$1")") || return 1
+  img=$(realpath "$(link "$1")") || return 1
   flags=
   for w in $2; do
     case $w in
     @next | @next=*)
       nx=$(nexts_of "$1" "$w"); rest=${nx#*:}
-      w=$(resolve "${rest%%:*}") || return 1
+      w=$(realpath "${rest%%:*}") || return 1
       ;;
     esac
     flags="$flags${flags:+ }$w"
   done
-  resolve "$img/disk/disk.raw" && resolve "$img/keys" && printf '%s\n' "$flags"
+  realpath "$img/disk/disk.raw" && realpath "$img/keys" && printf '%s\n' "$flags"
 }
 if [ -z "$boot_sets" ]; then
   cmd=$(boot_cmd "$image" "$boot_args") || finish 1

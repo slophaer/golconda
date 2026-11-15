@@ -411,8 +411,6 @@ and state, firmware variables, disk overlay, keys, ssh port and update server. A
 port with a `flock` on `$BOOT_TEST_PORT_LOCKS/PORT` (default
 `$XDG_RUNTIME_DIR/boot-test-ports-UID`), so two runs that start together never pick the same one,
 and the lock goes away when the run dies. Each run needs about 2 GiB of RAM and 2 CPUs.
-`BOOT_TEST_STORE_ROOT` names the root of a chroot store (`--store 'local?root=DIR'`): the harness
-follows a `/nix/store` symlink under it.
 
 The image enforces IPE (`ipe.enforce=1`): `/usr` executes only from a dm-verity mapping whose root
 hash signature the kernel verified. The signature is signed with the Secure Boot db key, and the

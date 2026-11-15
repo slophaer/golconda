@@ -57,8 +57,7 @@ probe_http_server() {
 }
 
 # serve_release DIR: the release directory DIR is what the server serves from now on. It holds
-# symlinks into the store, and a chroot store's /nix/store is not the host's: resolve each file the
-# way the rest of this script does, then copy the bytes.
+# symlinks into the store: resolve each file, then copy the bytes.
 serve_release() {
   rm -f "$HTTP_ROOT"/*
   for f in "$1"/*; do

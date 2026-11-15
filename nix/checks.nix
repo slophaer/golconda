@@ -152,7 +152,7 @@ in
   '';
 
   # scripts/verify's steps on a scratch repository with fake nix-shell, nix-build, boot-test
-  verify-script = run "verify-script" [ rp.coreutils rp.git rp.cpython ] ''
+  verify-script = run "verify-script" [ rp.coreutils rp.git ] ''
     export HOME=$TMPDIR
     sh ${src}/tests/verify/test.sh
     touch $out
