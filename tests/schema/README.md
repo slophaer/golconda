@@ -27,6 +27,3 @@ A fragment is no longer configuration (a downstream module returns it), so the f
 library rows of the `fragment` type. Where a fragment may write (under `/usr`, canonical, no control
 characters) is the composer's rule, checked in `tests/eval/composer.nix`, not a type the schema
 pairs with.
-
-The local `var` struct allows unknown fields today. The fixture table keeps that behavior distinct
-from strict types such as `adminVar`, `fragment`, `file`, and `link`.

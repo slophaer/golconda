@@ -392,9 +392,9 @@
     }
   },
   {
-    "name": "local var struct allows extra fields",
+    "name": "local var refuses an unknown field",
     "definition": "var",
-    "accepted": true,
+    "accepted": false,
     "value": {
       "name": "foo",
       "secrets": [],

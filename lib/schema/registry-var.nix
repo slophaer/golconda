@@ -58,6 +58,7 @@
       "secrets"
       "script"
     ];
+    additionalProperties = false;
   };
 
   adminVar = {

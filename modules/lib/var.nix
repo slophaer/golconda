@@ -58,22 +58,24 @@ let
       null
   );
 
-  var = struct "var" {
-    name = varName;
-    # files the script writes that are sealed as credentials <name>.<file>
-    secrets = listOf word;
-    # files kept readable in /var/lib/golconda/vars/<name>/pub; default [ ]
-    publics = optionalAttr (listOf word);
-    # names of vars that must run first; their pub/ directories are readable; default [ ]
-    after = optionalAttr (listOf varName);
-    # POSIX sh, run in the (empty) runtime directory with the image's tools on PATH
-    script = string;
-    # tools the script needs; default [ ]
-    packages = optionalAttr (listOf derivation);
-    # targets that pull in this unit; default [ "multi-user.target" ]
-    # consumer services add After=<var>.service to order themselves after the var
-    wantedBy = optionalAttr (listOf targetName);
-  };
+  var =
+    (struct "var" {
+      name = varName;
+      # files the script writes that are sealed as credentials <name>.<file>
+      secrets = listOf word;
+      # files kept readable in /var/lib/golconda/vars/<name>/pub; default [ ]
+      publics = optionalAttr (listOf word);
+      # names of vars that must run first; their pub/ directories are readable; default [ ]
+      after = optionalAttr (listOf varName);
+      # POSIX sh, run in the (empty) runtime directory with the image's tools on PATH
+      script = string;
+      # tools the script needs; default [ ]
+      packages = optionalAttr (listOf derivation);
+      # targets that pull in this unit; default [ "multi-user.target" ]
+      # consumer services add After=<var>.service to order themselves after the var
+      wantedBy = optionalAttr (listOf targetName);
+    }).override
+      { unknown = false; };
 
   # An admin-supplied var: the files the deploy host pushes, each sealed as
   # the credential <name>.<file>, and the units that load them: the deploy tool
