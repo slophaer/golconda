@@ -94,20 +94,29 @@ export def index [release: string, files: table] {
 # again gives the same bytes. The signature is checked with gpgv against KEYRING, the public key
 # the image carries, before it is kept.
 export def sign-index [release: string, key: string, epoch: int, keyring: string] {
+  # the home holds a copy of the release key: it goes on every exit path, with its agent
   let home = (mktemp -d -t "golconda-gnupg-XXXXXX")
-  ^chmod 700 $home
-  with-env {GNUPGHOME: $home} {
-    ^gpg --batch --pinentry-mode loopback --passphrase '' --import $key e> /dev/null
-    let sec = (^gpg --batch --with-colons --list-secret-keys | lines | where {|l| $l starts-with "sec:" })
-    if ($sec | length) != 1 {
-      error make {msg: $"($key): expected one secret key, found ($sec | length)"}
-    }
-    let created = ($sec | first | split row ':' | get 5 | into int)
-    let at = ([$epoch ($created + 1)] | math max)
-    ^gpg --batch --yes --pinentry-mode loopback --passphrase '' --faked-system-time $"($at)!" --detach-sign --output $"($release)/SHA256SUMS.gpg" $"($release)/SHA256SUMS" e> /dev/null
-    ^gpgconf --kill gpg-agent
+  let clean = {||
+    with-env {GNUPGHOME: $home} { ^gpgconf --kill gpg-agent }
+    rm -rf $home
   }
-  rm -rf $home
+  try {
+    ^chmod 700 $home
+    with-env {GNUPGHOME: $home} {
+      ^gpg --batch --pinentry-mode loopback --passphrase '' --import $key e> /dev/null
+      let sec = (^gpg --batch --with-colons --list-secret-keys | lines | where {|l| $l starts-with "sec:" })
+      if ($sec | length) != 1 {
+        error make {msg: $"($key): expected one secret key, found ($sec | length)"}
+      }
+      let created = ($sec | first | split row ':' | get 5 | into int)
+      let at = ([$epoch ($created + 1)] | math max)
+      ^gpg --batch --yes --pinentry-mode loopback --passphrase '' --faked-system-time $"($at)!" --detach-sign --output $"($release)/SHA256SUMS.gpg" $"($release)/SHA256SUMS" e> /dev/null
+    }
+  } catch {|e|
+    do $clean
+    error make $e
+  }
+  do $clean
   verify-index $release $keyring
   log "release: SHA256SUMS.gpg"
 }

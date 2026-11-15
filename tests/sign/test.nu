@@ -14,6 +14,7 @@
 # runs it so):
 #   nu --no-config-file --include-path lib/image tests/sign/test.nu
 
+use sign.nu
 use sign.nu [private-keys check-keys use-token]
 use verity.nu [sign-roothash]
 use uki.nu [roothash-signature certificate-table-size]
@@ -84,6 +85,18 @@ fails "a PKCS#11 URI as a key set is refused: a key set is a directory" "secureb
 fails "a key set without its key file is refused" "no such key" {||
   private-keys $"($tmp)/none" $a $a
 }
+# the signer's scratch directory for a token goes when a step fails
+let token_dirs = {|| glob $"($env.TMPDIR? | default /tmp)/golconda-pkcs11-*" | sort | length }
+let token_before = (do $token_dirs)
+mkdir $"($tmp)/unsigned"
+{publicKeys: (public-of $b)} | to json | save -f $"($tmp)/unsigned/manifest.json"
+fails "the signer refuses a key set that the image does not carry" "is not the key of the db certificate" {||
+  sign $"($tmp)/unsigned" {db: $a pcr: $a index: $a} $"($tmp)/out"
+}
+if (do $token_dirs) != $token_before {
+  error make {msg: "a failed signer run left its golconda-pkcs11 directory"}
+}
+ok "a failed signer run leaves no scratch directory"
 
 # --- the verity root hash signature: PKCS#7 by the db key, checked against the certificate
 let roothash = "4b1a9e3cbd7f0e6d2c5a8f9e1d3b7c6a5f4e3d2c1b0a99887766554433221100"
@@ -145,6 +158,18 @@ fails "the index signature does not verify against another keyring" "does not ve
 fails "signing with a key the keyring does not hold fails" "does not verify" {||
   sign-index $rel $"($b)/release/index.key" 1793404801 $"($a)/release/index.pgp"
 }
+# the scratch GNUPGHOME holds a copy of the release key: it goes when the signature fails too
+let homes = {|| glob $"($env.TMPDIR? | default /tmp)/golconda-gnupg-*" | sort | length }
+let before = (do $homes)
+open --raw $"($a)/release/index.key" | save -f $"($tmp)/two.key"
+open --raw $"($b)/release/index.key" | save -a $"($tmp)/two.key"
+fails "a key file with two secret keys is refused" "expected one secret key" {||
+  sign-index $rel $"($tmp)/two.key" 1793404801 $"($a)/release/index.pgp"
+}
+if (do $homes) != $before {
+  error make {msg: "a failed index signature left its GNUPGHOME, with a copy of the release key"}
+}
+ok "a failed index signature leaves no copy of the release key"
 "0001  some_20261031.1.efi\n" | save -f $"($rel)/SHA256SUMS"
 fails "a changed index does not verify" "does not verify" {||
   verify-index $rel $"($a)/release/index.pgp"

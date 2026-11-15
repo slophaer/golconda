@@ -193,10 +193,22 @@ def enrol-files [m: record, set: string, db_cert: string]: nothing -> list<strin
 # holds a key (use-token).
 export def main [unsigned: string, sets: record, out: string, pkcs11_module?: string] {
   let m = (open $"($unsigned)/manifest.json")
-  let pub = $m.publicKeys
   let priv = (private-keys $sets.db $sets.pcr $sets.index)
+  # the OpenSSL configuration for a token: it goes on every exit path
   let token_dir = (mktemp -d -t "golconda-pkcs11-XXXXXX")
-  use-token $priv $token_dir $pkcs11_module
+  try {
+    use-token $priv $token_dir $pkcs11_module
+    release $m $priv $sets $out
+  } catch {|e|
+    rm -rf $token_dir
+    error make $e
+  }
+  rm -rf $token_dir
+}
+
+# release MANIFEST PRIVATE SETS OUT: the steps of main, with the tools set up for the keys
+def release [m: record, priv: record, sets: record, out: string] {
+  let pub = $m.publicKeys
   check-keys $priv $pub
 
   for f in [disk.raw release] {
@@ -270,6 +282,5 @@ export def main [unsigned: string, sets: record, out: string, pkcs11_module?: st
   disk sign-index $release $priv.indexKey $m.disk.epoch $pub.indexKeyring
   $cmdline | save -f $"($out)/cmdline"
   rm -rf $work
-  rm -rf $token_dir
   log $"release: (ls $release | get name | path basename | str join ' ')"
 }
