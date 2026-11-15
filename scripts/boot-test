@@ -4,7 +4,8 @@
 # Usage: boot-test <disk.raw> --keys DIR [--secure-boot [--auto-enrol [--no-microsoft-keys]]]
 #                  [--tpm] [--timeout SECONDS]
 #                  [--ssh-test [--esp-creds | --imds | --enrol]]
-#                  [--next DIR [--rotate | --fail-health | --fail-initrd | --fail-blessed --later DIR | --tamper-index]]
+#                  [--next DIR [--rotate | --fail-health | --fail-initrd | --fail-blessed --later DIR | --fail-panic |
+#                   --fail-pid1 | --tamper-index]]
 #                  [--factory-reset]
 #
 # The script boots the image in QEMU with:
@@ -219,6 +220,15 @@
 #   reboots once more: three crashes, the old release once, two more, and the seventh boot in a row
 #   crashes and nothing reboots it for 60 s (failed-boots-halt). The run ends there; it skips the
 #   loader and recovery checks. Give it a --timeout of 1800.
+# With --next DIR --fail-panic or --fail-pid1: the panic or PID 1 crash row of the trial boot policy
+#   (docs/design/boot.md, "Trial boot"). After the install the harness arms the test image's
+#   boot-test-panic.service (echo c > /proc/sysrq-trigger) or boot-test-crash.service (kill -SEGV 1)
+#   for the next release, and the reboot timer starts its first try. panic=10, or PID 1's
+#   CrashAction=reboot, must reboot each of the three tries, and the generator must count each
+#   (fail-panic-rebooted or fail-pid1-rebooted: three failures, each followed by a new kernel 8 to
+#   25 s later: 10 s, not the watchdog's 30), and the fourth boot must run the old release (fallback-to-old-slot-panic,
+#   counter-exhausted-panic, and -pid1), where the timer reboots nothing. It skips the loader and
+#   recovery checks.
 # With --next DIR --rotate: DIR is signed with a new db key. Its certificate is enrolled in db
 #   beside the old one before the first boot; after the update the harness stops QEMU, rewrites
 #   the variable store (db: the new certificate only; dbx: the old one), boots again and checks
@@ -302,6 +312,8 @@ FAIL_HEALTH=0
 FAIL_INITRD=0
 FAIL_BLESSED=0
 LATER=""
+FAIL_PANIC=0
+FAIL_PID1=0
 TAMPER_INDEX=0
 FACTORY_RESET=0
 ESP_CREDS=0
@@ -333,7 +345,7 @@ IMDS_NET_CRED=60-imds-ipv6
 . "$SCRIPT_DIR/boot-test-update.sh"
 
 usage() {
-  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot [--auto-enrol [--no-microsoft-keys]]] [--tpm] [--timeout SECONDS] [--ssh-test [--esp-creds | --imds | --enrol]] [--next DIR [--rotate | --fail-health | --fail-initrd | --fail-blessed --later DIR | --tamper-index]] [--factory-reset]"
+  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot [--auto-enrol [--no-microsoft-keys]]] [--tpm] [--timeout SECONDS] [--ssh-test [--esp-creds | --imds | --enrol]] [--next DIR [--rotate | --fail-health | --fail-initrd | --fail-blessed --later DIR | --fail-panic | --fail-pid1 | --tamper-index]] [--factory-reset]"
   exit 1
 }
 
@@ -352,6 +364,8 @@ while [ $# -gt 0 ]; do
     --fail-initrd) FAIL_INITRD=1; shift ;;
     --fail-blessed) FAIL_BLESSED=1; shift ;;
     --later) LATER="$2"; shift 2 ;;
+    --fail-panic) FAIL_PANIC=1; shift ;;
+    --fail-pid1) FAIL_PID1=1; shift ;;
     --tamper-index) TAMPER_INDEX=1; shift ;;
     --factory-reset) FACTORY_RESET=1; shift ;;
     --esp-creds) ESP_CREDS=1; shift ;;
@@ -449,6 +463,10 @@ if [ -n "$LATER" ]; then
     echo "Error: --later is for --fail-blessed, and $LATER must have disk/release/SHA256SUMS" >&2
     exit 1
   fi
+fi
+if [ "$((FAIL_PANIC + FAIL_PID1))" -gt 0 ] && { [ -z "$NEXT" ] || [ "$((FAIL_PANIC + FAIL_PID1 + FAIL_BLESSED + FAIL_HEALTH + FAIL_INITRD + ROTATE + TAMPER_INDEX))" != 1 ]; }; then
+  echo "Error: --fail-panic and --fail-pid1 need --next, and each is a fallback of its own: not with each other, --fail-health, --fail-initrd, --fail-blessed, --rotate or --tamper-index" >&2
+  exit 1
 fi
 if [ "$FAIL_HEALTH" = 1 ] && [ -z "$NEXT" ]; then
   echo "Error: --fail-health needs --next" >&2

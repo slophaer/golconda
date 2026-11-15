@@ -19,7 +19,8 @@ in
   # the configured workload is a downstream module (tests/fixtures/image-workload/modules)
   golconda.modules = ../tests/fixtures/image-workload/modules;
   "/local/test-workload" = { };
-  # faults the boot tests arm for one release (scripts/boot-test --fail-blessed)
+  # faults the boot tests arm for one release (scripts/boot-test --fail-blessed, --fail-panic,
+  # --fail-pid1)
   "/local/boot-test-faults" = { };
   "/system" = {
     name = "boot-test";

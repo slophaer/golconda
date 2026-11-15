@@ -214,6 +214,96 @@ test_fail_initrd() {
   activate_never
 }
 
+# serial_count MARK PATTERN: the lines of the serial log after byte MARK that hold PATTERN
+serial_count() {
+  tail -c +"$(($1 + 1))" "$SERIAL_LOG" | tr -d '\033\r' | grep -acF "$2" || true
+}
+
+# time_reboots MARK DOWN N: watch the serial log after byte MARK until N lines DOWN have each been
+# followed by a new kernel ("Linux version"); DELAYS gets the seconds from each DOWN to that kernel
+time_reboots() {
+  DELAYS=
+  SEEN_DOWN=0
+  SINCE=
+  while qemu_running; do
+    D=$(serial_count "$1" "$2")
+    if [ -z "$SINCE" ] && [ "$D" -gt "$SEEN_DOWN" ]; then
+      SEEN_DOWN=$D
+      SINCE=$(date +%s)
+      KERNELS=$(serial_count "$1" "Linux version")
+    fi
+    if [ -n "$SINCE" ] && [ "$(serial_count "$1" "Linux version")" -gt "$KERNELS" ]; then
+      DELAYS="$DELAYS $(($(date +%s) - SINCE))"
+      SINCE=
+      [ "$SEEN_DOWN" -lt "$3" ] || return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+# test_fail_tries KIND: the panic (KIND panic) or PID 1 crash (pid1) row of the trial boot policy
+# (docs/design/boot.md, "Trial boot"). The harness arms the test image's boot-test-panic.service
+# (sysrq c) or boot-test-crash.service (kill -SEGV 1) for the candidate, and the reboot timer starts
+# its first try. panic=10 or CrashAction=reboot must reboot each of the three tries after 10 s, not
+# the hardware watchdog after 30 s, each try counted, and the fourth boot must run the old release;
+# the harness only watches. The kernel's "Rebooting in 10 seconds.." can stay in its buffer when
+# another CPU had the console: the time from the failure to the next kernel tells the two apart
+test_fail_tries() {
+  case $1 in
+    panic)
+      ARM=panic
+      DOWN="Kernel panic - not syncing: sysrq triggered crash"
+      ;;
+    *)
+      ARM=crash
+      DOWN="boot-test: crash PID 1 ($NEXT_VERSION)"
+      ;;
+  esac
+  echo ""
+  echo "=== the trial boot policy: each try of $NEXT_VERSION ends in a $1 failure ==="
+  RC=0
+  guest "mkdir -p /var/lib/boot-test && touch /var/lib/boot-test/$ARM-$NEXT_VERSION && sync" || RC=1
+  verdict "fail-$1-armed (/var/lib/boot-test/$ARM-$NEXT_VERSION)" $RC
+  MARK=$(wc -c < "$SERIAL_LOG")
+  echo "--- the reboot timer activates $NEXT_VERSION; the harness only watches ---"
+  activate_soon || true
+  RC_TIME=0
+  time_reboots "$MARK" "$DOWN" 3 || RC_TIME=1
+  echo "seconds from each failure to the next kernel:$DELAYS"
+  if ! wait_for_old "$BOOT_ID"; then
+    verdict "fallback-to-old-slot-$1 (no login of $OLD_VERSION before the timeout)" 1
+    trial_trace "$MARK"
+    return 1
+  fi
+  # one line per event: the generator's verdict, the test unit, the kernel's panic
+  T=$(tail -c +"$((MARK + 1))" "$SERIAL_LOG" | tr -d '\033\r' \
+    | grep -ao "golconda-trial-boot: [^ ]* is on trial\|boot-test: [a-z]* [^(]*([0-9.]*)\|Kernel panic - not syncing: sysrq triggered crash" || true)
+  echo "the policy's and the kernel's lines on the serial console:"
+  echo "$T"
+  verdict "fallback-to-old-slot-$1 ($NEXT_VERSION failed 3 times, $V boots, the harness rebooted nothing)" 0
+  RC=$RC_TIME
+  for c in 2-1 1-2 0-3; do
+    echo "$T" | grep -qxF "golconda-trial-boot: ${IMAGE_ID}_$NEXT_VERSION+$c.efi is on trial" || RC=1
+  done
+  [ "$(echo "$T" | grep -cxF "$DOWN")" = 3 ] || RC=1
+  # 10 s and a firmware start: more than 8 s, less than the watchdog's 30 s
+  N=0
+  for d in $DELAYS; do
+    N=$((N + 1))
+    { [ "$d" -ge 8 ] && [ "$d" -le 25 ]; } || RC=1
+  done
+  [ "$N" = 3 ] || RC=1
+  verdict "fail-$1-rebooted (three tries, each counted and rebooted 10 s after its failure:$DELAYS s)" $RC
+  L=$(guest bootctl list --no-pager 2>&1) || true
+  echo "$L" | grep -E " (title|version|tries):" || true
+  RC=0; echo "$L" | grep -q "tries: 0 left; 3 done" || RC=1
+  verdict "counter-exhausted-$1 (the candidate has tries: 0 left; 3 done)" $RC
+  check_unsealed "after the fallback to $V"
+  check_reboot_skipped "update-reboot-skipped-after-$1-fallback"
+  activate_never
+}
+
 # failed_trace MARK: the failed-boot counter's lines in the serial log after byte MARK, one per
 # line, from the first crash of the test unit on: the crash, the kernel's reboot, the counter
 failed_trace() {
@@ -507,6 +597,11 @@ test_next() {
   [ "$RC" != 0 ] || test_verity_keyring
 
   check_reboot_window
+  if [ "$FAIL_PANIC" = 1 ] || [ "$FAIL_PID1" = 1 ]; then
+    if [ "$FAIL_PANIC" = 1 ]; then test_fail_tries panic; else test_fail_tries pid1; fi || return 1
+    check_no_failed no-failed-units-after-update
+    return 0
+  fi
   if [ "$FAIL_INITRD" = 1 ]; then
     test_fail_initrd || return 1
     check_no_failed no-failed-units-after-update

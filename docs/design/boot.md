@@ -142,11 +142,12 @@ i6300esb, Intel's and AMD's TCO, and softdog, a kernel timer, where no hardware 
 softdog catches a PID 1 that stops, not a kernel that hangs. The watchdog runs from the initrd's PID
 1 on: firmware that never starts the loader, and a kernel that hangs before PID 1, are not covered.
 
-In QEMU, with no reboot from the harness, `--next --fail-health` proves the health row and
-`--next --fail-initrd` the initrd failure row ([What is proven](../proven.md)). The panic, crash and
-initrd hang rows have no test of their own *(being built)*. Of the two hang rows, every `--ssh-test`
-boot proves the settings (`hang-panic-sysctls`, `watchdog-armed`); no test hangs the kernel or lets
-the watchdog expire *(being built)*.
+In QEMU, with no reboot from the harness, `--next --fail-health` proves the health row,
+`--next --fail-initrd` the initrd failure row, `--next --fail-panic` the panic row and
+`--next --fail-pid1` the crash row ([What is proven](../proven.md)). The initrd hang row has no test
+of its own *(being built)*. Of the two hang rows, every `--ssh-test` boot proves the settings
+(`hang-panic-sysctls`, `watchdog-armed`); no test hangs the kernel or lets the watchdog expire
+*(being built)*.
 
 ### Failed boots
 
