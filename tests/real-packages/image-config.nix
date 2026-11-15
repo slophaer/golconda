@@ -184,6 +184,19 @@ in
       publicKeys = "keys";
       system = "x86_64-linux";
     }
+    # a db.crt or pcr.pub that holds private key text is refused before it enters the store
+    && refused {
+      inherit config;
+      publicKeys = ../fixtures/public-keys-private;
+      pcrPublicKeys = publicKeys;
+      indexPublicKeys = publicKeys;
+      system = "x86_64-linux";
+    }
+    && refused {
+      inherit config publicKeys;
+      pcrPublicKeys = ../fixtures/public-keys-private;
+      system = "x86_64-linux";
+    }
     # each public half is copied alone, by its own name
     && inStore m.publicKeys.dbCert
     && inStore m.publicKeys.pcrPublicKey

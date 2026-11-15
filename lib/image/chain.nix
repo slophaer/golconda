@@ -41,7 +41,9 @@ let
     isAttrs
     isPath
     isString
+    readFile
     removeAttrs
+    replaceStrings
     substring
     ;
   unknown = attrNames (
@@ -71,19 +73,27 @@ let
   publicFile =
     dir: rel:
     if isPath dir then
-      builtins.path {
-        path = dir + "/${rel}";
-        name = baseNameOf rel;
-      }
+      copyPublic (dir + "/${rel}") rel
     else if isAttrs dir || (isString dir && hasContext dir) then
       "${dir}/${rel}"
     else if isString dir && substring 0 1 dir == "/" then
-      builtins.path {
-        path = "${dir}/${rel}";
-        name = baseNameOf rel;
-      }
+      copyPublic "${dir}/${rel}" rel
     else
       throw "golconda: mkImage: a key directory must be a path or an absolute string, not '${toString dir}'";
+  # The PEM files are read before the copy, so a private key never reaches the store. The
+  # keyring is binary, which readFile cannot read: lib/image/manifest.nu checks it in the build
+  copyPublic =
+    path: rel:
+    if
+      rel != "release/index.pgp"
+      && replaceStrings [ "PRIVATE KEY" ] [ "" ] (readFile path) != readFile path
+    then
+      throw "golconda: mkImage: ${toString path} holds a private key; give only the public half (scripts/make-keys writes it)"
+    else
+      builtins.path {
+        inherit path;
+        name = baseNameOf rel;
+      };
   dbCert = publicFile publicKeys "secureboot/db.crt";
   pcrPublicKey = publicFile pcrPublicKeys "pcr/pcr.pub";
   indexPublicKey = publicFile indexPublicKeys "release/index.pgp";

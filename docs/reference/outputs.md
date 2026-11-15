@@ -81,11 +81,12 @@ Nothing it builds is signed, and no private key is read
 
 `publicKeys` is a path or an absolute string. From it the chain copies three files into the store,
 each alone: `secureboot/db.crt`, `pcr/pcr.pub` and `release/index.pgp`; a directory that also holds
-the private keys gives nothing else. A relative string is an error, and so is any other argument,
-such as `keys`. A flake evaluates purely and reads no absolute path outside the store: give it the
-three public files committed in the repository, as a path. `golconda release build` builds
-`unsigned` and runs its `sign`; the procedure, from making the key set to enrolling the certificate,
-is in [Making a release](release.md).
+the private keys gives nothing else. A `db.crt` or `pcr.pub` that holds a private key is an error
+before the copy. A relative string is an error, and so is any other argument, such as `keys`. A
+flake evaluates purely and reads no absolute path outside the store: give it the three public files
+committed in the repository, as a path. `golconda release build` builds `unsigned` and runs its
+`sign`; the procedure, from making the key set to enrolling the certificate, is in
+[Making a release](release.md).
 
 ## `schema`
 
