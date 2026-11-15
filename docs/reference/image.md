@@ -348,6 +348,10 @@ scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --next n
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --next next \
   --fail-health --timeout 900
 
+# A Secure Boot image on firmware with Secure Boot off: the refusal, then the seal (see below)
+scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-test --tpm \
+  --secure-boot-off --timeout 600
+
 # Factory reset: the reset request, the reset boot, and the state checks (two boots)
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-test \
   --factory-reset --timeout 480
@@ -659,6 +663,17 @@ With `--rotate`:
 | `vars-resealed-without-pcr7`, `vars-resealed-pcr7`           | with `--tpm`: `golconda-var-run --reseal --without-pcr7` before the update and `--reseal` after the rotated boot seal every credential again, the host key without and then with PCR 7 |
 | `hostkey-unchanged`                                          | with `--tpm`, after one more reboot: the resealed host key unseals                                                                                                                     |
 | `old-loader-refused`                                         | the original disk under the rotated store gets "Access Denied"; no kernel starts                                                                                                       |
+
+With `--secure-boot --tpm --ssh-test --secure-boot-off`, after the first boot and its reboot: the
+harness keeps PK, KEK and `db` and sets `SecureBootEnable` false
+([Boot: Secure Boot off](../design/boot.md#secure-boot-off)). Before that it prints PCR 7's event
+log (`systemd-pcrlock log --pcr=7`).
+
+| marker                        | what it proves                                                                                                                                                                                                                                                                                                    |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `secure-boot-off-refused`     | the kernel says Secure Boot is off, the initrd's line `golconda: Secure Boot is off` and `System halted` are on the console, the kernel started once (no reboot), and nothing switched root or reached `multi-user.target`                                                                                        |
+| `secure-boot-off-vars-sealed` | with the SMBIOS string `io.systemd.stub.kernel-cmdline-extra=rd.systemd.mask=golconda-secure-boot-required.service systemd.log_target=console` the boot reaches `multi-user.target`, PID 1's lines on the console say the TPM policy does not match and sshd failed to set up its credentials, and no login works |
+| `hostkey-unchanged`           | with Secure Boot on again, the same TPM unseals the first boot's host key                                                                                                                                                                                                                                         |
 
 With `--factory-reset --ssh-test` ([The factory reset test](#the-factory-reset-test)):
 

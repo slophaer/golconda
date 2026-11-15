@@ -2,7 +2,7 @@
 # scripts/boot-test: VM boot test for Golconda images.
 #
 # Usage: boot-test <disk.raw> --keys DIR [--secure-boot [--auto-enrol [--no-microsoft-keys]]]
-#                  [--tpm] [--timeout SECONDS]
+#                  [--tpm [--secure-boot-off]] [--timeout SECONDS]
 #                  [--ssh-test [--esp-creds | --imds | --enrol]]
 #                  [--next DIR [--rotate | --fail-health | --fail-initrd | --fail-blessed --later DIR | --fail-panic |
 #                   --fail-pid1 | --tamper-index]]
@@ -238,6 +238,17 @@
 #   the update they are sealed again without PCR 7 (vars-resealed-without-pcr7), after the rotated
 #   boot with it (vars-resealed-pcr7), and after one more reboot the host key unseals
 #   (hostkey-unchanged).
+# With --secure-boot --tpm --secure-boot-off (needs --ssh-test; not with --next, --auto-enrol,
+#   --factory-reset, --enrol, --esp-creds or --imds): a Secure Boot image on firmware with Secure
+#   Boot off (docs/design/boot.md, "Secure Boot off"). After the first boot and its reboot the
+#   harness keeps PK, KEK and db and sets SecureBootEnable false. The initrd must refuse: the
+#   console has its line and "System halted", and nothing reboots or switches root
+#   (secure-boot-off-refused). Then the refusal is bypassed: the SMBIOS string
+#   io.systemd.stub.kernel-cmdline-extra (systemd-stub appends it) masks the refusal unit, and PID 1
+#   logs to the console. The system starts, but the host key, sealed to PCR 7, does not unseal: the
+#   TPM policy does not match, sshd fails to set up its credentials and no login works
+#   (secure-boot-off-vars-sealed). Last, Secure Boot on again with the same TPM: the key unseals
+#   (hostkey-unchanged).
 # With --factory-reset (needs --ssh-test and the test image; a boot of its own): writes a marker
 #   in /etc, reads /etc/machine-id, runs `systemctl start factory-reset.target` in the guest and
 #   waits for the reset boot. It checks that the marker is gone (state-gone), the machine id
@@ -323,6 +334,8 @@ FACTORY_RESET=0
 ESP_CREDS=0
 IMDS=0
 ENROL=0
+SECURE_BOOT_OFF=0
+STUB_CMDLINE=""
 # --imds: Hetzner's metadata address, and the user data's IPv6 address and .network credential
 # (boot-test-http.sh serves them; no host port is opened)
 IMDS_ADDR=169.254.169.254
@@ -349,7 +362,7 @@ IMDS_NET_CRED=60-imds-ipv6
 . "$SCRIPT_DIR/boot-test-update.sh"
 
 usage() {
-  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot [--auto-enrol [--no-microsoft-keys]]] [--tpm] [--timeout SECONDS] [--ssh-test [--esp-creds | --imds | --enrol]] [--next DIR [--rotate | --fail-health | --fail-initrd | --fail-blessed --later DIR | --fail-panic | --fail-pid1 | --tamper-index]] [--factory-reset]"
+  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot [--auto-enrol [--no-microsoft-keys]]] [--tpm [--secure-boot-off]] [--timeout SECONDS] [--ssh-test [--esp-creds | --imds | --enrol]] [--next DIR [--rotate | --fail-health | --fail-initrd | --fail-blessed --later DIR | --fail-panic | --fail-pid1 | --tamper-index]] [--factory-reset]"
   exit 1
 }
 
@@ -375,6 +388,7 @@ while [ $# -gt 0 ]; do
     --esp-creds) ESP_CREDS=1; shift ;;
     --imds) IMDS=1; shift ;;
     --enrol) ENROL=1; shift ;;
+    --secure-boot-off) SECURE_BOOT_OFF=1; shift ;;
     --help|-h) usage ;;
     -*)
       echo "Unknown option: $1" >&2
@@ -450,6 +464,12 @@ fi
 
 if [ "$ENROL" = 1 ] && { [ "$SSH_TEST" = 0 ] || [ -n "$NEXT" ] || [ "$ESP_CREDS" = 1 ] || [ "$IMDS" = 1 ] || [ "$FACTORY_RESET" = 1 ]; }; then
   echo "Error: --enrol needs --ssh-test, and is a first boot of its own: not with --next, --esp-creds, --imds or --factory-reset" >&2
+  exit 1
+fi
+if [ "$SECURE_BOOT_OFF" = 1 ] && { [ "$SECURE_BOOT" = 0 ] || [ "$TPM" = 0 ] || [ "$SSH_TEST" = 0 ] ||
+  [ -n "$NEXT" ] || [ "$AUTO_ENROL" = 1 ] || [ "$FACTORY_RESET" = 1 ] || [ "$ENROL" = 1 ] ||
+  [ "$ESP_CREDS" = 1 ] || [ "$IMDS" = 1 ]; }; then
+  echo "Error: --secure-boot-off needs --secure-boot, --tpm and --ssh-test, and is a run of its own: not with --next, --auto-enrol, --factory-reset, --enrol, --esp-creds or --imds" >&2
   exit 1
 fi
 
@@ -643,6 +663,9 @@ main() {
     fi
     if [ "$ROTATE" = 1 ] && [ "$RESULT" = 0 ]; then
       test_rotate || RESULT=1
+    fi
+    if [ "$SECURE_BOOT_OFF" = 1 ] && [ "$RESULT" = 0 ]; then
+      test_secure_boot_off || RESULT=1
     fi
     # last: the machine does not boot after it
     if [ "$AUTO_ENROL" = 1 ] && qemu_running; then

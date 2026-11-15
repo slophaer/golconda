@@ -663,7 +663,9 @@ when:
   whose option ROM a Microsoft CA signed and that was not there at sealing time.
 
 systemd's `os-separator` follows, which `systemd-pcrosseparator.service` extends in the initrd
-before `sysinit.target`, so before any var is sealed or unsealed.
+before `sysinit.target`, so before any var is sealed or unsealed. The initrd refuses to boot with
+Secure Boot off ([Boot: Secure Boot off](boot.md#secure-boot-off)); the seal holds for a boot that
+the image does not control.
 
 A change that is planned is wrapped in two reseals. `golconda-var-run --reseal --without-pcr7` seals
 every credential of `/etc/credstore.encrypted` again with the signed PCR 11 policy alone; after the
@@ -677,8 +679,10 @@ the way back is a reflash, and the machine enrols again.
 
 **Status.** With `--secure-boot --tpm` the host key's credential header names PCR 7 by value and PCR
 11 by signature (`hostkey-sealed-pcr7`), and the `--rotate` run reseals around the rotation and
-unseals after it ([What is proven](../proven.md)). On hardware, which events firmware measures into
-PCR 7 is **unverified**.
+unseals after it. With Secure Boot off and the refusal bypassed the key does not unseal, and with
+Secure Boot on again it does (`secure-boot-off-vars-sealed`, [What is proven](../proven.md)). The
+`--secure-boot-off` run prints PCR 7's event log (`systemd-pcrlock log`): the events above, in that
+order. On hardware, which events firmware measures into PCR 7 is **unverified**.
 
 ### Rollback weakness
 

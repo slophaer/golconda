@@ -346,3 +346,89 @@ test_factory_reset() {
   echo "=== serial log of the reset boot (last 100 lines) ==="
   tail -100 "$RESET_LOG"
 }
+
+# --- --secure-boot-off: a Secure Boot image on firmware with Secure Boot off ---
+# (docs/design/boot.md, "Secure Boot off"). The variable store keeps PK, KEK and db, and only
+# SecureBootEnable changes, so PCR 7 differs from the first boot's by the Secure Boot state alone.
+REFUSE_UNIT=golconda-secure-boot-required.service
+
+# set_secure_boot true|false: SecureBootEnable in the variable store (QEMU stopped)
+set_secure_boot() {
+  virt-fw-vars --input "$VARS" --output "$VARS.new" "--set-$1" SecureBootEnable 2>&1 |
+    grep -v "^INFO: \\(reading\\|var store\\|writing\\)" || true
+  mv "$VARS.new" "$VARS"
+}
+
+test_secure_boot_off() {
+  echo ""
+  echo "=== PCR 7 of the Secure Boot boot (systemd-pcrlock log) ==="
+  guest /usr/lib/systemd/systemd-pcrlock log --pcr=7 --no-pager 2>&1 | head -40 || true
+  stop_qemu
+  set_secure_boot false
+  SAVED_TIMEOUT=$TIMEOUT
+
+  echo ""
+  echo "=== Secure Boot off: the initrd must refuse ==="
+  SERIAL_LOG=$WORKDIR/serial-secure-boot-off.log
+  TIMEOUT=180
+  rotate_tpm
+  start_qemu
+  W=0
+  while qemu_running && [ "$W" -lt 150 ] && ! grep -aq 'System halted' "$SERIAL_LOG"; do
+    sleep 1
+    W=$((W + 1))
+  done
+  # a halted machine stays halted: give a reboot time to show
+  sleep 10
+  stop_qemu
+  tr -d '\033\r' < "$SERIAL_LOG" | grep -a 'Secure boot \(dis\|en\)abled\|golconda: Secure Boot\|System halted\|Linux version' || true
+  RC=0
+  grep -aq 'Secure boot disabled' "$SERIAL_LOG" || RC=1
+  grep -aq 'golconda: Secure Boot is off' "$SERIAL_LOG" || RC=1
+  grep -aq 'System halted' "$SERIAL_LOG" || RC=1
+  [ "$(grep -ac 'Linux version' "$SERIAL_LOG")" = 1 ] || RC=1
+  ! grep -aqi 'Switching root\|Reached target.*Multi-User' "$SERIAL_LOG" || RC=1
+  verdict "secure-boot-off-refused (the initrd named the reason on the console and halted: no switch root, no reboot)" $RC
+
+  echo ""
+  echo "=== Secure Boot off, the refusal bypassed: the vars must not unseal ==="
+  SERIAL_LOG=$WORKDIR/serial-secure-boot-off-bypassed.log
+  STUB_CMDLINE="rd.systemd.mask=$REFUSE_UNIT systemd.log_target=console"
+  rotate_tpm
+  start_qemu
+  STUB_CMDLINE=""
+  W=0
+  while qemu_running && [ "$W" -lt 150 ] && ! serial_marker_present multi-user-reached "$SERIAL_LOG"; do
+    sleep 1
+    W=$((W + 1))
+  done
+  # sshd's start has its own time; then one login try
+  sleep 15
+  RC_LOGIN=0
+  # shellcheck disable=SC2086
+  if ssh $SSH_OPTS $NO_HOSTKEY_CHECK -i "$WORKDIR/ssh/user" root@localhost true 2>/dev/null; then
+    RC_LOGIN=1
+  fi
+  stop_qemu
+  tr -d '\033\r' < "$SERIAL_LOG" | grep -a "Secure boot \(dis\|en\)abled\|$REFUSE_UNIT\|sshd.service" | head -20 || true
+  RC=$RC_LOGIN
+  grep -aq 'Secure boot disabled' "$SERIAL_LOG" || RC=1
+  serial_marker_present multi-user-reached "$SERIAL_LOG" || RC=1
+  ! grep -aq 'golconda: Secure Boot is off' "$SERIAL_LOG" || RC=1
+  grep -a 'sshd.service' "$SERIAL_LOG" | grep -aq 'TPM policy does not match current system state' || RC=1
+  grep -a 'sshd.service' "$SERIAL_LOG" | grep -aq 'Failed to set up credentials' || RC=1
+  verdict "secure-boot-off-vars-sealed (refusal masked, multi-user reached; the TPM policy refused sshd's host key credential, no login)" $RC
+
+  echo ""
+  echo "=== Secure Boot on again ==="
+  set_secure_boot true
+  SERIAL_LOG=$WORKDIR/serial-secure-boot-on-again.log
+  TIMEOUT=$SAVED_TIMEOUT
+  rotate_tpm
+  start_qemu
+  if ! wait_for_ssh ""; then
+    verdict "hostkey-unchanged (Secure Boot on again: no login before the timeout)" 1
+    return 1
+  fi
+  check_unsealed "Secure Boot on again, the same TPM"
+}

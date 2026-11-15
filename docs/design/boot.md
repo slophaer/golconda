@@ -325,3 +325,26 @@ systemd-boot enrols them and resets, on hardware after a 15-second warning; firm
 has keys ignores them. Only the new disk's `loader.conf` enrols: the first good boot replaces it
 with `/usr`'s, which enrols nothing, and removes the files once Secure Boot is on
 ([Boot loader: Enrolment](bootloader.md#enrolment)). Key hierarchy in [Trust](trust.md).
+
+## Secure Boot off
+
+An image with `/system.secureBoot` (the default) is built for firmware that enforces Secure Boot. On
+firmware that does not, nothing checked the loader or the UKI, so the initrd refuses to go on:
+`golconda-secure-boot-required.service` (`ConditionSecurity=!uefi-secureboot`,
+`lib/image/initrd.nix`) runs before `sysinit.target`, writes
+`golconda: Secure Boot is off, and this image needs it (/system.secureBoot): halting. …` to the
+kernel log, which reaches the serial console and the screen, and halts the machine with
+`SuccessAction=halt-force`, which stops no unit: the initrd's TPM measurement units reboot when they
+are stopped mid-run (`FailureAction=reboot-force`). Nothing in the initrd that comes after it runs:
+no root partition is made or mounted, and no switch to it happens.
+
+It halts, and does not reboot into the firmware setup (`systemctl reboot --firmware-setup`): the
+line stays on the console for the operator, the machine stays off the network, and nothing loops. To
+boot again, turn Secure Boot on in the firmware setup, with the deployment's keys enrolled, and
+power the machine on. A boot that skips the refusal still unseals no var: they are sealed to PCR 7,
+which holds the Secure Boot state ([Trust: PCR 7](trust.md#pcr-7)). An image with
+`secureBoot = false` has no such unit.
+
+**Status.** Proven with `--secure-boot --tpm --secure-boot-off`, on OVMF with the same keys and
+Secure Boot off: `secure-boot-off-refused`, `secure-boot-off-vars-sealed`
+([What is proven](../proven.md)).

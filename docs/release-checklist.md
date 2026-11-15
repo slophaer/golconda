@@ -95,7 +95,7 @@ scripts/verify --boot-set "$SB" --boot-set "$SB --next @next" \
   --boot-set "$SB --next @next --fail-health" --boot-set "$SB --next @next --tamper-index" \
   --boot-set "$SB --imds" --boot-set "$SB --imds --next @next" \
   --boot-set "$NOSB --esp-creds" --boot-set "$NOSB --next @next" \
-  --boot-set "@image=image-smoke-test-next $SB --enrol"
+  --boot-set "@image=image-smoke-test-next $SB --enrol" --boot-set "$SB --secure-boot-off"
 ```
 
 Every mode runs on QEMU's user network `169.254.169.0/24`, so `--imds` and `--next` also run

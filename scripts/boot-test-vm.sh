@@ -399,8 +399,12 @@ start_qemu() {
   
   echo "Starting QEMU (timeout ${TIMEOUT}s)..."
   : > "$SERIAL_LOG"
+  # STUB_CMDLINE (--secure-boot-off): words systemd-stub appends to the UKI's command line, from
+  # the SMBIOS string io.systemd.stub.kernel-cmdline-extra; one argument, spaces and all
   # shellcheck disable=SC2086
-  timeout "$TIMEOUT" qemu-system-x86_64 $QEMU_ARGS > "$QEMU_OUT" 2>&1 &
+  timeout "$TIMEOUT" qemu-system-x86_64 $QEMU_ARGS \
+    ${STUB_CMDLINE:+-smbios "type=11,value=io.systemd.stub.kernel-cmdline-extra=$STUB_CMDLINE"} \
+    > "$QEMU_OUT" 2>&1 &
   QEMU_PID=$!
 }
 

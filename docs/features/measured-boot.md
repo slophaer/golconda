@@ -30,6 +30,9 @@ policy with keys you make, so a swapped kernel opens nothing.
   Mode enrols them on its first boot and reboots with Secure Boot on. Firmware with keys ignores
   them. Only a new disk enrols: its first good boot puts a `loader.conf` that enrols nothing on the
   ESP and removes the files once Secure Boot is on.
+- **Secure Boot off.** On firmware that does not enforce Secure Boot, a Secure Boot image halts in
+  the initrd and says why on the console; a boot that skips that check unseals nothing, because the
+  vars are sealed to PCR 7 ([Boot: Secure Boot off](../design/boot.md#secure-boot-off)).
 - **The verity key in the kernel.** The kernel carries the `db` certificate itself
   (`CONFIG_SYSTEM_TRUSTED_KEYS`, a fixed path the build fills) and checks the `/usr` signature
   against it alone, never against the firmware `db`
@@ -69,9 +72,10 @@ keys and without them. No marker boots an unsigned loader. `hostkey-sealed-with-
 `hostkey-sealed-pcr7`, `ssh-after-reboot` and `hostkey-unchanged` (`--tpm`) show the seal and the
 unseal, also after an update and after a fallback (`--tpm --next`, with `--fail-health`) and after a
 `db` rotation with its two reseals (`--tpm --rotate`). `boots-after-rotation` and
-`old-loader-refused` cover a `db` rotation. A deployment key set made by `scripts/make-keys` booted
-on the same markers. The no-Secure-Boot image (`image-smoke-test-nosb`) boots and updates. See
-[What is proven](../proven.md).
+`old-loader-refused` cover a `db` rotation. `secure-boot-off-refused` and
+`secure-boot-off-vars-sealed` cover a Secure Boot image on firmware with Secure Boot off. A
+deployment key set made by `scripts/make-keys` booted on the same markers. The no-Secure-Boot image
+(`image-smoke-test-nosb`) boots and updates. See [What is proven](../proven.md).
 
 ## Limits
 

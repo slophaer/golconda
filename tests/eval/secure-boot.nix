@@ -3,6 +3,9 @@
 {
   check,
   composeWith,
+  fixturePkgs,
+  hasInfix,
+  imageLib,
   mkSystemFixture,
   platform,
   sources,
@@ -85,7 +88,8 @@ in
     && configOf (sysWith { secureBoot = false; } cert) == c
   ))
   # the initrd's system is its own, with the Secure Boot default: its set's kernel is another
-  # derivation than the image's, and the kernel belongs in the UKI only
+  # derivation than the image's, and the kernel belongs in the UKI only. It takes the image's
+  # secureBoot as chain.nix passes it, for the refusal alone: its /system needs no image keys
   (check "secureBoot: false keeps every kernel out of the initrd's tree" (
     let
       sys = sysWith { secureBoot = false; } storeCert;
@@ -96,6 +100,7 @@ in
         inherit sources;
         platform.name = platform;
         buildSystem = platform;
+        secureBoot = false;
       };
     in
     !(builtins.any (p: (p.pname or "") == "linux-kernel") tree.drvAttrs.roots)
@@ -119,6 +124,32 @@ in
       }).files
         ? "/usr/lib/golconda/vars.d/tpm2-pcrs"
     )
+  ))
+  # the initrd of a Secure Boot image halts when the firmware does not enforce Secure Boot
+  # (docs/design/boot.md, "Secure Boot off"); an image with secureBoot = false has no such unit
+  (check "secureBoot: the initrd halts when Secure Boot is off" (
+    let
+      initrdOf =
+        secureBoot:
+        (imageLib.initrdSystem {
+          imageId = "t";
+          version = "20261031.1";
+          pkgs = fixturePkgs;
+          inherit sources secureBoot;
+          platform.name = platform;
+          buildSystem = platform;
+        }).composed;
+      refuse = "golconda-secure-boot-required.service";
+      on = initrdOf true;
+      off = initrdOf false;
+      unit = on.units.${refuse};
+    in
+    hasInfix "ConditionSecurity=!uefi-secureboot" unit
+    && hasInfix "SuccessAction=halt-force\n" unit
+    && hasInfix "FailureAction=halt-force\n" unit
+    && hasInfix "Before=sysinit.target" unit
+    && on.links."/usr/lib/systemd/system/sysinit.target.wants/${refuse}".target == "../${refuse}"
+    && !(off.units ? ${refuse})
   ))
   (check "secureBoot: false without the image's keys is an error" (
     !(tryEval (deepSeq (kernelOf (sysWith { secureBoot = false; } null)).spec.env true)).success
