@@ -3,8 +3,10 @@
 # treefmt check among them), build an image, build the test image's initrd a second time
 # (packages.<system>.initrd-reproducible: the same bytes), sign its release a second time
 # (packages.<system>.disk-reproducible: the same disk.raw and release files), boot it with
-# scripts/boot-test; stop at the first failure. Run it through the build queue on a shared host (qbuild -g vm verify --
-# scripts/verify); a step's output goes to stdout.
+# scripts/boot-test. All builds start at once; the boots start when the images are built, and the
+# two second builds run beside them. A failed lint or image stops the run. Run it through the
+# build queue on a shared host (qbuild -g vm verify -- scripts/verify); a step's output goes to
+# stdout, a build's when it ends.
 #
 #   scripts/verify [-C DIR] [--image ATTR] [--boot-args ARGS | --boot-set ARGS...] [--jobs N]
 #                  [--no-boot] [--lint-only] [--each-commit BASE]
@@ -162,7 +164,33 @@ step() {
 "
   [ $code = 0 ]
 }
+# bg NAME COMMAND...: step in the background, its output in $steps/N; "PID:N" goes to $bgs
+bgs=
+nbg=0
+bg() {
+  nbg=$((nbg + 1))
+  step "$@" >"$steps/$nbg" 2>&1 &
+  bgs="$bgs $!:$nbg"
+}
+# join LIST: wait for the steps of LIST (from $bgs), print the output of each and add its last
+# line, PASS or FAIL, to the summary; false when one failed
+join() {
+  ok=0
+  for p in $1; do
+    wait "${p%%:*}" || ok=1
+    cat "$steps/${p#*:}"
+    summary="$summary$(tail -n 1 "$steps/${p#*:}")
+"
+  done
+  [ $ok = 0 ]
+}
+# the checks that do not feed a boot; finish waits for them
+checks=
 finish() {
+  if [ -n "$checks" ]; then
+    join "$checks" || set -- 1
+    checks=
+  fi
   printf '== summary\n%s' "$summary"
   exit "$1"
 }
@@ -231,15 +259,38 @@ else
 $boot_sets
 EOF
 fi
+# Every build starts at once, one nix-build for each out-link. The boots wait for the images,
+# the next images and the tools; the checks run beside the boots.
+steps=$(mktemp -d)
+trap 'rm -rf "$steps"' EXIT
 for a in $images; do
-  step "$(label image "$a")" nix-build -A "packages.$system.$a" -o "$(link "$a")" || finish 1
+  bg "$(label image "$a")" nix-build -A "packages.$system.$a" -o "$(link "$a")"
 done
+case "$boot_args
+$boot_sets" in *--enrol*) enrol=1 ;; *) enrol=0 ;; esac
+if [ $boot = 1 ]; then
+  # @next in the boot flags is the next release's image (<image>-next, the one boot-test --next
+  # installs, of the set's own image): build it too and put its path there
+  for nx in $nexts; do
+    attr=${nx%%:*}; rest=${nx#*:}
+    bg "${rest#*:}" nix-build -A "packages.$system.$attr" -o "${rest%%:*}"
+  done
+  if [ -n "$nexts" ] || [ $enrol = 1 ]; then
+    # --next and --enrol push admin vars with golconda, age and age-keygen
+    bg golconda-cli nix-build -A "packages.$system.golconda-cli" -o result-verify-golconda-cli
+    bg age nix-build -A "packages.$system.age" -o result-verify-age
+  fi
+fi
+need=$bgs
+bgs=
 # the test image's initrd, built again from the same derivation, is the same bytes
-step initrd-reproducible nix-build -A "packages.$system.initrd-reproducible" \
-  -o result-verify-initrd-reproducible || finish 1
+bg initrd-reproducible nix-build -A "packages.$system.initrd-reproducible" \
+  -o result-verify-initrd-reproducible
 # the test image's release, signed again from the same unsigned output, is the same bytes
-step disk-reproducible nix-build -A "packages.$system.disk-reproducible" \
-  -o result-verify-disk-reproducible || finish 1
+bg disk-reproducible nix-build -A "packages.$system.disk-reproducible" \
+  -o result-verify-disk-reproducible
+checks=$bgs
+join "$need" || finish 1
 [ $boot = 1 ] || finish 0
 # resolve PATH: PATH with every symlink on the way followed, a target in /nix/store looked up
 # under $BOOT_TEST_STORE_ROOT (boot-test itself follows only a final link)
@@ -264,18 +315,7 @@ while parts:
 print(cur)
 PY
 }
-# @next in the boot flags is the next release's image (<image>-next, the one boot-test --next
-# installs, of the set's own image): build it too and put its path there
-for nx in $nexts; do
-  attr=${nx%%:*}; rest=${nx#*:}
-  step "${rest#*:}" nix-build -A "packages.$system.$attr" -o "${rest%%:*}" || finish 1
-done
-case "$boot_args
-$boot_sets" in *--enrol*) enrol=1 ;; *) enrol=0 ;; esac
 if [ -n "$nexts" ] || [ $enrol = 1 ]; then
-  # --next and --enrol push admin vars with golconda, age and age-keygen
-  step golconda-cli nix-build -A "packages.$system.golconda-cli" -o result-verify-golconda-cli || finish 1
-  step age nix-build -A "packages.$system.age" -o result-verify-age || finish 1
   BOOT_TEST_GOLCONDA=$(resolve result-verify-golconda-cli)/bin/golconda
   PATH=$(resolve result-verify-age)/bin:$PATH
   export BOOT_TEST_GOLCONDA PATH
@@ -343,17 +383,21 @@ rm "$logs/jobs"
 i=0
 while [ $i -lt "$jobs" ]; do echo; i=$((i + 1)); done >&3
 n=0
+boots=
+bad=0
 while IFS= read -r bs; do
   n=$((n + 1))
   echo "== boot[$n]: $(shown "$bs")"
   { read -r _ <&3; boot_set "$n"; echo >&3; } &
+  boots="$boots $!"
 done <<EOF
 $boot_sets
 EOF
-wait
+join "$checks" || bad=1
+checks=
+for p in $boots; do wait "$p"; done
 exec 3>&-
 i=0
-bad=0
 while IFS= read -r bs; do
   i=$((i + 1))
   read -r code secs <"$logs/boot-$i.rc" || { code=1; secs=0; }

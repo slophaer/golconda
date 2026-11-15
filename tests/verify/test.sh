@@ -28,13 +28,25 @@ EOF
 # nix-build makes the out-link (-o): straight to a folder named after the attribute
 # ($FAKE_IMAGES/ATTR), or, with FAKE_ROOT, into /nix/store as a chroot store's out-link does, with
 # the image under FAKE_ROOT and its disk/ a further store link. FAKE_IMAGE=fail fails every build,
-# FAKE_IMAGE=ATTR the build of ATTR.
+# FAKE_IMAGE=ATTR the build of ATTR. Each build makes $RV/started-ATTR first; FAKE_WAIT=ATTR:NAME
+# makes the build of ATTR wait for $RV/NAME, and fail when it does not come.
 cat >"$WORK/bin/nix-build" <<'EOF'
 #!/bin/sh
 echo "nix-build $*" >>"$CALLS"
 while [ $# -gt 0 ]; do
   case "$1" in -o) link=$2; shift 2 ;; -A) attr=${2##*.}; shift 2 ;; *) shift ;; esac
 done
+: >"$RV/started-$attr"
+case "${FAKE_WAIT:-}" in
+"$attr":*)
+  n=0
+  until [ -e "$RV/${FAKE_WAIT#*:}" ]; do
+    n=$((n + 1))
+    [ $n -lt 50 ] || { echo "nothing made ${FAKE_WAIT#*:}"; exit 5; }
+    sleep 0.1
+  done
+  ;;
+esac
 case "${FAKE_IMAGE:-}" in fail | "$attr") exit 4 ;; esac
 rm -f "$link"
 if [ -n "${FAKE_ROOT:-}" ]; then
@@ -64,6 +76,7 @@ cp "$ROOT/scripts/verify" "$repo/scripts/verify"
 cat >"$repo/scripts/boot-test" <<'EOF'
 #!/bin/sh
 echo "boot-test $*" >>"$CALLS"
+: >"$RV/started-boot-test"
 echo "golconda=${BOOT_TEST_GOLCONDA:-unset} path=${PATH%%:*}" >>"$RV/boot-env"
 # --rendezvous NAME: needs the other of rv-a and rv-b to start, so a serial run times out
 case " $* " in
@@ -115,8 +128,9 @@ echo "$out" | grep -q "verify $head, repkgs 245843b" || fail "no commit and pin 
 for s in lint image initrd-reproducible disk-reproducible 'boot\[1\]' 'boot\[2\]'; do
   echo "$out" | grep -qE "^PASS $s [0-9]+s" || fail "no PASS line for $s: $out"
 done
-order=$(cut -d' ' -f1 "$CALLS" | tr '\n' ' ')
-[ "$order" = "nix-shell nix-build nix-build nix-build boot-test boot-test " ] || fail "steps out of order: $order"
+order=$(cut -d' ' -f1 "$CALLS" | sort | uniq -c | tr -s ' \n' ' ')
+[ "$order" = " 2 boot-test 3 nix-build 1 nix-shell " ] || fail "want lint, 3 builds and 2 boots: $order"
+[ "$(head -n 1 "$CALLS" | cut -d' ' -f1)" = nix-shell ] || fail "lint is not first: $(cat "$CALLS")"
 grep -q "boot-test .* --keys .* --timeout 2$" "$CALLS" || fail "the second set of the matrix not booted: $(cat "$CALLS")"
 grep -q 'nix-build -A packages\.[a-z0-9_]*-linux\.initrd-reproducible -o result-verify-initrd-reproducible$' "$CALLS" ||
   fail "the initrd's second build did not run: $(cat "$CALLS")"
@@ -134,6 +148,20 @@ run scripts/verify --boot-args '--timeout 480'
 echo "$out" | grep -qE "^PASS boot [0-9]+s$" || fail "no PASS line for the boot: $out"
 [ "$(grep -c '^boot-test' "$CALLS")" = 1 ] || fail "want 1 boot: $(cat "$CALLS")"
 grep -q "boot-test .* --keys .* --timeout 480$" "$CALLS" || fail "--boot-args not given to boot-test: $(cat "$CALLS")"
+
+# 1c the builds run at the same time, and the second builds of the initrd and the release run beside
+#    the boots: the image build waits for the disk's start, the disk's for a boot's start
+rm -f "$WORK"/started-*
+FAKE_WAIT=image-smoke-test:started-disk-reproducible run scripts/verify
+[ $rc = 0 ] || fail "the image was not built beside disk-reproducible: $out"
+rm -f "$WORK"/started-*
+FAKE_WAIT=disk-reproducible:started-boot-test run scripts/verify
+[ $rc = 0 ] || fail "disk-reproducible did not run beside the boots: $out"
+echo "$out" | grep -qE '^PASS disk-reproducible [0-9]+s$' || fail "no PASS line for disk-reproducible: $out"
+# a failed check fails the run after the boots
+FAKE_IMAGE=initrd-reproducible run scripts/verify
+[ $rc != 0 ] || fail "a failed initrd-reproducible passed"
+echo "$out" | grep -qE '^FAIL\(4\) initrd-reproducible [0-9]+s$' || fail "no FAIL line for initrd-reproducible: $out"
 
 # 2 an unclean tree is refused before any build
 echo dirty >>README.md
@@ -345,8 +373,8 @@ done
 # sets' images and no next image
 run scripts/verify --boot-set '@image=image-nosb --timeout 1'
 [ $rc = 0 ] || fail "@image-only run exited $rc: $out"
-[ "$(grep '^nix-build' "$CALLS" | sed 's/.*\.\([^ .]*\) -o .*/\1/' | tr '\n' ' ')" = "image-nosb initrd-reproducible disk-reproducible " ] ||
-  fail "want image-nosb built alone, then the initrd's second build and the release's second signing: $(cat "$CALLS")"
+[ "$(grep '^nix-build' "$CALLS" | sed 's/.*\.\([^ .]*\) -o .*/\1/' | sort | tr '\n' ' ')" = "disk-reproducible image-nosb initrd-reproducible " ] ||
+  fail "want image-nosb built alone, and the initrd's second build and the release's second signing: $(cat "$CALLS")"
 run scripts/verify --no-boot --boot-set '@image=image-nosb --next @next' --boot-set '--timeout 1'
 [ $rc = 0 ] || fail "--no-boot with @image exited $rc: $out"
 [ "$(grep '^nix-build' "$CALLS" | sed 's/.*\.\([^ .]*\) -o .*/\1/' | sort | tr '\n' ' ')" = "disk-reproducible image-nosb image-smoke-test initrd-reproducible " ] ||

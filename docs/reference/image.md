@@ -240,7 +240,7 @@ target with a NUL at the end, as in the kernel's built-in initramfs. A name or t
 whitespace or `$`, or a file that is not a regular file, directory or symlink, fails the build: the
 list format cannot hold it. `packages.<system>.initrd-reproducible` builds the test image's initrd a
 second time and compares the bytes; when they differ, `tests/initrd/newc-diff.py` names the header
-fields that differ. `scripts/verify` builds it after the image.
+fields that differ. `scripts/verify` builds it beside the image.
 
 The signer is deterministic for the same unsigned output and keys: times, salts, UUIDs and seeds
 come from the version, `systemd-sbsign` takes its signing time from `SOURCE_DATE_EPOCH`, and the
@@ -250,7 +250,7 @@ and gives it the volume ID it derives from the ESP's partition UUID (`-i`). dosf
 `SOURCE_DATE_EPOCH`; Golconda carries the upstream commit that adds it
 (`packages/dosfstools/source-date-epoch.patch`, dosfstools PR #106, merged after 4.2).
 `packages.<system>.disk-reproducible` signs the test image a second time and compares the release
-and `disk.raw` byte for byte; `scripts/verify` builds it after the image.
+and `disk.raw` byte for byte; `scripts/verify` builds it beside the image.
 `packages.<system>.release-without-pk-kek` signs it with a copy of its key set without
 `secureboot/PK.key` and `KEK.key` and compares the same way: the signer copies the enrolment files
 that `scripts/make-keys` signed and reads no PK or KEK key. The boot test covers the verity
