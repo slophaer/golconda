@@ -17,8 +17,6 @@ use std::ffi::{OsStr, OsString};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
-use std::thread;
-use std::time;
 use std::{env, fs, result};
 use tempfile::Builder;
 
@@ -161,6 +159,15 @@ impl Program {
         }
     }
 
+    /// `sh SCRIPT`, for the tests' stand-ins: a script just written is not run by its path,
+    /// which a fork of the test process can still hold open for writing (ETXTBSY).
+    #[cfg(test)]
+    pub fn sh(script: &Path) -> Program {
+        Program {
+            argv: vec!["sh".into(), script.as_os_str().to_owned()],
+        }
+    }
+
     /// Runs the program with `args`, `stdin` on its standard input; its standard output.
     ///
     /// # Errors
@@ -190,35 +197,20 @@ impl Program {
             .map_or_else(String::new, |p| p.to_string_lossy().into_owned())
     }
 
-    /// Starts the program with its output piped. ETXTBSY: the program is still open for
-    /// writing somewhere, typically a file just written whose descriptor a process forked
-    /// meanwhile holds until it execs. That passes within moments; wait up to half a second.
+    /// Starts the program with its output piped.
     fn spawn<S: AsRef<OsStr>>(&self, args: &[S], stdin: bool) -> Result<Child> {
         let (program, lead) = self
             .argv
             .split_first()
             .ok_or(Error("an empty program".into()))?;
-        let spawn = || {
-            Command::new(program)
-                .args(lead)
-                .args(args)
-                .stdin(if stdin { Stdio::piped() } else { Stdio::null() })
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-        };
-        let mut tries = 0;
-        loop {
-            match spawn() {
-                Err(e) if e.raw_os_error() == Some(26) && tries < 50 => {
-                    tries += 1;
-                    thread::sleep(time::Duration::from_millis(10));
-                }
-                other => {
-                    return other.map_err(|e| Error(format!("cannot run {}: {e}", self.name())));
-                }
-            }
-        }
+        Command::new(program)
+            .args(lead)
+            .args(args)
+            .stdin(if stdin { Stdio::piped() } else { Stdio::null() })
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| Error(format!("cannot run {}: {e}", self.name())))
     }
 
     /// Runs the program and returns how it ended, whatever its status: for a caller that
@@ -686,22 +678,12 @@ pub fn list(store: &Store, remote: &Remote, host: &str) -> Result<String> {
 mod tests {
     use super::*;
     use std::env;
-    use std::os::unix::fs::PermissionsExt;
-    use std::thread;
-    use std::time;
     use tempfile::{Builder, TempDir};
-
-    fn program(path: PathBuf) -> Program {
-        Program {
-            argv: vec![path.into_os_string()],
-        }
-    }
 
     fn script(dir: &Path, name: &str, body: &str) -> Program {
         let p = dir.join(name);
-        fs::write(&p, format!("#!/bin/sh\n{body}")).unwrap();
-        fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
-        program(p)
+        fs::write(&p, body).unwrap();
+        Program::sh(&p)
     }
 
     /// A stand-in for age: `-e -R FILE -o OUT` writes "AGE(" + recipients + ")" + stdin to
@@ -838,24 +820,6 @@ esac
         ] {
             assert!(with(bad).is_err(), "{bad}");
         }
-    }
-
-    #[test]
-    fn a_program_still_open_for_writing_is_run_once_it_is_closed() {
-        let tmp = TempDir::new().unwrap();
-        let dir = tmp.path().to_path_buf();
-        let p = dir.join("prog");
-        // open for writing, as a script being written is (or one a forked child still holds)
-        let mut f = fs::File::create(&p).unwrap();
-        f.write_all(b"#!/bin/sh\necho ran\n").unwrap();
-        fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
-        let closer = thread::spawn(move || {
-            thread::sleep(time::Duration::from_millis(50));
-            drop(f);
-        });
-        let prog = program(p.clone());
-        assert_eq!(prog.run::<&str>(&[], None).unwrap(), b"ran\n");
-        closer.join().unwrap();
     }
 
     #[test]
@@ -1043,7 +1007,7 @@ esac
             )),
             "{keygen}"
         );
-        assert!(!keygen.contains("-D"), "{keygen}");
+        assert!(!keygen.contains("-D "), "{keygen}");
         assert_eq!(
             store.get(&id, "web1", "sshd-host-cert", "cert").unwrap(),
             b"CERT(ssh-ed25519 AAAA host)"

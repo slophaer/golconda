@@ -1193,7 +1193,7 @@ fn civil_date(days: u64) -> (u32, u32, u32) {
 mod tests {
     use super::*;
     use std::os::unix::fs::{PermissionsExt, symlink};
-    use std::process::Command;
+    use std::process::{Command, Stdio};
     use std::time::Duration;
 
     #[test]
@@ -1315,9 +1315,8 @@ mod tests {
             ),
         )
         .unwrap();
-        fs::set_permissions(&gpgv, fs::Permissions::from_mode(0o755)).unwrap();
         let f = Fixture {
-            gpgv: Program::from_env("GOLCONDA_TEST_UNSET_GPGV", gpgv.to_str().unwrap()),
+            gpgv: Program::sh(&gpgv),
             tmp,
             dir,
             keys,
@@ -1583,7 +1582,7 @@ mod tests {
                 ],
             );
         };
-        let gpgv = Program::from_env("GOLCONDA_GPGV", "gpgv");
+        let gpgv = Program::at("gpgv");
         sign(&home);
         let r = check(&f.dir, &keyring(&f.keys), &gpgv).unwrap();
         assert_eq!(r.index.version, v("20261105.1"));
@@ -1657,7 +1656,7 @@ mod tests {
             repo,
             dest: f.tmp.path().join("www"),
             gpgv: f.gpgv,
-            git: Program::from_env("GOLCONDA_TEST_UNSET_GIT", "git"),
+            git: Program::at("git"),
             rclone: Program::at("rclone"),
             tmp: f.tmp,
         }
@@ -1902,8 +1901,7 @@ mod tests {
             ),
         )
         .unwrap();
-        fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();
-        let rclone = Program::from_env("GOLCONDA_TEST_UNSET_RCLONE", fake.to_str().unwrap());
+        let rclone = Program::sh(&fake);
         let dest = Destination {
             rclone: &rclone,
             to: "remote:bucket/web",
@@ -1939,8 +1937,7 @@ mod tests {
             ),
         )
         .unwrap();
-        fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();
-        let rclone = Program::from_env("GOLCONDA_TEST_UNSET_RCLONE", fake.to_str().unwrap());
+        let rclone = Program::sh(&fake);
         let dest = Destination {
             rclone: &rclone,
             to: "remote:bucket/web",
@@ -1953,7 +1950,7 @@ mod tests {
 
     #[test]
     fn destination_paths_join_a_remote_or_a_directory() {
-        let rclone = Program::from_env("GOLCONDA_TEST_UNSET_RCLONE", "rclone");
+        let rclone = Program::at("rclone");
         let p = |to: &str| {
             Destination {
                 rclone: &rclone,
@@ -2005,8 +2002,7 @@ mod tests {
                 ),
             )
             .unwrap();
-            fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
-            let iets = Program::from_env("GOLCONDA_TEST_UNSET_IETS", script.to_str().unwrap());
+            let iets = Program::sh(&script);
             (self.repo.join("server.toml"), iets)
         }
 
@@ -2021,15 +2017,13 @@ mod tests {
             fs::create_dir_all(&unsigned).unwrap();
             let sign = unsigned.join("sign");
             let t = self.tmp.path().display();
-            fs::write(
+            executable(
                 &sign,
-                format!(
+                &format!(
                     "#!/bin/sh\necho \"$*\" > {t}/sign.log\nwhile [ $# -gt 0 ]; do [ \"$1\" = --out ] && out=$2; shift; done\ncp -RL {} \"$out/release\"\n",
                     out.join("release").display()
                 ),
-            )
-            .unwrap();
-            fs::set_permissions(&sign, fs::Permissions::from_mode(0o755)).unwrap();
+            );
         }
 
         fn build(
@@ -2077,6 +2071,19 @@ mod tests {
         fn head(&self) -> String {
             sh(&self.repo, "git", &["log", "-1", "--format=%s"])
         }
+    }
+
+    /// An executable file written by a child process: the build runs `unsigned/sign` by its path,
+    /// so no fork of this process may hold it open for writing (ETXTBSY).
+    fn executable(path: &Path, text: &str) {
+        let mut c = Command::new("sh")
+            .args(["-c", "cat > \"$1\" && chmod 755 \"$1\"", "sh"])
+            .arg(path)
+            .stdin(Stdio::piped())
+            .spawn()
+            .unwrap();
+        c.stdin.take().unwrap().write_all(text.as_bytes()).unwrap();
+        assert!(c.wait().unwrap().success());
     }
 
     fn auto() -> Version {
@@ -2403,11 +2410,10 @@ mod tests {
         let s = scene();
         let (doc, iets) = s.checkout();
         s.out("20261106.1", "20261106.1");
-        fs::write(
-            s.tmp.path().join("unsigned-20261106.1/sign"),
+        executable(
+            &s.tmp.path().join("unsigned-20261106.1/sign"),
             "#!/bin/sh\necho 'secureboot/db.key is not the key of the db certificate' >&2\nexit 1\n",
-        )
-        .unwrap();
+        );
         let e = s.build(&doc, &iets, Some("20261106.1"), false).unwrap_err();
         assert!(
             e.0.contains("signing failed") && e.0.contains("is not the key of the db"),

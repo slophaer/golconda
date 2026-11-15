@@ -8,7 +8,6 @@ use std::env;
 use std::fmt::Write as _;
 use std::fs;
 use std::io::Write as _;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use tempfile::TempDir;
@@ -62,20 +61,16 @@ fn vars_set_push_list() {
     fs::create_dir_all(dir.join("vars")).unwrap();
     fs::write(dir.join("vars/recipients.txt"), "age1op\n").unwrap();
     fs::write(dir.join("id.txt"), "AGE-SECRET-KEY-1").unwrap();
-    let exe = |name: &str, body: &str| {
-        let p = dir.join(name);
-        fs::write(&p, format!("#!/bin/sh\nset -eu\n{body}")).unwrap();
-        fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
-        p
-    };
     // age: -e -R R -o OUT copies stdin; -d -i ID FILE prints FILE
-    let age = exe(
+    let age = script(
+        dir,
         "age",
         "case $1 in -e) cat > \"$5\" ;; -d) cat \"$4\" ;; esac\n",
     );
     // ssh DEST CMD: one admin var; seals by logging; nothing sealed yet for list
     let log = dir.join("ssh.log");
-    let ssh = exe(
+    let ssh = script(
+        dir,
         "ssh",
         &format!(
             "shift; case \"$*\" in\n\
@@ -121,10 +116,27 @@ fn vars_set_push_list() {
     );
 }
 
+/// `sh SCRIPT`, as GOLCONDA_AGE, GOLCONDA_SSH and the others take it: a script just written is
+/// not run by its path, which a fork of this process can still hold open for writing (ETXTBSY).
+fn script(dir: &Path, name: &str, body: &str) -> PathBuf {
+    let p = dir.join(name);
+    fs::write(&p, format!("set -eu\n{body}")).unwrap();
+    PathBuf::from(format!("sh {}", p.display()))
+}
+
+/// A script that a program runs by its path (PATH, SSH_ASKPASS, a release's sign), written by a
+/// child process: no fork of this one holds it open for writing (ETXTBSY).
 fn exe(dir: &Path, name: &str, body: &str) -> PathBuf {
     let p = dir.join(name);
-    fs::write(&p, format!("#!/bin/sh\nset -eu\n{body}")).unwrap();
-    fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
+    let mut c = Command::new("sh")
+        .args(["-c", "cat > \"$1\" && chmod 755 \"$1\"", "sh"])
+        .arg(&p)
+        .stdin(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let text = format!("#!/bin/sh\nset -eu\n{body}");
+    c.stdin.take().unwrap().write_all(text.as_bytes()).unwrap();
+    assert!(c.wait().unwrap().success());
     p
 }
 
@@ -139,7 +151,7 @@ fn enrol_fixture() -> (TempDir, Vec<(&'static str, PathBuf)>) {
     fs::write(dir.join("vars/recipients.txt"), "age1op\n").unwrap();
     fs::write(dir.join("id.txt"), "AGE-SECRET-KEY-1").unwrap();
     fs::write(dir.join("krl"), "KRL").unwrap();
-    let age = exe(
+    let age = script(
         dir,
         "age",
         "case $1 in -e) cat > \"$5\" ;; -d) cat \"$4\" ;; esac\n",
@@ -149,7 +161,7 @@ fn enrol_fixture() -> (TempDir, Vec<(&'static str, PathBuf)>) {
             r#"{{"class":"admin","consumers":["sshd.service"],"credentials":["{name}.{file}"],"files":["{file}"],"name":"{name}"}}"#
         )
     };
-    let ssh = exe(
+    let ssh = script(
         dir,
         "ssh",
         &format!(
@@ -192,7 +204,7 @@ fn vars_enrol_asks() {
     let (tmp, mut env) = enrol_fixture();
     let dir = tmp.path();
     fs::write(dir.join("host.pub"), "ssh-ed25519 AAAA root@web1\n").unwrap();
-    let keygen = exe(
+    let keygen = script(
         dir,
         "ssh-keygen",
         &format!(
@@ -483,17 +495,15 @@ fn release_fixture(gpgv_ok: bool) -> (TempDir, PathBuf) {
     fs::create_dir_all(tmp.path().join("keys/release")).unwrap();
     fs::write(tmp.path().join("keys/release/index.pgp"), "key").unwrap();
     write_release(&dir, "server_20261105.1");
-    let gpgv = tmp.path().join("gpgv");
-    fs::write(
-        &gpgv,
+    let gpgv = script(
+        tmp.path(),
+        "gpgv",
         if gpgv_ok {
-            "#!/bin/sh\nexit 0\n"
+            "exit 0\n"
         } else {
-            "#!/bin/sh\necho 'BAD signature' >&2\nexit 1\n"
+            "echo 'BAD signature' >&2\nexit 1\n"
         },
-    )
-    .unwrap();
-    fs::set_permissions(&gpgv, fs::Permissions::from_mode(0o755)).unwrap();
+    );
     (tmp, gpgv)
 }
 
