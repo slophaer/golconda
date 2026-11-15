@@ -63,7 +63,7 @@ deploy host. It needs a plain key that logs in (`authorizedKeys`, or the provisi
 `ssh.authorized_keys.root`), the host CA's key, and the deployment's current KRL:
 
 ```console
-$ golconda vars enrol -i ~/.age/key.txt web1 --ca-key host_ca --krl fleet.krl
+$ golconda vars enrol -i ~/.config/age/key.txt web1 --ca-key host_ca --krl fleet.krl
 web1's host key: 256 SHA256:… root@web1 (ED25519)
 Is this the fingerprint on web1's console or journal (golconda: ssh host key …)? Type yes to sign it: yes
 ```

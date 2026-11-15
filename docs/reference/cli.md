@@ -58,6 +58,14 @@ age-encrypted in the configuration repository (`vars/<host>/<var>/<file>.age`, t
 `vars/recipients.txt`; `--vars DIR` names another directory) and pushes it over ssh. The machine
 seals it with its own `systemd-creds`, and the units that read it restart.
 
+Make the age identity once, and add its public key to the recipients. Commit `vars/recipients.txt`,
+never the key:
+
+```sh
+age-keygen -o ~/.config/age/key.txt
+age-keygen -y ~/.config/age/key.txt >> vars/recipients.txt
+```
+
 HOST is the name that ssh reaches the machine by, and the directory of its vars in the store. It is
 one word, so `user@host` is refused: give the machine an alias in `~/.ssh/config` (`Host web1` with
 `HostName` and `User root`).
