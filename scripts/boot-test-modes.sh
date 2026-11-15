@@ -342,6 +342,28 @@ test_factory_reset() {
   { [ -n "$NEW_ENTRIES" ] && [ "$NEW_ENTRIES" = "$OLD_ENTRIES" ] && [ "$NEW_VERSION" = "$OLD_VERSION" ]; } || RC=1
   verdict "slots-kept (bootctl list entries, ignoring the boot counter, and IMAGE_VERSION unchanged)" $RC
 
+  # the reset boot made a new host key and named it on the console, as a first boot does: the
+  # line an operator compares before golconda vars enrol (docs/features/factory-reset.md)
+  echo ""
+  echo "=== the host key after the reset ==="
+  FIRST_FP=$(head -c "$RESET_MARK" "$SERIAL_LOG" | grep -a "golconda: ssh host key" | tail -1 |
+    grep -o 'SHA256:[A-Za-z0-9+/]*') || FIRST_FP=""
+  RESET_FP=$(grep -a "golconda: ssh host key" "$RESET_LOG" | tail -1 |
+    grep -o 'SHA256:[A-Za-z0-9+/]*') || RESET_FP=""
+  # shellcheck disable=SC2086
+  ssh $SSH_OPTS -o UserKnownHostsFile="$WORKDIR/known_hosts_reset" -o StrictHostKeyChecking=accept-new \
+    -i "$WORKDIR/ssh/user" $GUEST_EXTRA_ID root@localhost true 2>/dev/null || true
+  SERVED_FP=$(ssh-keygen -lf "$WORKDIR/known_hosts_reset" 2>/dev/null | cut -d' ' -f2) || SERVED_FP=""
+  echo "console, first boot: ${FIRST_FP:-none}; console, reset boot: ${RESET_FP:-none}; sshd presents: ${SERVED_FP:-none}"
+  RC=0
+  { [ -n "$RESET_FP" ] && [ "$RESET_FP" = "$SERVED_FP" ] && [ "$RESET_FP" != "$FIRST_FP" ]; } || RC=1
+  verdict "hostkey-new-on-console-after-reset (the reset boot's console names the new key sshd presents)" $RC
+  # the user CA is in the image, so a certificate logs in with no state; with revokedKeys
+  # (--enrol) the fallback list refuses it until the KRL is pushed again (test_reenrol_after_reset)
+  if [ "$ENROL" = 0 ]; then
+    expect_login "cert-login-after-reset (a certificate of the image's user CA, no plain key needed)" ok 0
+  fi
+
   echo ""
   echo "=== serial log of the reset boot (last 100 lines) ==="
   tail -100 "$RESET_LOG"

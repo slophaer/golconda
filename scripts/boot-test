@@ -67,7 +67,7 @@
 #   hash with systemd-veritysetup (verity-sig-builtin-accepted: the signature activates it);
 #   with --rotate the signer is the new db key, in db but not in the running kernel, and the
 #   kernel must refuse it (verity-sig-db-only-refused).
-# With --enrol (needs --ssh-test; not with --next, --esp-creds, --imds or --factory-reset): one
+# With --enrol (needs --ssh-test; not with --next, --esp-creds or --imds): one
 #   release from first boot to certificates (docs/design/trust.md, "Identity"). Boot an image that
 #   has hostCertificate and revokedKeys on from its first boot (image-smoke-test-next), with a
 #   second plain key, the bootstrap key, as the SMBIOS credential ssh.authorized_keys.root. Before
@@ -83,7 +83,7 @@
 #   the push the harness logs in with its own certificate (cert-admin). Needs the same tools as
 #   --next. With --tpm, after the reboot the certificate, the pushed KRL and the refusal of plain
 #   keys hold (host-cert-presented-after-reboot, cert-revoked-refused-after-reboot,
-#   bootstrap-key-refused-after-reboot).
+#   bootstrap-key-refused-after-reboot). With --factory-reset as well, after the reset (see there).
 # With --tpm: the host key is sealed to TPM2 and the signed PCR 11 policy, and with --secure-boot
 #   to PCR 7 too (hostkey-sealed-pcr7: the credential header's PCR masks); after a reboot, and
 #   with --next after the update or --fail-health's fallback, it is the first boot's key, its
@@ -255,7 +255,15 @@
 #   changed (machine-id-new), first boot ran again and multi-user.target was reached
 #   (first-boot-rerun, multi-user-after-reset), and that bootctl list still shows the same entries
 #   (slots-kept). The reset rewrites the root partition only; the ESP and the /usr slots stay.
-#   It prints the serial log of the reset boot. The mode is two boots (the first boot and the
+#   The reset boot's console names the new host key, the one sshd presents, and it is not the first
+#   boot's (hostkey-new-on-console-after-reset); a user certificate logs in (cert-login-after-reset;
+#   the user CA is in the image). With --enrol (an image with revokedKeys) the certificate is
+#   refused instead: the KRL went with the state (cert-refused-after-reset). Then
+#   `golconda vars enrol` refuses the first boot's fingerprint (reenrol-old-fingerprint-refused)
+#   and enrols the reset boot's (reenrol-after-reset): the host certificate is presented, the
+#   certificate logs in and plain keys are refused (host-cert-presented-after-reset,
+#   bootstrap-key-refused-after-reenrol). It prints the serial log of the reset boot.
+#   The mode is two boots (the first boot and the
 #   reset boot), so give a --timeout large enough, such as 480, and do not combine it with --next.
 # With --next DIR --tamper-index: the signed index's negative control. The server sends SHA256SUMS
 #   with one byte added, so its signature (SHA256SUMS.gpg) no longer matches, and the run passes
@@ -462,8 +470,8 @@ if [ "$FACTORY_RESET" = 1 ] && { [ -n "$NEXT" ] || [ "$ROTATE" = 1 ] || [ "$FAIL
   exit 1
 fi
 
-if [ "$ENROL" = 1 ] && { [ "$SSH_TEST" = 0 ] || [ -n "$NEXT" ] || [ "$ESP_CREDS" = 1 ] || [ "$IMDS" = 1 ] || [ "$FACTORY_RESET" = 1 ]; }; then
-  echo "Error: --enrol needs --ssh-test, and is a first boot of its own: not with --next, --esp-creds, --imds or --factory-reset" >&2
+if [ "$ENROL" = 1 ] && { [ "$SSH_TEST" = 0 ] || [ -n "$NEXT" ] || [ "$ESP_CREDS" = 1 ] || [ "$IMDS" = 1 ]; }; then
+  echo "Error: --enrol needs --ssh-test, and is a first boot of its own: not with --next, --esp-creds or --imds" >&2
   exit 1
 fi
 if [ "$SECURE_BOOT_OFF" = 1 ] && { [ "$SECURE_BOOT" = 0 ] || [ "$TPM" = 0 ] || [ "$SSH_TEST" = 0 ] ||
@@ -657,6 +665,9 @@ main() {
       test_factory_reset || RESULT=1
       if [ "$ESP_CREDS" = 1 ] && [ "$RESULT" = 0 ]; then
         test_esp_after_reset || RESULT=1
+      fi
+      if [ "$ENROL" = 1 ] && [ "$RESULT" = 0 ]; then
+        test_reenrol_after_reset || RESULT=1
       fi
     elif [ -n "$NEXT" ] && [ "$RESULT" = 0 ]; then
       test_next || RESULT=1

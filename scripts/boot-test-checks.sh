@@ -200,6 +200,45 @@ test_enrol_after_reboot() {
   check_plain_refused bootstrap-key-refused-after-reboot
 }
 
+# test_reenrol_after_reset: --enrol --factory-reset (docs/features/factory-reset.md). The reset
+# took the sealed host certificate and KRL with the state, and the machine made a new host key. The
+# image has revokedKeys: until a KRL is pushed again its fallback list refuses the user CA's
+# certificates, so the harness logs in with a plain key (the image's test key; an operator: the
+# provisioning key, which SMBIOS gives this guest at every boot). golconda vars enrol refuses the
+# first boot's fingerprint and enrols the reset boot's, from its console line
+test_reenrol_after_reset() {
+  echo ""
+  echo "=== after the factory reset: golconda vars enrol again ==="
+  RC=0
+  if cert_login ok 2>/dev/null; then RC=1; fi
+  verdict "cert-refused-after-reset (revokedKeys: the KRL went with the state, the fallback list refuses the user CA)" $RC
+  sleep 6
+  RC=0
+  if (cd "$WORKDIR" && vars enrol -i age.key boot-test --ca-key ssh/host-ca --principal localhost \
+    --krl ssh/krl --fingerprint "$FIRST_FP") > "$WORKDIR/reenrol-old.out" 2>&1; then
+    RC=1
+  fi
+  cat "$WORKDIR/reenrol-old.out"
+  grep -q "nothing is signed, stored or pushed" "$WORKDIR/reenrol-old.out" || RC=1
+  verdict "reenrol-old-fingerprint-refused (the first boot's fingerprint ${FIRST_FP:-none} is not the new key's)" $RC
+  RC=0
+  (
+    cd "$WORKDIR" || exit 1
+    vars enrol -i age.key boot-test --ca-key ssh/host-ca --principal localhost --krl ssh/krl \
+      --fingerprint "$RESET_FP"
+  ) > "$WORKDIR/reenrol.out" 2>&1 || RC=1
+  cat "$WORKDIR/reenrol.out"
+  [ -n "$RESET_FP" ] && grep -q "^host key .* $RESET_FP " "$WORKDIR/reenrol.out" || RC=1
+  grep -qx "sealed sshd-host-cert.cert" "$WORKDIR/reenrol.out" || RC=1
+  grep -qx "sealed sshd-revoked-keys.krl" "$WORKDIR/reenrol.out" || RC=1
+  grep -qx "restarted sshd.service" "$WORKDIR/reenrol.out" || RC=1
+  verdict "reenrol-after-reset (golconda vars enrol with the reset boot's console fingerprint: certificate and KRL sealed, sshd restarted)" $RC
+  RC=0
+  host_cert_login || RC=1
+  verdict "host-cert-presented-after-reset (the new host key's certificate; cert-admin logs in)" $RC
+  check_plain_refused bootstrap-key-refused-after-reenrol
+}
+
 # check_hwdb NAME: the hardware database is compiled into /usr (packages/hwdb, linked by /base), so
 # nothing writes one to /etc and lookups answer: the IMDS entry for Hetzner Cloud's DMI vendor, and
 # PCI and USB names (virtio-net's vendor, the root hub's). Run on the first release and on the one

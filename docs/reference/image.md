@@ -452,16 +452,18 @@ import skips) and `network.network.60-imds-ipv6`: the static address `2001:db8:5
 which the file replaces. QEMU's router advertisements name only `fec0::/64`, so no other route gives
 that address. QEMU's DHCP server offers the host name `dhcp-test` (`-netdev user,hostname=`).
 
-`--enrol` (with `--ssh-test`; not with `--next`, `--esp-creds`, `--imds` or `--factory-reset`) is
-the one-release enrolment of [Trust: Enrolment](../design/trust.md#enrolment). Boot it on
-`image-smoke-test-next`, which has `hostCertificate` and `revokedKeys` on from its first boot. The
-harness makes a second plain key, the bootstrap key, and passes it as the SMBIOS credential
-`ssh.authorized_keys.root` (`io.systemd.credential.binary:`, base64). Before anything is pushed, it
-logs in with that key and checks that a good certificate is refused and that sshd's journal names
-the revocation list; then it pushes as `--next` does and runs the certificate checks in the same
-boot. The KRL names neither plain key, so their refusal after the push is the enrolment's. From the
-push on, the harness logs in with its own certificate, `cert-admin` (serial 4), after the test key.
-It needs the tools of `--next` (`golconda`, `age`).
+`--enrol` (with `--ssh-test`; not with `--next`, `--esp-creds` or `--imds`) is the one-release
+enrolment of [Trust: Enrolment](../design/trust.md#enrolment). Boot it on `image-smoke-test-next`,
+which has `hostCertificate` and `revokedKeys` on from its first boot. The harness makes a second
+plain key, the bootstrap key, and passes it as the SMBIOS credential `ssh.authorized_keys.root`
+(`io.systemd.credential.binary:`, base64). Before anything is pushed, it logs in with that key and
+checks that a good certificate is refused and that sshd's journal names the revocation list; then it
+pushes as `--next` does and runs the certificate checks in the same boot. The KRL names neither
+plain key, so their refusal after the push is the enrolment's. From the push on, the harness logs in
+with its own certificate, `cert-admin` (serial 4), after the test key. It needs the tools of
+`--next` (`golconda`, `age`). With `--factory-reset` as well, the harness resets the enrolled
+machine and enrols it again
+([Factory reset: Enrol again after a reset](../features/factory-reset.md#enrol-again-after-a-reset)).
 
 `--secure-boot` enrolls the throwaway db key with `virt-fw-vars` (one fixed owner GUID) and boots
 OVMF's Secure Boot build (`edk2-x86_64-secure-code.fd`: Secure Boot, SMM and TPM 2.0, 3.5 MB of
@@ -677,16 +679,22 @@ log (`systemd-pcrlock log --pcr=7`).
 
 With `--factory-reset --ssh-test` ([The factory reset test](#the-factory-reset-test)):
 
-| marker                     | what it proves                                                                            |
-| -------------------------- | ----------------------------------------------------------------------------------------- |
-| `factory-reset-test-image` | `/usr/lib/os-release` says `IMAGE_ID=boot-test`, so the reset runs on the test image only |
-| `factory-reset-before`     | `/etc/machine-id`, `IMAGE_VERSION` and `bootctl list` were readable before the reset      |
-| `state-marker-written`     | the marker in `/etc` is readable before the request                                       |
-| `state-gone`               | the guest says the marker is absent after the reset boot                                  |
-| `machine-id-new`           | `/etc/machine-id` is non-empty and differs from the id before the reset                   |
-| `first-boot-rerun`         | the reset boot's serial log has `systemd-firstboot.service` finishing                     |
-| `multi-user-after-reset`   | the reset boot reached `multi-user.target`                                                |
-| `slots-kept`               | `bootctl list` entries (ignoring the boot counter) and `IMAGE_VERSION` are unchanged      |
+| marker                                                                   | what it proves                                                                                                                      |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `factory-reset-test-image`                                               | `/usr/lib/os-release` says `IMAGE_ID=boot-test`, so the reset runs on the test image only                                           |
+| `factory-reset-before`                                                   | `/etc/machine-id`, `IMAGE_VERSION` and `bootctl list` were readable before the reset                                                |
+| `state-marker-written`                                                   | the marker in `/etc` is readable before the request                                                                                 |
+| `state-gone`                                                             | the guest says the marker is absent after the reset boot                                                                            |
+| `machine-id-new`                                                         | `/etc/machine-id` is non-empty and differs from the id before the reset                                                             |
+| `first-boot-rerun`                                                       | the reset boot's serial log has `systemd-firstboot.service` finishing                                                               |
+| `multi-user-after-reset`                                                 | the reset boot reached `multi-user.target`                                                                                          |
+| `slots-kept`                                                             | `bootctl list` entries (ignoring the boot counter) and `IMAGE_VERSION` are unchanged                                                |
+| `hostkey-new-on-console-after-reset`                                     | the reset boot's console names a host key, it is the key sshd presents, and it is not the first boot's                              |
+| `cert-login-after-reset`                                                 | without `--enrol`: a certificate of the image's user CA logs in after the reset                                                     |
+| `cert-refused-after-reset`                                               | with `--enrol` (`revokedKeys`): the KRL went with the state, and the fallback list refuses the certificate                          |
+| `reenrol-old-fingerprint-refused`                                        | with `--enrol`: `golconda vars enrol` with the first boot's fingerprint refuses, and signs and pushes nothing                       |
+| `reenrol-after-reset`                                                    | with `--enrol`: `golconda vars enrol` with the reset boot's console fingerprint seals the certificate and the KRL and restarts sshd |
+| `host-cert-presented-after-reset`, `bootstrap-key-refused-after-reenrol` | with `--enrol`: sshd presents the new key's certificate, `cert-admin` logs in, and both plain keys are refused                      |
 
 The test SSH keypair is a committed test fixture (`tests/fixtures/snakeoil-ssh*`). The
 `image-smoke-test` reads the public key and adds it to `authorizedKeys`. See
