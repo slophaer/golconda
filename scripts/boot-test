@@ -369,7 +369,7 @@ IMDS_NET_CRED=60-imds-ipv6
 
 usage() {
   echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot [--auto-enrol [--no-microsoft-keys]]] [--tpm [--secure-boot-off]] [--timeout SECONDS] [--ssh-test [--esp-creds | --imds | --enrol]] [--next DIR [--rotate | --fail-health | --fail-initrd | --fail-blessed --later DIR | --fail-panic | --fail-pid1 | --tamper-index]] [--factory-reset] [--allow-tcg]"
-  exit 1
+  exit "${1:-1}"
 }
 
 while [ $# -gt 0 ]; do
@@ -396,7 +396,7 @@ while [ $# -gt 0 ]; do
     --enrol) ENROL=1; shift ;;
     --secure-boot-off) SECURE_BOOT_OFF=1; shift ;;
     --allow-tcg) ALLOW_TCG=1; shift ;;
-    --help|-h) usage ;;
+    --help|-h) usage 0 ;;
     -*)
       echo "Unknown option: $1" >&2
       usage

@@ -249,4 +249,21 @@ else
   echo "FAIL: CLI --esp-creds with --secure-boot --tpm (exit $actual): $(cat "$WORK/esp-sb-tpm.out")"
   ERRORS=$((ERRORS + 1))
 fi
+# --help prints the usage and exits 0; an unknown flag exits 1
+actual=0
+sh "$ROOT/scripts/boot-test" --help > "$WORK/help.out" 2>&1 || actual=$?
+if [ "$actual" = 0 ] && grep -q '^Usage: .*boot-test <disk.raw> --keys DIR' "$WORK/help.out"; then
+  echo "PASS: CLI --help prints the usage and exits 0"
+else
+  echo "FAIL: CLI --help (exit $actual): $(cat "$WORK/help.out")"
+  ERRORS=$((ERRORS + 1))
+fi
+actual=0
+sh "$ROOT/scripts/boot-test" --no-such-flag > "$WORK/bad-flag.out" 2>&1 || actual=$?
+if [ "$actual" = 1 ]; then
+  echo "PASS: CLI an unknown flag exits 1"
+else
+  echo "FAIL: CLI an unknown flag (exit $actual): $(cat "$WORK/bad-flag.out")"
+  ERRORS=$((ERRORS + 1))
+fi
 [ "$ERRORS" -eq 0 ]
