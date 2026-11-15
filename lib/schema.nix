@@ -11,12 +11,12 @@
 # Mark the gap with `x-golconda-opaque` for types that cannot be introspected.
 #
 # Provenance: every option carries `x-golconda-declaredIn` ({ module;
-# file?; line? }: the module path that declares it, that module's file relative to
-# the repo, and the line of the option in it, when the evaluator reports a position: iets does, nix does not), and every module `x-golconda-inputs`,
+# file?; }: the module path that declares it and that module's file relative to
+# the repo, with no line, which only some evaluators report), and every module `x-golconda-inputs`,
 # the module paths it reads (its `inputs.<x>.path`, sorted): the edges of the module
 # graph. `toJsonSchemaWith { files; root; }` knows the files: `files` maps a module
 # path to its file path (lib/tree.nix `modulePaths`, as a list of
-# { path; filePath; }), `root` is the repo directory as a string; the files and lines
+# { path; filePath; }), `root` is the repo directory as a string; the files
 # are left out without them.
 #
 # Usage:
@@ -289,20 +289,14 @@ let
       opts = removeAttrs (mod.options or { }) (internalOptions.${toString path} or [ ]);
       relFile = if file == null then null else relativeTo root file;
       declaredIn =
-        name:
         if path == null then
           null
         else
-          let
-            pos = builtins.unsafeGetAttrPos name opts;
-            line = if pos != null && relativeTo root pos.file == relFile then pos.line else null;
-          in
           filterNulls {
             module = path;
             file = relFile;
-            inherit line;
           };
-      props = mapAttrs (n: o: optionToSchema o (declaredIn n)) opts;
+      props = mapAttrs (_: o: optionToSchema o declaredIn) opts;
       inputs = sort (a: b: a < b) (
         filter (p: p != null) (map (i: i.path or null) (attrValues (mod.inputs or { })))
       );

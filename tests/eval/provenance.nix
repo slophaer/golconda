@@ -124,8 +124,12 @@ in
       } (f.modules { });
       port = sch.properties."/services/sshd".properties.port;
     in
-    port."x-golconda-declaredIn".module == "/services/sshd"
-    && port."x-golconda-declaredIn".file == "modules/services/sshd/default.nix"
+    port."x-golconda-declaredIn" == {
+      module = "/services/sshd";
+      # no line: an evaluator may not report it, and the image's schema.json must not depend
+      # on the evaluator
+      file = "modules/services/sshd/default.nix";
+    }
     && sch.properties."/system".properties.version."x-golconda-declaredIn".module == "/system"
   ))
   (check "provenance: schema inputs list the module paths a module reads" (
