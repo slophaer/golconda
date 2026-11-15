@@ -95,9 +95,8 @@
 #   work directory, generates an ssh key pair there, and runs scripts/provision-esp on the copy with
 #   --hostname esp-test and --authorized-keys <the new .pub>. It passes no SMBIOS hostname. The ssh
 #   checks log in with the new key, hostname must be "esp-test", and esp-authorized-keys checks that
-#   /root/.ssh/authorized_keys in the guest holds the new key. With --secure-boot and --tpm the
-#   null-key credentials are refused (creds-util.c, relaxed policy): the run is expected to fail.
-#   BOOT_TEST_ESP_NO_KEY=1 leaves the key out of the ESP (a negative control: the login must fail).
+#   /root/.ssh/authorized_keys in the guest holds the new key. Not with --secure-boot and --tpm:
+#   that guest refuses null-key credentials (creds-util.c, relaxed policy).
 #   The credentials hold for one boot (docs/design/boot.md): esp-credentials-removed (the first boot's
 #   golconda-esp-credentials.service removed the three, no *.cred left) and esp-hostname-persisted
 #   (/etc/hostname from firstboot.hostname); then the harness reboots, and esp-key-after-reboot,
@@ -166,7 +165,7 @@
 # With --next DIR (implies --ssh-test): DIR is the next release's image-smoke output
 #   (DIR/disk/release, DIR/keys). The harness checks that release directory against
 #   docs/design/releases.md (four SHA256SUMS lines, fixed order, digests match), resolves its
-#   symlinks into $WORKDIR/http, serves that directory to the guest at 169.254.169.2:$BOOT_TEST_HTTP_PORT
+#   symlinks into $WORKDIR/http, serves that directory to the guest at 169.254.169.2:8074
 #   (a QEMU guestfwd to a stdio HTTP server in $WORKDIR; no host port), and installs it with
 #   systemd-sysupdate-update.service. The guest reads
 #   its own /usr/lib/sysupdate.d/*.transfer (Type=url-file, Path=http://169.254.169.2:PORT/), so it
@@ -276,9 +275,6 @@
 #   still runs), hostkey-unchanged with --tpm and no-failed-units-after-refused-update. It skips
 #   http-fetch, sysupdate-installed and every check that needs the installed release. An update
 #   that installs, or any other failure, fails the run.
-# BOOT_TEST_HTTP_PORT: the port the guest uses for the release server (default 8074): the test
-#   image's updateSource is http://169.254.169.2:8074/, so another port needs an image built for it.
-#   It is a guest-side address only; runs at the same time all use 8074.
 # BOOT_TEST_CACHE: where the work directories are (default ${XDG_CACHE_HOME:-$HOME/.cache}/
 #   golconda-boot-test, run.XXXXXX). A run that passes removes its directory; one that fails keeps
 #   it, with the serial logs and the guest's journals, and prints its path.
@@ -321,7 +317,7 @@ BOOT_TEST_CACHE=${BOOT_TEST_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/golconda-boot
 GUEST_NET=169.254.169.0/24
 UPDATE_ADDR=169.254.169.2
 # the guest's port for the release HTTP server: the test image's updateSource uses 8074
-HTTP_PORT=${BOOT_TEST_HTTP_PORT:-8074}
+HTTP_PORT=8074
 DISK=""
 KEYS_DIR=""
 SECURE_BOOT=0
@@ -457,6 +453,10 @@ PATH="$TOOLS:$PATH"
 
 if [ "$ESP_CREDS" = 1 ] && [ "$SSH_TEST" = 0 ]; then
   echo "Error: --esp-creds needs --ssh-test: the checks log in with the generated key" >&2
+  exit 1
+fi
+if [ "$ESP_CREDS" = 1 ] && [ "$SECURE_BOOT" = 1 ] && [ "$TPM" = 1 ]; then
+  echo "Error: --esp-creds cannot run with --secure-boot and --tpm: that guest refuses null-key credentials (docs/design/boot.md)" >&2
   exit 1
 fi
 if [ "$IMDS" = 1 ] && { [ "$SSH_TEST" = 0 ] || [ "$ESP_CREDS" = 1 ]; }; then

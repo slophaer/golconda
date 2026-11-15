@@ -361,10 +361,7 @@ scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-te
 (`nix-build -A packages.x86_64-linux.golconda-cli`) and name its binary in `BOOT_TEST_GOLCONDA`, and
 put `age` and `age-keygen` (`packages.x86_64-linux.age`) and `ssh-keygen` on PATH.
 `BOOT_TEST_SSH_PORT` sets the host port for the guest's sshd; without it the harness takes the first
-free port from 10022 up and prints it (`ssh: 127.0.0.1:10023 -> guest 22`). `BOOT_TEST_HTTP_PORT`
-sets the port the guest uses for the release server of `--next` (default 8074): it is an address
-inside the guest's network, not a host port. The test image's `updateSource` names
-`169.254.169.2:8074`, so another port needs an image built with that `updateSource`.
+free port from 10022 up and prints it (`ssh: 127.0.0.1:10023 -> guest 22`).
 
 With `--ssh-test` the harness also serves two HTTPS sites to the guest, `169.254.169.5:443` and
 `169.254.169.6:443`: QEMU guestfwds to a TLS server over stdio (`scripts/boot-test-tls.sh`, python's
@@ -434,7 +431,7 @@ writes each value as a null-key `loader/credentials/NAME.cred` on the ESP of the
 lists the directory; `--hostname` writes `system.hostname` and `firstboot.hostname`. It finds the
 ESP in the GPT and refuses a path in `/nix/store`. With `--secure-boot` and `--tpm` together the
 guest refuses these credentials ([Bootstrap credentials](../design/boot.md#bootstrap-credentials)),
-so that run fails. `BOOT_TEST_ESP_NO_KEY=1` leaves the key out of the ESP: the login must then fail.
+so `scripts/boot-test` refuses `--esp-creds` with them.
 
 `--imds` (with `--ssh-test`, not with `--esp-creds`; with `--next` the update test runs after the
 `--imds` checks) fakes Hetzner Cloud for `/imds`, which the test image has, and the guest finds the
@@ -737,10 +734,9 @@ be held. `DIR` is a built release (`DIR/disk/release`, `DIR/keys`). The harness:
 `image-smoke-test` sets `updateSource = "http://169.254.169.2:8074/"` (the gateway of the test's
 QEMU user network, `169.254.169.0/24`, is the host). The harness serves `DIR/disk/release` at that
 address through the guest forward above, so the image's own `url-file` definitions fetch the release
-over HTTP; it rewrites nothing under `/run`. `BOOT_TEST_HTTP_PORT` changes the port the guest
-connects to; the image's `updateSource` must then name the same port. There is no server process to
-stop: QEMU starts the command for each connection and it ends with the connection. The requests are
-logged in `$WORKDIR/http.log`.
+over HTTP; it rewrites nothing under `/run`. There is no server process to stop: QEMU starts the
+command for each connection and it ends with the connection. The requests are logged in
+`$WORKDIR/http.log`.
 
 `--next DIR --tamper-index` is the negative control of the signed index, and it passes when the
 update is refused. The server sends `SHA256SUMS` with one byte more than its signature

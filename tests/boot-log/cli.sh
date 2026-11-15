@@ -239,4 +239,14 @@ else
   ERRORS=$((ERRORS + 1))
 fi
 unset FAKE_QEMU_ARGS
+# --esp-creds with --secure-boot and --tpm is refused: such a guest refuses null-key credentials
+actual=0
+sh "$ROOT/scripts/boot-test" "$WORK/disk.raw" --keys "$WORK/keys" --allow-tcg --secure-boot --tpm \
+  --ssh-test --esp-creds > "$WORK/esp-sb-tpm.out" 2>&1 || actual=$?
+if [ "$actual" = 1 ] && grep -q -- '--esp-creds cannot run with --secure-boot and --tpm' "$WORK/esp-sb-tpm.out"; then
+  echo "PASS: CLI --esp-creds with --secure-boot --tpm is refused"
+else
+  echo "FAIL: CLI --esp-creds with --secure-boot --tpm (exit $actual): $(cat "$WORK/esp-sb-tpm.out")"
+  ERRORS=$((ERRORS + 1))
+fi
 [ "$ERRORS" -eq 0 ]

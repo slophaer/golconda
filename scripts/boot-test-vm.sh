@@ -268,11 +268,7 @@ setup_esp_creds() {
   cp --sparse=always "$DISK" "$WORKDIR/disk.raw"
   chmod u+w "$WORKDIR/disk.raw"
   DISK="$WORKDIR/disk.raw"
-  if [ -n "${BOOT_TEST_ESP_NO_KEY:-}" ]; then
-    "$SCRIPT_DIR/provision-esp" "$DISK" --hostname esp-test || exit 1
-  else
-    "$SCRIPT_DIR/provision-esp" "$DISK" --hostname esp-test --authorized-keys "$SSH_DIR/user.pub" || exit 1
-  fi
+  "$SCRIPT_DIR/provision-esp" "$DISK" --hostname esp-test --authorized-keys "$SSH_DIR/user.pub" || exit 1
   echo "Provisioned the ESP of $DISK; new key: $SSH_DIR/user"
 }
 
