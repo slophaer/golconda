@@ -275,7 +275,8 @@ routable link is not blessed ([design/boot](../../design/boot.md#boot-health)).
 
 `/network` returns:
 
-- one `.network` file per entry of `networks`, under `/usr/lib/systemd/network/`;
+- one `.network` file per entry of `networks`, under `/usr/lib/systemd/network/` (the name
+  `default-dhcp` is refused);
 - `99-default-dhcp.network` (`Match Type=ether`, `DHCP=yes`, `IPv6AcceptRA=yes`) unless
   `defaultDhcp = false`;
 - `resolved.conf.d/golconda-dns.conf` when `dns` is set.

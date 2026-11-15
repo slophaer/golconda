@@ -98,11 +98,12 @@
 
   # modules/network/default.nix
   networks = {
-    description = "Network configurations keyed by one filename component.";
+    description = "Network configurations keyed by one filename component other than default-dhcp, the built-in network.";
     type = "object";
     propertyNames = {
       type = "string";
       pattern = pattern "component";
+      not.const = "default-dhcp";
     };
     additionalProperties = {
       "$ref" = "#/$defs/network";

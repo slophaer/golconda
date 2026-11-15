@@ -180,6 +180,26 @@
     }
   },
   {
+    "name": "network named default-dhcp",
+    "accepted": false,
+    "value": {
+      "/system": {
+        "name": "test",
+        "version": "20261031.1"
+      },
+      "/network": {
+        "defaultDhcp": false,
+        "networks": {
+          "default-dhcp": {
+            "match": {
+              "Name": "eth0"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
     "name": "empty network name",
     "accepted": false,
     "value": {

@@ -60,6 +60,7 @@ let
       { unknown = false; };
 
   # attrsOf checks values only; keys become direct .network filenames.
+  # default-dhcp is the built-in network's name.
   networks = types.typedef' "networks" (
     v:
     let
@@ -67,6 +68,8 @@ let
     in
     if valuesError != null then
       valuesError
+    else if v ? default-dhcp then
+      "'default-dhcp' is the name of the built-in DHCP network: give the network another name"
     else
       builtins.foldl' (
         err: name: if err != null then err else (import ../lib/path.nix).componentError name
@@ -104,7 +107,7 @@ in
     networks = {
       type = networks;
       default = { };
-      description = "Network configurations, keyed by name. Each becomes a .network file under /usr/lib/systemd/network/.";
+      description = "Network configurations, keyed by name. Each becomes a .network file under /usr/lib/systemd/network/. The name default-dhcp is refused.";
     };
     dns = {
       type = option (listOf string);
@@ -137,7 +140,7 @@ in
         };
       };
 
-      # Merge default with user networks (user wins on conflict)
+      # the type refuses a user network named default-dhcp
       allNetworks = if options.defaultDhcp then defaultNetwork // options.networks else options.networks;
 
       # Generate network files. networkd tries the files that match an

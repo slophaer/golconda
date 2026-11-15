@@ -108,6 +108,14 @@ in
         ".."
       ]
   ))
+  # the built-in DHCP network's name: a network with it would replace the built-in one
+  (check "network: the name default-dhcp is refused" (
+    let
+      networksType = (f.modules { }).modules.network.options.networks.type;
+    in
+    hasInfix "default-dhcp" (networksType.verify { default-dhcp.match.Name = "eth0"; })
+    && networksType.verify { lan.match.Name = "eth0"; } == null
+  ))
   (check "network: an explicit network sorts before the default DHCP file" (
     let
       result = composeWith {
