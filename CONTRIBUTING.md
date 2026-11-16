@@ -28,14 +28,16 @@ directories to a booted machine.
 1. Work on a feature branch in a git worktree
    (`git worktree add ../golconda-<branch> -b <branch> origin/main`). Do not commit to `main`; merge
    fast-forward after review.
+1. The gate before a merge is `scripts/verify --each-commit origin/main`: it lints every commit of
+   the branch, then builds and boots the last. No CI runs it; the person who merges does.
 
 ## Conventions
 
 - **One of each.** No second implementation of anything the image already has (see
   [design/principles](docs/design/principles.md)). A new package or option that duplicates an
   existing one needs a reason in the commit body.
-- **No nixpkgs** outside `nix/dev/` (developer tooling); `checks.boundary` fails otherwise. Packages
-  come from the repkgs fork; Golconda-specific ones live in `packages/`.
+- **No nixpkgs.** Packages come from the repkgs fork; Golconda-specific ones live in `packages/`.
+  `checks.boundary` looks for nixpkgs in the Nix files, the scripts and `pins/`.
 - **Typed, explicit modules.** A module returns a fragment; shared types live in `modules/lib/`.
   Duplicates are errors, never overrides. Credentials are references, never file contents.
 - **Module doc comments.** Every module's Nix file starts with `#! ` lines (hash-bang-space) that
