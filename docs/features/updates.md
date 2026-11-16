@@ -60,7 +60,11 @@ updateSource = "https://updates.example.com/web/"
 
 Serve the `release/` directory of the build at that URL. The image enables
 `systemd-sysupdate-update.timer`, which installs, and `systemd-sysupdate-reboot.timer`, which
-reboots into an installed release at 04:10 (plus up to 30 random minutes). Set another window, or
+reboots into an installed release at 04:10 (plus up to 30 random minutes). systemd's install timer
+runs 15 minutes after boot, then 2 hours after each run and on each Saturday, each time with up to 4
+hours of random delay (`OnBootSec=15min`, `OnUnitActiveSec=2h`, `OnCalendar=Sat`,
+`RandomizedDelaySec=4h`). To install at once, run
+`systemctl start --wait systemd-sysupdate-update.service` on the machine. Set another window, or
 `null` to reboot by hand:
 
 ```toml
