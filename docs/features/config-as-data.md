@@ -48,15 +48,17 @@ trustedUserCAKeys = ["ssh-ed25519 AAAA... user-ca"]
 root = ["alice@example.com"]
 ```
 
-Export the schema and check the document with any validator:
+In your repository, beside `golconda.nix` ([the template](../reference/config.md#the-entry-point)),
+export the schema of your tree and the document as JSON. The schema includes your own modules. Any
+JSON Schema 2020-12 validator can then check the document:
 
 ```sh
-iets eval --json -E '(import ./default.nix).schema' > schema.json
-yj -tj < examples/server.toml > config.json
-ajv validate -s schema.json -d config.json
+iets eval --json -E '(import ./golconda.nix { }).schema' > schema.json
+iets eval --json -E 'builtins.fromTOML (builtins.readFile ./server.toml)' > config.json
 ```
 
-`iets eval --json -E '(import ./default.nix).configLib.validPaths'` lists the valid table names.
+`iets eval --json -E 'builtins.attrNames (import ./golconda.nix { }).schema.properties'` lists the
+valid table names.
 
 ## Status
 

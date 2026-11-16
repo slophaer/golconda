@@ -162,12 +162,13 @@ artifact has conflicting replacement records, SBOM generation fails rather than 
 
 ## Validation
 
-Export the schema and use any JSON Schema validator:
+Export the schema of your tree and the document as JSON, in your repository beside `golconda.nix`
+([The entry point](#the-entry-point)). The schema of `lib.mkSystem` includes your own modules. Any
+JSON Schema 2020-12 validator can then check the document:
 
 ```sh
-iets eval --json -E '(import ./default.nix).schema' > schema.json
-yj -tj < examples/server.toml > config.json      # TOML → JSON
-ajv validate -s schema.json -d config.json
+iets eval --json -E '(import ./golconda.nix { }).schema' > schema.json
+iets eval --json -E 'builtins.fromTOML (builtins.readFile ./server.toml)' > config.json
 ```
 
 Golconda ships no validator; type errors from adios say what a module expected, and the schema is

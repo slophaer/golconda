@@ -90,18 +90,20 @@ committed in the repository, as a path. `golconda release build` builds `unsigne
 
 ## `schema`
 
-JSON Schema 2020-12 export of the module tree. The schema does not depend on any packages; it is not
-per-system.
+JSON Schema 2020-12 export of Golconda's module tree. The schema does not depend on any packages; it
+is not per-system.
 
 ```sh
 iets eval --json -E '(import ./default.nix).schema' > schema.json
 ```
 
 The schema has a property for each module path (`/services/sshd`, `/system`). Each property is an
-object describing that module's options with their types, descriptions and defaults. Use any JSON
-Schema validator (ajv, jsonschema, etc.) to validate a TOML config after converting it to JSON.
-
-Golconda does not ship a validator in the image yet.
+object describing that module's options with their types, descriptions and defaults. It refuses a
+table that it does not name, so it refuses a document with modules of its own (`/local/...`). For
+such a document, use the `schema` of `lib.mkSystem`, which includes them:
+`iets eval --json -E '(import ./golconda.nix { }).schema'` in your repository
+([Validation](config.md#validation)). Any JSON Schema 2020-12 validator can check the document,
+converted to JSON. Golconda ships no validator.
 
 ## `configLib`
 

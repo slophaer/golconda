@@ -1,7 +1,7 @@
 # Example Golconda server configuration.
 # Table names are adios module paths. Each table sets options for that module.
-# Validate with: iets eval --json -E '(import ./default.nix).schema' > schema.json
-# then use any JSON Schema validator (ajv, jsonschema, etc.).
+# Export the schema with: iets eval --json -E '(import ./golconda.nix { }).schema' > schema.json
+# then check this document, as JSON, with any JSON Schema 2020-12 validator.
 
 ["/system"]
 name = "server"
