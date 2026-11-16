@@ -179,8 +179,9 @@ What happens, in order, and which marker or file shows it:
    `PASS: hostname (system.hostname credential applied)`.
 1. `systemd-firstboot.service` runs with the drop-in
    `/usr/lib/systemd/system/systemd-firstboot.service.d/golconda.conf`:
-   `systemd-firstboot --mute-console=yes`. It never prompts, and still applies `firstboot.*`
-   credentials. Marker: `no-firstboot-prompt`.
+   `systemd-firstboot --mute-console=yes`. The drop-in runs it without the `--prompt-*` options of
+   systemd's unit, so it never prompts, and it still applies `firstboot.*` credentials. Marker:
+   `no-firstboot-prompt`.
 1. systemd-sysusers writes `passwd`, `group` and `shadow` from `sysusers.d/golconda.conf`
    (`messagebus`, `sshd`).
 1. systemd-tmpfiles runs `tmpfiles.d/golconda.conf`: `/etc/pam.d/sshd`, `/etc/shells` and the other
@@ -189,7 +190,8 @@ What happens, in order, and which marker or file shows it:
 1. `golconda-var-sshd-hostkey.service` runs `golconda-var-run sshd-hostkey "key" "key.pub"`:
    `ssh-keygen -q -t ed25519 -N '' -f key` in a runtime directory, then
    `systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11 --name=sshd-hostkey.key` of the
-   key into `/etc/credstore.encrypted/sshd-hostkey.key`. The public half goes to
+   key into `/etc/credstore.encrypted/sshd-hostkey.key`, and `--tpm2-pcrs=7` on a Secure Boot image
+   (`/usr/lib/golconda/vars.d/tpm2-pcrs`). The public half goes to
    `/var/lib/golconda/vars/sshd-hostkey/pub/key.pub`, and a `done` file ends the unit's future runs.
    Marker: `var-sshd-hostkey`. `--with-key=auto` seals to the host key plus the TPM2 when a TPM2
    exists, and to the host key alone when it does not; the plain run above has no TPM.
