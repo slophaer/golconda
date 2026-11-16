@@ -19,7 +19,7 @@ def ca-fingerprint [block: string]: nothing -> string {
 # From the roots (PEM text), the anchors (a list of PEM texts) and the distrust list (normalised
 # SHA-256 fingerprints): `certs`, every distinct certificate, `denied`, those a fingerprint names,
 # and `want`, the rest. An entry that is no fingerprint, or one that matches no certificate, is an
-# error: a typo must not pass in silence.
+# error, so a typo fails the build.
 def ca-select [roots: string, anchors: list<string>, distrust: list<string>]: nothing -> record {
   for e in $anchors {
     if (ca-blocks $e | length) != 1 {

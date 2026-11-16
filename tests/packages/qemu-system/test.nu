@@ -54,14 +54,12 @@ assert $"the q35 machine starts and quits: ($run.stdout) ($run.stderr)" ($run.ex
 
 rm -rf $t
 
-# OVMF as scripts/boot-test loads it, QEMU's own edk2-stable202408 build from its release tarball
-# (head of packages/qemu-system): the plain and the Secure Boot code image, and one empty variable
-# store for both, which fill the 4 MB flash together. Each is a firmware volume ("_FVH"): the code
-# ones a file system (EFI_FIRMWARE_FILE_SYSTEM2_GUID), the variable store the NV data volume
-# (EFI_SYSTEM_NV_DATA_FV_GUID) holding an authenticated variable store (gEfiAuthenticatedVariableGuid),
-# which Secure Boot's variables need. The GUIDs are as edk2 lays them out on disk (the first three
-# fields little-endian). Whether the firmware enforces Secure Boot and measures into the TPM, only
-# booting shows: the boot test's --secure-boot and --tpm.
+# OVMF as scripts/boot-test loads it (packages/qemu-system): the plain and the Secure Boot code
+# image, and one empty variable store for both, which fill the 4 MB flash together. Each is a
+# firmware volume ("_FVH"): the code ones a file system (EFI_FIRMWARE_FILE_SYSTEM2_GUID), the store
+# the NV data volume (EFI_SYSTEM_NV_DATA_FV_GUID) with an authenticated variable store, which Secure
+# Boot's variables need. The GUIDs are as edk2 lays them out (the first three fields little-endian).
+# Only booting shows whether the firmware enforces Secure Boot: --secure-boot and --tpm.
 let fw = $"($env.pkg)/share/qemu"
 let kept = (ls $fw | get name | path basename | sort)
 assert $"only the x86_64 firmware is kept: ($kept)" (($kept | where { $in =~ "^edk2-" }) == [edk2-i386-vars.fd edk2-licenses.txt edk2-x86_64-code.fd edk2-x86_64-secure-code.fd])

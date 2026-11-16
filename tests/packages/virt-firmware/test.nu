@@ -1,10 +1,8 @@
-# virt-fw-vars as scripts/boot-test runs it (scripts/boot-test-vm.sh, enroll_keys; --rotate in
+# virt-fw-vars as scripts/boot-test runs it (boot-test-vm.sh enroll_keys, and --rotate in
 # boot-test-update.sh): Secure Boot keys written offline into a copy of OVMF's empty variable store
-# (qemu-system's edk2-i386-vars.fd, inputs.nix). A certificate comes from virt-fw-vars itself (--enroll-generate,
-# then --extract-certs); then the boot test's calls: PK, KEK and db from that certificate with one
-# owner GUID and Secure Boot on, and the rotation: db replaced, the old certificate into dbx. The
-# certificate is parsed by python-cryptography and the store written in edk2's format; --print
-# reads each result back.
+# (qemu-system's edk2-i386-vars.fd). A certificate comes from virt-fw-vars itself (--enroll-generate,
+# then --extract-certs); then PK, KEK and db from it with one owner GUID and Secure Boot on, and the
+# rotation: db replaced, the old certificate into dbx. --print reads each result back.
 use checks.nu *
 let vars = $"($env.pkg)/bin/virt-fw-vars"
 let t = $"($env.TMPDIR? | default /tmp)/virt-firmware-test"

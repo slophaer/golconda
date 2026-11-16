@@ -122,7 +122,7 @@ check "no TPM2: every seal logs a warning" \
 printf 'CERT' | STUB_TPM2=1 sh "$RUNNER" --admin sshd-host-cert cert > /dev/null 2>&1
 check "TPM2: no warning" '[ ! -s "$JOURNAL" ]'
 
-# --- local: generate, seal, publish, done (unchanged behaviour) ---
+# --- local: generate, seal, publish, done ---
 mkdir -p "$WORK/run" "$WORK/state"
 st=0
 RUNTIME_DIRECTORY=$WORK/run STATE_DIRECTORY=$WORK/state sh "$RUNNER" foo key key.pub > "$WORK/out" 2>&1 || st=$?
