@@ -10,7 +10,6 @@ use common.nu *
 # embedded as .pcrpkey. Each key is a file or a `pkcs11:` URI (sign.nu use-token). Returns the
 # cmdline.
 export def make [p: record, roothash: string, sigpart: string, keys: record, out: string]: nothing -> string {
-  # the kernel package: lib/modules/<uname>/vmlinuz
   let moddir = (ls $"($p.kernel)/lib/modules" | get name | first)
   let uname = ($moddir | path basename)
   let linux = $"($moddir)/vmlinuz"
@@ -75,14 +74,12 @@ export def certificate-table-size [file: string]: nothing -> int {
   do $u32 ($dirs + 36)
 }
 
-# pcr-key-args KEYS OUT: ukify's arguments for the PCR public half and for a key on a token.
-# Keys in files: --pcr-public-key. A key on a token: ukify's --signing-provider, which systemd
-# 262 applies to both keys (a key in a file still loads through it: the default provider opens
-# the path). With a provider, ukify gives systemd-measure the PCR key's certificate, which it
-# requires (--private-key-source needs --certificate); the PCR key has only a public half, so the
-# signer makes a self-signed certificate with the PCR key in OUT.pcr. measure reads only its
-# public key, and --pcrpkey embeds the image's pcr.pub itself, so the UKI is the same bytes as
-# one signed from files.
+# pcr-key-args KEYS OUT: ukify's arguments for the PCR public half. Keys in files take
+# --pcr-public-key. With a key on a token, ukify's --signing-provider (systemd 262 applies it to
+# both keys) gives systemd-measure the PCR key's certificate, which --private-key-source requires.
+# The PCR key has only a public half, so the signer makes a self-signed certificate in OUT.pcr:
+# measure reads only its public key, and --pcrpkey embeds the image's pcr.pub, so the UKI has the
+# same bytes as one signed from files.
 def pcr-key-args [keys: record, out: string]: nothing -> list<string> {
   if not ((on-token $keys.dbKey) or (on-token $keys.pcrKey)) {
     return [--pcr-public-key $keys.pcrPublic]

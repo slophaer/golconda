@@ -5,7 +5,7 @@
 #
 # Run from the repo root with openssl on PATH and GOLCONDA_SECUREBOOT_OBJECTS naming
 # packages/secureboot-objects' share/secureboot-objects (checks.image-signer runs it so):
-#   nu --no-config-file --include-path lib/image tests/sign/enrol.nu
+#   nu --no-config-file --include-path lib/image tests/sign/enrol-test.nu
 
 use enrol.nu
 
@@ -140,8 +140,8 @@ fails "the signer refuses a set signed by another KEK" "does not verify" {||
 fails "the signer refuses a set without db.auth" "db.auth is missing" {||
   enrol check-set $"($tmp)/none" (set-of $a)
 }
-# a key set made before make-keys wrote the files: the refusal names the commands that add them,
-# with this set's path, for keys in the set and for keys elsewhere
+# a key set without enrolment files: the refusal names the commands that add them, with this set's
+# path, for keys in the set and for keys elsewhere
 let old_set = $"($tmp)/old-set"
 mkdir $"($old_set)/secureboot"
 let msg = (try { enrol require-set $old_set microsoft; "no error" } catch {|e| $e.msg })

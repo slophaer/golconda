@@ -1,30 +1,15 @@
-# enrol.nu: the Secure Boot variables that systemd-boot enrols from the ESP. systemd-boot reads
-# loader/keys/auto/{db,dbx,KEK,PK}.auth when the firmware is in Setup Mode, writes db, dbx, KEK
-# and PK in that order, and resets the machine (loader.conf(5) `secure-boot-enroll`,
-# src/boot/secure-boot.c of systemd 262.1; docs/design/bootloader.md).
-#
-# The files depend on the certificates only, not on an image: scripts/make-keys writes them once
-# into the key set (golconda-enrol-auth, enrol-main.nu), and the signer copies them onto the ESP
-# (lib/image/sign.nu, `check-set` here). Two sets per key set, under secureboot/auth/:
-#   microsoft/  PK; KEK = the deployment's KEK + Microsoft's KEK CA 2011 and KEK 2K CA 2023;
-#               db = the deployment's db + Microsoft UEFI CA 2011, UEFI CA 2023 and Option ROM
-#               UEFI CA 2023; dbx = Microsoft's revocation list (packages/secureboot-objects).
-#               The Windows CAs stay out: they only start Windows' boot manager
-#   golconda/   PK, KEK and db with the deployment's certificates only, no dbx
+# enrol.nu: the Secure Boot variables that systemd-boot enrols from the ESP: the two sets under
+# secureboot/auth/ that scripts/make-keys writes once into a key set (golconda-enrol-auth,
+# enrol-main.nu) and the signer checks and copies (`check-set`); docs/design/bootloader.md,
+# "Enrolment". They depend on the certificates only, not on an image.
 #
 # Each file is a time-based authenticated variable (UEFI 2.10, 8.2.2): EFI_VARIABLE_AUTHENTICATION_2
 # (an EFI_TIME and a WIN_CERTIFICATE_UEFI_GUID with a PKCS#7 SignedData), then the payload, a
-# series of EFI_SIGNATURE_LISTs. The chain is the usual one: the PK key signs PK and KEK, the KEK
-# key signs db and dbx. The signature covers the variable name (UTF-16, no NUL), its vendor GUID,
-# the attributes, the EFI_TIME and the payload. The SignedData has no signed attributes and no
-# ContentInfo around it; RSA PKCS#1 v1.5 draws no random numbers, so the same keys and time give
-# the same files.
-#
-# efitools writes them (packages/efitools): cert-to-efi-sig-list makes the signature list of each
-# certificate, sign-efi-sig-list the authenticated variable around a series of them. This file
-# checks each one with code of its own, not efitools': `verify` takes the file apart, rebuilds the
-# data the signature covers and has openssl check the signature; the boot test's --auto-enrol has
-# firmware enrol them.
+# series of EFI_SIGNATURE_LISTs. The signature covers the variable name (UTF-16, no NUL), its
+# vendor GUID, the attributes, the EFI_TIME and the payload. The SignedData has no signed
+# attributes and no ContentInfo around it. RSA PKCS#1 v1.5 draws no random numbers, so the same
+# keys and time give the same files. efitools writes them; `verify` takes a file apart with code
+# of its own and has openssl check the signature.
 
 use common.nu *
 
@@ -225,8 +210,7 @@ export def write [dir: string, certs: record, signers: record, ms: string, epoch
 }
 
 # require-set SET WHICH: the key set SET has secureboot/auth/WHICH (microsoft or golconda); a set
-# made before scripts/make-keys wrote the enrolment files is refused with the commands that add
-# them, with SET's own path
+# without it is refused with the commands that add it, with SET's own path
 export def require-set [set: string, which: string] {
   let set = ($set | path expand)
   let dir = $"($set)/secureboot/auth/($which)"
@@ -234,12 +218,10 @@ export def require-set [set: string, which: string] {
     return
   }
   error make {msg: ([
-    $"($dir) is missing: this key set was made before scripts/make-keys wrote the Secure Boot"
-    "enrolment files, which a Secure Boot image puts on its ESP. Add them on the release host, with"
-    "the set's PK and KEK keys (a set with no PK and KEK gets a pair of its own):"
+    $"($dir) is missing: a Secure Boot image puts these enrolment files on its ESP."
+    "Write them on the release host with the set's PK and KEK keys (a set without them gets a pair):"
     $"  scripts/make-keys --auth-only ($set)"
-    "If secureboot/PK.key and KEK.key are in another directory (kept offline, or this set is a db"
-    "rotation), name it:"
+    "If secureboot/PK.key and KEK.key are in another directory (kept offline, or a db rotation), name it:"
     $"  scripts/make-keys --auth-only --reuse-pk-kek DIR ($set)"
     "(docs/reference/release.md)"
   ] | str join "\n")}
@@ -254,7 +236,7 @@ export def check-set [dir: string, certs: record]: nothing -> list<string> {
   let names = ($present | get name)
   for n in [db KEK PK] {
     if not ($n in $names) {
-      error make {msg: $"($dir)/($n).auth is missing: make the key set's enrolment files with scripts/make-keys"}
+      error make {msg: $"($dir)/($n).auth is missing: write the key set's enrolment files with scripts/make-keys --auth-only"}
     }
   }
   let signer = {PK: $certs.pk KEK: $certs.kek}

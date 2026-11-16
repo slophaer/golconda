@@ -1,32 +1,12 @@
-# main.nu: build the /usr tree from the composer output.
-#
-# Called by the Nix derivation with structured attrs:
-#   closure: reference graph of the packages
-#   roots: list of store paths (the packages)
-#   links: list of { path, target, kind, origins? } for symlinks; kind "farm" names a
-#     directory to expand file by file, kind "dlopen" is verified to resolve
-#   packageBins: list of { package, path, declared, origins }, one per package: bin/<name>
-#     links for each name in <path>/exports.json `bin`, or only the `declared` names
-#     (pkg.bin) when the package declares them
-#   attribution: { files, links, ... } for lib/golconda/attribution.json; the bin/ links
-#     are added here, with their package's origins
-#   programs: list of { name, origins }: /usr/bin/<name> that a unit runs; it must exist
-#     once the tree is built
-#   files: attrset of path -> { text, mode, dest }
-#   units: attrset of name -> text
-#   sysusers, tmpfiles: lists of lines
-#   packageList: list of { name, version?, path, origins } for lib/golconda/packages.json
-#   osRelease: rendered os-release text
-#   epoch: Unix timestamp for mtimes
-#   version: image version string
-#   allowedDirs: list of allowed top-level dirs
+# main.nu: build the /usr tree from the composer output (lib/usr-tree.nix). The builder reads its
+# inputs as structured attrs (`attrs`): closure, roots, links, packageBins, attribution, programs,
+# files, units, sysusers, tmpfiles, packageList, osRelease, epoch, version, allowedDirs. A link of
+# kind "farm" is expanded file by file; one of kind "dlopen" is verified to resolve.
 
-# Read the structured attrs
 def attrs [] {
   open $env.NIX_ATTRS_JSON_FILE
 }
 
-# Log a message to stderr
 def log [msg: string] {
   print -e $"usr-tree: ($msg)"
 }
@@ -132,25 +112,21 @@ export def package-bin-names [pkg: record]: nothing -> list<string> {
   $pkg.declared
 }
 
-# Main entry point
 export def build [] {
   let attrs = (attrs)
   let out = $attrs.outputs.out
   let epoch = $attrs.epoch
   let closure = $attrs.closure
 
-  # Set PATH from attrs
   $env.PATH = $attrs.PATH
 
   log $"building /usr tree version ($attrs.version)"
   log $"closure has ($closure | length) paths"
 
-  # Create output directory structure
   for dir in ["nix/store" "bin" "lib/systemd/system" "lib/sysusers.d" "lib/tmpfiles.d" "lib/golconda" "share"] {
     ensure-directory $out $dir "fixed builder directory"
   }
 
-  # Step 1: Copy the closure to nix/store
   log "copying closure..."
   for p in $closure {
     let store_path = $p.path
@@ -161,48 +137,40 @@ export def build [] {
     ^cp -a $store_path $dest
   }
 
-  # Step 2: Create sbin -> bin symlink
   log "creating sbin -> bin"
   guard-write $out "sbin" "fixed sbin alias"
   ^ln -s "bin" $"($out)/sbin"
 
-  # Step 3: Create symlinks from the links list (every kind but farm)
   let plain_links = ($attrs.links | where kind != "farm")
   let farm_links = ($attrs.links | where kind == "farm")
   log $"creating ($plain_links | length) symlinks..."
   for link in $plain_links {
     let path = $link.path
     let target = $link.target
-    # Strip /usr/ prefix
     let dest_rel = ($path | str replace "/usr/" "")
     let dest = $"($out)/($dest_rel)"
     let dest_dir = ($dest | path dirname)
 
     guard-write $out $dest_rel $"($link.kind) link from ($target)"
 
-    # Make target relative
     let rel_target = (make-relative $path $target)
 
-    # Create symlink
     ^ln -s $rel_target $dest
 
-    # A target under /usr/ must resolve to that path in the image's /usr:
-    # compare the created link's resolved path with the path the target names.
-    # A wrong prefix count gives a link that resolves elsewhere (../usr/lib/b
-    # from /usr/lib/a lands on /usr/usr/lib/b), so this stops the build.
+    # A target under /usr/ must resolve to that path in the image's /usr. A wrong prefix count
+    # gives a link that resolves elsewhere (../usr/lib/b from /usr/lib/a lands on /usr/usr/lib/b).
     if ($target | str starts-with "/usr/") {
       let want = ($"($out)/($target | str replace -r '^/usr/' '')" | path expand)
       let link_text = (^readlink $dest | str trim)
       let got = ($"($dest_dir)/($link_text)" | path expand)
       if $got != $want {
-        error make {msg: $"link ($path) -> ($target) resolves to ($got), not ($want)"}
+        error make {msg: $"link ($path) -> ($target) resolves to ($got), not ($want)(from-origins ($link.origins? | default [])): make-relative gave ($link_text)"}
       }
     }
   }
 
-  # Step 3b: /usr/bin/<name> for the executables of each package (package-bin-names). A
-  # name from two sources stops the build and names both: two packages, or a package and
-  # a link of step 3. Duplicates are errors, never overrides.
+  # /usr/bin/<name> for the executables of each package (package-bin-names). A name from two
+  # sources stops the build and names both: two packages, or a package and a plain link.
   log $"linking the executables of ($attrs.packageBins | length) packages..."
   mut bin_claims = ($plain_links | where { ($in.path | path dirname) == "/usr/bin" }
     | reduce -f {} {|l, acc| $acc | upsert $l.path $"($l.kind) link to ($l.target)(from-origins ($l.origins? | default []))" })
@@ -226,23 +194,20 @@ export def build [] {
     }
   }
 
-  # Step 4: Expand farm directories file by file, subdirectories included: systemd's
-  # lib/systemd/system carries its static enablement as <target>.wants/ directories, and a
-  # farm of lib/systemd must reach them. A file two farms both bring from the same place is
-  # fine (a farm of lib/systemd and one of lib/systemd/system overlap); a different source is
-  # a collision.
+  # Expand farm directories file by file, subdirectories included: systemd's lib/systemd/system
+  # carries its static enablement as <target>.wants/ directories, and a farm of lib/systemd must
+  # reach them. A file that two farms bring from the same place is fine (a farm of lib/systemd
+  # and one of lib/systemd/system overlap); a different source is a collision.
   log $"expanding ($farm_links | length) farm directories..."
   mut farm_sources = {}
   for dir in $farm_links {
     let path = $dir.path
     let target = $dir.target
-    # Strip /usr/ prefix from path
     let dest_rel = ($path | str replace "/usr/" "")
     let dest_dir = $"($out)/($dest_rel)"
 
     ensure-directory $out $dest_rel $"farm directory from ($target)"
 
-    # Link every file of the source tree; a missing directory is an error
     if not ($target | path exists) {
       error make {msg: $"farm link ($path): directory ($target) does not exist"}
     }
@@ -270,7 +235,6 @@ export def build [] {
     }
   }
 
-  # Step 5: Write files from system.files
   log $"writing ($attrs.files | columns | length) files..."
   for entry in ($attrs.files | transpose path value) {
     let path = $entry.path
@@ -284,15 +248,10 @@ export def build [] {
     let dest_path = $"($out)/($dest)"
     guard-write $out $dest $"configured file ($path)"
 
-    # Write file
     $file.text | save $dest_path
-
-    # Set mode (convert octal string to chmod format)
-    let mode = $file.mode
-    ^chmod $mode $dest_path
+    ^chmod $file.mode $dest_path
   }
 
-  # Step 6: Write units to lib/systemd/system/
   log $"writing ($attrs.units | columns | length) units..."
   for entry in ($attrs.units | transpose name text) {
     let rel = $"lib/systemd/system/($entry.name)"
@@ -300,7 +259,6 @@ export def build [] {
     $entry.text | save $"($out)/($rel)"
   }
 
-  # Step 7: Write sysusers.d/golconda.conf
   if ($attrs.sysusers | length) > 0 {
     log $"writing sysusers.d/golconda.conf \(($attrs.sysusers | length) lines\)"
     let content = ($attrs.sysusers | str join "\n")
@@ -308,7 +266,6 @@ export def build [] {
     $content | save $"($out)/lib/sysusers.d/golconda.conf"
   }
 
-  # Step 8: Write tmpfiles.d/golconda.conf
   if ($attrs.tmpfiles | length) > 0 {
     log $"writing tmpfiles.d/golconda.conf \(($attrs.tmpfiles | length) lines\)"
     let content = ($attrs.tmpfiles | str join "\n")
@@ -316,12 +273,10 @@ export def build [] {
     $content | save $"($out)/lib/tmpfiles.d/golconda.conf"
   }
 
-  # Step 9: Write os-release
   log "writing lib/os-release"
   guard-write $out "lib/os-release" "generated os-release"
   $attrs.osRelease | save $"($out)/lib/os-release"
 
-  # Step 10: Write lib/golconda/packages.json (name, version when known, store path, origins)
   log "writing lib/golconda/packages.json"
   guard-write $out "lib/golconda/packages.json" "generated package list"
   $attrs.packageList
@@ -329,8 +284,7 @@ export def build [] {
   | to json
   | save $"($out)/lib/golconda/packages.json"
 
-  # Step 10a: Write lib/golconda/attribution.json: the composer's origins, and the bin/
-  # links of step 3b with their package's origins
+  # attribution.json: the composer's origins, and the bin/ links with their package's origins
   log "writing lib/golconda/attribution.json"
   guard-write $out "lib/golconda/attribution.json" "generated attribution"
   mut links_origins = ($attrs.attribution | get -o links | default {})
@@ -340,7 +294,6 @@ export def build [] {
   }
   $attribution | to json | save $"($out)/lib/golconda/attribution.json"
 
-  # Step 10b: Copy SBOM if one was provided
   if $attrs.sbomPath != null {
     log "copying sbom.json"
     guard-write $out "lib/golconda/sbom.json" $"SBOM from ($attrs.sbomPath)"
@@ -350,28 +303,26 @@ export def build [] {
   # mtimes are not set here: Nix normalises every store path to mtime 1. The version-derived
   # timestamp (epoch) is applied by mkfs.erofs -T when the image is made (lib/image/erofs.nix).
 
-  # Step 11: Verification
   log "verifying..."
 
-  # 11a: No absolute symlink targets. -lname tests the link text, so a relative
-  # link needs no readlink/grep pipeline (whose "no match" exit status is 1).
+  # no absolute symlink targets; -lname tests the link text, so a relative link needs no
+  # readlink/grep pipeline (whose "no match" exit status is 1)
   let found_abs = (^find $out -type l -lname '/*' -print | complete)
   if $found_abs.exit_code != 0 {
     error make {msg: $"find failed while checking symlink targets: ($found_abs.stderr)"}
   }
   let abs_links = ($found_abs.stdout | lines | where { $in != "" })
   if ($abs_links | length) > 0 {
-    error make {msg: $"absolute symlink targets found: ($abs_links | str join ', ')"}
+    error make {msg: $"absolute symlink targets found: ($abs_links | str join ', '); the nix/store/<hash>-NAME in each names the package that ships it, so give the link a relative target there"}
   }
 
-  # 11b: dlopen links resolve
+  # dlopen links resolve
   for link in ($attrs.links | where kind == "dlopen") {
     let dest = $"($out)/($link.path | str replace "/usr/" "")"
     # -n: the link itself, not what it points to (a dangling link exists)
     if not ($dest | path exists -n) {
-      error make {msg: $"dlopen link ($link.path) was not created"}
+      error make {msg: $"dlopen link ($link.path) was not created(from-origins ($link.origins? | default [])): the builder's link step skipped it"}
     }
-    # Follow the symlink to verify the target exists
     let target = (ls -l $dest | get target.0)
     let full_target = if ($target | str starts-with "/") {
       $target
@@ -379,20 +330,20 @@ export def build [] {
       $"($dest | path dirname)/($target)" | path expand
     }
     if not ($full_target | path exists) {
-      error make {msg: $"dlopen link ($link.path) -> ($target) does not exist"}
+      error make {msg: $"dlopen link ($link.path) -> ($target) does not exist(from-origins ($link.origins? | default [])): the package that holds the target must be in the closure"}
     }
   }
 
-  # 11d: No files outside allowed top-level dirs
+  # no top-level directory outside the allowed ones
   let top_level = (ls $out | get name | each { $in | path basename })
   let allowed = $attrs.allowedDirs
   let bad = ($top_level | where { $in not-in $allowed and $in != "sbin" })
   if ($bad | length) > 0 {
-    error make {msg: $"files outside allowed dirs: ($bad | str join ', ')"}
+    error make {msg: $"files outside allowed dirs: ($bad | str join ', '); the top-level directories of /usr are ($allowed | str join ', ')"}
   }
 
-  # 11e: Every program a unit runs is in bin/: a name the package does not install, or
-  # a link that dangles, fails here and not at boot
+  # every program a unit runs is in bin/: a name the package does not install, or a link that
+  # dangles, fails here and not at boot
   for program in $attrs.programs {
     if not ($"($out)/bin/($program.name)" | path exists) {
       let who = if ($program.origins | is-empty) { "a unit" } else { $program.origins | str join ', ' }
@@ -400,8 +351,8 @@ export def build [] {
     }
   }
 
-  # 11f: The target of each tmpfiles L line under /usr exists: a misspelt time zone
-  # would leave /etc/localtime dangling on the machine
+  # the target of each tmpfiles L line under /usr exists: a misspelt time zone would leave
+  # /etc/localtime dangling on the machine
   for line in $attrs.tmpfiles {
     let fields = ($line | split row -r '\s+' | where { $in != "" })
     if ($fields | length) < 7 or not ($fields.0 | str starts-with "L") { continue }

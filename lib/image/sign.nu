@@ -1,30 +1,12 @@
-# sign.nu: the signer. It takes the unsigned outputs of the image chain (lib/image/manifest.nix:
-# manifest.json names the /usr tree, the initrd, the kernel, the unsigned loader and every
-# parameter) and a key set, and writes the signed release:
-#
-#   OUT/disk.raw, OUT/disk.json   the disk image (lib/image/disk.nu)
-#   OUT/release/                  the four release files, SHA256SUMS and SHA256SUMS.gpg
-#   OUT/cmdline                   the UKI's cmdline, for the record
-#
-# The steps, in order: check that each private key is the half of the public key the image
-# carries; sign systemd-boot (db key); put it into a copy of the /usr tree; mkfs.erofs; the
-# verity hash tree and the root hash signature (db key); the UKI with its Secure Boot signature
-# (db key) and its .pcrsig (PCR key); the ESP, with the key set's Secure Boot enrolment files
-# (written once by scripts/make-keys; no PK or KEK key is read), and systemd-repart; SHA256SUMS
-# and its signature (release key). Each step is deterministic for the same inputs and keys: the times (the
-# signing time of systemd-sbsign too, through SOURCE_DATE_EPOCH) and identifiers come from the
-# version, and RSA PKCS#1 v1.5 and Ed25519 signatures do not draw random numbers.
-#
-# Nix runs no step of this with a private key, except for test images: there a derivation runs
-# the same program with the throwaway keys (lib/image/chain.nix signWithTestKeys).
-# `golconda release build` runs it on the release host with the key set where it lies
-# (docs/design/trust.md).
-#
-# A key set is a directory in scripts/make-keys' layout: secureboot/db.key, pcr/pcr.key and
-# release/index.key are read, or for the db and PCR keys a `pkcs11:` URI of a key on a token
-# (secureboot/db.pkcs11, pcr/pcr.pkcs11; private-keys). The certificates and public keys come
-# from the manifest, never from the key set, so a signature is always by the key the image
-# trusts.
+# sign.nu: the signer (docs/design/trust.md, "Signing outside Nix"). It takes the unsigned outputs
+# of the image chain (manifest.json, lib/image/manifest.nix) and a key set in scripts/make-keys'
+# layout, and writes OUT/disk.raw and disk.json (disk.nu), OUT/release/ (the four release files,
+# SHA256SUMS and SHA256SUMS.gpg) and OUT/cmdline (the UKI's, for the record). The same inputs and
+# keys give the same bytes: RSA PKCS#1 v1.5 and Ed25519 draw no random numbers.
+# `golconda release build` runs it on the release host. Nix runs it only with the throwaway keys
+# of the test images (lib/image/chain.nix signWithTestKeys).
+# The certificates and public keys come from the manifest, never from the key set, so a signature
+# is always by the key the image trusts. The db and PCR keys may be a `pkcs11:` URI (private-keys).
 
 use common.nu *
 use erofs.nu
@@ -43,12 +25,12 @@ use enrol.nu
 export def private-keys [db: string, pcr: string, index: string]: nothing -> record {
   for k in [$db $pcr $index] {
     if ($k | str starts-with "pkcs11:") {
-      error make {msg: $"($k): a key set is a directory; a key on a token is a URI in its secureboot/db.pkcs11 or pcr/pcr.pkcs11 \(docs/reference/release.md\)"}
+      error make {msg: $"($k) is a pkcs11: URI, but a key set is a directory. Put a key on a token in secureboot/db.pkcs11 or pcr/pcr.pkcs11 \(docs/reference/release.md\)."}
     }
   }
   let index_uri = ($index | path join release/index.pkcs11 | path expand)
   if ($index_uri | path exists) {
-    error make {msg: $"($index_uri): the release key cannot be on a PKCS#11 token: gpg signs SHA256SUMS and takes no PKCS#11 key; keep release/index.key \(docs/design/trust.md\)"}
+    error make {msg: $"($index_uri): the release key cannot be on a PKCS#11 token, because gpg takes no PKCS#11 key. Keep it as release/index.key \(docs/design/trust.md\)."}
   }
   {
     dbKey: (key-of $db secureboot/db)
@@ -159,8 +141,7 @@ def fingerprint [cert: string]: nothing -> string {
 # enrol-files MANIFEST SET DBCERT: the enrolment files of the db key set SET for the ESP
 # (secureboot/auth/microsoft or golconda, the manifest's loader.enrolSet), checked against SET's
 # PK.crt and KEK.crt and the image's db certificate DBCERT (lib/image/enrol.nu check-set); none
-# for an image without Secure Boot. A Secure Boot image needs them: a set without them was made
-# before scripts/make-keys wrote them.
+# for an image without Secure Boot.
 def enrol-files [m: record, set: string, db_cert: string]: nothing -> list<string> {
   if not $m.loader.enrol {
     log "loader/keys/auto: none, the image is for a host without Secure Boot"

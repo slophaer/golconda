@@ -18,8 +18,8 @@ def file(text="replacement", dest=None):
     return {"text": text, "mode": "0644", "dest": dest}
 
 
-def link(path, target, kind="explicit"):
-    return {"path": path, "target": str(target), "kind": kind}
+def link(path, target, kind="explicit", origins=None):
+    return {"path": path, "target": str(target), "kind": kind, "origins": origins or []}
 
 
 def package(name, declared=None, origins=None):
@@ -295,6 +295,15 @@ class BuilderTests(unittest.TestCase):
         self.attrs["links"] = [link("/usr/share/zoneinfo", FIXTURES / "a/share/zoneinfo")]
         self.attrs["tmpfiles"] = ["L /etc/localtime - - - - /usr/share/zoneinfo/Europe/Berln"]
         self.fails("/etc/localtime", "/usr/share/zoneinfo/Europe/Berln", "does not exist")
+
+    def test_a_dangling_dlopen_link_names_its_origin_and_the_fix(self):
+        self.attrs["links"] = [link("/usr/lib/libx.so", "missing", "dlopen", ["/services/x"])]
+        self.fails("dlopen link /usr/lib/libx.so -> missing does not exist from /services/x",
+                   "the package that holds the target must be in the closure")
+
+    def test_a_top_level_directory_outside_the_allowed_ones_lists_them(self):
+        self.attrs["files"] = {"/usr/etc/x": file()}
+        self.fails("files outside allowed dirs: etc; the top-level directories of /usr are bin, lib, share, nix")
 
     def test_initrd_without_system_metadata_or_sbom_succeeds(self):
         self.succeeds()

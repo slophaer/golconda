@@ -1,21 +1,12 @@
-# keys.nu: throwaway key pairs for the test images (lib/image/default.nix throwawayKeys).
-#
-# Output: secureboot/db.{key,crt} (it signs the UKI, the verity root hash and the loader),
-# secureboot/PK.{key,crt} and secureboot/KEK.{key,crt} (they sign the variables systemd-boot
-# enrols from the ESP), secureboot/auth/{microsoft,golconda}/*.auth (those variables, as
-# scripts/make-keys writes them: lib/image/enrol.nu, with packages/secureboot-objects; the time in
-# them is 2026-10-31, the test images' version),
-# pcr/pcr.key with pcr/pcr.pub (the public key ukify embeds as .pcrpkey), and
-# release/index.key with release/index.pgp: the OpenPGP key that signs the release's SHA256SUMS
-# (armored secret key; binary public key, the image's keyring).
+# keys.nu: throwaway key pairs for the test images (lib/image/default.nix throwawayKeys), in the
+# layout of scripts/make-keys (docs/reference/release.md), with the enrolment files of lib/image/enrol.nu.
 #
 # A set with `reusePkKek` (another set's `out`) is a db rotation: it takes that set's PK.crt and
 # KEK.crt, has no PK or KEK key, and its .auth files are signed by that set's keys.
 #
-# Output `public`: the public halves alone, in the same layout (secureboot/db.crt, PK.crt,
-# KEK.crt, secureboot/auth/, pcr/pcr.pub, release/index.pgp). The unsigned chain reads only db.crt, pcr.pub and
-# index.pgp (lib/image/chain.nix publicKeys), so its closure holds no private key; the boot
-# test reads PK.crt and KEK.crt (--auto-enrol); the signer reads `out`.
+# Output `public` holds the public halves alone, so the closure of the unsigned chain has no
+# private key (lib/image/chain.nix publicKeys). The boot test reads its PK.crt and KEK.crt
+# (--auto-enrol); the signer reads `out`.
 
 use common.nu *
 use enrol.nu
