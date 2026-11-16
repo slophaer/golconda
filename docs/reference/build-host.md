@@ -117,26 +117,8 @@ signs it on the release host, where `golconda release build` runs
 
 repkgs' compile cache reaches the sandbox through `extra-sandbox-paths` in the daemon's `nix.conf`:
 when `/nix/var/nix/jigd/socket` is in it, jig asks jigd before it compiles (repkgs
-`docs/design.md`). It is optional and does not change any output.
-
-## Keeping rebuilds down
-
-Several people or agents often build on one host at once. These habits keep them from rebuilding the
-same things:
-
-- **One repkgs pin.** Build every branch against the pin on `main`. Repin once, on `main`, and
-  rebase the other branches onto it. A branch on another pin rebuilds the whole package set, the
-  toolchain included.
-- **Builder changes small first.** Every repkgs package depends on the whole `builder/` folder, so a
-  builder change rebuilds the toolchain. Try it on the matching `tests/builder` case, then on one
-  package, and build the whole set once at the end.
-- **Room for the compile cache.** jigd keeps `JIGD_SIZE` GiB of objects (default 50) and reads it
-  only at start. When it is full it evicts the objects other builds still need; the shared build
-  host gives it 200.
-
-The maintainers' notes on build caching, with what triggers rebuilds and the ideas not yet done, are
-outside this repository, in the knowledge base on the build host:
-`~/kb/projects/golconda/build-caching.md`.
+`docs/design.md`). It is optional. The cache is a trust root: an object that it returns goes into
+the output, so whoever can write to the cache can change an output.
 
 ## Store paths
 

@@ -3,15 +3,14 @@
 This page is the procedure for one Golconda machine on a Hetzner Cloud server: build an image for a
 host without Secure Boot, put the machine's host name and ssh key on its ESP, write the disk from
 the rescue system, and update it. Every step ran on a Hetzner Cloud `cpx12` in `fsn1` on 2026-11-09
-([What is proven: On Hetzner Cloud](../proven.md#on-hetzner-cloud)). What that run found missing is
-fixed since ([What the first run found](#what-the-first-run-found)), and the metadata route of step
+([What is proven: On Hetzner Cloud](../proven.md#on-hetzner-cloud)), and the metadata route of step
 4 ran on Hetzner too.
 
 What Hetzner Cloud gives and lacks, and what Golconda does about it:
 
 | Hetzner Cloud                                    | Golconda                                                                                                        |
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| UEFI on the CPX, CCX and CAX types (CX: BIOS)    | UEFI only; take a UEFI type                                                                                     |
+| UEFI on the CPX and CCX types (CX: BIOS)         | UEFI only; take a UEFI type                                                                                     |
 | no Secure Boot                                   | `/system.secureBoot = false`: the kernel carries the `db` certificate                                           |
 | no TPM                                           | vars seal to the host key alone ([Trust](../design/trust.md#secrets-and-vars))                                  |
 | user data and ssh keys for cloud-init (metadata) | no cloud-init: the host name and ssh key are credentials on the ESP, or come from the metadata with `["/imds"]` |
@@ -109,9 +108,8 @@ IP=$(hcloud server ip web1)
 The Debian image only gets the server created; the disk is overwritten next. The disk must be larger
 than `disk.raw`: 22.3 GB with the two 10 GiB `/usr` slots, so a type with a 20 GB disk (`cpx02`) is
 too small. `hcloud server-type list` shows the types, and `hcloud server-type describe <type>` shows
-where each can still be ordered: on 2026-11-09 `cpx11` and `cpx21` could no longer be ordered, and
-`cpx12` (2 vCPU, 2 GB, 40 GB) was the cheapest CPX type with room. In the rescue system, check that
-the server boots by UEFI before writing:
+where each can be ordered. `cpx12` has 2 vCPU, 2 GB and 40 GB. In the rescue system, check that the
+server boots by UEFI before writing:
 
 ```sh
 ssh root@$IP 'test -d /sys/firmware/efi && echo UEFI || echo BIOS'
@@ -156,22 +154,6 @@ update at once: `ssh root@$IP systemctl start --wait systemd-sysupdate-update.se
 A run started a few seconds after the publish can still read the old index through the CDN and
 report `No update needed`; start it again. `golconda release publish --unrecorded` still needs a git
 repository: pass `--repo` with one.
-
-## What the first run found
-
-The guide's first run (2026-11-09) found three gaps, fixed since:
-
-- **IPv6.** Hetzner sends no router advertisements and runs no DHCPv6: the machine had only its
-  link-local address, and a `network.network.*` credential from the user data arrived after
-  `systemd-network-generator` ran. With `["/imds"]` the generator runs again after the import, so
-  the user data's file gives the address in the first boot.
-- **`/imds` on Hetzner.** Only the host name arrived: systemd's `40-imds.hwdb` named paths that the
-  real endpoint answers with 404, and the import unit failed. `packages/systemd` now patches the
-  entry, reads the ssh keys from Hetzner's JSON array, and `/imds` keeps the endpoint locked on
-  `lo`.
-- **The clock at first boot.** systemd's built-in epoch was the build's `SOURCE_DATE_EPOCH`
-  (1980-01-01), and PID 1 reset the clock to it; until timesyncd synced, DNSSEC and HTTPS failed.
-  `time-epoch` is now the pin's date.
 
 ## Not proven
 

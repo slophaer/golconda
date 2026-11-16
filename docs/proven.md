@@ -171,18 +171,6 @@ hand, not boot-test markers:
 | without `/imds`, no IMDS unit runs, though DMI names Hetzner                                                           | the four IMDS units `inactive`                                                                                                   |
 | with `/imds`, the host name comes from the metadata                                                                    | `firstboot.hostname` imported; `hostname` is the server's name, and the ESP had no credential                                    |
 
-Found there, and fixed since in this branch line (details in
-[Hetzner Cloud: What the guide's run found](reference/hetzner-cloud.md#what-the-first-run-found)):
-
-- with `/imds`, the ssh key and the user data did not arrive: `40-imds.hwdb` named `/public-keys/0`
-  and `/userdata` under `/hetzner/v1/metadata`, which answer 404. Now systemd's hwdb is patched for
-  Hetzner's paths and reads the keys from the JSON array (`ssh-key-json`); see
-  [`/imds` on Hetzner Cloud](#imds-on-hetzner-cloud);
-- IPv6 had only the link-local address: the user data's `network.network.*` credential arrived after
-  `systemd-network-generator` ran. Now `/imds` runs the generator again after the import;
-- the clock: each first boot started at 1980-01-01, the build epoch, until timesyncd synced. Now
-  systemd's `time-epoch` is the pin's date (`clock-not-reset`).
-
 ## `/imds` on Hetzner Cloud
 
 Three runs by hand on a `cpx12` in `fsn1` (UEFI, no Secure Boot, no TPM), each with an image written
