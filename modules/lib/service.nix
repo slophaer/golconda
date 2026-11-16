@@ -165,8 +165,8 @@ let
       # stray directive cannot enter the [Unit] section.
       after = optionalAttr (listOf unitName);
       wants = optionalAttr (listOf unitName);
-      # targets that pull in this unit; default [ "multi-user.target" ]
-      # generates static .wants symlinks; [Install] section kept for admin overrides
+      # targets that pull in this unit; default [ "multi-user.target" ]: static .wants links in
+      # /usr, and [Install] WantedBy=. To enable by hand, ln -s (docs/design/updates.md)
       wantedBy = optionalAttr (listOf targetName);
     }).override
       {

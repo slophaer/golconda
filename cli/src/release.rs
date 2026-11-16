@@ -21,12 +21,12 @@ use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tempfile::{Builder, TempDir, TempPath};
 
-/// The last revision whose timestamp is still inside its date (lib/version.nix).
+/// The last revision whose timestamp is still inside its date (`toEpoch`, lib/version.nix).
 const MAX_REVISION: u32 = 86_399;
 
-/// A release version, `YYYYMMDD.N`, with lib/version.nix's grammar: a real date from 1970 on,
-/// and a revision from 0 to 86399 without a leading zero. Versions order as sysupdate orders
-/// them.
+/// A release version, `YYYYMMDD.N`, with the grammar of `grammar.version`
+/// (modules/lib/grammar.nix): a real date from 1970 on, and a revision from 0 to 86399 without
+/// a leading zero. Versions order as sysupdate orders them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Version {
     pub year: u32,
@@ -1340,7 +1340,7 @@ mod tests {
     }
 
     #[test]
-    fn versions_follow_the_grammar_of_lib_version_nix() {
+    fn versions_follow_the_version_grammar() {
         for good in ["19700101.0", "20240229.1", "20261031.86399", "20261231.10"] {
             assert_eq!(v(good).to_string(), good);
         }
