@@ -1,18 +1,6 @@
-# Extract #! doc comments from Nix module files.
-#
-# A module's documentation is written at the top of its Nix file using lines
-# that start with `#! ` (hash-bang-space), mirroring Rust's `//!` module docs.
-# The comment ends at the first line that does not start with `#!`.
-#
-# Example:
-#   #! The composer: takes fragments, returns one system.
-#   #!
-#   #! Union with an error on a duplicate key; there is no priority system.
-#   { types, ... }:
-#
-# Usage:
-#   let docComments = import ./doc-comments.nix { };
-#   in docComments.moduleDoc ./path/to/module.nix
+# Extract the #! doc comment of a Nix module file: `moduleDoc path` returns the leading `#! `
+# lines as Markdown (the text of the module's page), or null when there are none. The comment ends
+# at the first line that does not start with `#!`. CONTRIBUTING.md: the rule for a header.
 _:
 let
   inherit (builtins)
@@ -26,7 +14,6 @@ let
     split
     ;
 
-  # Split a string into lines, keeping empty lines.
   lines =
     s:
     let
@@ -34,7 +21,6 @@ let
     in
     filter isString parts;
 
-  # Check if a line starts with "#! " or is exactly "#!" (empty doc line).
   isDocComment =
     line:
     let
@@ -43,7 +29,6 @@ let
     in
     m1 != null || m2 != null;
 
-  # Extract the content from a doc comment line (without "#! " or "#!").
   docContent =
     line:
     let
@@ -57,12 +42,10 @@ let
     else
       null;
 
-  # Take lines from the start while they are doc comments.
   takeDocLines =
     allLines:
     let
       len = length allLines;
-      # Find the index of the first non-doc-comment line
       findEnd =
         i:
         if i >= len then

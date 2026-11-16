@@ -1,43 +1,14 @@
-# Load a TOML configuration document into adios tree options.
-#
-# A TOML document of the form:
-#   ["/system"]
-#   name = "myhost"
-#   version = "20261031.1"
-#
-#   ["/services/sshd"]
-#   port = 22
-#   authorizedKeys = ["ssh-ed25519 AAAA..."]
-#
-# becomes:
-#   { options."/system" = { name = "myhost"; version = "20261031.1"; };
-#     options."/services/sshd" = { port = 22; authorizedKeys = [...]; }; }
-#
-# The loader's contract: a document in, checked options out. Table names are
-# adios absolute paths (starting with /); an unknown table throws with the
-# list of valid module paths. An option name must be one the module declares:
-# adios applies only declared options and ignores the rest, so a misspelt
-# name would silently keep the default; it throws with the valid names.
-# `/pkgs` is never a table: the repkgs set is not data. Nor is `/system.components`:
-# mkSystem selects the components (lib/components.nix).
-#
-# The loader does not apply the options. lib/system.nix (mkSystem) is the one
-# entry point that does: it binds /pkgs, runs `checkOptions` again over an attrset
-# config, resolves package names, and composes.
-#
-# Usage:
-#   let cfg = import ./lib/config.nix { tree = f.modules { }; };
-#   in cfg.loadConfig ./config.toml
-#
-# The one table that is not a module, `[golconda]`, says where the downstream repository's
-# parts are, relative to the document: `modules` (default "modules", mounted under /local) and
-# `packages` (default "packages", added to the target set). A default directory that does not
-# exist means none; a path the table names must exist. A downstream package may take the name
-# of a Golconda or repkgs package only when `replaces` lists that name (`replacementError`).
-# `readProject path` reads it without the tree: mkSystem needs it to build the tree.
-#
-# `tree` is the evaluated tree (f.modules { }), for path and option validation. `readProject`
-# does not use it.
+# The TOML loader: a document in, checked options out. A table `["/services/sshd"]` becomes
+# `options."/services/sshd"` (docs/reference/config.md). An unknown table throws with the valid
+# module paths, and an option name must be one the module declares: adios ignores the rest, so a
+# misspelt name would silently keep the default. `/pkgs` is never a table, nor is
+# `/system.components` (lib/components.nix selects them).
+# The loader does not apply the options: lib/system.nix (mkSystem) binds /pkgs, runs
+# `checkOptions` again over an attrset config, resolves package names and composes.
+# `[golconda]` (`modules`, `packages`, `replaces`) says where the downstream repository's parts
+# are, relative to the document (docs/features/extending.md). `readProject path` reads it
+# without the tree; a downstream package takes the name of a Golconda or repkgs package only when
+# `replaces` lists it (`replacementError`). `tree` is the evaluated tree, for validation.
 { tree }:
 let
   inherit (builtins)

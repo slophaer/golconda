@@ -1,47 +1,15 @@
 # lib/system.nix: the entry point for one Golconda system.
 #
-# mkSystem { config; platform?; sources?; extraFragments?; } → {
-#   composed;   # the composer output (units, files, links, packages, …)
-#   usrTree;    # the /usr derivation
-#   sbom;       # the SBOM derivation (its output has sbom.json); .bom is the CycloneDX document
-#   config;     # config.json: module path -> option -> { value?; explicit; }, for every
-#               # included component and /system
-#   inventory;  # module path -> { role; inputs; included?; reason?; } (lib/components.nix)
-#   moduleDocs; # module path -> its #! doc text or null, downstream modules included
-#   schema;     # the JSON Schema of this tree, downstream modules included (/usr/lib/golconda/schema.json)
-#   catalogue;  # every target package: name -> { version; purl?; cpe?; origin; replaces?; } (nix/packages.nix)
-#   fragments;  # the names of the build's own fragments (extraFragments)
-#   packages;   # the downstream packages: name -> { replaces; } ("golconda", "repkgs" or null)
-#               # modules.json is { modules = inventory; fragments; packages; }
-#   artifacts;  # the files mkSystem adds to /usr/lib/golconda/
-#   platform;   # the elaborated platform record
-#   version;    # YYYYMMDD.N from /system
-#   name;       # image id from /system
-#   pkgs;       # the packages for this platform
-# }
-#
-# `config` is a path to a TOML file or an attrset already loaded.
-# `platform` defaults to the build host's (builtins.currentSystem).
-# `sources` defaults to ../pins (pins/default.nix).
-# `verityCert` is the certificate that signs /usr (lib.mkImage passes the db certificate of
-# its publicKeys). The kernel carries it in its built-in keyring, the only keyring dm-verity and
-# IPE trust; `/system.secureBoot = false` requires it (docs/design/trust.md).
-#
-# Usage:
-#   let sys = import ./lib/system.nix { config = ./server.toml; };
-#   in sys.usrTree
-#
-# The document is the whole configuration: no Nix hook. A package option takes a package
-# name, resolved in the target set. A downstream repository adds modules and packages: the
-# document's optional `[golconda]` table names their directories (default `modules/` and
-# `packages/` beside the document; lib/config.nix readProject). Its modules are mounted
-# under /local; its packages join the target set after Golconda's own. One that takes a
-# Golconda or repkgs name replaces that package only when [golconda] replaces lists the name;
-# modules.json records each replacement.
-#
-# `extraFragments` are the build's own fragments (lib/image: the loader, the update
-# index, the initrd's tools), each with a `name`; they are not configuration, and
-# modules.json lists them beside the modules.
+# mkSystem { config; platform?; system?; sources?; extraFragments?; verityCert?; } -> composed,
+#   usrTree, sbom, config, inventory, moduleDocs, schema, catalogue, fragments, packages,
+#   artifacts, platform, version, name and pkgs (the attributes below).
+# `config` is a path to a TOML file or an attrset of options: the document is the whole
+#   configuration, with no Nix hook. `platform` defaults to `system` (builtins.currentSystem).
+# `verityCert` is the certificate that signs /usr (lib.mkImage passes the db certificate of its
+#   publicKeys). The kernel carries it in its built-in keyring, the only keyring dm-verity and IPE
+#   trust; `/system.secureBoot = false` requires it (docs/design/trust.md).
+# `extraFragments` are the build's own fragments (lib/image), each with a `name`; modules.json lists
+#   them beside the modules. The `[golconda]` table: docs/features/extending.md.
 {
   config,
   platform ? system,
@@ -165,8 +133,6 @@ let
     fr.name or (throw "golconda: mkSystem extraFragments: every fragment needs a `name`, its origin")
   ) extraFragments;
 
-  # The system options from the config (name, version, fragments, updateSource).
-
   # The composed system: /system with the selected components and the listed fragments.
   composedRaw = componentsLib.compose {
     modules = tree;
@@ -177,7 +143,6 @@ let
   # Reading the name forces the option types, including the image-id and transfer-path rules.
   composed = builtins.seq composedRaw.name composedRaw;
 
-  # The schema for this tree.
   schemaLib = import ./schema.nix { };
   # Golconda's module files, and the downstream repository's under /local, each relative to
   # its own repository (declaredIn)

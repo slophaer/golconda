@@ -1,33 +1,14 @@
 # lib/components.nix: which modules a system includes, and why. The one place that selects them.
 #
 # Every module of the tree has one role:
-#   component  returns a fragment for the image. A built-in component is in every system;
-#              its table only configures it. An optional component is in a system when the
-#              configuration has its table; an empty table selects it with its defaults.
+#   component  returns a fragment for the image. A built-in component is in every system; its
+#              table only configures it. An optional one is in a system when the configuration
+#              has its table; an empty table selects it with its defaults.
 #   provider   gives data to the modules that declare it as an input; no fragment (/pkgs)
 #   composer   /system: unions the fragments of the selected components
 #   group      holds child modules and has no impl (/services)
-#
-# An input (`inputs.<x>.path`) says whose result a module reads. It never selects a
-# component: reading /pkgs installs nothing.
-#
-#   roleOf path module               the module's role
-#   builtins                         the built-in components, in composition order
-#   internalOptions                  module path -> [ option ]: options mkSystem sets, never a
-#                                    document; the schema leaves them out, the loader refuses them
-#   select options                   [ path ]: the built-ins, then the optional components
-#                                    with a table, in name order
-#   inventory tree options           { path = { role; inputs; included?; reason?; }; } for every
-#                                    module; `included` and `reason` (builtin | config | null)
-#                                    only on components. `tree` is the loaded tree (f.modules { }).
-#   compose { modules; options; extraFragments ? [ ]; }
-#                                    the composer output of `options`: `modules` is the tree
-#                                    function (f.modules), `extraFragments` the build's own named
-#                                    fragments, which are not modules (lib/image/index.nix). Each selected component's
-#                                    fragment carries its module path as `name`, its origin.
-#                                    A component enters by its table only: /system has no
-#                                    other list of fragments. A downstream repository adds
-#                                    a module (under /local), never a bare fragment.
+# An input (`inputs.<x>.path`) never selects a component: reading /pkgs installs nothing. A
+# downstream repository adds a module (under /local), never a bare fragment.
 _:
 let
   on = import ../modules/lib/on.nix;
