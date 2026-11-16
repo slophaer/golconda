@@ -211,8 +211,9 @@ in
   # clippy over the command line, tests included, as a repkgs cargo build (cli/checks)
   cli-clippy = rp.golconda-cli-clippy;
 
-  # nixpkgs is an input of nothing: no pin fetches it, and no Nix file or script names it as a
-  # search path (angle brackets, -I, NIX_PATH) or as the old dev pin (docs/design/principles.md)
+  # nixpkgs is an input of nothing: no pin and no tracked file but a doc fetches it, and no Nix
+  # file or script names it as a search path (angle brackets, -I, NIX_PATH) or as the old dev pin
+  # (docs/design/principles.md)
   boundary = run "boundary" [ ] ''
     cd ${src}
     # in pieces, so that this file does not match
@@ -226,9 +227,10 @@ in
       echo "nixpkgs referenced by a script (docs/design/principles.md)" >&2
       exit 1
     fi
-    # a pin of nixpkgs: by its name, or by its URL (a channel tarball, the GitHub repository)
-    if ls -d pins/*$n* 2>/dev/null || grep -rn -i "releases\.nixos\.org/$n\|github\.com/nixos/$n\|channels\.nixos\.org" pins; then
-      echo "nixpkgs pinned in pins/ (docs/design/principles.md)" >&2
+    # a pin of nixpkgs by its name; a fetch by its URL (a channel tarball, the GitHub repository,
+    # a flake reference) in any file but a doc
+    if ls -d pins/*$n* 2>/dev/null || grep -rn -i --exclude='*.md' "releases\.nixos\.org/$n\|github\.com/nixos/$n\|github:nixos/$n\|channels\.nixos\.org" .; then
+      echo "nixpkgs pinned or fetched (docs/design/principles.md)" >&2
       exit 1
     fi
     touch $out
