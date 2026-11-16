@@ -1,6 +1,8 @@
 Token.cpp calls time(), gmtime() and strftime() and includes <ctime> only
 through other headers, which libc++ does not do: include it.
 
+Upstream: not sent: a fix for a libc++ build, not offered yet
+
 --- a/src/lib/slot_mgr/Token.cpp
 +++ b/src/lib/slot_mgr/Token.cpp
 @@ -32,6 +32,7 @@

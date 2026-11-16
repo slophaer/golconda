@@ -1,3 +1,9 @@
+Install the driver bundle under this package's lib/pcsc/drivers, not
+into the usbdropdir of pcsc-lite's .pc file: that is another package.
+pcscd finds the bundle by PCSCLITE_HP_DROPDIR.
+
+Upstream: not sent: only a package apart from pcsc-lite's prefix needs it
+
 --- a/meson.build	2026-09-20 13:05:37.000000000 +0000
 +++ b/meson.build	2026-11-13 10:48:17.120212477 +0000
 @@ -66,6 +66,8 @@

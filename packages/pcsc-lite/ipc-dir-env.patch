@@ -1,3 +1,9 @@
+Let PCSCLITE_IPC_DIR name the directory of pcscd's socket and pid file
+at run time, in place of the compiled-in /run/pcscd, so that a daemon
+that is not root's can run.
+
+Upstream: not sent: only the package test runs pcscd that way
+
 --- a/src/pcscd.h.in
 +++ b/src/pcscd.h.in
 @@ -36,6 +36,9 @@

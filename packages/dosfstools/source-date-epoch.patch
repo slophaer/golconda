@@ -3,6 +3,7 @@ last release): mkfs.fat takes its clock from SOURCE_DATE_EPOCH, so the ESP that 
 makes for disk.raw is the same bytes on every run (lib/image/disk.nu).
 
 Origin: upstream
+Upstream: https://github.com/dosfstools/dosfstools/commit/8da7bc93315cb0c32ad868f17808468b81fa76ec
 
 From 8da7bc93315cb0c32ad868f17808468b81fa76ec Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Bj=C3=B8rn=20Forsman?= <bjorn.forsman@gmail.com>

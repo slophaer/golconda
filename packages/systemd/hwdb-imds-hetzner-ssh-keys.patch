@@ -9,6 +9,7 @@ IMDS_KEY_SSH_KEY_JSON= for it.
 
 See https://docs.hetzner.cloud/reference/cloud#server-metadata
 
+Upstream: not sent: ready as a systemd pull request, not opened yet
 Assisted-by: Claude Code (claude-opus-5-5)
 ---
  hwdb.d/40-imds.hwdb | 1 +

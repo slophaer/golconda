@@ -3,7 +3,7 @@ Description: relocatable paths: /etc for the configuration, the rest relative
  from the store path configure would compile in. compile_et and mk_cmds find
  their share/ files next to themselves, and e2scrub runs e2fsck, tune2fs and
  e2scrub from PATH: the package is relocatable and has no prefix.
-Forwarded: not-needed
+Upstream: not sent: only a package with no prefix needs it
 
 --- a/lib/dirpaths.h.in
 +++ b/lib/dirpaths.h.in

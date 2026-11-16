@@ -13,6 +13,7 @@ Move the data URL one level up, prefix the metadata keys with
 /metadata, and drop IMDS_KEY_SSH_KEY, as there is no key that returns a
 single plain SSH key.
 
+Upstream: not sent: ready as a systemd pull request, not opened yet
 Assisted-by: Claude Code (claude-opus-5-5)
 ---
  hwdb.d/40-imds.hwdb | 11 +++++------

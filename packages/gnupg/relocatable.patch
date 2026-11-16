@@ -1,6 +1,8 @@
 Find gpg-agent and the helpers next to the running executable, not by
 compiled-in paths, so the package can move.
 
+Upstream: not sent: only a package that moves needs it
+
 --- a/common/homedir.c
 +++ b/common/homedir.c
 @@ -620,10 +620,27 @@

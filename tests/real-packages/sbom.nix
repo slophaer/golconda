@@ -243,19 +243,50 @@ in
       }
     ]
   ))
-  (check "sbom: each Golconda patch says why in its header" (
+  (check "sbom: each Golconda patch says why and its upstream state in its header" (
     let
-      patched = [
-        "dosfstools"
-        "gnupg"
-        "libgpg-error"
-        "libtpms"
-        "p11-kit"
-        "systemd"
-      ];
-      patches = builtins.concatMap (n: patchesOf (ownComponent n)) patched;
+      inherit (builtins)
+        attrNames
+        filter
+        isString
+        match
+        readDir
+        readFile
+        split
+        ;
+      dir = ../../packages;
+      packages = filter (n: (readDir dir).${n} == "directory") (attrNames (readDir dir));
+      patchFiles = builtins.concatMap (
+        n:
+        map (f: dir + "/${n}/${f}") (
+          filter (f: match ".*\\.patch" f != null) (attrNames (readDir (dir + "/${n}")))
+        )
+      ) packages;
+      # the lines before the diff
+      headerOf =
+        file:
+        let
+          go =
+            ls:
+            if ls == [ ] || match "(--- |diff ).*" (builtins.head ls) != null then
+              [ ]
+            else
+              [ (builtins.head ls) ] ++ go (builtins.tail ls);
+        in
+        go (filter isString (split "\n" (readFile file)));
+      # a reason, and exactly one Upstream: line (a URL, or "not sent: <reason>")
+      says =
+        file:
+        let
+          header = headerOf file;
+        in
+        builtins.any (l: l != "" && match "Upstream: .*" l == null) header
+        && builtins.length (filter (l: match "Upstream: .+" l != null) header) == 1;
     in
-    builtins.length patches == 8 && builtins.all (p: p ? resolves) patches
+    patchFiles != [ ]
+    && builtins.all (
+      f: says f || throw "golconda real-package tests: ${toString f} has no reason or no Upstream: line"
+    ) patchFiles
   ))
   (check "sbom: a patch marked Origin: upstream is a backport, linked to its upstream commit" (
     let
@@ -272,6 +303,7 @@ in
           type = "enhancement";
           name = "Honor the SOURCE_DATE_EPOCH variable";
           references = [
+            "https://github.com/dosfstools/dosfstools/commit/8da7bc93315cb0c32ad868f17808468b81fa76ec"
             "https://reproducible-builds.org/specs/source-date-epoch/"
             "https://github.com/dosfstools/dosfstools/pull/106"
           ];

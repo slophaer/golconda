@@ -1,6 +1,8 @@
 gpg-error --desc: read errorref.txt next to the running tool, not
 under the compiled-in prefix, so the package can move.
 
+Upstream: not sent: only a package that moves needs it
+
 --- a/src/gpg-error.c
 +++ b/src/gpg-error.c
 @@ -27,6 +27,7 @@

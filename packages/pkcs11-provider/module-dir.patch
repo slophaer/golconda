@@ -2,6 +2,8 @@ Install the provider into the package, lib/ossl-modules, not into the
 modules directory of the libcrypto it builds against: that is another
 package. OPENSSL_MODULES names the directory at run time.
 
+Upstream: not sent: only a package apart from its libcrypto needs it
+
 --- a/meson.build
 +++ b/meson.build
 @@ -49,7 +49,7 @@
