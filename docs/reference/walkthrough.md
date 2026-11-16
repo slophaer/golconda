@@ -1,18 +1,9 @@
 # From server.toml to a booted machine
 
 One configuration, followed from the document to an ssh login and an update. Every step names a
-command. Output that appears below came from a real run, and the text says which run. Where no run
-exists, the page says "not run".
-
-Three kinds of run feed this page:
-
-- **eval**: `nix-instantiate --eval` on the expression shown, 2026-11-01. `iets eval` takes the same
-  expression. Evaluating `composed.links` needs iets (it uses dynamic derivations), so no link is
-  quoted here.
-- **boot**: `scripts/boot-test` on the host that builds the images, 2026-11-01, harness at commit
-  `dbafac0`, image `image-smoke-test` (the example plus a test login key and an update source).
-- **boot, TPM**: the same harness with `--secure-boot --ssh-test --tpm`, 2026-10-31. The sealing
-  checks in the script have not changed since.
+command. Output marked *(eval)* is what the expression shown prints. Output marked *(boot)* is what
+`scripts/boot-test` prints for `image-smoke-test` (the example plus a test login key and an update
+source).
 
 ## 1. The document
 
@@ -165,7 +156,7 @@ PASS: multi-user-reached
 PASS: sshd-active
 PASS: var-sshd-hostkey
 PASS: boot-complete
-PASS: no-firstboot-prompt (firstboot ran without prompting)
+PASS: no-firstboot-prompt
 ```
 
 What happens, in order, and which marker or file shows it:
@@ -201,16 +192,9 @@ What happens, in order, and which marker or file shows it:
    `server_20261031.1.efi`). Markers: `sshd-active`, `boot-complete`.
 
 `--ssh-test` adds the checks that need a login (step 7). With `--ssh-test --tpm` the harness starts
-swtpm, checks the sealing of the host key and reboots the guest. Output *(boot, TPM)*:
-
-```text
-sshd-hostkey.key bound to: hashed=7 signed=11
-PASS: hostkey-sealed-with-tpm2 (and the signed PCR 11 policy)
-...
-PASS: ssh-after-reboot (boot id 51d88e2a-0ef2-45ca-8e07-2e714be0c46a -> 62599ab5-261d-46f0-b24c-050350876c70)
-PASS: hostkey-unchanged (after a reboot: the first boot's host key, credential not re-sealed, sshd active)
-PASS: no-failed-units-after-reboot
-```
+swtpm, checks the sealing of the host key (`hostkey-sealed-with-tpm2`), reboots the guest, and
+checks that the same host key unseals (`ssh-after-reboot`, `hostkey-unchanged`,
+`no-failed-units-after-reboot`).
 
 The ESP is at `/boot` in the guest, since the image has no XBOOTLDR partition
 ([Partitions and paths](layout.md#paths)).
@@ -229,9 +213,8 @@ scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-te
 
 The harness forwards a host port (`BOOT_TEST_SSH_PORT`, or the first free one from 10022 up) to the
 guest's port 22 and logs in as root with
-`ssh -i tests/fixtures/snakeoil-ssh -p 10022 root@localhost`. In the run *(boot)*, `--ssh-test`
-printed `PASS: ssh-login`, `PASS: no-failed-units` and `PASS: varlinkctl-list-interfaces`, and the
-27 ssh checks of that run all passed.
+`ssh -i tests/fixtures/snakeoil-ssh -p 10022 root@localhost`. `--ssh-test` checks, among others,
+`ssh-login`, `no-failed-units` and `varlinkctl-list-interfaces`.
 
 Certificate login: uncomment the three lines at the end of `examples/server.toml`. The evaluation
 *(eval, with an `admin@example.com` principal)* adds `/usr/lib/sshd/ca.pub` and
@@ -265,20 +248,8 @@ slots and the new UKI to the ESP, and `systemd-sysupdate-reboot.timer` reboots i
 
 The harness runs this whole update. `scripts/boot-test … --next DIR` serves the next release over
 HTTP at the image's `updateSource`, lets the guest install it, moves the reboot window to every 10
-s, waits for the guest to reboot itself, and checks the result. Output *(boot)*:
-
-```text
-PASS: release-index (golconda release check: 4 lines in order, digests, UUIDs, signature)
-Successfully installed '/var/tmp/next/boot-test_20261031.2.efi' (regular-file) as '/boot/EFI/Linux/boot-test_20261031.2+3-0.efi' (regular-file).
-* Successfully installed update '20261031.2'.
-PASS: sysupdate-installed (20261031.2)
-PASS: boots-next (20261031.1 -> 20261031.2)
-PASS: etc-links-stable (372 links, 0 naming a store path, 0 dangling)
-PASS: no-failed-units-after-update
-```
-
-That run predates `00-golconda.preset`. Since then the first boot writes no link under
-`/etc/systemd/system`, and the harness checks `units-composed-only-after-update` in place of
-`etc-links-stable`.
+s, waits for the guest to reboot itself, and checks the result: `release-index`,
+`sysupdate-installed`, `boots-next`, `units-composed-only-after-update` and
+`no-failed-units-after-update`.
 
 The limits of this test are on [Image artifacts: the update test](image.md#the-update-test).

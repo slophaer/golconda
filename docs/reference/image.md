@@ -494,8 +494,8 @@ nothing else. QEMU runs with `-no-reboot` unless `--tpm`, `--next`, `--factory-r
 ### The markers
 
 Each check prints `PASS: <marker>` or `FAIL: <marker>`. The script and its parts
-(`scripts/boot-test-*.sh`, listed in the header of `scripts/boot-test`) are the source of truth;
-this list was made from it at commit `dbafac0`. To list the names the script prints:
+(`scripts/boot-test-*.sh`, listed in the header of `scripts/boot-test`) are the source of truth. To
+list the names the script prints:
 
 ```sh
 grep -ho 'verdict "[a-z0-9-]*\|PASS: [a-z0-9-]*' scripts/boot-test scripts/boot-test-*.sh | sed 's/verdict "//;s/PASS: //' | sort -u

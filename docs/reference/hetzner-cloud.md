@@ -2,7 +2,7 @@
 
 This page is the procedure for one Golconda machine on a Hetzner Cloud server: build an image for a
 host without Secure Boot, put the machine's host name and ssh key on its ESP, write the disk from
-the rescue system, and update it. Every step ran on a Hetzner Cloud `cpx12` in `fsn1` on 2026-11-09
+the rescue system, and update it. Every step ran on a Hetzner Cloud `cpx12` in `fsn1`
 ([What is proven: On Hetzner Cloud](../proven.md#on-hetzner-cloud)), and the metadata route of step
 4 ran on Hetzner too.
 
@@ -61,8 +61,7 @@ this host with the private keys where they lie
 The kernel is built again for this image: its built-in keyring holds `db.crt`. Its config is the
 same for every key set, so with jig's compile cache (`jigd`) after one such build, only the
 certificate object and the compressed kernel's wrapper compile again, and the kernel relinks. The
-output holds `disk.raw` and `release/`. On 2026-11-09 the first build with a new key set took 10
-minutes, and each next release about 4.
+output holds `disk.raw` and `release/`.
 
 ## 4. The machine's credentials
 
@@ -122,16 +121,15 @@ the disk:
 gzip -1 -c web1.raw | ssh root@$IP 'gunzip | dd of=/dev/sda bs=4M conv=fsync && reboot'
 ```
 
-The write took 83 seconds. The rescue system's `reboot` prints
-`Failed to connect to system scope bus via local transport` and reboots all the same.
+The rescue system's `reboot` prints `Failed to connect to system scope bus via local transport` and
+reboots all the same.
 
 ## 6. First boot
 
 Watch it in the Cloud Console (or `hcloud server request-console web1`): the screen shows the
 kernel's messages and the journal. On the first boot repart makes the root partition in the rest of
 the disk and moves the GPT's backup header to its end, firstboot runs without a prompt, and the
-health units bless the entry ([Boot: First boot](../design/boot.md#first-boot)). ssh answered within
-20 seconds of the write.
+health units bless the entry ([Boot: First boot](../design/boot.md#first-boot)).
 
 ```sh
 ssh-keygen -R $IP            # the rescue system's host key

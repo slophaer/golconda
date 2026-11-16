@@ -116,12 +116,9 @@ nix build                       # the /usr tree of server.toml
 nix flake update golconda       # move to Golconda's newest commit
 ```
 
-A run on 2026-11-10 locked the template's input at `ee07323` and built its `image` output (the
-`/usr` tree and the chain, signed in the build with the `keys` argument of that commit, which is now
-gone) on this host's Nix fork. `nix flake update golconda` then moved the lock to `2393f72`, the
-newest `main`, and the flake evaluated again. `tests/flake-template/run.sh` repeats the lock and the
-update without the build ([How this is tested](#how-this-is-tested)). The `image` output is the
-unsigned output. `golconda release build` does not read `flake.lock`: it takes Golconda from
+`tests/flake-template/run.sh` locks the template's input, updates it and evaluates the flake
+([How this is tested](#how-this-is-tested)). The `image` output is the unsigned output.
+`golconda release build` does not read `flake.lock`: it takes Golconda from
 `pins/golconda/sources.toml` beside the document, so a flake repository that makes releases with it
 also keeps that pin ([uptrack](#uptrack-recommended)).
 
@@ -177,10 +174,3 @@ nix-prefetch-url --unpack https://github.com/slophaer/golconda/archive/<rev>.tar
   halves of a test key set (`tests/fixtures/public-keys`), and checks that the output holds the
   manifest and the signer and no private key. That build is not in the lint: it takes the time of an
   image build.
-- By hand, 2026-11-10 (`~/spikes/pinning-proofs`): the uptrack template in an empty directory
-  evaluated `usrTree` from the pin (iets and `nix-instantiate`), and `uptrack check` and `apply`
-  moved a copy of the pin to `b58a62f`. No image was built from either. `nix flake init -t` gave a
-  flake with the input at the example pin's `ee07323` on the GitHub mirror (the lock held `ee07323`,
-  with the pin's `narHash`), and `nix build .#image` built the image, signed in the build with the
-  `keys` argument of that commit (task #534, 4 min with the toolchain in the store).
-  `nix flake update golconda` moved the lock to `2393f72`.

@@ -70,14 +70,14 @@ Is this the fingerprint on web1's console or journal (golconda: ssh host key …
 ```
 
 Compare the fingerprint with the line `golconda: ssh host key …` that the first boot wrote on the
-console; `--fingerprint SHA256:…` compares without the question. Then the command does the six steps
-that were once typed by hand: it read the host key (`golconda vars pub web1 sshd-hostkey key.pub`)
-and checked its fingerprint (`ssh-keygen -lf`); it signs it as a host certificate
-(`ssh-keygen -s host_ca -h -I web1 -n web1`), stores the certificate and the KRL
-(`golconda vars set web1 sshd-host-cert cert`, `golconda vars set web1 sshd-revoked-keys krl`), and
-pushes both, the KRL first (`golconda vars push web1`). `--principal` names what clients reach the
-machine by (default: the name given), `--validity` how long the certificate holds (default a year).
-A CA key on a PKCS#11 token, such as the YubiKey that holds the release keys, is
+console; `--fingerprint SHA256:…` compares without the question. Then the command does six steps: it
+reads the host key (`golconda vars pub web1 sshd-hostkey key.pub`) and checks its fingerprint
+(`ssh-keygen -lf`); it signs it as a host certificate (`ssh-keygen -s host_ca -h -I web1 -n web1`),
+stores the certificate and the KRL (`golconda vars set web1 sshd-host-cert cert`,
+`golconda vars set web1 sshd-revoked-keys krl`), and pushes both, the KRL first
+(`golconda vars push web1`). `--principal` names what clients reach the machine by (default: the
+name given), `--validity` how long the certificate holds (default a year). A CA key on a PKCS#11
+token, such as the YubiKey that holds the release keys, is
 `--ca-key host_ca.pub --pkcs11-module "$(ykcs11-module)"`: ssh-keygen signs with the token's key
 that matches the public key file
 ([Commands: golconda vars enrol](../reference/cli.md#golconda-vars-enrol)). It refuses with no KRL
