@@ -37,30 +37,24 @@ administrator overrides in `/etc`, state in `/var`, exactly as systemd documents
 
 ## One of each
 
-| layer                     | the one                                        | not                             |
-| ------------------------- | ---------------------------------------------- | ------------------------------- |
-| libc, toolchain           | glibc, LLVM                                    | musl (seed only), GCC           |
-| TLS                       | OpenSSL 3; rustls tolerated in Rust-only tools | GnuTLS, LibreSSL, NSS           |
-| CA trust                  | one store, `/etc/ssl`, see [Trust](trust.md)   | per-package bundles             |
-| init, log, net, time, DNS | systemd components                             | rsyslog, chrony, NetworkManager |
-| D-Bus                     | dbus-broker                                    | dbus-daemon                     |
-| shell                     | dash as `/bin/sh`                              | bash                            |
-| coreutils                 | uutils                                         | GNU coreutils (build only)      |
-| users                     | sysusers + factory `/etc`                      | shadow suite                    |
-| boot                      | systemd-boot + UKI                             | GRUB, loose kernel and initrd   |
-| disk                      | repart, sysupdate, erofs, dm-verity, LUKS2     | runtime partitioners, squashfs  |
-| time zone data            | tzdata, UTC unless `/factory.timezone` says so | per-service `TZ`                |
-| filesystem layout         | merged `/usr`, `/usr/sbin → bin`               | `/lib64`, `/usr/local`, `/opt`  |
-| store                     | `/usr/nix/store`, image only                   | a Nix daemon on the machine     |
+| layer                     | the one                                                 | not                             |
+| ------------------------- | ------------------------------------------------------- | ------------------------------- |
+| libc, toolchain           | glibc, LLVM                                             | musl (seed only), GCC           |
+| TLS                       | OpenSSL 3; rustls tolerated in Rust-only tools          | GnuTLS, LibreSSL, NSS           |
+| CA trust                  | one store, `/etc/ssl`, see [Trust](trust.md#3-ca-store) | per-package bundles             |
+| init, log, net, time, DNS | systemd components                                      | rsyslog, chrony, NetworkManager |
+| D-Bus                     | dbus-broker                                             | dbus-daemon                     |
+| shell                     | dash as `/bin/sh`                                       | bash                            |
+| coreutils                 | uutils                                                  | GNU coreutils (build only)      |
+| users                     | sysusers + factory `/etc`                               | shadow suite                    |
+| boot                      | systemd-boot + UKI                                      | GRUB, loose kernel and initrd   |
+| disk                      | repart, sysupdate, erofs, dm-verity, LUKS2              | runtime partitioners, squashfs  |
+| time zone data            | tzdata, UTC unless `/factory.timezone` says so          | per-service `TZ`                |
+| filesystem layout         | merged `/usr`, `/usr/sbin → bin`                        | `/lib64`, `/usr/local`, `/opt`  |
+| store                     | `/usr/nix/store`, image only                            | a Nix daemon on the machine     |
 
 The choice is enforced where it can be: repkgs `features` (`tls = "openssl"` set-wide), lints, and
 the boundary check that keeps nixpkgs out of every Nix file, script and pin.
-
-The one CA file is Mozilla's roots (cacert) plus the administrator's anchors, minus a distrust list,
-made when the image is built and kept in `/usr`. It is linked into `/etc/ssl` at boot at the two
-paths the image's clients read by default: `/etc/ssl/cert.pem` for OpenSSL (`OPENSSLDIR=/etc/ssl`)
-and `/etc/ssl/certs/ca-certificates.crt` for curl. The file lives in `/usr`, so an update replaces
-it and `/etc` keeps no copy to go stale.
 
 ## Duplicates are errors
 
@@ -79,8 +73,6 @@ needs them is not packaged.
 
 Packages come from repkgs and `packages/`, and so do the tools the scripts run on the build host
 (`scripts/tools.sh`) and the sandboxed checks' builders (the repkgs seed's shell, `nix/checks.nix`).
-The boot test's virtual machine is no exception: QEMU, swtpm and virt-firmware are `packages/`, and
-OVMF is the edk2 build that the QEMU project ships in its release tarball (`pc-bios/edk2-*`,
-edk2-stable202408), kept in `qemu-system`'s `share/qemu`: prebuilt by QEMU, trusted by the tarball's
-pinned hash, and not rebuilt here. Building edk2 from source is a later step. `checks.boundary`
+The boot test's virtual machine is no exception
+([Image artifacts: Boot test](../reference/image.md#boot-test-scriptsboot-test)). `checks.boundary`
 fails when a Nix file or a script names nixpkgs, or when `pins/` pins it.
