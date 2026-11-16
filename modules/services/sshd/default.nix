@@ -1,27 +1,8 @@
-#! OpenSSH daemon as a service, with its host key as a var.
-#!
-#! Returns one fragment: the host-key generator unit, `sshd.service`
-#! (`ExecStart=/usr/bin/sshd -D -e -f /usr/lib/sshd/sshd_config …`), the
-#! files under `/usr/lib/sshd/`, the privilege-separation user `sshd` and its
-#! directory `/var/empty`, the helpers sshd execs at `/usr/lib/ssh/`, and
-#! `golconda-health-sshd.service`: a boot-complete.target requirement that fails
-#! unless `sshd.service` is active, so a candidate without a reachable sshd is
-#! not blessed. Only credentials go on the command line; every fixed path
-#! (`TrustedUserCAKeys`, `AuthorizedPrincipalsFile`) is a line in `sshd_config`. `/etc/pam.d/sshd` is in `/factory`, because `/etc` content
-#! lives there; `/vars` and `/factory` are built-in components. An optional
-#! component: a configuration includes it with its table, `["/services/sshd"]`,
-#! empty for the defaults.
-#!
-#! With `revokedKeys` on, one release goes from first boot to certificates:
-#! until the revocation list is pushed, sshd reads a fallback list that names
-#! the user CAs, so certificates are refused and plain keys log in for the
-#! push; the push restarts sshd with the pushed list and host certificate.
-#! With `hostCertificate` on, plain keys stop once the host certificate is
-#! sealed (`golconda-sshd-enrolled.service`, `AuthorizedKeysFile none`).
-#!
-#! Authentication is by public key or OpenSSH certificate only. The lines
-#! that turn off every password path are fixed in the generated `sshd_config`;
-#! no option can change them (see `docs/design/trust.md`, "Identity").
+#! OpenSSH daemon as a service, with its host key as a var. An optional component: `["/services/sshd"]`, empty for the defaults.
+#! Login is by public key or OpenSSH certificate only. The lines that turn off every password path are fixed in the generated `sshd_config`.
+#! Only credentials go on the command line; every fixed path is a line in `sshd_config`. `/etc/pam.d/sshd` is in `/factory`.
+#! `revokedKeys` and `hostCertificate` take admin vars; with `hostCertificate`, plain keys stop once the host certificate is sealed.
+#! The fragment, the options and the boot health unit: docs/reference/modules/README.md. The model: docs/design/trust.md, "Identity", and docs/features/ssh-login.md.
 { types, ... }:
 let
   s = import ../../lib/service.nix { inherit types; };
