@@ -1,40 +1,8 @@
-#! The composer: takes fragments, returns one system.
-#!
-#! Union with an error on a duplicate key; there is no priority system
-#! (see `docs/design/modules.md`). The union itself is `modules/lib/merge.nix`,
-#! so a module that returns several fragments applies the same rule.
-#!
-#! It selects nothing itself: `mkSystem` (`lib/components.nix`) passes the
-#! fragments of the selected components as `components`, the built-ins
-#! (`/base`, `/network`, `/security`, `/factory`, `/vars`) first, then each
-#! optional component the configuration has a table for, then the build's own
-#! named fragments (`/image/loader`, `/image/index`). A system with no table still has systemd,
-#! dbus-broker, dash, coreutils and the kernel.
-#!
-#! With `updateSource` it adds the sysupdate transfers and the update timer,
-#! and, unless `updateReboot` is null, systemd's reboot timer in that window,
-#! behind `golconda-update-pending` (docs/design/updates.md, "Activation").
-#! With `secureBoot` it adds `/usr/lib/golconda/vars.d/tpm2-pcrs`, which seals
-#! the vars to PCR 7 as well (docs/design/trust.md).
-#!
-#! Output: `{ name; version; units; files; sysusers; tmpfiles; packages; packageOrigins; origins; links; programs }`,
-#! every file as `{ text; mode; }` and `links` one map, path under `/usr` ->
-#! `{ target; kind; }`: the fragments' own links (`.wants`, directories to
-#! expand, dlopen sonames), with one duplicate check that names both sources of
-#! a path. The `/usr/bin` links of the packages are not in it: the `/usr` tree
-#! builder makes them from each package's `exports.json`. `units` holds
-#! the system manager's units (typed names, `/usr/lib/systemd/system/<name>`).
-#!
-#! `packageOrigins` answers "why is this package here": package key (its
-#! name-version) -> the origins that brought it: a component's module path
-#! (`"/base"`, `"/services/sshd"`) or a build fragment's `name`
-#! (`"/image/loader"`). `packages` stays one deduped list.
-#!
-#! `origins` does the same for everything a fragment emits: `{ packages; files;
-#! links; units; sysusers; tmpfiles; }`, each a map from the key (package key,
-#! path under `/usr`, unit name, line) to the origins that emitted it.
-#! `packageOrigins` is an alias of `origins.packages`. `lib/usr-tree.nix`
-#! writes the maps to `/usr/lib/golconda/attribution.json`.
+#! The composer: takes fragments, returns one system. Union with an error on a duplicate key, no priority system (`modules/lib/merge.nix`).
+#! `mkSystem` (`lib/components.nix`) passes the fragments of the selected components as `components`: the built-ins first, then each optional one.
+#! `updateSource` adds the sysupdate transfers and the update timer, `updateReboot` the reboot timer (docs/design/updates.md, "Activation").
+#! `secureBoot` adds `/usr/lib/golconda/vars.d/tpm2-pcrs`, which seals the vars to PCR 7 as well (docs/design/trust.md).
+#! The composer: docs/design/modules.md. Its output (`units`, `files`, `links`, `packageOrigins`, …): docs/reference/modules/README.md.
 { types, ... }:
 let
   ini = import ../lib/ini.nix;
