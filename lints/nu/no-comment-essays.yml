@@ -1,0 +1,11 @@
+# A comment block of 13 lines or more is design text or a list that repeats the code: say the
+# reason in 12 lines and link the docs/ page. The rule matches the 13th line of a run of comments
+# with no other node between them.
+id: no-nu-comment-essays
+language: nu
+severity: error
+message: "comment block of 13+ lines: say the reason in 12 lines or fewer, and link the docs/ page"
+rule:
+  kind: comment
+  not: {precedes: {kind: comment}}
+  follows: {kind: comment, follows: {kind: comment, follows: {kind: comment, follows: {kind: comment, follows: {kind: comment, follows: {kind: comment, follows: {kind: comment, follows: {kind: comment, follows: {kind: comment, follows: {kind: comment, follows: {kind: comment, follows: {kind: comment}}}}}}}}}}}}
