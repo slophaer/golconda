@@ -22,7 +22,7 @@ in
   (check "hwdb: it is a package of /base, not a build fragment" (
     (mkSystemFixture.composed.origins.packages.hwdb or [ ]) == [ "/base" ]
   ))
-  (check "hwdb: modules.json lists no /image/hwdb fragment" (
+  (check "hwdb: mkSystem lists no /image/hwdb fragment" (
     !(elem "/image/hwdb" mkSystemFixture.fragments)
   ))
   (check

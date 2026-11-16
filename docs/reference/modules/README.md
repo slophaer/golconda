@@ -49,7 +49,7 @@ kind installs to one place:
 
 The system and the image builder write some paths themselves, and a fragment cannot claim them:
 
-- `lib/system.nix` writes `/usr/lib/golconda/config.json`, `schema.json` and `modules.json`;
+- `lib/system.nix` writes `/usr/lib/golconda/config.json` and `schema.json`;
 - `lib/usr-tree/main.nu` writes `/usr/lib/golconda/attribution.json`,
   `/usr/lib/golconda/packages.json`, `/usr/lib/golconda/sbom.json`, `/usr/lib/os-release`,
   `/usr/lib/sysusers.d/golconda.conf` and `/usr/lib/tmpfiles.d/golconda.conf`.

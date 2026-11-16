@@ -32,8 +32,8 @@ puts the sshd component in the system; a service with no table is off. The built
 and no other route in: a downstream repository adds a module, never a bare fragment. Its `modules/`
 directory beside the document is mounted under `/local`, so `/local/motd` is a component like
 `/services/sshd`, with typed options, a schema entry and a table that selects it. The optional
-`[golconda]` table names another directory (`modules = "site"`). `/usr/lib/golconda/modules.json`
-therefore lists every module in the image, with why, and the build's own named fragments
+`[golconda]` table names another directory (`modules = "site"`). `mkSystem`'s `inventory` therefore
+lists every module in the image, with why, and its `fragments` the build's own named fragments
 (`/image/loader`, `/image/index`) ([Modules](modules.md#which-modules-a-system-has)).
 
 The entry point that applies this rule is `lib/system.nix`: `mkSystem ./server.toml` (or
@@ -47,7 +47,7 @@ as Golconda's: a `package.nix` and a `sources.toml` per package), so they get pu
 update tracking. A downstream package may replace a Golconda or repkgs package only when
 `[golconda] replaces` lists the name: a replacement reaches the kernel, the boot chain and the
 signing tools, so it is a stated choice, never a name collision
-([Trust](trust.md#downstream-packages)). `modules.json` records it. Nix stays where it is code: in a
+([Trust](trust.md#downstream-packages)). The SBOM records it. Nix stays where it is code: in a
 module and in a package. The interface is in
 [reference/config](../reference/config.md#the-entry-point).
 
@@ -74,7 +74,6 @@ Every image carries `/usr/lib/golconda/`:
 | file               | content                                                                                     |
 | ------------------ | ------------------------------------------------------------------------------------------- |
 | `config.json`      | the resolved options of every included component, after type-checking, derivations as names |
-| `modules.json`     | every module's role and inputs; for a component, whether it is included and why             |
 | `schema.json`      | the JSON Schema the image was built against                                                 |
 | `sbom.json`        | CycloneDX SBOM: purl and cpe per component, its origin, pedigree (replacement, patches)     |
 | `packages.json`    | every package with its version, store path and the fragments that brought it                |

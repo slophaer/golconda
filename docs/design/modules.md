@@ -106,11 +106,11 @@ An input (`inputs.pkgs.path = "/pkgs"`) is a different edge. It says whose resul
 and it never selects anything: reading `/pkgs` installs nothing, and `/system` reads no module at
 all. `mkSystem` evaluates each selected component once and passes the fragments to `/system` as
 `components`, each named by its module path, so the attribution names the module and never an index.
-`/usr/lib/golconda/modules.json` records the result: every module's role and inputs, for a component
-whether it is included and why (`builtin` or `config`), and the names of the build's own fragments
-(the loader and the update index of a signed image). The image is those components plus those
-fragments, nothing else: `/system` has no other list, and a downstream repository adds a module
-under `/local`, never a bare fragment.
+`mkSystem` returns the result (`inventory` and `fragments`): every module's role and inputs, for a
+component whether it is included and why (`builtin` or `config`), and the names of the build's own
+fragments (the loader and the update index of a signed image). The image is those components plus
+those fragments, nothing else: `/system` has no other list, and a downstream repository adds a
+module under `/local`, never a bare fragment.
 
 ## The base system
 

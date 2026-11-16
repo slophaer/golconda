@@ -48,8 +48,8 @@ A module of your own follows the same rules ([Your own modules](extending.md)):
 }
 ```
 
-To see who emitted a path, read `/usr/lib/golconda/attribution.json` and
-`/usr/lib/golconda/modules.json` ([Configuration as data](config-as-data.md)).
+To see who emitted a path, read `/usr/lib/golconda/attribution.json`
+([Configuration as data](config-as-data.md)).
 
 ## Status
 

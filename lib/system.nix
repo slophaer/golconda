@@ -1,15 +1,15 @@
 # lib/system.nix: the entry point for one Golconda system.
 #
 # mkSystem { config; platform?; system?; sources?; extraFragments?; verityCert?; } -> composed,
-#   usrTree, sbom, config, inventory, moduleDocs, schema, catalogue, fragments, packages,
+#   usrTree, sbom, config, inventory, moduleDocs, schema, fragments, packages,
 #   artifacts, platform, version, name and pkgs (the attributes below).
 # `config` is a path to a TOML file or an attrset of options: the document is the whole
 #   configuration, with no Nix hook. `platform` defaults to `system` (builtins.currentSystem).
 # `verityCert` is the certificate that signs /usr (lib.mkImage passes the db certificate of its
 #   publicKeys). The kernel carries it in its built-in keyring, the only keyring dm-verity and IPE
 #   trust; `/system.secureBoot = false` requires it (docs/design/trust.md).
-# `extraFragments` are the build's own fragments (lib/image), each with a `name`; modules.json lists
-#   them beside the modules. The `[golconda]` table: docs/features/extending.md.
+# `extraFragments` are the build's own fragments (lib/image), each with a `name`; `fragments` lists
+#   them. The `[golconda]` table: docs/features/extending.md.
 {
   config,
   platform ? system,
@@ -126,8 +126,8 @@ let
   # component the configuration has a table for (lib/components.nix).
   componentsLib = import ./components.nix { };
   inventory = componentsLib.inventory (tree { }) mergedOptions;
-  # The image's own fragments, each named: modules.json lists them beside the modules, so
-  # the image is the selected components plus these, nothing else.
+  # The image's own fragments, each named: the image is the selected components plus these,
+  # nothing else.
   fragments = map (
     fr:
     fr.name or (throw "golconda: mkSystem extraFragments: every fragment needs a `name`, its origin")
@@ -345,14 +345,6 @@ let
     };
     "/usr/lib/golconda/schema.json" = {
       text = builtins.toJSON schema;
-      mode = "0644";
-    };
-    "/usr/lib/golconda/modules.json" = {
-      text = builtins.toJSON {
-        modules = inventory;
-        inherit fragments;
-        packages = setFull.downstream;
-      };
       mode = "0644";
     };
   };

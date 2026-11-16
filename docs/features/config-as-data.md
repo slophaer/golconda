@@ -23,7 +23,6 @@ misspelt option is an error that names it, not a silent default.
   | ------------------ | ----------------------------------------------------------------------------------------- |
   | `config.json`      | the options of every included module; for each, the value and whether the document set it |
   | `schema.json`      | the schema the image was built against, with the file that declares each option           |
-  | `modules.json`     | each module's role and inputs; whether it is included and why; downstream packages        |
   | `attribution.json` | each file, link, unit and line, with the module that emitted it                           |
   | `packages.json`    | each package with its version, store path and the modules that brought it                 |
   | `sbom.json`        | CycloneDX 1.5 bill of materials: `purl`, `cpe`, origin, `pedigree` (replacement, patches) |

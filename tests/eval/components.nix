@@ -58,16 +58,11 @@ let
         )
       )
     );
-  # modules.json is the inventory and the fragments, and every included component, and no
-  # other module, emitted something. The composer's own fragments (/system's updateSource and
-  # secureBoot) carry its path, and the composer is no component
+  # every included component, and no other module, emitted something. The composer's own
+  # fragments (/system's updateSource and secureBoot) carry its path, and the composer is no
+  # component
   agrees =
-    sys:
-    fromJSON sys.artifacts."/usr/lib/golconda/modules.json".text == {
-      modules = sys.inventory;
-      inherit (sys) fragments packages;
-    }
-    && filter (p: p != "/system") (emittersOf sys.composed sys.inventory) == includedOf sys.inventory;
+    sys: filter (p: p != "/system") (emittersOf sys.composed sys.inventory) == includedOf sys.inventory;
 in
 [
   (check "components: every module has one role" (
@@ -178,7 +173,10 @@ in
     in
     !r.success
   ))
-  (check "mkSystem: modules.json is the inventory, and it agrees with the image" (
+  (check "mkSystem: the image has no modules.json" (
+    !(mkSystemFixture.artifacts ? "/usr/lib/golconda/modules.json")
+  ))
+  (check "mkSystem: the inventory agrees with the image" (
     agrees mkSystemFixture
     && mkSystemFixture.inventory."/services/sshd".reason == "config"
     && mkSystemFixture.inventory."/factory".reason == "builtin"
@@ -195,7 +193,7 @@ in
     in
     agrees sys && !sys.inventory."/services/sshd".included && !(sys.composed.units ? "sshd.service")
   ))
-  (check "mkSystem: the build's own fragments are named and listed in modules.json" (
+  (check "mkSystem: the build's own fragments are named and listed" (
     let
       sys = import ../../lib/system.nix {
         inherit sources platform;
@@ -253,7 +251,6 @@ in
   (check "downstream: packages/ joins the target set; a replacement is recorded" (
     let
       sys = mkSystem ../fixtures/downstream/server.toml;
-      json = fromJSON sys.artifacts."/usr/lib/golconda/modules.json".text;
     in
     sys.packages == {
       openssh.replaces = "golconda";
@@ -261,7 +258,6 @@ in
       ripgrep.replaces = "repkgs";
       hello.replaces = null;
     }
-    && json.packages == sys.packages
     # each name is the downstream package: the fixtures' versions mark them
     && sys.pkgs.hello.version == "0.0.1"
     # a replacement wins over repkgs' and Golconda's own package of that name

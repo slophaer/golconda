@@ -21,10 +21,11 @@ name collision.
 - **A replacement reaches everything.** It applies to the image, the initrd, the loader and the
   keyring, so a replaced kernel, systemd or signing tool is trusted code. Golconda does not check
   what it does. Whoever lists it owns the review.
-- **The record.** `modules.json` has your module's role and why it is included, and under `packages`
-  each downstream package: `{ "openssh": { "replaces": "golconda" } }` (`"repkgs"` for one of the
-  fork's, `null` for a new name). The SBOM marks the component `golconda:origin = downstream`. A
-  replacement names the package it replaced in `pedigree.ancestors`.
+- **The record.** `mkSystem` returns your module's role and why it is included (`inventory`), and
+  each downstream package (`packages`): `{ "openssh": { "replaces": "golconda" } }` (`"repkgs"` for
+  one of the fork's, `null` for a new name). The SBOM marks the component
+  `golconda:origin = downstream`. A replacement names the package it replaced in
+  `pedigree.ancestors`.
 
 ## Using it
 

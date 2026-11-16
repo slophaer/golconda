@@ -14,8 +14,8 @@
 # subdirectory with a package.nix is a package (package.nix + sources.toml, as in packages/).
 # It goes after Golconda's own, so a name it shares replaces that package. `replaces` (the
 # document's [golconda] replaces) must list exactly the names it takes: a replacement is an
-# opt-in, never an accident (lib/config.nix replacementError). mkSystem records each one in
-# modules.json.
+# opt-in, never an accident (lib/config.nix replacementError). mkSystem returns each one in
+# `packages`.
 #
 # `sources.repkgs` is the repkgs tree: the pin, or the eval tests' stand-in tests/fixtures/repkgs,
 # which reads packages as data. Its files are named with `+`, not interpolated, so a local tree is

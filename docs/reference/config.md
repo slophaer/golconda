@@ -107,8 +107,8 @@ modules = "site"
 ```
 
 The default `modules/` is used when it exists; a directory the table names must exist. The module
-gets a schema entry with the file it is declared in, a row in `modules.json`, and the attribution of
-what it emits. The generated module pages cover Golconda's own tree only.
+gets a schema entry with the file it is declared in, a row in `mkSystem`'s `inventory`, and the
+attribution of what it emits. The generated module pages cover Golconda's own tree only.
 
 ## Your own packages
 
@@ -136,9 +136,9 @@ replaces = ["openssh"]
 Without the entry, evaluation fails and names the package. An entry for a name that no downstream
 package takes is also an error, so the list says exactly what the repository replaces. A replacement
 applies to everything that uses the package: the image, the initrd, the loader and the keyring, and
-the build host's tools when the build host and the target are the same platform. `modules.json`
-records each package under `packages`: `{ "openssh": { "replaces": "golconda" } }` (`"repkgs"` for
-one of the fork's, null for a new name). repkgs refuses a package that takes the name of one of its
+the build host's tools when the build host and the target are the same platform. `mkSystem` returns
+each package under `packages`: `{ "openssh": { "replaces": "golconda" } }` (`"repkgs"` for one of
+the fork's, null for a new name). repkgs refuses a package that takes the name of one of its
 aliases: it applies its aliases last, so the alias would win.
 
 When a downstream package enters the runtime closure, its SBOM component has
@@ -148,8 +148,7 @@ When a downstream package enters the runtime closure, its SBOM component has
 `cpe`. This includes transitive dependencies. The SBOM matches package identities, not display
 names. Returning an upstream package as an alias does not change that package's origin. If one
 artifact has conflicting replacement records, SBOM generation fails rather than choosing one. Unlike
-`modules.json`, the SBOM does not list unused packages
-([Image](image.md#software-bill-of-materials)).
+`packages`, the SBOM does not list unused packages ([Image](image.md#software-bill-of-materials)).
 
 ## Validation
 
@@ -197,7 +196,7 @@ golconda.lib.mkSystem {
 `lib.mkSystem` uses the pins of the Golconda tree it comes from. `lib/system.nix` takes more
 arguments, for the image chain and the tests: an attribute set of options as `config`, `sources`,
 `verityCert`, and `extraFragments`, the build's own fragments, each with a `name` (`lib/image`: the
-update index, the initrd's tools), listed in `modules.json`. `extraFragments` adds them beside the
+update index, the initrd's tools), listed in `fragments`. `extraFragments` adds them beside the
 components; a duplicate claim still fails rather than overrides. They are not configuration: the
 document is.
 
