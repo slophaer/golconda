@@ -237,14 +237,23 @@ credentials at first boot. This is Golconda's provisioning path; there is no clo
 
 | credential                 | read by                | what it sets                                                                                                                   |
 | -------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `system.hostname`          | PID 1                  | the hostname, at every boot; nothing writes `/etc/hostname` from it                                                            |
+| `system.hostname`          | PID 1                  | the host name, at every boot; nothing writes `/etc/hostname` from it                                                           |
+| `firstboot.hostname`       | systemd-firstboot      | `/etc/hostname`, on the first boot (`scripts/provision-esp --hostname` writes it, and `/imds` imports it)                      |
 | `ssh.authorized_keys.root` | systemd-tmpfiles-setup | `/root/.ssh/authorized_keys`, written by systemd's `tmpfiles.d/provision.conf`; sshd reads it through its `AuthorizedKeysFile` |
 
-PID 1 takes the hostname from the first of: `systemd.hostname=` on the kernel command line,
-`/etc/hostname`, the `system.hostname` credential, the fallback `golconda` compiled into systemd
-(repkgs `fallback-hostname`). No factory file and no tmpfiles line writes `/etc/hostname`, so the
-credential wins until an admin writes one, or until systemd-firstboot writes the host name that
-`/imds` imported
+The host name comes from the first source in this list that has one:
+
+| order | source                                         | what sets it                                                                                                                                         |
+| ----- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | `systemd.hostname=` on the kernel command line | nothing: the command line is fixed in the UKI, and it has no such parameter                                                                          |
+| 2     | `/etc/hostname`                                | systemd-firstboot, from `firstboot.hostname`, or an operator; no factory file and no tmpfiles line writes it                                         |
+| 3     | the host name in a DHCP lease                  | networkd, through hostnamed, as the transient name, after each lease; on with networkd's default `UseHostname=yes`, off with `/imds` *(being built)* |
+| 4     | the `system.hostname` credential               | PID 1, at every boot                                                                                                                                 |
+| 5     | `golconda`                                     | the fallback compiled into systemd (`fallback-hostname` in `packages/systemd`)                                                                       |
+
+PID 1 reads the sources 1, 2, 4 and 5 at boot. hostnamed applies a DHCP name only when
+`/etc/hostname` does not exist, and it then replaces the name of the credential (systemd 262.1,
+`hostnamed.c`). With `/imds` the host name of the metadata goes to `/etc/hostname`
 ([Provisioning: From cloud metadata](../features/provisioning.md#from-cloud-metadata-imds)). PID 1
 reads SMBIOS strings from `/sys/firmware/dmi/entries` and fw_cfg from `/sys/firmware/qemu_fw_cfg`:
 the kernel needs `CONFIG_DMI_SYSFS=y` and `CONFIG_FW_CFG_SYSFS=y` (built in).
