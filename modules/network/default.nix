@@ -1,17 +1,7 @@
-#! Networkd configuration.
-#!
-#! Default: DHCP on all wired (ethernet) interfaces. No configuration
-#! needed for a typical server or VM.
-#!
-#! Options: `networks` is a map from network name to network config. Each
-#! config has a `match` table (the Match section) and may have `network`,
-#! `link`, `dhcpv4` and `address` tables, one for each section of the same
-#! name, and `route`, a list of tables, one `[Route]` section for each. Any
-#! other key is an error, so a misspelt section cannot leave a machine without
-#! an address. Example: `{ networks.static = { match.Name = "eth0"; network.Address = "10.0.0.1/24"; }; }`
-#!
-#! The `dns` option sets the global fallback DNS servers (used when no
-#! interface-specific DNS is configured).
+#! Networkd configuration: one `.network` file for each entry of `networks`, and DHCP on every wired interface unless `defaultDhcp` is false.
+#! An entry takes the table `match` and optional `network`, `link`, `dhcpv4`, `address` tables and `route`, a list of tables. Any other key is an error,
+#! so a misspelt section cannot leave a machine without an address. The `dns` option sets the global fallback DNS servers.
+#! A built-in component. A static network with two routes: docs/reference/config.md.
 { types, ... }:
 let
   on = import ../lib/on.nix;
