@@ -56,7 +56,7 @@ iets eval --json -E '(import ./examples/golconda.nix { golconda = import ./defau
 
 This prints the normalized options after type-checking. A wrong value stops here with the module's
 message (`'2026.10.0' is not a version: YYYYMMDD.N, such as 20261031.1`). An unknown table name
-lists the valid paths: `/base`, `/factory`, `/network`, `/services/sshd`, `/system`.
+lists the valid paths.
 
 ## 3. The composer
 
@@ -69,47 +69,8 @@ hands the list to `/system`, which unions them. The result is one attribute set:
 iets eval --json -E 'builtins.attrNames (import ./examples/golconda.nix { golconda = import ./default.nix; }).composed'
 ```
 
-```json
-["files","links","name","origins","packageOrigins","packages","sysusers","tmpfiles","units","updateSource","version"]
-```
-
-*(eval.)* For this document:
-
-- `units`: `golconda-health-network.service`, `golconda-health-sshd.service`,
-  `golconda-loader-update.service`, `golconda-var-sshd-hostkey.service`, `sshd.service`.
-
-- `files` (34 on 2026-11-14), by origin:
-
-  - `/base` (21): `/usr/lib/repart.d/30-root.conf`, `/usr/lib/locale.conf`, the timesyncd and
-    journald files, `golconda-loader-update` and `loader.conf`,
-    `/usr/lib/systemd/system-preset/00-golconda.preset`, and fourteen unit drop-ins named
-    `/usr/lib/systemd/system/<unit>.d/golconda.conf` (for example `systemd-firstboot.service`,
-    `ldconfig.service`, `modprobe@.service`);
-  - `/services/sshd` (4): `/usr/lib/sshd/sshd_config`, `/usr/lib/sshd/authorized_keys/root`, and the
-    var's script and manifest `/usr/lib/golconda/vars.d/sshd-hostkey.{sh,json}`;
-  - `/network` (1): `99-default-dhcp.network`; `/security` (1):
-    `/usr/lib/sysctl.d/50-golconda.conf`;
-  - the var runner `/usr/lib/golconda/golconda-var-run` (1);
-  - `/factory` (4): `pam.d/other`, `pam.d/sshd`, `pam.d/systemd-user` and `shells`, under
-    `/usr/share/factory/etc`.
-
-  There is no `ca.pub`, no `principals/` and no `/usr/lib/sysupdate.d/`: the example sets none of
-  them.
-
-- `sysusers`: `u messagebus - "D-Bus message bus user" -` and
-  `u sshd - "SSH privilege separation" /var/empty`.
-
-- `tmpfiles`: `L /bin`, `L /sbin` and `L /lib` into `usr/`; `L /etc/ssl/cert.pem` and
-  `L /etc/ssl/certs/ca-certificates.crt` (from `/trust`); `d /var/empty`; one
-  `L /etc/<path> - - - - /usr/share/factory/etc/<path>` per factory file; `L /etc/localtime`
-  (`/usr/share/zoneinfo/UTC`); `L /etc/os-release`.
-
-- `packageOrigins`: `openssh` from `/services/sshd`; `ca-bundle` from `/trust`; `dash`,
-  `dbus-broker`, `e2fsprogs`, `hwdb`, `linux-kernel`, `systemd`, `tzdata` and `uutils-coreutils`
-  from `/base`.
-
-- `links`: not quoted (see above). It holds every `bin` name of the packages as `/usr/bin/<name>`,
-  systemd's directories as `farm` links, the NSS modules as `dlopen` links, and the `.wants` links.
+[Modules: The composer output](modules/README.md#the-composer-output) describes the fields. For this
+document, `units` holds `sshd.service`, the var unit of its host key and the units of `/base`.
 
 The service unit, as
 `iets eval --raw -E '(import ./examples/golconda.nix { golconda = import ./default.nix; }).composed.units."sshd.service"'`
