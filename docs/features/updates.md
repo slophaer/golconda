@@ -110,8 +110,8 @@ The boot test proves this in QEMU with OVMF ([What is proven](../proven.md)):
 - Nothing stops an older image signed by the same key from booting. Rollback protection is
   *(later)*.
 - The tests use plain HTTP in QEMU. HTTPS from a real update server ran by hand on Hetzner Cloud
-  ([What is proven](../proven.md#on-hetzner-cloud)); it has no marker. The timer and real hardware
-  have none either. The 04:10 window itself is not waited for: the test moves it.
+  ([What is proven](../proven.md#not-proven)); it has no marker. The timer and real hardware have
+  none either. The 04:10 window itself is not waited for: the test moves it.
 
 ## More
 

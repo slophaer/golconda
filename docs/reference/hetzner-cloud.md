@@ -2,9 +2,9 @@
 
 This page is the procedure for one Golconda machine on a Hetzner Cloud server: build an image for a
 host without Secure Boot, put the machine's host name and ssh key on its ESP, write the disk from
-the rescue system, and update it. Every step ran on a Hetzner Cloud `cpx12` in `fsn1`
-([What is proven: On Hetzner Cloud](../proven.md#on-hetzner-cloud)), and the metadata route of step
-4 ran on Hetzner too.
+the rescue system, and update it. Every step ran by hand on a Hetzner Cloud `cpx12` in `fsn1`
+([What is proven: Not proven](../proven.md#not-proven)), and the metadata route of step 4 ran on
+Hetzner too.
 
 What Hetzner Cloud gives and lacks, and what Golconda does about it:
 

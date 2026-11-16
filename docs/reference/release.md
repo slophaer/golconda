@@ -133,7 +133,8 @@ but finds no path for it ("built, but the builder has no output path"), which is
 
 Verification: two releases built and signed by `golconda release build` with a fresh key set booted
 with `--secure-boot --tpm --ssh-test`, the second as an update over HTTP (`--next`), and none of the
-set's private keys was in the store afterwards ([What is proven](../proven.md#signing-outside-nix)).
+set's private keys was in the store afterwards. This ran by hand
+([What is proven: Not proven](../proven.md#not-proven)).
 
 ## 3. Publish the release directory
 
@@ -262,15 +263,15 @@ so that the PIN is typed once into a file that lives only in memory, as
 Verification: the test image's `db` and PCR keys on a SoftHSM token (a token in software, used for
 tests only) sign a release that is the release signed from the same keys in files, byte for byte,
 and `golconda release check` passes on it (`packages.<system>.pkcs11-signed-same`); that image boots
-with `--secure-boot --ssh-test --tpm` (`@image=image-smoke-test-pkcs11`;
-[What is proven](../proven.md#signing-outside-nix)). `checks.image-signer` covers the key checks.
+with `--secure-boot --ssh-test --tpm` (`@image=image-smoke-test-pkcs11`, by hand;
+[What is proven: Not proven](../proven.md#not-proven)). `checks.image-signer` covers the key checks.
 
 ### A YubiKey *(being built)*
 
 **No run on a real YubiKey has been done**, so this is the plan, not a tested procedure, and the
-marker stays until a run is named in [What is proven](../proven.md#signing-outside-nix). What has
-run, without a token: the packages (`pcsc-lite`, `ccid`, `yubico-piv-tool`, `yubikey-tools`) and
-their tests (`packages.<system>.tests-<name>`). They start `pcscd` with ccid's driver directory, run
+marker stays until a run is named in [What is proven](../proven.md). What has run, without a token:
+the packages (`pcsc-lite`, `ccid`, `yubico-piv-tool`, `yubikey-tools`) and their tests
+(`packages.<system>.tests-<name>`). They start `pcscd` with ccid's driver directory, run
 `yubico-piv-tool` with and without a daemon, and load `libykcs11.so` through p11-kit and
 pkcs11-provider, which find no slot and no token. The options below are those of yubico-piv-tool
 2.7.3's `--help`; the PKCS#11 ids come from its source (`ykcs11/objects.c`).

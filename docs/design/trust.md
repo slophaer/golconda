@@ -428,8 +428,8 @@ RSA PKCS#1 v1.5, the scheme of both keys, draws no random numbers, so a release 
 token is the release signed from the same keys in files, byte for byte. The check
 `pkcs11-signed-same` compares the two for the test image, whose keys are on a SoftHSM token
 (test-only, `packages/softhsm`), and the boot test boots that image
-([What is proven](../proven.md#signing-outside-nix)). A run on a real YubiKey has not been done
-*(being built)*: the procedure is in [Making a release](../reference/release.md#6-keys-on-a-token).
+([What is proven](../proven.md)). A run on a real YubiKey has not been done *(being built)*: the
+procedure is in [Making a release](../reference/release.md#6-keys-on-a-token).
 
 **The release key.** gpg signs `SHA256SUMS`, because systemd-sysupdate checks an OpenPGP signature,
 and gpg reaches a token only as an OpenPGP card through scdaemon, not through PKCS#11. The options:

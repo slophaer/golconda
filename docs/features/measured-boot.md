@@ -83,7 +83,7 @@ deployment key set made by `scripts/make-keys` booted on the same markers. The n
 - Automatic enrolment has run in a virtual machine only; on hardware it is *(being built)*. With
   `secureBootMicrosoftKeys = false` hardware may refuse option ROMs
   ([Boot loader: Enrolment](../design/bootloader.md#enrolment)). Hetzner Cloud ran without Secure
-  Boot and without a TPM ([What is proven](../proven.md#on-hetzner-cloud)).
+  Boot and without a TPM ([What is proven](../proven.md#not-proven)).
 - Only the sshd host key is sealed. The state partition is not (LUKS2 is *(later)*).
 - Without Secure Boot, nothing checks the UKI before it runs. Whoever can write the ESP can boot a
   kernel that trusts another key. IPE and the `/usr` signature still hold.

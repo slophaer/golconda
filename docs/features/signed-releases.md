@@ -62,7 +62,7 @@ The boot test proves this with `--next` ([What is proven](../proven.md)):
 For reproducibility, two builds of the initrd give the same bytes (`initrd-reproducible`, which
 `scripts/verify` builds), and two runs of the signer on one unsigned output give the same release
 and `disk.raw` (`disk-reproducible`, which `scripts/verify` builds too;
-[What is proven: Reproducible builds](../proven.md#reproducible-builds)).
+[What is proven](../proven.md)).
 
 ## Limits
 
