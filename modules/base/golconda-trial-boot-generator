@@ -1,26 +1,14 @@
 #!/usr/bin/sh
-# golconda-trial-boot-generator: turn on the trial boot policy when this boot is a trial
-# (docs/design/boot.md, "Trial boot").
-#
-# A trial boot is a counted boot that had a try left: systemd-boot renamed its UKI from
-# <id>_<version>+L-D.efi to +(L-1)-(D+1) and put the new path in the LoaderBootCountPath EFI
-# variable. On such a boot the generator links one drop-in for boot-complete.target into the
-# generator directory: a deadline (JobTimeoutSec=) and OnFailure=golconda-trial-boot-failed.service,
-# which reboots. A failed health unit fails the target's job, and so does the deadline: either
-# way the machine reboots and systemd-boot takes the next try, or the other slot once the
-# tries are used up.
-#
-# No drop-in, so a failure leaves the machine up for its operator:
-# - a blessed entry, or a boot without boot counting: no LoaderBootCountPath. Nothing would count
-#   the reboots, so a failure that repeats would reboot the machine forever;
-# - an entry with no try left before this boot (left + done above the tries a release starts
-#   with, image/boot-counting.nix): systemd-boot starts a bad entry only when no other entry is
-#   left, and a reboot would only start it again;
-# - the initrd: an initrd failure reboots by golconda-emergency-reboot.service on every boot.
-#
-# It runs before the root partition's /bin link exists (tmpfiles makes it), hence /usr/bin/sh.
-# GOLCONDA_TRIAL_BOOT_ROOT prefixes every path it reads and the kernel log it writes, for the
-# test (tests/trial-boot); PID 1 runs generators with an empty environment.
+# golconda-trial-boot-generator: turn on the trial boot policy when this boot is a trial: a
+# counted boot whose entry had a try left (docs/design/boot.md, "Trial boot"). It links the
+# drop-in of boot-complete.target (a deadline and a reboot on failure) from LoaderBootCountPath,
+# the EFI variable in which systemd-boot names the entry file it renamed (<id>_<version>+L-D.efi).
+# No drop-in on a blessed entry, on a boot without counting, in the initrd, or when L + D is above
+# the tries a release starts with (image/boot-counting.nix): a reboot cannot help there, and a
+# failure then leaves the machine up for its operator.
+# It runs before the root partition's /bin link exists, hence /usr/bin/sh. GOLCONDA_TRIAL_BOOT_ROOT
+# prefixes every path, for the test (tests/trial-boot); PID 1 runs generators with an empty
+# environment.
 set -eu
 
 root=${GOLCONDA_TRIAL_BOOT_ROOT:-}

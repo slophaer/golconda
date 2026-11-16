@@ -3,32 +3,15 @@
 # golconda-var-run --admin NAME FILE: seal one file of an admin var, read from stdin.
 # golconda-var-run --reseal [--without-pcr7]: seal every credential of the store again.
 #
-# Local: run by golconda-var-NAME.service (modules/lib/var.nix) with RuntimeDirectory=
-# and StateDirectory= set. The generator script /usr/lib/golconda/vars.d/NAME.sh
-# runs in $RUNTIME_DIRECTORY (tmpfs) and writes its files there. Then every
-# SECRET is sealed as the credential NAME.SECRET (to the host key and, when the
-# machine has a TPM2, to the TPM too; without one, a warning goes to the journal),
-# every PUBLIC is kept in $STATE_DIRECTORY/pub, the plaintext is removed and `done`
-# is touched. SECRETS and PUBLICS are space-separated file names.
-#
-# Admin: the deploy host (golconda vars push) runs this over ssh with the value on
-# stdin. It seals FILE as the credential NAME.FILE, the same way, only when FILE is
-# a line of the image's vars.d/NAME.admin, the files of the admin var NAME: the
-# image says what may be pushed. A second push replaces the value (rotation); the deploy
-# tool then restarts the manifest's consumers.
-#
-# Reseal: decrypts each credential of the store and seals it again, with the image's policy,
-# or with --without-pcr7 to the signed PCR 11 policy alone. A db rotation and a dbx update
-# change PCR 7, and the procedure runs both around the change (docs/design/bootloader.md).
-# --without-pcr7 also leaves the file .without-pcr7 in the store, and until a --reseal succeeds and
-# removes it, every seal leaves PCR 7 out: a push in between must not bind to a PCR 7 that
-# the change replaces. The plaintext is in a private directory in $TMPDIR (default /run, a
-# tmpfs) for the moment between the two calls.
-#
-# Consumers load a secret with LoadCredentialEncrypted=NAME.SECRET and read
-# a public file at /var/lib/golconda/vars/NAME/pub/PUBLIC.
-# GOLCONDA_CREDSTORE and GOLCONDA_VARS_D move the two directories for
-# tests/vars/runner.sh; nothing on a machine sets them.
+# Local: golconda-var-NAME.service runs it (modules/lib/var.nix). The generator vars.d/NAME.sh
+# writes its files in $RUNTIME_DIRECTORY (tmpfs); each SECRET is sealed as the credential
+# NAME.SECRET, each PUBLIC is kept in $STATE_DIRECTORY/pub, and the plaintext is removed.
+# Admin: `golconda vars push` runs it over ssh. FILE must be a line of vars.d/NAME.admin, so the
+# image says what may be pushed; a second push replaces the value.
+# Reseal: with the image's policy, or with --without-pcr7 to the signed PCR 11 policy alone, around
+# a db rotation or a dbx update (docs/design/trust.md). --without-pcr7 leaves .without-pcr7 in
+# the store, and until a --reseal succeeds every seal leaves PCR 7 out.
+# GOLCONDA_CREDSTORE and GOLCONDA_VARS_D move the two directories for tests/vars/runner.sh.
 set -eu
 
 credstore=${GOLCONDA_CREDSTORE:-/etc/credstore.encrypted}

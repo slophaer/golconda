@@ -1,19 +1,15 @@
 #!/bin/sh
 # golconda-loader-update: put this release's signed systemd-boot and loader.conf on the ESP, and
-# remove the Secure Boot enrolment files once Secure Boot is on.
-#
+# remove the Secure Boot enrolment files once Secure Boot is on (docs/design/bootloader.md).
 # golconda-loader-update.service runs it after systemd-bless-boot.service has marked a counted
-# boot good, so only a release that booted and passed the health gate installs its loader. An
-# administrator runs it by hand to reinstall a damaged loader (docs/design/bootloader.md).
-#
+# boot good, so only a release that passed the health gate installs its loader. An administrator
+# can run it to reinstall a damaged loader.
 # It compares content, not versions: a release signed with a new db key carries the same
 # systemd-boot version in other bytes, which `bootctl update` skips. The firmware has just
-# accepted this release's UKI, and the image builder signs the loader in /usr with the same key
-# (lib/image/loader.nix), so the loader it writes is one this firmware starts.
-#
+# accepted this release's UKI, and the builder signs the loader in /usr with the same key, so
+# the firmware starts the loader it writes.
 # Each file is copied beside its destination, flushed and renamed over it. The previous primary
-# copy stays as EFI/systemd/systemd-boot-fallback<arch>.efi, the name bootctl uses, for a start
-# from the firmware's boot menu.
+# copy stays as EFI/systemd/systemd-boot-fallback<arch>.efi, for a start from the boot menu.
 set -eu
 
 src=

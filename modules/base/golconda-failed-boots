@@ -1,31 +1,11 @@
 #!/usr/bin/sh
-# golconda-failed-boots: count the boots in a row that do not complete; start the other slot once,
-# then stop rebooting (docs/design/boot.md, "Failed boots").
-#
-# The count is the EFI variable GolcondaFailedBoots-d1b3416f-c0f9-44e8-8b5a-cbb64676bdef: the boots
-# started since the last complete one, in ASCII digits. An EFI variable, not a file on the ESP or
-# the root: the initrd can write it before any disk is up, and a failure of a disk or a file system
-# cannot keep it from counting.
-#
-# count (golconda-failed-boots.service, early in the initrd): N boots before this one did not
-#   complete; N is 0 on the first try of an entry (LoaderBootCountPath names +<tries - 1>-1), a new
-#   release. It writes N + 1 first, then
-#   - N + 1 = fallback: should this boot fail too, the next one starts the other /usr slot once
-#     (bootctl set-oneshot), and GolcondaFailedEntry-<the same guid> names this boot's entry;
-#   - N >= halt: this boot reboots on no failure. kernel.panic=0, and drop-ins in /run that PID 1
-#     reads at once (daemon-reload) and again after switch-root: CrashAction=freeze, no hardware
-#     watchdog and no deadline on initrd.target. The trial boot policy's reboot units skip themselves. The console
-#     stays readable.
-# complete (golconda-failed-boots-complete.service, in the host after multi-user.target and
-#   boot-complete.target): this boot completed, on a counted boot only when boot-complete.target
-#   is active. It removes the variable, and the one-shot entry `count` set if it is still unused.
-#   When GolcondaFailedEntry names another entry than this boot's, that entry failed `fallback`
-#   boots in a row and this one completed: it renames that entry's UKI on the ESP to the form
-#   systemd-boot gives an entry with no try left (<id>_<version>+0-<fallback>.efi). systemd-boot
-#   then sorts it after every good entry, so a later boot, and the update reboot timer
-#   (golconda-update-pending), keep to this release, and a newer release that sysupdate installs
-#   still comes first.
-#
+# golconda-failed-boots count|complete: count the boots in a row that do not complete, start the
+# other slot once, then stop rebooting (docs/design/boot.md, "Failed boots").
+#   count     (golconda-failed-boots.service, early in the initrd) add one to the EFI variable
+#             GolcondaFailedBoots-d1b3416f-c0f9-44e8-8b5a-cbb64676bdef, which needs no disk. The
+#             count starts again at the first try of an entry (+<tries - 1>-1), a new release.
+#   complete  (golconda-failed-boots-complete.service, in the host) remove the count, and mark the
+#             UKI of an entry that failed `fallback` boots in a row as bad (+0-<fallback>).
 # The kernel log reaches the serial console and the journal. GOLCONDA_FAILED_BOOTS_ROOT prefixes
 # every path, for the test (tests/trial-boot/failed-boots.sh).
 set -u
