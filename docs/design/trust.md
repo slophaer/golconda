@@ -236,8 +236,8 @@ per-machine values. A secret does not belong in a CA store, so the vars
 ([Secrets and vars](#secrets-and-vars)) have no part in it. An administrator who must change trust
 on one machine at once can put a file at `/etc/ssl/cert.pem` or
 `/etc/ssl/certs/ca-certificates.crt`: the `L` lines do not replace an existing file. That is a hand
-repair, outside the image. A run-time anchor directory is not built, by design: a new release is the
-way.
+repair, outside the image. A run-time anchor directory is out of scope
+([Scope](scope.md#out-of-scope-by-design)): a new release is the way.
 
 Two tmpfiles lines make the paths the image's TLS clients read by default: `L /etc/ssl/cert.pem`,
 which OpenSSL reads because `openssl version -d` says `OPENSSLDIR=/etc/ssl`, and

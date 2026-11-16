@@ -46,7 +46,7 @@ not forgotten, it is refused ([Principles](principles.md)).
 | encrypted state                  | LUKS2 bound to the TPM (PCR 11 policy); the partition definition is ready for `Encrypt=tpm2`                                                                                                                                  |
 | rollback protection              | pcrlock, policyref, key rotation; see [Trust](trust.md#rollback-weakness)                                                                                                                                                     |
 | root-less operators              | operators as userdb records, ssh principal → user, `run0` gated by polkit on a few action ids                                                                                                                                 |
-| workload identity                | one CA for SSH and X.509 with TPM device attestation; a renewal unit feeding systemd credentials                                                                                                                              |
+| workload identity                | one CA for SSH and X.509 with TPM device attestation; a renewal unit feeding systemd credentials; host certificates signed through step-ca's API                                                                              |
 | execution policy                 | the BPF LSM for `RestrictFileSystems=`, AppArmor profiles from the typed service                                                                                                                                              |
 | debug access                     | a debug image or a sysext with tools and a getty; never in the production image                                                                                                                                               |
 | hardware                         | firmware and kernel modules only when a target needs them (the kernel is monolithic)                                                                                                                                          |
@@ -59,12 +59,13 @@ not forgotten, it is refused ([Principles](principles.md)).
 
 ## Out of scope by design
 
-| not                  | because                                                                                                     |
-| -------------------- | ----------------------------------------------------------------------------------------------------------- |
-| per-human accounts   | identity is the certificate principal; service users come from sysusers only; no `useradd`, no shadow suite |
-| cloud-init           | provisioning is systemd credentials; a cloud that cannot pass them passes a disk with a `.cred` on the ESP  |
-| Nix on the machine   | the store is a build-time artifact; a configuration change is a new image                                   |
-| overlays, overrides  | duplicates are errors; a module that wants another's result calls it                                        |
-| local login          | no getty, no password; recovery is the other slot or a reflash ([Recovery](bootloader.md#recovery))         |
-| a second of anything | one libc, toolchain, TLS stack, CA store, init, logger, network stack, shell                                |
-| BIOS, desktops       | UEFI servers only                                                                                           |
+| not                  | because                                                                                                            |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| per-human accounts   | identity is the certificate principal; service users come from sysusers only; no `useradd`, no shadow suite        |
+| cloud-init           | provisioning is systemd credentials; a cloud that cannot pass them passes a disk with a `.cred` on the ESP         |
+| Nix on the machine   | the store is a build-time artifact; a configuration change is a new image                                          |
+| overlays, overrides  | duplicates are errors; a module that wants another's result calls it                                               |
+| local login          | no getty, no password; recovery is the other slot or a reflash ([Recovery](bootloader.md#recovery))                |
+| a second of anything | one libc, toolchain, TLS stack, CA store, init, logger, network stack, shell                                       |
+| BIOS, desktops       | UEFI servers only                                                                                                  |
+| run-time CA anchors  | the CA bundle is built into `/usr`; a new anchor comes with a new release ([Trust: CA store](trust.md#3-ca-store)) |
