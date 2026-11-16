@@ -77,6 +77,10 @@ image and no release uses `Verify=no`. So an update is authenticated by the rele
 downloaded, also on a host that has no Secure Boot enrolled. What Secure Boot adds is a second check
 at every boot.
 
+Root, and whoever writes the state partition, can change what an update trusts. `systemd-pull` also
+trusts the keys in `/etc/systemd/import-pubring.pgp`, and a file in `/etc/sysupdate.d` replaces the
+transfer of the same name in `/usr`, also with `Verify=no`. The image ships neither file.
+
 | what                                                                                  | checked against                                                                                                   | when                                    | without Secure Boot |
 | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------- | ------------------- |
 | `SHA256SUMS`                                                                          | its signature `SHA256SUMS.gpg`, by `gpg` against the release key the running image carries (`import-pubring.pgp`) | download, before any payload is written | the same            |

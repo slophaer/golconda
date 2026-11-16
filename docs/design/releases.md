@@ -108,12 +108,16 @@ What the signature adds: the verity signature and the signed UKI already tie eac
 none. Without Secure Boot (`/system.secureBoot = false`) nothing checks a UKI before it runs, so the
 signed index is what stops a UKI from someone else.
 
-The running image trusts only the release key it carries, so a release signed with another key
-installs nothing (`gpg: Can't check signature: No public key`). A `db` rotation therefore keeps the
-release key (`--index-keys`, as it keeps the PCR key with `--pcr-keys`). To change the release key
-itself, take two releases: one signed with the old key whose image carries the new public key, then
-the next signed with the new key. The signature does not stop a replay of an older signed index:
-sysupdate installs only versions newer than the running one, and the A/B slots keep the newest two.
+The running image trusts the release key it carries, so a release signed with another key installs
+nothing (`gpg: Can't check signature: No public key`). A `db` rotation therefore keeps the release
+key (`--index-keys`, as it keeps the PCR key with `--pcr-keys`). To change the release key itself,
+take two releases: one signed with the old key whose image carries the new public key, then the next
+signed with the new key. The signature does not stop a replay of an older signed index: sysupdate
+installs only versions newer than the running one, and the A/B slots keep the newest two.
+
+Root, and whoever writes the state partition, can add a key in `/etc/systemd/import-pubring.pgp` or
+replace a transfer in `/etc/sysupdate.d`
+([Updates: What an update authenticates](updates.md#what-an-update-authenticates)).
 
 `golconda release check` checks a release directory against this page before it is published: the
 four lines in this order, every digest against its file, one image id and version in the names, the
