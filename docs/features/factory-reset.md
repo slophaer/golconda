@@ -1,9 +1,9 @@
 # Factory reset and recovery
 
 You can wipe a machine's state and boot it fresh, or fall back to the older version of the OS. A
-state reset needs a working ssh login. A fallback needs none: boot counting does it by itself, or
-you pick the entry in the boot menu. The last resort is a reflash. This page lists the four ways
-back and what each one costs.
+state reset needs a working ssh login. A fallback needs none: boot counting or the failed-boot count
+does it by itself, or you pick the entry in the boot menu. The last resort is a reflash. This page
+lists the five ways back and what each one costs.
 
 ## How it works
 
@@ -23,6 +23,8 @@ flowchart TD
   ssh -->|no| fresh{is a new, unblessed release running?}
   fresh -->|yes, and the other slot is filled| reboot[it reboots itself until its tries run out]
   reboot --> other[systemd-boot starts the other slot]
+  fresh -->|no, and no boot completes| count[after 3 failed boots in a row, the next boot starts the other slot]
+  count --> other
   fresh -->|no| menu{firmware console or serial redirection?}
   menu -->|yes| pick[hold a key at power-on, pick the other entry]
   menu -->|no| reflash[reflash the disk]
@@ -32,10 +34,15 @@ flowchart TD
   works -->|no| reflash
 ```
 
-The four paths, in the order to try them:
+The five paths, in the order to try them:
 
 1. **Boot counting.** A new version that fails its health units is not blessed. After three tries
    systemd-boot starts the other slot ([A/B updates](updates.md)).
+1. **The failed-boot fallback.** `/base` counts each boot that does not complete, also of a blessed
+   release. After 3 such boots in a row, the next boot starts the other slot. When that boot
+   completes, the failed release sorts last, so later boots keep to the release that works. After 6
+   such boots in a row, a failed boot does not reboot: the machine stops, and the console keeps the
+   last messages until someone resets it ([Boot: Failed boots](../design/boot.md#failed-boots)).
 1. **The systemd-boot menu.** `loader.conf` sets `timeout 0`, but the menu opens when a key is held
    at firmware start. It lists the UKIs under `EFI/Linux`. Pick the older one by hand.
 1. **State reset.** The command above. It repairs a broken state partition, not a broken image.
