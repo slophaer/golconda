@@ -5,21 +5,26 @@ The exact on-disk layout. Type GUIDs are the Discoverable Partitions Specificati
 
 ## Partitions
 
-| label                                       | type             | filesystem | flags                 | size                                                                                |
-| ------------------------------------------- | ---------------- | ---------- | --------------------- | ----------------------------------------------------------------------------------- |
-| `esp`                                       | `esp`            | vfat       | —                     | 512 MiB                                                                             |
-| `usr-a`                                     | `usr`            | erofs      | read-only             | 10 GiB; the erofs image inside is much smaller                                      |
-| `usr-a-verity`                              | `usr-verity`     | —          | read-only             | 128 MiB                                                                             |
-| `usr-a-verity-sig`                          | `usr-verity-sig` | —          | read-only             | 16 KiB                                                                              |
-| `usr-b`, `usr-b-verity`, `usr-b-verity-sig` | as above         |            |                       | the same sizes as A, empty until the first update                                   |
-| `root`                                      | `root`           | ext4       | growfs, factory-reset | the rest of the disk, created on first boot (unencrypted for now, LUKS2+TPM2 later) |
+| definition                               | label                      | type             | filesystem | flags                 | size                                                                                |
+| ---------------------------------------- | -------------------------- | ---------------- | ---------- | --------------------- | ----------------------------------------------------------------------------------- |
+| `00-esp`                                 | `esp` (repart's default)   | `esp`            | vfat       | —                     | 512 MiB                                                                             |
+| `10-usr-a`                               | `usr_<version>`            | `usr`            | erofs      | read-only             | 10 GiB; the erofs image inside is much smaller                                      |
+| `11-usr-a-verity`                        | `usr-verity_<version>`     | `usr-verity`     | —          | read-only             | 128 MiB                                                                             |
+| `12-usr-a-verity-sig`                    | `usr-verity-sig_<version>` | `usr-verity-sig` | —          | read-only             | 16 KiB                                                                              |
+| `20-usr-b`                               | `_empty`                   | `usr`            | —          | read-only             | 10 GiB, empty until the first update                                                |
+| `21-usr-b-verity`, `22-usr-b-verity-sig` | `_empty`                   | as in slot A     | —          | none                  | the same sizes as in slot A, empty until the first update                           |
+| `30-root`                                | `root`                     | `root`           | ext4       | growfs, factory-reset | the rest of the disk, created on first boot (unencrypted for now, LUKS2+TPM2 later) |
+
+The definitions are the entries of `image/repart.nix`. An update labels the slot it writes with the
+release's version, and a free slot is `_empty` ([Image artifacts: A release](image.md#a-release)).
+`21-usr-b-verity` and `22-usr-b-verity-sig` have no `ReadOnly=`.
 
 The slots are fixed at 10 GiB so an update of a grown image always fits; both slots must hold any
 release. The ESP holds two UKIs and 8 MiB for the loader and its files, so the signer refuses a UKI
 larger than (512 MiB − 8 MiB) / 2 = 252 MiB. The image builder sets the verity partitions to one
-fixed size as well (128 MiB, `image/repart.nix`). The partition UUIDs of `usr-a` and `usr-a-verity`
-are derived from the verity root hash, which is how gpt-auto finds the pair the UKI's `usrhash=`
-names.
+fixed size as well (128 MiB, `image/repart.nix`). The partition UUIDs of `10-usr-a` and
+`11-usr-a-verity` are derived from the verity root hash, which is how gpt-auto finds the pair the
+UKI's `usrhash=` names.
 
 ## Paths
 
