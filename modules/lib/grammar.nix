@@ -1,16 +1,11 @@
-# The grammars of names, paths and versions, one definition each. The typedefs
-# in modules/ test a value with `builtins.match` (a whole-string POSIX ERE), and
-# lib/schema.nix exports the same strings as JSON Schema patterns (ECMA-262,
-# anchored with `anchored`), so a type and its schema cannot disagree.
-#
-# Every pattern is in the subset both dialects read alike: bracket expressions
-# with `-` last and no backslash inside, `\.` and `\[` outside them, groups,
-# `|`, `*`, `+` and `{m,n}`. A pattern with a top-level `|` is one group, so
-# anchoring it keeps every alternative anchored.
-#
-# A control character is the one rule the subset cannot spell: POSIX has the
-# class [[:cntrl:]], ECMA-262 the escapes \u0000-\u001f and \u007f. `control` and
-# `controlSchema` are the two spellings of the one set (0x00-0x1f and 0x7f).
+# The grammars of names, paths and versions, one definition each. The typedefs in modules/ test a
+# value with `builtins.match` (a whole-string POSIX ERE), and lib/schema.nix exports the same
+# strings as JSON Schema patterns (ECMA-262, anchored with `anchored`), so a type and its schema
+# cannot disagree. Every pattern is in the subset both dialects read alike: bracket expressions
+# with `-` last and no backslash inside, `\.` and `\[` outside them, groups, `|`, `*`, `+` and
+# `{m,n}`. A pattern with a top-level `|` is one group, so anchoring it keeps every alternative
+# anchored. A control character is the one rule the subset cannot spell: POSIX has [[:cntrl:]],
+# ECMA-262 the escapes \u0000-\u001f and \u007f; `control` and `controlSchema` are the two spellings.
 let
   inherit (builtins) concatStringsSep;
 

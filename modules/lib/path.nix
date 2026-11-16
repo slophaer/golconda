@@ -1,24 +1,13 @@
-# Canonical paths: the checks behind every path or name that becomes a path
-# in the installed /usr tree.
-#
-# A path from a fragment is a claim on that tree, and the composer compares
-# claims by string: "/usr/bin/../lib/x" and "/usr/lib/x" are the same file
-# but two strings, so a non-canonical spelling is refused, not normalized.
-# `/usr/../etc/x` also passes a plain "/usr/" prefix check, so the check is
-# on the whole path: under /usr/, no empty, `.` or `..` component, no
-# repeated separator, no trailing separator, no control character.
-#
-#   path.usrError "/usr/lib/x"       # null
-#   path.usrError "/usr/../etc/x"    # a message naming the path and the rule
-#   path.relativeError "a/b"         # null: a file name under /usr/lib/<service>/
-#   path.componentError "a b"        # a message: not one path component
-#
-# Plain functions, so a caller without the types library (merge.nix) can use
-# them; fragment.nix, app.nix and the like wrap them as typedefs.
-#
-# What each check accepts is one pattern of grammar.nix (usrPath, relativePath,
-# component) plus no control character: the patterns the schema exports. The rules
-# below only pick the message for a path the pattern refuses.
+# Canonical paths: the checks behind every path or name that becomes a path in the installed /usr
+# tree. The composer compares claims by string, so "/usr/bin/../lib/x" and "/usr/lib/x" (one
+# file, two strings) are refused, not normalized. `/usr/../etc/x` passes a plain "/usr/" prefix
+# check, so each check covers the whole path: under /usr/, no empty, `.` or `..` component, no
+# repeated or trailing separator, no control character.
+#   path.usrError, path.relativeError (a file name under /usr/lib/<service>/), path.componentError
+#   return null or a message that names the path and the rule.
+# Plain functions, so merge.nix can use them without the types library. Each accepts what one
+# pattern of grammar.nix accepts (usrPath, relativePath, component) plus no control character;
+# the rules below only pick the message for a path the pattern refuses.
 let
   grammar = import ./grammar.nix;
   inherit (builtins)

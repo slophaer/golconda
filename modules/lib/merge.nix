@@ -1,52 +1,15 @@
-# The union of fragments, the one rule the composer (/system) and modules that
-# return more than one fragment share: attribute fields (units, files, links)
-# must not repeat a key, list fields concatenate with each element once. There
-# is no priority and no override (docs/design/modules.md).
-#
-# The /usr symlink farm is one map, path under /usr -> { target; kind; }: the
-# fragments' own `links`, kind "farm" (a directory the image builder expands
-# file by file), "dlopen" (a soname the builder checks) or "explicit" (.wants
-# links and the like). /usr/bin/<name> for a package's executables is not in
-# it: evaluation cannot see what a build installs, so the image builder links
-# them from each package's exports.json (lib/usr-tree.nix).
-#
-# One duplicate check covers what evaluation knows of the /usr tree. Each
-# fragment claims paths: a unit /usr/lib/systemd/system/<name>, a file its
-# path, a link its path. A path claimed twice throws, whatever the kinds, and
-# the message names both claims and both origins. The image builder applies the
-# same rule to the /usr/bin names of the packages. The paths the system and the
-# image builder write themselves (os-release, the golconda.conf of sysusers.d
-# and tmpfiles.d, /usr/lib/golconda/*.json) are claimed before any fragment, so
-# a fragment cannot claim one. The same check covers the lines: a tmpfiles
-# line claims its path, a sysusers `u` or `g` line its user or group. An
-# identical line is one claim and comes out once. A line with a control
-# character throws.
-#
-# Every value of `files` comes out as { text; mode; }: a plain string is a
-# file with mode "0644" (fragment.nix). The image builder reads one shape.
+# The union of fragments, the one rule that the composer (/system) and modules returning more than
+# one fragment share: attribute fields (units, files, links) must not repeat a key, list fields
+# concatenate with each element once. There is no priority and no override (docs/design/modules.md).
 #
 #   merge [ fragmentA fragmentB ] -> { units; files; sysusers; tmpfiles; packages; links; programs; }
 #
-# `programs` is one list with each name once: the /usr/bin names the units run,
-# which the image builder checks exist.
-#
-# Attribution: `merge.withOrigins [ { origin; fragment; } ... ]` is the same
-# union plus `origins`, one map per kind of thing a fragment emits, each key ->
-# the origins that emitted it (each once, in first-seen order):
-#   origins.packages   package key (`merge.pkgKey`: name-version)
-#   origins.files      path under /usr
-#   origins.links      path under /usr: the fragment's own links (the image
-#                      builder adds the /usr/bin links of the packages)
-#   origins.units      unit name
-#   origins.sysusers   the line
-#   origins.tmpfiles   the line
-#   origins.programs   the name in /usr/bin
-# `packageOrigins` stays as an alias of `origins.packages`. The composer
-# labels its inputs by module path ("/base") and a listed fragment by its
-# `name` or "fragments[<i>]". `packages` stays one deduped list.
-#
-# `merge.duplicateError fragments` is the check's message or null, so a test
-# can read what the error says.
+# Every file comes out as { text; mode; }. `links` is one map, path under /usr -> { target; kind; };
+# the image builder links /usr/bin/<name> from each package's exports.json (lib/usr-tree.nix),
+# because evaluation cannot see what a build installs. One check covers units, files, links and
+# the tmpfiles and sysusers lines: a path claimed twice throws with both claims and both origins.
+# The paths that the system and the image builder write are claimed first. `merge.withOrigins`
+# adds `origins` (key -> origins, first-seen order); `merge.duplicateError` is the message or null.
 let
   inherit (builtins)
     any

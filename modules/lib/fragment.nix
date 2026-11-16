@@ -185,9 +185,7 @@ let
     units = optionalAttr units;
     # absolute path under /usr -> file (os-release, repart.d, sysupdate.d, ...)
     files = optionalAttr (attrsOf file);
-    # systemd-sysusers lines
     sysusers = optionalAttr (listOf string);
-    # systemd-tmpfiles lines
     tmpfiles = optionalAttr (listOf string);
     # closure roots that go into /usr/nix/store; the image builder links their
     # executables into /usr/bin (lib/usr-tree.nix)

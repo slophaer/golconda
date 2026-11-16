@@ -293,7 +293,6 @@ let
         }) wantedByTargets
       );
 
-      # the app's files, under /usr/lib/<name>/
       appFiles = svc.app.files or { };
       files = builtins.listToAttrs (
         map (f: {

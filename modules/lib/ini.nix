@@ -25,14 +25,14 @@ let
     name: k: v:
     if isString v then
       if hasControl v then
-        throw "golconda: ini: section '${name}', key '${k}': a value must not contain a line break or another control character (a line break would add a directive)"
+        throw "golconda: ini: section '${name}', key '${k}': the value holds a control character, and a line break would add a directive; remove it"
       else
         true
     else if isList v then
       foldl' (
         _: x:
         if isString x && hasControl x then
-          throw "golconda: ini: section '${name}', key '${k}': a list entry must not contain a line break or another control character (a line break would add a directive)"
+          throw "golconda: ini: section '${name}', key '${k}': a list entry holds a control character, and a line break would add a directive; remove it"
         else
           true
       ) true v

@@ -1,35 +1,13 @@
-# Vars: values the image names but never contains. Two classes:
-#
-#   - local: generated on the machine at first boot (ssh host keys, wireguard
-#     keys). The generator runs in a oneshot unit, seals secrets with
-#     systemd-creds, and exports only public files.
-#   - admin: kept age-encrypted on the deploy host, pushed over ssh, sealed on
-#     the machine. The image carries only the manifest entry (class "admin").
-#
-# The manifest is /usr/lib/golconda/vars.d/<name>.json.
-#
-#   let v = import ../../lib/var.nix { inherit types; };
-#   in v.render { name = "foo-key"; secrets = [ "key" ]; publics = [ "key.pub" ];
-#                 script = "foo-keygen -o key"; packages = [ foo ]; }
-#
-# A consumer service names the credential, never a path:
-#   credentials.key = v.credentialId "foo-key" "key";    # LoadCredentialEncrypted=foo-key.key, argv %d/foo-key.key
-#   after = [ (v.unitName "foo-key") ]; wants = [ (v.unitName "foo-key") ];
-#
-# An admin-supplied var (`admin`) is the second class (docs/design/trust.md):
-# the value is kept age-encrypted on the deploy host, pushed over ssh and
-# sealed by the machine's own systemd-creds into /etc/credstore.encrypted,
-# so the image carries only its manifest entry, class "admin", its file list
-# (<name>.admin), and no unit.
-# The deploy tool reads the manifest from the image. The credential id is
-# the same `<name>.<file>`, so a consumer does not know the class:
-#   v.admin { name = "foo-cert"; files = [ "cert" ]; consumers = [ "foo.service" ]; }
-#   credentials.cert = v.credentialId "foo-cert" "cert";  # LoadCredentialEncrypted=foo-cert.cert
-#
-# The runner /usr/lib/golconda/golconda-var-run (modules/vars/golconda-var-run)
-# is one file for all vars, so the /vars module installs it (mode 0755).
-# /vars and /factory are built-in components (lib/components.nix): every system has
-# them. The runner needs /bin/sh, coreutils and systemd-creds in the image.
+# Vars: values the image names but never contains (docs/features/vars.md). A local var is
+# generated on the machine at first boot; an admin var is kept age-encrypted on the deploy host,
+# pushed over ssh and sealed by the machine. The manifest is /usr/lib/golconda/vars.d/<name>.json.
+#   render var      a fragment with the unit, the manifest and the script
+#   admin adminVar  a fragment with the manifest entry and `<name>.admin` only, and no unit
+#   unitName, credentialId, stateDir   "golconda-var-<name>.service", "<name>.<file>" (both
+#                   classes), "/var/lib/golconda/vars/<name>"
+# A consumer names the credential, never a path: `credentials.key = v.credentialId "foo-key" "key"`.
+# The runner modules/vars/golconda-var-run serves all vars; it needs /bin/sh, coreutils and
+# systemd-creds in the image.
 { types }:
 let
   fragmentTypes = import ./fragment.nix { inherit types; };
