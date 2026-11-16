@@ -2,5 +2,4 @@ result*
 docs/book/
 .direnv/
 docs/reference/modules/generated/
-.review/
 cli/target/
