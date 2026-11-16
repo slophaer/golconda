@@ -60,8 +60,8 @@ renderers produce the text and the tests read it.
 
 The repkgs sets enter the tree once, as the options of `/pkgs`:
 
-- `target` is the set of the platform the image runs on (`nix/default.nix` passes it from
-  `nix/packages.nix`);
+- `target` is the set of the platform the image runs on (`mkSystem`, `lib/system.nix`, passes it
+  from `nix/packages.nix`; a document cannot);
 - `build` is the build host's set, for tools that run on the builder. It defaults to the target's
   `buildPkgs`, which is the same set when the build is not a cross build.
 

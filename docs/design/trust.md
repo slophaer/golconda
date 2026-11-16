@@ -283,7 +283,9 @@ plain keys log in. `golconda vars enrol HOST` then checks the fingerprint agains
 signs the host key with the host CA key and pushes the KRL and the host certificate
 ([Commands: golconda vars enrol](../reference/cli.md#golconda-vars-enrol)). The machine seals both,
 and the push restarts sshd (`KillMode=process` keeps the push's own session). sshd then presents the
-certificate, checks the KRL and refuses every plain key.
+certificate, checks the KRL and refuses every plain key. After a new `sshd-hostkey`, run
+`golconda vars enrol HOST` again: until then clients see a plain host key
+([Vars](../features/vars.md#how-it-works)).
 
 ```mermaid
 sequenceDiagram

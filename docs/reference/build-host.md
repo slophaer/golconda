@@ -39,7 +39,9 @@ send the daemon no settings at all (iets `docs/reference/settings.md`), so a cli
 not turn them on.
 
 A classic `nix-build` evaluates on the client, so the client's `nix.conf` needs the same
-`experimental-features` line. iets's own commands have every feature built in.
+`experimental-features` line, and `flakes` as well for `nix fmt` and the lint's flake-template test
+([Prerequisites](../../CONTRIBUTING.md#prerequisites)). iets's own commands have every feature built
+in.
 
 ## The first daemon: a chicken-and-egg
 

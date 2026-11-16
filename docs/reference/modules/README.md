@@ -210,8 +210,8 @@ Error message examples, from `tests/eval/composer.nix`:
 
 ### `/pkgs`
 
-Two options: `target`, the repkgs set of the platform (`nix/packages.nix`), which `nix/default.nix`
-passes as `options."/pkgs".target`; and `build`, the build host's set (default
+Two options: `target`, the repkgs set of the platform (`nix/packages.nix`), which `mkSystem`
+(`lib/system.nix`) passes as `options."/pkgs".target`; and `build`, the build host's set (default
 `{ pkgs = target.buildPkgs; }`, the same packages as `target` when not cross). The module returns
 `{ target; build; pkgs; }`, `pkgs` being `target.pkgs`. A module that needs a package declares
 `inputs.pkgs.path = "/pkgs"` and reads `results.pkgs.pkgs.<name>`; a package option defaults with

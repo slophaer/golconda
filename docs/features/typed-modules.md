@@ -31,9 +31,11 @@ which module won. You read the answer in the error, or in `attribution.json`.
 - **A module is on when its table is in the document.** There is no `enable` flag. A table
   `["/services/sshd"]` selects the component, and removing the table removes it.
 
-The built-in components are in every system: `/base`, `/network`, `/security`, `/trust`, `/factory`
-and `/vars`. `/pkgs` is a provider: it gives the package set to modules that declare it as an input,
-and it adds no fragment. `/services/sshd` is the one optional component today.
+The built-in components are in every system, and the optional ones, `/services/sshd` and `/imds`,
+are in a system when the document has their table
+([Modules: Which modules a system has](../design/modules.md#which-modules-a-system-has)). `/pkgs` is
+a provider: it gives the package set to modules that declare it as an input, and it adds no
+fragment.
 
 ## Using it
 

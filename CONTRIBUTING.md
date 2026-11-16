@@ -40,7 +40,8 @@ directories to a booted machine.
   [design/principles](docs/design/principles.md)). A new package or option that duplicates an
   existing one needs a reason in the commit body.
 - **No nixpkgs.** Packages come from the repkgs fork; Golconda-specific ones live in `packages/`.
-  `checks.boundary` looks for nixpkgs in the Nix files, the scripts and `pins/`.
+  `checks.boundary` looks for nixpkgs in the Nix files, the scripts and `pins/`, and for a fetch of
+  nixpkgs in every tracked file but the docs.
 - **Typed, explicit modules.** A module returns a fragment; shared types live in `modules/lib/`.
   Duplicates are errors, never overrides. Credentials are references, never file contents.
 - **Module doc comments.** Every module's Nix file starts with `#! ` lines (hash-bang-space) that
