@@ -20,7 +20,7 @@
   # credential unseals only when the machine's phase path is signed, so the list starts at the
   # initrd and ends at `ready`; one long chain would permit unsealing only at its end.
   # lib/image/uki.nu checks the built .pcrsig against this list. Any UKI signed by the same key
-  # can unseal the credentials (docs/design/trust.md, "Rollback weakness").
+  # can unseal the credentials (docs/design/trust.md, "Downgrade weakness").
   pcrPhases = [
     "enter-initrd"
     "enter-initrd:leave-initrd"

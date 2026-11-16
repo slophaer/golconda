@@ -1,4 +1,4 @@
-# uptrack, repkgs' update tool (docs/uptrack.md in the repkgs tree): nushell scripts that poll the
+# uptrack, repkgs' update tool (documented in the repkgs tree): nushell scripts that poll the
 # upstreams named in sources.toml files and write new pins. With UPTRACK_ROOT set to a tree it
 # needs no repkgs checkout; scripts/pins runs it on pins/. Not part of an image.
 #

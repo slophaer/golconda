@@ -12,10 +12,13 @@ mdbook rule: lower-case, punctuation dropped, spaces to dashes, and a repeated
 heading gets -1, -2 and so on.
 
 It also fails when a page under docs/ is not listed in docs/SUMMARY.md, because
-mdbook builds such a page but nothing links to it.
+mdbook builds such a page but nothing links to it. A file that is not Markdown
+(code, a script, a test) must name only pages that exist, and only their
+headings: `docs/<page>.md#anchor` or `docs/<page>.md, "Heading"`, where a
+marker such as *(later)* in the heading does not count.
 
-Exit status 1 when any link is broken or any page is unlisted. This is checks.docs-links in
-nix/checks.nix, run by scripts/lint.
+Exit status 1 when any link or reference is broken or any page is unlisted.
+This is checks.docs-links in nix/checks.nix, run by scripts/lint.
 """
 import os
 import re
@@ -24,9 +27,12 @@ import sys
 ROOT = sys.argv[1] if len(sys.argv) > 1 else "."
 
 LINK = re.compile(r"\]\(([^)\s]+)\)")
+REF = re.compile(r'(?<![\w/.-])(docs/[\w./-]*\.md)(?:#([\w-]+)|,? "([^"]+)")?')
+MARKER = re.compile(r"\s*\*\([^)]*\)\*")
 HEAD = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
 FENCE = re.compile(r"^\s*(```|~~~)")
 SKIP_DIRS = {".git", ".direnv", ".review", "book", "generated", "node_modules"}
+cache = {}
 
 
 def slug(text):
@@ -49,6 +55,8 @@ def read_outside_fences(path):
 
 
 def anchors(path):
+    if path in cache:
+        return cache[path]
     seen = {}
     out = set()
     for line in read_outside_fences(path):
@@ -58,18 +66,27 @@ def anchors(path):
             n = seen.get(s, 0)
             seen[s] = n + 1
             out.add(s if n == 0 else f"{s}-{n}")
+    cache[path] = out
     return out
 
 
-def pages():
-    for base, dirs, files in os.walk(ROOT):
+def titles(path):
+    """The anchors of a page's headings without their markers."""
+    heads = (HEAD.match(line) for line in read_outside_fences(path))
+    return {slug(MARKER.sub("", m.group(2))) for m in heads if m}
+
+
+def files():
+    for base, dirs, names in os.walk(ROOT):
         dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
-        for name in sorted(files):
-            if name.endswith(".md"):
-                yield os.path.normpath(os.path.join(base, name))
+        for name in sorted(names):
+            yield os.path.normpath(os.path.join(base, name))
 
 
-cache = {}
+def pages():
+    return (f for f in files() if f.endswith(".md"))
+
+
 total = 0
 bad = 0
 listed = set()
@@ -89,11 +106,34 @@ for page in pages():
                 print(f"missing file   {page}: {target}")
                 bad += 1
             elif anchor and dest.endswith(".md"):
-                if dest not in cache:
-                    cache[dest] = anchors(dest)
-                if anchor not in cache[dest]:
+                if anchor not in anchors(dest):
                     print(f"missing anchor {page}: {target}")
                     bad += 1
+
+# docs/ paths that the code, scripts and tests name, outside Markdown
+for f in files():
+    if f.endswith(".md") or os.path.islink(f):
+        continue
+    try:
+        with open(f, encoding="utf-8") as fh:
+            text = fh.read()
+    except (UnicodeDecodeError, OSError):
+        continue
+    for n, line in enumerate(text.splitlines(), 1):
+        for path, anchor, heading in REF.findall(line):
+            if "generated" in path.split("/"):
+                continue
+            total += 1
+            dest = os.path.join(ROOT, path)
+            if not os.path.exists(dest):
+                print(f"missing file   {f}:{n}: {path}")
+                bad += 1
+            elif anchor and anchor not in anchors(dest):
+                print(f"missing anchor {f}:{n}: {path}#{anchor}")
+                bad += 1
+            elif heading and slug(heading) not in titles(dest):
+                print(f'missing heading {f}:{n}: {path}, "{heading}"')
+                bad += 1
 
 summary = os.path.normpath(os.path.join(ROOT, "docs", "SUMMARY.md"))
 if os.path.exists(summary):

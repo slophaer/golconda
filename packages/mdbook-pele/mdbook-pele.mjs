@@ -1,7 +1,7 @@
 // mdbook preprocessor: render ```mermaid blocks to inline SVG with Pele
 // (https://pele.run) at build time. The book ships no diagram JavaScript.
 // It also fixes the links of the first page, which includes ../README.md: the
-// README links docs/x.md from the repository root, the book serves x.md, and a
+// README links docs/<page>.md from the repository root, the book serves <page>.md, and a
 // root file (CONTRIBUTING.md, LICENSE) is not in the book, so it goes to the forge.
 // Usage: node mdbook-pele.mjs <path to pele/dist/pele.js> [supports <renderer>]
 import { readFileSync } from "node:fs";

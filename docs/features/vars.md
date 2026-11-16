@@ -97,6 +97,6 @@ limits are below.
 
 - [Trust: Secrets and vars](../design/trust.md#secrets-and-vars)
 - [Trust: TPM2 credential decryption](../design/trust.md#tpm2-credential-decryption) and
-  [Rollback weakness](../design/trust.md#downgrade-weakness)
+  [Downgrade weakness](../design/trust.md#downgrade-weakness)
 - [Reference: modules, var names](../reference/modules/README.md#var-names)
 - [Measured boot](measured-boot.md), [Certificate login](ssh-login.md)
