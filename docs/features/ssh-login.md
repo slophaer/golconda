@@ -87,7 +87,8 @@ The push restarts sshd, which then presents the host certificate, checks the KRL
 plain key: the image's `authorizedKeys`, `ssh.authorized_keys.root` and a cloud's keys. From then on
 only certificates log in, after reboots and updates too
 ([Trust: Enrolment](../design/trust.md#enrolment)). The signer is `ssh-keygen`, with the CA key in a
-file or on a token. Signing through step-ca's API is *(later)*: step-ca signs user certificates.
+file or on a token. Signing through step-ca's API is *(later)*, a part of workload identity
+([Scope: Later](../design/scope.md#later)): step-ca signs user certificates.
 
 ## Status
 

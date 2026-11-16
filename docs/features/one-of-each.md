@@ -85,7 +85,9 @@ and four boot-test markers: `ca-store-links`, `ca-bundle-content`, `tls-anchor-t
   review.
 - OpenSSL is the TLS stack, but rustls is tolerated in Rust-only tools.
 - The CA store is fixed when the image is built. An anchor added on a running machine, without a
-  release, is *(later)* ([Trust: CA store](../design/trust.md#3-ca-store) says why).
+  release, is out of scope: a new release adds it
+  ([Scope](../design/scope.md#out-of-scope-by-design);
+  [Trust: CA store](../design/trust.md#3-ca-store) says why).
 - Build-only tools sit outside the rule. Python, Perl and GNU coreutils help build the image and are
   not in it.
 
