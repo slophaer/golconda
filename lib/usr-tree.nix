@@ -1,6 +1,6 @@
 # lib/usr-tree.nix: assemble the complete /usr tree from the composer output.
 #
-# usrTree { composerOutput; platform; version; buildSystem?; sbomDrv?; } → derivation
+# usrTree { composerOutput; platform; version; buildSystem?; sbomDrv?; sources; } → derivation
 # whose output IS the /usr tree:
 #   nix/store/<hash>-* for the runtime closure of composerOutput.packages
 #   bin/<name> = a symlink into nix/store for each executable of each package: the names
@@ -116,10 +116,10 @@ in
       version, # Image version string
       buildSystem ? platform.name, # The build host; defaults to the target (native build)
       sbomDrv ? null, # Optional SBOM derivation; its sbom.json is copied into the tree
+      sources, # the pins of the system: the builder is their repkgs seed's nu
     }:
     let
       # Get nushell from the bootstrap seed for the BUILD host
-      sources = import ../pins;
       bootstrap = import "${sources.repkgs}/bootstrap" {
         seed = null;
         system = buildSystem;
@@ -191,14 +191,11 @@ in
       '';
 
     in
-    derivation {
+    import ./ca-derivation.nix {
       name = "golconda-usr-${version}";
       # The derivation runs on the build host, not the target
       system = buildSystem;
       __structuredAttrs = true;
-      __contentAddressed = true;
-      outputHashMode = "recursive";
-      outputHashAlgo = "sha256";
       builder = "${nu}/bin/nu";
       args = nuArgs ++ [ script ];
       outputs = [ "out" ];

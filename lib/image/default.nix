@@ -19,7 +19,7 @@ in
 // {
   inherit (common) uuidOfHex hexOf;
 
-  # throwawayKeys { buildSystem; pkgs; variant ? null; reusePkKek ? null; } -> derivation with the
+  # throwawayKeys { buildSystem; pkgs; sources; variant ? null; reusePkKek ? null; } -> derivation with the
   # key pairs of the test images: the Secure Boot db, the PCR policy key and the release key. They
   # are made inside the store because they are fixtures: a production key never enters it. `out` is
   # the whole set, `public` the public halves (the chain's publicKeys, the boot test's --keys). A
@@ -30,12 +30,13 @@ in
     {
       buildSystem,
       pkgs,
+      sources,
       variant ? null,
       reusePkKek ? null,
     }:
     common.nuDerivation {
       name = "golconda-throwaway-keys" + (if variant == null then "" else "-${variant}");
-      inherit buildSystem;
+      inherit buildSystem sources;
       module = "keys";
       tools = [
         pkgs.openssl

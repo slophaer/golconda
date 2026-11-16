@@ -25,14 +25,11 @@ let
       pkg = set.pkgs.${name};
       inputs = ./. + "/${name}/inputs.nix";
     in
-    derivation (
+    import ../../lib/ca-derivation.nix (
       (if builtins.pathExists inputs then import inputs set.pkgs else { })
       // {
         name = "check-${name}";
         system = set.platform.system;
-        __contentAddressed = true;
-        outputHashMode = "recursive";
-        outputHashAlgo = "sha256";
         PATH = "${seed}/bin";
         inherit pkg;
         inherit (pkg) debug version;

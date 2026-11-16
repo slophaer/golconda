@@ -200,6 +200,7 @@ let
         cpu = "x86_64";
       };
       version = "20261031.1";
+      sources = stubbedSources;
     }).packageBins;
   binsFor = fragments: p: builtins.filter (b: b.path == p.outPath) (binsOf fragments);
   # the composer's files, forced: a type error in a file fires here

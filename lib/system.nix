@@ -356,6 +356,7 @@ let
     };
     inherit (setFull) platform;
     inherit (composed) version;
+    inherit sources;
     sbomDrv = sbom;
   };
 

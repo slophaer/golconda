@@ -12,7 +12,6 @@ let
     match
     substring
     ;
-  sources = import ../../pins;
   builderTree = builtins.path {
     path = ./.;
     name = "image-builder";
@@ -28,7 +27,7 @@ let
     };
 in
 {
-  # nuDerivation { name; buildSystem; module; tools; attrs; modules ? null; }: runs
+  # nuDerivation { name; buildSystem; sources; module; tools; attrs; modules ? null; }: runs
   # `use <module>.nu; <module> build` with every package in `tools` on PATH (bin/, plus
   # lib/systemd for systemd's libexec tools). The libraries systemd's tools dlopen (libcrypto,
   # libcryptsetup, libtss2, libfdisk) they find through the fork's RUNPATH. `modules`, a list of
@@ -37,6 +36,7 @@ in
     {
       name,
       buildSystem,
+      sources, # the pins of the system: the builder is their repkgs seed's nu
       module,
       tools ? [ ],
       attrs ? { },
@@ -53,14 +53,11 @@ in
         map (t: "${t}/bin") (tools ++ [ bootstrap.seed ]) ++ map (t: "${t}/lib/systemd") tools
       );
     in
-    derivation (
+    import ../ca-derivation.nix (
       {
         inherit name;
         system = buildSystem;
         __structuredAttrs = true;
-        __contentAddressed = true;
-        outputHashMode = "recursive";
-        outputHashAlgo = "sha256";
         builder = "${nu}/bin/nu";
         args = [
           "--no-config-file"

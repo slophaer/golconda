@@ -4,12 +4,9 @@
 # that they need no nixpkgs. (The retired chroot-store daemon also refused an input-addressed
 # derivation that names a repkgs, content-addressed, output; the system daemon takes one.)
 set: name: tools: script:
-derivation {
+import ../lib/ca-derivation.nix {
   inherit name;
   system = set.platform.system;
-  __contentAddressed = true;
-  outputHashMode = "recursive";
-  outputHashAlgo = "sha256";
   builder = "${set.bootstrap.seed}/bin/sh";
   args = [
     "-eu"

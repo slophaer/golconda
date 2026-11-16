@@ -95,7 +95,7 @@ let
     platform
     ;
   indexKeyring = imageLib.indexKeyring {
-    inherit pkgs;
+    inherit pkgs sources;
     buildSystem = system;
     publicKey = indexPublicKey;
   };
@@ -120,6 +120,7 @@ let
   stepArgs = {
     imageId = sys.name;
     inherit (sys) version platform pkgs;
+    inherit sources;
     buildSystem = system;
   };
   initrd = imageLib.initrd (
@@ -131,14 +132,13 @@ let
         // {
           packagesDir = project.packages;
           inherit (project) replaces;
-          inherit sources;
           inherit (sys.composed) secureBoot;
         }
       );
     }
   );
   signer = imageLib.signer {
-    inherit pkgs;
+    inherit pkgs sources;
     buildSystem = system;
   };
   unsigned = imageLib.manifest (
@@ -196,6 +196,7 @@ in
         pcrKeys
         indexKeys
         pkgs
+        sources
         ;
       buildSystem = system;
     };

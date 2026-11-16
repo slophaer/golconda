@@ -37,6 +37,7 @@ let
       keyring = linkAt "/usr/lib/systemd/import-pubring.pgp";
       expectedKeyring = (import ../../lib/image { }).indexKeyring {
         buildSystem = "x86_64-linux";
+        inherit sources;
         inherit
           # the internal entry point: an attrset config (lib.mkSystem takes a TOML path)
           (import ../../lib/system.nix {

@@ -1,6 +1,6 @@
 # lib/image/signer.nix: the signer as a program, and the test images it signs in the store.
 #
-# signer { pkgs; buildSystem; } -> derivation with bin/golconda-sign (lib/image/sign-main.nu), built
+# signer { pkgs; buildSystem; sources; } -> derivation with bin/golconda-sign (lib/image/sign-main.nu), built
 #   from the image's own package set. The release host runs it (`golconda release build`) with the
 #   key set where it lies; nothing of it enters the store.
 # signedWithTestKeys { unsigned; name; keys; pcrKeys ? keys; indexKeys ? keys; buildSystem; }
@@ -15,10 +15,14 @@ let
 in
 {
   signer =
-    { pkgs, buildSystem }:
+    {
+      pkgs,
+      buildSystem,
+      sources,
+    }:
     common.nuDerivation {
       name = "golconda-sign";
-      inherit buildSystem;
+      inherit buildSystem sources;
       module = "signer";
       tools = [
         pkgs.systemd # systemd-sbsign, systemd-measure, systemd-repart (lib/systemd, on PATH too)
@@ -34,16 +38,20 @@ in
       attrs.opensslModules = "${pkgs.pkcs11-provider}/lib/ossl-modules";
     };
 
-  # enrolTool { pkgs; buildSystem; } → derivation with bin/golconda-enrol-auth
+  # enrolTool { pkgs; buildSystem; sources; } → derivation with bin/golconda-enrol-auth
   #   (lib/image/enrol-main.nu): a key set's enrolment files, secureboot/auth/{microsoft,golconda}
   #   (lib/image/enrol.nu), written by efitools and checked with openssl. scripts/make-keys runs
   #   it on the release host with the PK and KEK keys; Microsoft's objects are
   #   packages/secureboot-objects. No image depends on it.
   enrolTool =
-    { pkgs, buildSystem }:
+    {
+      pkgs,
+      buildSystem,
+      sources,
+    }:
     common.nuDerivation {
       name = "golconda-enrol-auth";
-      inherit buildSystem;
+      inherit buildSystem sources;
       module = "signer";
       tools = [
         pkgs.openssl # the key checks and the signature check
@@ -67,12 +75,9 @@ in
       indexKeys ? keys,
       buildSystem,
     }:
-    derivation {
+    import ../ca-derivation.nix {
       inherit name;
       system = buildSystem;
-      __contentAddressed = true;
-      outputHashMode = "recursive";
-      outputHashAlgo = "sha256";
       builder = "${unsigned}/sign";
       args = [
         "${unsigned}"
@@ -96,9 +101,10 @@ in
       indexKeys ? keys,
       buildSystem,
       pkgs,
+      sources,
     }:
     common.nuDerivation {
-      inherit name buildSystem;
+      inherit name buildSystem sources;
       module = "token";
       tools = [ pkgs.softhsm ];
       modules = [

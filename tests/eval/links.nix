@@ -8,6 +8,7 @@
   hasInfix,
   merge,
   openssh,
+  sources,
   standIn,
   usrTreeLib,
   withBin,
@@ -143,6 +144,7 @@ in
           cpu = "x86_64";
         };
         version = "20261031.1";
+        inherit sources;
       };
     in
     merge.duplicateError frags == null

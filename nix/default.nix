@@ -64,7 +64,7 @@ in
     }:
     let
       throwawayKeys = imageLib.throwawayKeys {
-        inherit pkgs;
+        inherit pkgs sources;
         buildSystem = system;
       };
 
@@ -101,7 +101,7 @@ in
               imageId
               version
               ;
-            inherit signed;
+            inherit signed sources;
             keys = keys.public;
             buildSystem = system;
           };
@@ -138,7 +138,7 @@ in
       # The key rotation test's new db key: a second throwaway set
       # (docs/design/bootloader.md)
       rotatedKeys = imageLib.throwawayKeys {
-        inherit pkgs;
+        inherit pkgs sources;
         buildSystem = system;
         variant = "rotated";
         # a db rotation keeps the PK and the KEK (scripts/make-keys --reuse-pk-kek)
@@ -170,7 +170,7 @@ in
       inherit (pkgs) openssl gnupg;
       # and the program that writes a key set's Secure Boot enrolment files (lib/image/enrol.nu)
       golconda-enrol-auth = imageLib.enrolTool {
-        inherit pkgs;
+        inherit pkgs sources;
         buildSystem = system;
       };
       # the dev shell's book tools (scripts/docs), and what scripts/tool runs (scripts/tools.sh)

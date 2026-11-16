@@ -18,11 +18,12 @@ in
       imageId,
       version,
       buildSystem,
+      sources,
       ... # pkgs, platform and the rest of the shared argument set
     }:
     common.nuDerivation {
       name = "${imageId}_${version}.image-smoke";
-      inherit buildSystem;
+      inherit buildSystem sources;
       module = "smoke";
       attrs = {
         inherit unsigned signed keys;

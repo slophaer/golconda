@@ -31,11 +31,12 @@ in
       publicKeys,
       secureBoot,
       microsoftKeys,
+      sources,
       ...
     }:
     common.nuDerivation {
       name = "${imageId}_${version}.unsigned";
-      inherit buildSystem;
+      inherit buildSystem sources;
       module = "manifest";
       tools = [
         pkgs.openssl

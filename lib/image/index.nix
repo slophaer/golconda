@@ -1,6 +1,6 @@
 # lib/image/index.nix: the keyring the image checks the signed update index with.
 #
-# indexKeyring { buildSystem; pkgs; publicKey; } → derivation with import-pubring.pgp: the
+# indexKeyring { buildSystem; pkgs; publicKey; sources; } → derivation with import-pubring.pgp: the
 #   release key's public half (the key set's release/index.pgp), checked to be one binary
 #   OpenPGP public key and no secret, under the name systemd-pull reads.
 # indexFragment { keyring; pkgs; } → a /system fragment that links the keyring to
@@ -22,10 +22,11 @@ in
       buildSystem,
       pkgs,
       publicKey,
+      sources,
     }:
     common.nuDerivation {
       name = "golconda-index-keyring";
-      inherit buildSystem;
+      inherit buildSystem sources;
       module = "index";
       tools = [ pkgs.gnupg ];
       attrs = {

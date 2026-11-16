@@ -128,6 +128,7 @@ in
       version,
       platform,
       buildSystem,
+      sources ? import ../../pins,
       ...
     }:
     let
@@ -139,7 +140,12 @@ in
       composerOutput = sys.composed // {
         packages = filter (p: p != sys.pkgs.linux-kernel) sys.composed.packages;
       };
-      inherit platform version buildSystem;
+      inherit
+        platform
+        version
+        buildSystem
+        sources
+        ;
     };
 
   initrd =
@@ -149,11 +155,12 @@ in
       version,
       buildSystem,
       pkgs,
+      sources,
       ... # platform and the rest of the shared argument set
     }:
     common.nuDerivation {
       name = "${imageId}_${version}.initrd";
-      inherit buildSystem;
+      inherit buildSystem sources;
       module = "initrd";
       tools = [
         pkgs.gen-init-cpio

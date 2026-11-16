@@ -211,12 +211,9 @@ let
     if [ "''${IN_NIX_SHELL:-}" = pure ]; then PATH="$PATH:${seed}/bin"; fi
     GOLCONDA_SETUP_EOF
   '';
-  shell = derivation {
+  shell = import ../../lib/ca-derivation.nix {
     name = "golconda-shell";
     inherit (set.platform) system;
-    __contentAddressed = true;
-    outputHashMode = "recursive";
-    outputHashAlgo = "sha256";
     builder = "${seed}/bin/sh";
     args = [
       "-c"
