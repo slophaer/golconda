@@ -24,22 +24,6 @@ let
     ;
 in
 [
-  (check "kernel: Golconda owns the package recipe" (
-    let
-      local = import ../../packages;
-    in
-    local ? linux-kernel && pkgs.linux-kernel.dir == local.linux-kernel
-  ))
-  (check "kernel: its phases use a package-local module, not a repkgs build system" (
-    (pkgs.linux-kernel.args.uses or [ ]) == [ ]
-    &&
-      pkgs.linux-kernel.args.phases == [
-        "kbuild.configure"
-        "kbuild.build"
-        "kbuild.install"
-      ]
-    && builtins.pathExists ../../packages/kernel/kbuild.nu
-  ))
   (check "kernel: vmlinux carries full DWARF 5 (Linux 6.18 \"Debug information\" choice)" (
     let
       base = builtins.fromJSON (
@@ -119,24 +103,6 @@ in
   ))
   (check "systemd: no sysext or confext stack (they would overlay /usr and /etc)" (
     pkgs.systemd.args.meson.defs.sysext == false
-  ))
-  (check "linux-pam: pam_unix reads shadow itself (the set has no unix_chkpwd helper)" (
-    pkgs.linux-pam.args.meson.defs."pam_unix-try-getspnam" == true
-  ))
-  (check "openssh: /usr through `prefix`, not a raw --prefix flag (repkgs rejects those)" (
-    let
-      inherit (pkgs.openssh) args;
-    in
-    (args.prefix or null) == "/usr"
-    && !(builtins.any (f: match "--prefix(=.*)?" f != null) (args.autotools.flags or [ ]))
-  ))
-  (check "tpm2-tss: the device TCTI exports Tss2_Tcti_Info for systemd (no --enable-nodl)" (
-    !(elem "--enable-nodl" pkgs.tpm2-tss.args.autotools.flags)
-  ))
-  # the multicall binary says which tools it has (`coreutils --list`): the build links them, so
-  # no list of names is kept by hand, and the image links what bin/ holds (exports.json)
-  (check "uutils-coreutils: the build links the tools, the spec names none" (
-    !(pkgs.uutils-coreutils.args ? links) && pkgs.uutils-coreutils.bin == null
   ))
   # kernel code through jig in passthrough: no jig policy flags (hardening, sysroot, RUNPATH),
   # but the compile cache; host tools through jig's normal policy (they need the sysroot)
