@@ -37,17 +37,8 @@ declare throws with the valid names: a misspelt `prot = 2222` is an error, not a
 iets eval --json -E '(import ./default.nix).configLib.validPaths'
 ```
 
-| path             | options                                                                                                           |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `/base`          | `ntp`, `journalMaxUse`                                                                                            |
-| `/trust`         | `anchors` (PEM certificates), `distrust` (SHA-256 fingerprints)                                                   |
-| `/factory`       | `timezone`                                                                                                        |
-| `/network`       | `networks`, `dns`, `defaultDhcp`                                                                                  |
-| `/system`        | `name`, `version`, `updateSource`, `updateReboot`                                                                 |
-| `/services/sshd` | `package` (a name), `port`, `authorizedKeys`, `trustedUserCAKeys`, `principals`, `revokedKeys`, `hostCertificate` |
-
-The option types, defaults and descriptions are on the generated module pages
-([Modules](modules/README.md)).
+The options of each module, with their types, defaults and descriptions, are on the generated module
+pages ([Modules](modules/generated/index.md)), which `scripts/docs` writes.
 
 A `/network.networks` entry takes the required table `match`, plus the optional tables `network`,
 `link`, `dhcpv4` and `address`, one for each section of a `.network` file. `route` is a list of
