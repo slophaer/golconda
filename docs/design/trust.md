@@ -16,7 +16,7 @@ own copy of any of them:
    certificate built into the kernel, never against the firmware `db`, with or without Secure Boot
    ([Verity key](verity-key.md)).
 1. **The CA store** decides *whom the machine talks to*: one bundle for every TLS client, made when
-   the image is built from cacert's Mozilla roots, the administrator's anchors and a distrust list
+   the image is built from cacert's Mozilla roots, the operator's anchors and a distrust list
    ([CA store](ca-store.md)).
 
 A fourth thing, who may log in, is decided outside the image ([Identity](#identity)).
@@ -189,7 +189,7 @@ Rotation and recovery:
 - **The ESP loader**: a new `db` key reaches the ESP with the next release. On that release's first
   good boot, `golconda-loader-update.service` (`modules/base`) copies its signed systemd-boot and
   `loader.conf` from `/usr` to the ESP and keeps the old loader as the fallback copy. The unit runs
-  only after `systemd-bless-boot.service`, so a release that fails its health gate installs nothing.
+  only after `systemd-bless-boot.service`, so a release that fails a health unit installs nothing.
   Running `/usr/lib/golconda/golconda-loader-update` by hand puts a damaged loader back.
   `scripts/boot-test` checks all of this (`loader-update-ran`, `loader-matches-usr`,
   `loader-replaced`, `loader-reinstall`). The steps are in
@@ -302,7 +302,7 @@ sequenceDiagram
   O-xM: ssh with a plain key, refused
 ```
 
-**Plain keys stop at enrolment.** With `hostCertificate` on, `sshd_config` begins with
+**Plain keys stop with the host certificate.** With `hostCertificate` on, `sshd_config` begins with
 `Include /run/golconda-sshd/*.conf`, before its `AuthorizedKeysFile` line; sshd takes the first
 value it reads. `golconda-sshd-enrolled.service` runs before sshd, only when the sealed certificate
 `/etc/credstore.encrypted/sshd-host-cert.cert` exists (`ConditionPathExists=`), and links
@@ -314,12 +314,12 @@ condition failed at boot, a restart when it ran. The decision is made at every s
 file on the state partition: it needs no second release, and it holds after a reboot and after an
 update to a release that has `hostCertificate` on.
 
-Recovery when certificate login breaks after the enrolment (the CA is lost, a KRL refuses every
-certificate, the host certificate does not unseal) is the other slot or a reflash. The other slot
-helps only when its release has `hostCertificate` off, and choosing it without a login takes the
-boot menu at the console ([Boot loader: Recovery](bootloader.md#recovery)). A reflash rewrites the
-state partition, and with it the sealed vars: the machine enrols again from its first boot. No plain
-key opens a way back in.
+Recovery when certificate login breaks after the host certificate is sealed (the CA is lost, a KRL
+refuses every certificate, the host certificate does not unseal) is the other slot or a reflash. The
+other slot helps only when its release has `hostCertificate` off, and choosing it without a login
+takes the boot menu at the console ([Boot loader: Recovery](bootloader.md#recovery)). A reflash
+rewrites the state partition, and with it the sealed vars: the machine needs a new host certificate
+after its first boot. No plain key opens a way back in.
 
 Revocation is never off: sshd always reads a list. Before the push, that list refuses more than any
 real KRL could, every certificate of the user CAs, because the machine cannot know yet which of them
@@ -385,7 +385,7 @@ writes `/etc/credstore.encrypted/sshd-hostkey.key`; sshd loads it with `LoadCred
 It is the only local var in the image. Not sealed: the state partition (unencrypted for now, no
 LUKS), the machine-id (a plain file PID 1 writes), the admin vars (the host certificate and the
 revocation list are sealed once `golconda vars push` delivers them, see
-[Secrets and vars](#secrets-and-vars)), and administrator credentials for the machine itself.
+[Secrets and vars](#secrets-and-vars)), and operator credentials for the machine itself.
 
 The state partition is not encrypted, and nothing checks `/etc` or `/var`. So whoever writes the
 partition offline, with the disk in hand or through a cloud's disk API, gets root at the next boot:
@@ -449,18 +449,18 @@ push, leaves PCR 7 out too (the first leaves `.without-pcr7` in the store, the s
 so the vars have the protection of an image without Secure Boot. A change that is not planned, such
 as a firmware update that brings a new `dbx`, leaves the host key, the host certificate and the KRL
 sealed: sshd does not start, and nothing logs in. Undoing the change unseals them again; otherwise
-the way back is a reflash, and the machine enrols again.
+the way back is a reflash, and the machine needs a new host certificate.
 
 Proven by boot with `--secure-boot --tpm`, `--rotate` and `--secure-boot-off`
 ([What is proven](../proven.md)). On hardware, which events firmware measures into PCR 7 is
 **unverified**.
 
-### Rollback weakness
+### Downgrade weakness
 
 Any image signed by the same PCR 11 key unseals credentials sealed for that key. An attacker who
 obtains an older, vulnerable image can boot it and decrypt secrets. Mitigations, all *(later)*:
 
-- **pcrlock** (systemd 256+): binds to the exact PCR values of one image. A rollback fails because
+- **pcrlock** (systemd 256+): binds to the exact PCR values of one image. A downgrade fails because
   the old image's PCRs do not match.
 - **Key rotation:** re-seal credentials with a new key pair after a security-critical update.
 - **policyref** (systemd 262+): embeds a reference so the TPM refuses policies signed for a

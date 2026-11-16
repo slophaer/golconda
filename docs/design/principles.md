@@ -25,7 +25,7 @@ and the `sbin` link. `/etc` gets content from tmpfiles lines only: `/factory` li
 
 One image serves every machine of its kind. A host name, a key, a certificate or a password hash
 never enters the image: it is a bootstrap credential, a var generated on the machine, or a value the
-administrator pushes ([Boot](boot.md#bootstrap-credentials), [Trust](trust.md#secrets-and-vars)).
+operator pushes ([Boot](boot.md#bootstrap-credentials), [Trust](trust.md#secrets-and-vars)).
 Enforced: an app file that contains a credential path or a key marker is a type error.
 
 ## systemd first
@@ -33,7 +33,7 @@ Enforced: an app file that contains a credential path or a key marker is a type 
 If systemd has a component for it, that component is used and nothing else is packaged for the job:
 journald, networkd, resolved, timesyncd, sysusers, tmpfiles, repart, sysupdate, boot, stub,
 cryptsetup, veritysetup, pcrlock, creds, firstboot. Vendor configuration lives in `/usr/lib`,
-administrator overrides in `/etc`, state in `/var`, exactly as systemd documents it.
+operator overrides in `/etc`, state in `/var`, exactly as systemd documents it.
 
 ## One of each
 

@@ -15,7 +15,7 @@ flowchart LR
 ```
 
 The image ships one CA file, `/usr/share/ca-certificates/ca-bundle.crt`. It holds cacert's Mozilla
-roots, plus the administrator's `anchors`, minus the `distrust` list. The configuration names them
+roots, plus the operator's `anchors`, minus the `distrust` list. The configuration names them
 (`/trust`, [reference](../reference/modules/README.md)). An `anchors` entry is the text of one PEM
 certificate, which is public data. A `distrust` entry is the SHA-256 fingerprint of a certificate's
 DER form, which is how a CA is named in a report or by `openssl x509 -noout -fingerprint -sha256`; a
@@ -57,9 +57,9 @@ Why not a unit on the machine that runs `trust extract` over `/etc/ssl/anchors` 
 process could change that without a signed image; a unit must order itself before every client,
 `sysupdate` among them; and the image would carry the trust tool and its module. What it would buy
 is an anchor added without a release. The image already updates by a release, which is minutes of
-work and one signed index, and the administrator's CA certificates are public, fleet-wide data, not
+work and one signed index, and the operator's CA certificates are public, fleet-wide data, not
 per-machine values. A secret does not belong in a CA store, so the vars
-([Secrets and vars](trust.md#secrets-and-vars)) have no part in it. An administrator who must change
+([Secrets and vars](trust.md#secrets-and-vars)) have no part in it. An operator who must change
 trust on one machine at once can put a file at `/etc/ssl/cert.pem` or
 `/etc/ssl/certs/ca-certificates.crt`: the `L` lines do not replace an existing file. That is a hand
 repair, outside the image. A run-time anchor directory is out of scope

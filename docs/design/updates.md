@@ -1,8 +1,8 @@
 # Updates
 
 An update is a new version of four artifacts, written to the inactive slot by systemd-sysupdate, and
-a reboot, which systemd's reboot timer starts in a nightly window ([Activation](#activation)).
-Rollback is the previous slot, chosen by boot counting or by hand. The transfer definitions are
+a reboot, which systemd's reboot timer starts in a nightly window ([Activation](#activation)). The
+fallback is the previous slot, chosen by boot counting or by hand. The transfer definitions are
 rendered (`/system.updateSource`); the artifacts come from the image builder
 ([Image artifacts](../reference/image.md)).
 
@@ -52,9 +52,9 @@ would start another entry than the running one: `bootctl list` marks the entry s
 `(default)` (an entry with no try left sorts last) and the running one as `(selected)`. After a
 fallback both are the old release, and nothing reboots. After an install the new entry, `+3-0`, is
 the default, and the machine reboots into its first try, a [trial boot](boot.md#trial-boot). An
-administrator who wants another window writes a drop-in for the timer in `/etc`; the boot test does
-so to activate within seconds. An administrator who runs `bootctl set-oneshot` or `set-default`
-changes what systemd-boot picks, and the condition follows it.
+operator who wants another window writes a drop-in for the timer in `/etc`; the boot test does so to
+activate within seconds. An operator who runs `bootctl set-oneshot` or `set-default` changes what
+systemd-boot picks, and the condition follows it.
 
 `--next` and `--next --fail-health` prove both cases in QEMU, with the window moved to every 10 s
 ([What is proven](../proven.md)).
@@ -134,7 +134,7 @@ release must not change the state in a way that the release before it cannot rea
 
 ## Factory reset
 
-The root partition is defined with `FactoryReset=yes`. `systemctl start factory-reset.target` asks
+The state partition is defined with `FactoryReset=yes`. `systemctl start factory-reset.target` asks
 for a reset: it sets the `FactoryResetRequest` EFI variable and reboots, and the next boot has
 systemd-repart delete the partitions marked `FactoryReset=` and create them again empty
 (systemd-factory-reset(8)). First boot then runs again. The state is gone; the ESP and the `/usr`
@@ -154,7 +154,7 @@ does not start. To enable a unit by hand so that it survives updates, link the s
 `mkdir -p /etc/systemd/system/<target>.wants`, then
 `ln -s /usr/lib/systemd/system/<unit> /etc/systemd/system/<target>.wants/<unit>`.
 
-## Rollback protection *(later)*
+## Downgrade protection *(later)*
 
 Nothing stops an attacker with an older image signed by the same key from booting it; see
-[Trust: Rollback weakness](trust.md#rollback-weakness).
+[Trust: Downgrade weakness](trust.md#downgrade-weakness).

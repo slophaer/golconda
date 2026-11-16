@@ -125,7 +125,7 @@ first. A system with no table still boots with:
 - DHCP on every wired link;
 - time sync;
 - a bounded journal;
-- Mozilla's CA roots, with the administrator's anchors and distrust list
+- Mozilla's CA roots, with the operator's anchors and distrust list
   ([Architecture: What every image contains](architecture.md#what-every-image-contains)).
 
 They have options (`/base.ntp`, `/base.journalMaxUse`, `/network.networks`, `/network.dns`,

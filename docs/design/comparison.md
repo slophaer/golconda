@@ -53,15 +53,15 @@ An honest list for someone who runs NixOS today, with when (if ever) the gap clo
 | the NixOS VM test framework                  | tests are pure-Nix module tests, a build-time image smoke (`image-smoke`, signed disk) and `scripts/boot-test`, which boots the image in QEMU and checks markers ([What is proven](../proven.md)); it needs KVM, so it runs by hand, outside the sandbox and the lint | later                     |
 | a binary cache                               | the fork has none; a build host needs the patched Nix daemon and builds the toolchain once                                                                                                                                                                            | later                     |
 | other architectures                          | x86_64 only: no aarch64 `/usr` tree or image is built, because an aarch64 package needs an aarch64 builder ([Scope](scope.md#later))                                                                                                                                  | later                     |
-| encrypted root, rollback protection          | the state partition is unencrypted and an older signed image boots ([Trust](trust.md#rollback-weakness))                                                                                                                                                              | later                     |
+| encrypted root, downgrade protection         | the state partition is unencrypted and an older signed image boots ([Trust](trust.md#downgrade-weakness))                                                                                                                                                             | later                     |
 
 ## What Golconda takes from the image-based systems
 
-- **Flatcar**: the A/B partition pair with automatic rollback, and the update contract (a server
+- **Flatcar**: the A/B partition pair with automatic fallback, and the update contract (a server
   serves versioned artifacts, the client decides by version). Left behind: Ignition and the
   container-first userland.
 - **openSUSE MicroOS**: transactional updates that only take effect on reboot, and a `/etc` that the
-  administrator owns. Left behind: the btrfs snapshot machinery and RPM.
+  operator owns. Left behind: the btrfs snapshot machinery and RPM.
 - **bootc / Fedora CoreOS**: an explicit "what is not supported" page (this one), and the image as
   the unit of configuration. Left behind: OCI as the transport and `rpm-ostree`'s package layering.
 - **ParticleOS**: nearly everything on the machine: DPS, `/usr`-only verity images, UKIs with

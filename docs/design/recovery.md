@@ -32,7 +32,7 @@ the entry has a counter, so a blessed entry boots without them. A candidate that
 health units is not blessed: `systemd-bless-boot.service` requires the target and never runs, the
 boot-counting suffix stays, and one of the three tries is used. The [trial boot](boot.md#trial-boot)
 policy then reboots it, also when the target is not reached by the deadline. A blessed entry, and an
-entry that had no try left, stay up after a failed health check: a reboot would start the same entry
+entry that had no try left, stay up after a failed health unit: a reboot would start the same entry
 again.
 
 systemd-boot decrements `+3-0` → `+2-1` → `+1-2` on each attempt. At `+0-3` the entry has no tries
@@ -49,7 +49,7 @@ older image is a machine that works, not a repair: the new version is not runnin
 reports why the candidate failed.
 
 A freshly written disk carries one slot only (`image/repart.nix` leaves B `_empty`). There
-systemd-boot still boots the exhausted entry, because no other entry can boot; a failed health check
+systemd-boot still boots the exhausted entry, because no other entry can boot; a failed health unit
 therefore leaves the machine up but unblessed until it is repaired or the other slot is filled. A
 machine after its first update has both slots filled and gets the fallback above.
 
@@ -66,7 +66,7 @@ firmware to use it. The boot test does not exercise the menu.
 
 ## State reset
 
-`FactoryReset=yes` on the root partition makes systemd-repart delete it at the next boot, and first
+`FactoryReset=yes` on the state partition makes systemd-repart delete it at the next boot, and first
 boot runs again. The request is `systemctl start factory-reset.target`, which sets the
 `FactoryResetRequest` EFI variable and reboots ([Updates: Factory reset](updates.md#factory-reset)).
 The ESP and the `/usr` slots stay, so this path repairs a broken state partition, not a broken

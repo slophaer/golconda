@@ -83,4 +83,4 @@ Every image carries `/usr/lib/golconda/`:
 
 The sysupdate transfers from `/system.updateSource` are beside them in `/usr/lib/sysupdate.d/`.
 There is no `etc.manifest`: `/etc` is symlinks into the factory and `find /etc -type f` lists the
-administrator's changes ([Layout: State](layout.md#state)).
+operator's changes ([Layout: State](layout.md#state)).

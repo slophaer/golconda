@@ -15,8 +15,8 @@ previous release again.
 Terms used on this page: a **UKI** (unified kernel image) is one signed file that holds the kernel,
 the initrd and the kernel command line. **erofs** is a read-only file system, and **dm-verity**
 checks every block of it against a signed hash. **Boot counting** gives a new UKI three tries:
-systemd-boot counts each start, and when none of them passes the health checks, it boots the
-previous release again. The [Glossary](docs/reference/glossary.md) explains the rest.
+systemd-boot counts each start, and when none of them passes the health units, it boots the previous
+release again. The [Glossary](docs/reference/glossary.md) explains the rest.
 
 ## Features
 
@@ -27,8 +27,8 @@ limits.
   or other per-machine value, so one build serves every machine of its kind. The Nix store lives
   inside the image at `/usr/nix/store`; the machine has no Nix.
 - **[A read-only, verified `/usr`](docs/features/verified-usr.md).** `/usr` is erofs under dm-verity
-  with a signed root hash. `/etc` starts as links into the image and an administrator's file wins;
-  `/var` holds the state.
+  with a signed root hash. `/etc` starts as links into the image and an operator's file wins; `/var`
+  holds the state.
 - **[Only signed code runs](docs/features/execution-policy.md).** The kernel's IPE policy lets a
   program run only from the verified `/usr`, so a binary copied to `/var` does not run.
 - **[Secure Boot and measured boot](docs/features/measured-boot.md).** systemd-boot and each UKI are
@@ -43,9 +43,8 @@ limits.
   key signed.
 - **[Secrets as vars](docs/features/vars.md).** A secret never enters the image or the store. A
   *local* var, such as the ssh host key, is made on the machine at first boot and sealed with
-  `systemd-creds` to the TPM. An *admin* var, such as a host certificate, is pushed by the
-  administrator with `golconda vars`, and the machine seals it. Services read vars as systemd
-  credentials.
+  `systemd-creds` to the TPM. An *admin* var, such as a host certificate, is pushed by the operator
+  with `golconda vars`, and the machine seals it. Services read vars as systemd credentials.
 - **[Provisioning without cloud-init](docs/features/provisioning.md).** The host name and root's
   first ssh key arrive as systemd credentials, through SMBIOS, qemu fw_cfg or a file on the ESP.
 - **[Certificate login, no local login](docs/features/ssh-login.md).** Operators log in as root with
@@ -84,7 +83,7 @@ flowchart TD
   subgraph server["server"]
     sysupdate["systemd-sysupdate"] --> slot["inactive /usr slot"]
     slot --> boot["reboot: systemd-boot tries the new slot"]
-    boot -->|health checks pass| good["blessed"]
+    boot -->|health units pass| good["blessed"]
     boot -->|3 failed tries| back["previous slot"]
   end
 ```

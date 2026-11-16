@@ -38,9 +38,9 @@ cycle; libdevmapper does not wait on udev cookies, and systemd's device units do
 `95-dm-notify`, which answers those cookies, is left out. Around `/usr` sit `/etc/initrd-release` (a
 link to `os-release`, how systemd knows it is in an initrd), the merged-usr links `/bin` `/sbin`
 `/lib`, and the empty mount points. There is no machine-id, no shadow, no getty, no static init. It
-needs no root partition to find `/usr`: `usrhash=` on the cmdline names the verity root hash, the
+needs no state partition to find `/usr`: `usrhash=` on the cmdline names the verity root hash, the
 generators derive the two DPS partition UUIDs from it, veritysetup attaches `/dev/mapper/usr`, and
-repart makes the root partition from `/usr/lib/repart.d/30-root.conf` on first boot. The kernel
+repart makes the state partition from `/usr/lib/repart.d/30-root.conf` on first boot. The kernel
 execs `/init`, its default: a repkgs binary maps its dynamic linker relative to its own path, which
 before `/proc` exists is the path the kernel execs; the fork's crt-interp and glibc follow the
 `/init` link to the real file without `/proc`. The kernel's configuration is in [Kernel](kernel.md).
@@ -63,9 +63,9 @@ stateDiagram-v2
   t3 --> t2: systemd-boot starts try 1
   t2 --> t1: try 1 fails, next boot
   t1 --> t0: try 2 fails, next boot
-  t2 --> good: health checks pass, bless-boot
-  t1 --> good: health checks pass, bless-boot
-  t0 --> good: health checks pass, bless-boot
+  t2 --> good: health units pass, bless-boot
+  t1 --> good: health units pass, bless-boot
+  t0 --> good: health units pass, bless-boot
   t0 --> [*]: try 3 fails: systemd-boot prefers the other slot
 ```
 
@@ -73,7 +73,7 @@ stateDiagram-v2
 
 Reaching `boot-complete.target` is the whole condition for blessing. systemd's own target requires
 only `sysinit.target`, so a candidate that boots but cannot be reached would be blessed. Golconda
-adds two small predicates, one in each module that knows the fact:
+adds two small health units, one in each module that knows the fact:
 
 | module           | unit                              | passes when                                                                           |
 | ---------------- | --------------------------------- | ------------------------------------------------------------------------------------- |
@@ -83,13 +83,13 @@ adds two small predicates, one in each module that knows the fact:
 "Routable" is networkctl's state: the link has carrier and a routable address, so DHCP finished and
 there is a route to the network. Each unit is `Before=boot-complete.target` and is pulled into the
 target by a `boot-complete.target.requires/` link, the same shape as systemd's own
-`systemd-boot-check-no-failures.service`. A failed predicate fails the target's start job;
+`systemd-boot-check-no-failures.service`. A failed health unit fails the target's start job;
 `systemd-bless-boot.service` requires the target and is ordered after it, so it does not run. The
 counter stays and one attempt is lost. systemd's own bless-boot ordering is not changed and no
 orchestrator is added. sshd is the only login, so `lib.mkImage` refuses a document without a
-`["/services/sshd"]` table: that image would pass the network predicate and have no way in.
+`["/services/sshd"]` table: that image would pass the network health unit and have no way in.
 
-What the predicate leaves out, on purpose: DNS and resolved, a default route to the administrator's
+What the health units leave out, on purpose: DNS and resolved, a default route to the operator's
 network, reachability from outside the machine (firewall, NAT, the client side), and every step of a
 login (authentication, the host key credential, `/etc/pam.d/sshd`, the listening socket).
 `is-active` proves that the sshd process runs, not that a login would succeed.
@@ -98,7 +98,7 @@ What happens after a failure is the [trial boot](#trial-boot) policy: on a count
 try left, the machine reboots, and systemd-boot counts down `+3-0` → `+2-1` → `+1-2`. At `+0-3` the
 entry is bad, and systemd-boot selects a second deployment entry on the ESP (the other `/usr` slot)
 instead, which is the point of boot counting. Before the first update the image carries one slot
-only: there systemd-boot still boots the exhausted entry, and a failed health check leaves it up and
+only: there systemd-boot still boots the exhausted entry, and a failed health unit leaves it up and
 unblessed until it is repaired or the other slot is filled. The health units run only on a counted
 boot: `systemd-bless-boot-generator` adds `boot-complete.target` only when the entry has a counter,
 so a blessed entry boots without them. Masking a health unit turns the gate off: the target's job is
@@ -132,7 +132,7 @@ at every boot: the EFI variable in which systemd-boot names the file it has just
 (`<id>_<version>+L-D.efi`). It links the drop-in only when the variable is set and `L + D` is at
 most the tries a release starts with (3, `image/boot-counting.nix`). systemd-boot renames an entry
 that had no try left from `+0-3` to `+0-4`, so a sum above 3 means it started an exhausted entry
-because nothing better was left. On a blessed entry, and on an exhausted one, a failed health check
+because nothing better was left. On a blessed entry, and on an exhausted one, a failed health unit
 leaves the machine up and unblessed for its operator, with no reboot loop. The generator logs its
 verdict to the kernel log (`golconda-trial-boot: <entry> is on trial`, or `had no try left`), so it
 is on the serial console and in the journal.
@@ -199,7 +199,7 @@ finds its own slot and the old UKI still finds the old one. The UKI goes to `EFI
 
 The cmdline is fixed in the UKI and measured with it. The one authoritative copy is in
 [Image artifacts: the kernel command line](../reference/image.md#the-kernel-command-line); the LSM
-parameters are described in [Kernel](kernel.md). No administrator edits: the ESP carries
+parameters are described in [Kernel](kernel.md). No operator edits: the ESP carries
 `loader/loader.conf` with `editor no` (the editor would let anyone at the console change the
 cmdline) and `timeout 0` (the menu does not wait); see [Boot loader](bootloader.md). The UKI under
 `EFI/Linux` needs no entry line. This is menu policy, not protection: an offline disk writer can
@@ -215,7 +215,7 @@ and its `FailureAction=reboot-force` reboots the machine at every boot
 ([What is proven](../proven.md)). `rw` is an ordinary kernel parameter, and the test image boots the
 same cmdline. Libraries need no such flag: the fork's RUNPATH reaches every dlopen soname.
 
-gpt-auto-generator mounts the root partition (writable), the ESP and `/usr` by `usrhash=`. systemd
+gpt-auto-generator mounts the state partition (writable), the ESP and `/usr` by `usrhash=`. systemd
 finds the libraries it dlopens through the RUNPATH the fork gives it. IPE enforces from the first
 boot: `/usr` runs only if the kernel verified the verity signature. The kernel checks it against the
 `db` certificate built into it, never against the firmware `db`
@@ -306,7 +306,7 @@ the ESP can still plant one for the next boot; removal makes that a single, logg
 
 What happens once, on the first boot of a disk:
 
-1. repart creates the root partition from `/usr/lib/repart.d/30-root.conf` (`GrowFileSystem=`,
+1. repart creates the state partition from `/usr/lib/repart.d/30-root.conf` (`GrowFileSystem=`,
    `FactoryReset=`), with `/etc`, `/var`, `/home`, `/root` inside.
 1. PID 1 writes `/etc/machine-id` and sets the hostname from the credential. A drop-in runs
    `systemd-firstboot --mute-console=yes`, so firstboot never prompts: there is no local login.
@@ -327,7 +327,7 @@ build time and signs them; the signature travels in the UKI (`.pcrsig`). Credent
 the signing key, not to a PCR 11 value, so a new signed image unseals them without re-enrolment. Of
 the firmware PCRs (0–7), only PCR 7, the Secure Boot state and keys, is part of the policy, on a
 Secure Boot image ([Trust: PCR 7](trust.md#pcr-7)); locking the rest with `systemd-pcrlock` is
-*(later)* ([Trust: Rollback weakness](trust.md#rollback-weakness)).
+*(later)* ([Trust: Downgrade weakness](trust.md#downgrade-weakness)).
 
 ## Secure Boot
 
@@ -355,7 +355,7 @@ firmware that does not, nothing checked the loader or the UKI, so the initrd ref
 kernel log, which reaches the serial console and the screen, and halts the machine with
 `SuccessAction=halt-force`, which stops no unit: the initrd's TPM measurement units reboot when they
 are stopped mid-run (`FailureAction=reboot-force`). Nothing in the initrd that comes after it runs:
-no root partition is made or mounted, and no switch to it happens. The
+no state partition is made or mounted, and no switch to it happens. The
 [failed-boot counter](#failed-boots) comes after it too, so a halted boot is not a failed boot.
 
 It halts, and does not reboot into the firmware setup (`systemctl reboot --firmware-setup`): the
