@@ -267,6 +267,11 @@ credential when Secure Boot is off or the machine has no TPM2. With Secure Boot 
 present, PID 1 refuses it: anyone who can write the ESP could otherwise plant a credential that the
 measured boot chain never vouched for. On such a machine use SMBIOS or fw_cfg.
 
+SMBIOS and fw_cfg have no such check. PID 1 imports their credentials at every boot, also with
+Secure Boot and a TPM2, and no PCR that the vars are sealed to records them. A credential such as
+`tmpfiles.extra` acts as root. So whoever sets SMBIOS or fw_cfg (the hypervisor or a BMC) is root on
+the machine, and the vars unseal in that boot.
+
 The ESP is not encrypted, and SMBIOS strings are readable by every process: a bootstrap credential
 carries no secret. Secrets are vars ([Trust: Secrets and vars](trust.md#secrets-and-vars)).
 

@@ -602,6 +602,8 @@ grant root again after a factory reset, nor on a machine whose configuration ref
 planted credential works for one boot and leaves a journal line, unless the planter also removes the
 journal. Removal does not prevent the planting: on such a host the ESP's integrity is the integrity
 of whoever holds the disk. With Secure Boot and a TPM2, use SMBIOS or fw_cfg for bootstrap values.
+Whoever sets SMBIOS or fw_cfg is root on the machine, and the vars unseal
+([Boot: Bootstrap credentials](boot.md#bootstrap-credentials)).
 
 ## TPM2 credential decryption
 
