@@ -43,6 +43,7 @@ with `lib/pins.nix`, the reader `lib.readPins` exports:
 - `adios`: the module system (korora types vendored inside)
 - `flake-incompat`: the output schema
 - `iets`: the evaluator and linter
+- `cyclonedx`: the CycloneDX 1.5 JSON schema, for `checks.sbom-schema`
 
 ## `lib.mkImage`
 

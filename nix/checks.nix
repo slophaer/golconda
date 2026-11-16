@@ -298,7 +298,7 @@ in
         touch $out
       '';
 
-  # The test image's SBOM is valid CycloneDX 1.5 (the vendored schema, tests/fixtures/cyclonedx),
+  # The test image's SBOM is valid CycloneDX 1.5 (the schema of pins/cyclonedx),
   # and the validator has teeth: it refuses the negative fixtures and the same SBOM with one
   # patch type broken. The SBOM is the evaluated document (builtins.toJSON), so no image is built.
   sbom-schema =
@@ -332,7 +332,7 @@ in
     assert builtins.any patched bom.components;
     run "sbom-schema" [ rp.cpython ] ''
       ${jsonschemaPath}
-      python3 ${src}/tests/sbom-schema/validate.py ${fixtures} \
+      python3 ${src}/tests/sbom-schema/validate.py ${sources.cyclonedx}/schema \
         --valid ${toFile "sbom.json" (builtins.toJSON bom)} ${fixtures}/valid-patch.json \
         --invalid ${toFile "sbom-broken.json" (builtins.toJSON broken)} \
           ${fixtures}/invalid-patch-type.json ${fixtures}/invalid-no-bom-format.json

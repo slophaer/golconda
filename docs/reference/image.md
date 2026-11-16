@@ -137,10 +137,10 @@ custom property says where a component comes from.
   `patches` in its `package.nix` (Golconda's, repkgs' and downstream packages alike); the generator
   writes it. An unpatched package with no replacement has no `pedigree`.
 
-`checks.sbom-schema` validates the test image's SBOM against the CycloneDX 1.5 JSON schema (vendored
-in `tests/fixtures/cyclonedx`, so it runs offline and builds no image), and checks that the
-validator refuses a patch of an unknown type and a missing `bomFormat`. The schema does not
-constrain `specVersion`.
+`checks.sbom-schema` validates the test image's SBOM against the CycloneDX 1.5 JSON schema (pinned
+in `pins/cyclonedx` and fetched at evaluation, so the check runs offline and builds no image), and
+checks that the validator refuses a patch of an unknown type and a missing `bomFormat`. The schema
+does not constrain `specVersion`.
 
 A patch, here the third of systemd's:
 

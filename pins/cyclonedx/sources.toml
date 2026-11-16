@@ -1,0 +1,12 @@
+[upstream]
+purl = "pkg:github/CycloneDX/specification?branch=1.5"
+
+[[source]]
+key = "default"
+url = "https://github.com/CycloneDX/specification/archive/{rev}.tar.gz"
+hash = "sha256-bAXi7m7kWJ+lZNYnvSNmLQ6+kLqRw379crbC3viNqzY="
+
+[pin]
+version = "0-unstable-2023-06-26"
+date = "2023-06-26"
+rev = "c320fc0f0b46873864927d9d5684eea7ba439728"

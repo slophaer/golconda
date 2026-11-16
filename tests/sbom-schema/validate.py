@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Validate CycloneDX 1.5 documents against the vendored schema (checks.sbom-schema).
+"""Validate CycloneDX 1.5 documents against the pinned schema (checks.sbom-schema).
 
 usage: validate.py SCHEMA_DIR --valid FILE... --invalid FILE...
 
 SCHEMA_DIR holds bom-1.5.schema.json and the two schemas it refers to by relative $ref
-(spdx.schema.json, jsf-0.82.schema.json: tests/fixtures/cyclonedx). They are registered by their
+(spdx.schema.json, jsf-0.82.schema.json: schema/ of pins/cyclonedx). They are registered by their
 $id, so no reference is fetched. A --valid file must pass; an --invalid file must fail, so that a
 validator which accepts everything fails the check too."""
 
