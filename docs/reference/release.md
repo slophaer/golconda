@@ -52,11 +52,11 @@ checks each private key against its public half and each verity root hash signat
 certificate, so a key and certificate that do not match fail the release and not the boot. Keep the
 set: a rotation uses the old `pcr/` key and the old release key (step 5).
 
-**A set without the enrolment files** (made before `make-keys` wrote them) is refused for a Secure
-Boot image; the error names the command for that set. `scripts/make-keys --auth-only DIR` writes
-`secureboot/auth` into the existing set and keeps its `db` certificate; a set with no PK and KEK
-gets a pair of its own first. If the PK and KEK keys are elsewhere, name the directory that holds
-them: `scripts/make-keys --auth-only --reuse-pk-kek KEYS DIR`.
+**A set without the enrolment files** is refused for a Secure Boot image; the error names the
+command for that set. `scripts/make-keys --auth-only DIR` writes `secureboot/auth` into the existing
+set and keeps its `db` certificate; a set with no PK and KEK gets a pair of its own first. If the PK
+and KEK keys are elsewhere, name the directory that holds them:
+`scripts/make-keys --auth-only --reuse-pk-kek KEYS DIR`.
 
 **The `dbx` is fixed when the files are made.** `auth/microsoft/dbx.auth` holds Microsoft's
 revocation list as `packages/secureboot-objects` pins it on the day `make-keys` ran. To take a newer
@@ -125,10 +125,11 @@ unsigned/sign unsigned --keys /srv/golconda-keys --out release-dir
 `config` is a TOML path or an option set. `publicKeys` is a string or a path; either way only
 `secureboot/db.crt`, `pcr/pcr.pub` and `release/index.pgp` are copied. A repository can also commit
 the three public files and name them as a path, which a flake needs: pure evaluation reads no
-absolute path outside the store. `system` (default: `builtins.currentSystem`) is the build host.
-`nix-build` prints the output path; iets 0.2 builds the content-addressed output but finds no path
-for it ("built, but the builder has no output path"), which is why `golconda release build` uses
-`nix-build`.
+absolute path outside the store. `system` (default: `builtins.currentSystem`) is the build host;
+`golconda release build` passes its `--system` (default: this host's CPU and `-linux`, such as
+`x86_64-linux`). `nix-build` prints the output path; iets 0.2 builds the content-addressed output
+but finds no path for it ("built, but the builder has no output path"), which is why
+`golconda release build` uses `nix-build`.
 
 Verification: two releases built and signed by `golconda release build` with a fresh key set booted
 with `--secure-boot --tpm --ssh-test`, the second as an update over HTTP (`--next`), and none of the
@@ -158,12 +159,12 @@ built by hand). It deletes nothing, so the older release's files stay for a cach
 its index. For an S3 bucket, the release prefix needs anonymous `GET`: sysupdate sends no
 credentials, and every file is checked against the signed index anyway.
 
-Verification: `scripts/boot-test --next` serves `release/` on `127.0.0.1:8074` (`169.254.169.2:8074`
-in the guest) and rewrites no transfer file. The markers `http-source` and `http-fetch` show that
-the guest read its own `Type=url-file` definition and fetched each file over HTTP, and
-`index-signed` that it fetched `SHA256SUMS.gpg`; with `--tamper-index` the index the server sends
-has one byte more than its signature covers, and the run passes only when `sysupdate-refused` shows
-that the update installed nothing.
+Verification: `scripts/boot-test --next` serves `release/` to the guest at `169.254.169.2:8074`,
+through a QEMU guest forward that opens no host port, and rewrites no transfer file. The markers
+`http-source` and `http-fetch` show that the guest read its own `Type=url-file` definition and
+fetched each file over HTTP, and `index-signed` that it fetched `SHA256SUMS.gpg`; with
+`--tamper-index` the index the server sends has one byte more than its signature covers, and the run
+passes only when `sysupdate-refused` shows that the update installed nothing.
 
 ## 4. Enrol the certificate in the firmware
 
