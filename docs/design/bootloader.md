@@ -299,8 +299,8 @@ use what is on `main`, but no test runs them ([What is proven](../proven.md#not-
 - **No automatic enrolment after the first good boot.** A machine whose keys are cleared later is
   enrolled from a new disk or in firmware setup ([Enrolment](#enrolment)).
 - **No signature check before the copy.** The program trusts the build: the loader in `/usr` is
-  signed with the key of the UKI that booted. A `/usr` built with two different keys would break
-  that rule; the image chain gives both steps the same `sbKeys`.
+  signed with the key of the UKI that booted. The signer signs both with the `db` key of `--keys`
+  (`lib/image/sign.nu`).
 - **The copy is not atomic on FAT.** A rename over an existing file on vfat is not a journalled
   operation. A power loss during the copy can damage one file; the removable-media copy is written
   last and the fallback copy stays.
