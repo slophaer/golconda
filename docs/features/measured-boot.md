@@ -66,20 +66,13 @@ mode. The procedure is in [Making a release](../reference/release.md) and the
 
 ## Status
 
-Proven in QEMU with OVMF: `secure-boot-enabled`, and after a key rotation `old-loader-refused` (a
-loader signed with a key now in `dbx`). From an empty variable store systemd-boot enrols the keys
-(`auto-enrolled`, `pk-enrolled`, `kek-enrolled`, `db-enrolled`, `dbx-enrolled`), with Microsoft's
-keys and without them. No marker boots an unsigned loader. `hostkey-sealed-with-tpm2`,
-`hostkey-sealed-pcr7`, `ssh-after-reboot` and `hostkey-unchanged` (`--tpm`) show the seal and the
-unseal, also after an update and after a fallback (`--tpm --next`, with `--fail-health`) and after a
-`db` rotation with its two reseals (`--tpm --rotate`). `boots-after-rotation` and
-`old-loader-refused` cover a `db` rotation. `secure-boot-off-refused` and
-`secure-boot-off-vars-sealed` cover a Secure Boot image on firmware with Secure Boot off. A
-deployment key set made by `scripts/make-keys` booted on the same markers. The no-Secure-Boot image
-(`image-smoke-test-nosb`) boots and updates. See [What is proven](../proven.md).
+Proven: the rows of [What is proven](../proven.md) that name `secure-boot-enabled`,
+`old-loader-refused`, `auto-enrolled`, `hostkey-sealed-with-tpm2`, `vars-resealed-pcr7` and
+`secure-boot-off-refused`. The limits are below.
 
 ## Limits
 
+- No marker boots an unsigned loader.
 - Automatic enrolment has run in a virtual machine only; on hardware it is *(being built)*. With
   `secureBootMicrosoftKeys = false` hardware may refuse option ROMs
   ([Boot loader: Enrolment](../design/bootloader.md#enrolment)). Hetzner Cloud ran without Secure

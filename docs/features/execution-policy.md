@@ -46,23 +46,15 @@ A denial is an audit record in the kernel log (`type=1420`):
 
 ## Status
 
-The kernel must carry the signing certificate, which `lib.mkImage` builds into it. Without it `/usr`
-activates unsigned, IPE denies PID 1's re-exec after switch-root, and the machine stops with "Failed
-to execute /sbin/init".
-
-A boot that reaches `multi-user.target` with `ipe.enforce=1` proves that the kernel accepts the
-signature and runs `/usr`. The proof table has no marker of its own for this
-([What is proven](../proven.md)). The same holds without Secure Boot (`image-smoke-test-nosb`).
-`verity-sig-builtin-accepted` (`--next`) and `verity-sig-db-only-refused` (`--next --rotate`) check
-the keyring: a root hash signed by the kernel's key activates as signed, one signed by a key that
-only `db` holds is refused. `ipe-denies-copy` (`--ssh-test`, with and without Secure Boot) writes
-`0` to `ipe/enforce` as root, which fails, and `enforce` stays `1`. Then it copies `/usr`'s shell to
-`/var/tmp` and runs it: the exec fails with `Permission denied`, and the kernel logs IPE's
-`DEFAULT op=EXECUTE action=DENY` for that path. Eval tests check the command line, the kernel
-options and the policy text.
+Proven: the rows of [What is proven](../proven.md) that name `ipe-denies-copy`,
+`verity-sig-builtin-accepted`, `verity-sig-db-only-refused` and `tests/eval/kernel.nix`. The limits
+are below.
 
 ## Limits
 
+- The kernel must carry the signing certificate, which `lib.mkImage` builds into it. Without it,
+  `/usr` activates unsigned, IPE denies the re-exec of PID 1 after switch-root, and the machine
+  stops with "Failed to execute /sbin/init".
 - IPE checks only what the kernel executes or maps. A signed interpreter runs a script from
   anywhere: `/usr/bin/sh /var/tmp/script` works.
 - The policy trusts the initramfs (`boot_verified=TRUE`) for the whole boot, also after switch-root.

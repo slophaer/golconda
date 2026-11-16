@@ -71,26 +71,14 @@ For an admin var, write one call:
 `v.admin { name = "sshd-host-cert"; files = [ "cert" ]; consumers = [ "sshd.service" ]; }`. A push
 restarts the `consumers`.
 
+Admin vars are pushed with `golconda vars set`, `push`, `list` and `pub`
+([Commands](../reference/cli.md#golconda-vars)).
+
 ## Status
 
-The boot test proves the sshd host key. With `--ssh-test --tpm` it checks these markers:
-
-- `var-sshd-hostkey`: the unit finished.
-- `hostkey-sealed-with-tpm2`: the credential's TPM2 header has a signed policy for PCR 11; TPM2
-  alone or the host key alone fails.
-- `ssh-after-reboot` and `hostkey-unchanged`: after a reboot sshd presents the first boot's key, the
-  credential has the bytes the first boot wrote (it was not sealed again), and sshd runs. With
-  `--next`, `hostkey-unchanged` runs again after the update, and with `--next --fail-health` after
-  the fallback to the previous release.
-
-See [What is proven](../proven.md).
-
-Admin vars are pushed with `golconda vars set`, `push`, `list` and `pub`
-([Commands](../reference/cli.md#golconda-vars)). With `--next` the boot test pushes sshd's host
-certificate and revocation list with it (`admin-vars-pushed`, `admin-vars-sealed`), the next release
-reads them (`host-cert-presented`, `cert-revoked-refused`), and a second push rotates the revocation
-list (`krl-rotated`). With `--enrol` the release that reads them takes the push in its own first
-boot, and sshd uses them after the push restarts it (`enrol-one-release`).
+Proven: the rows of [What is proven](../proven.md) that name `var-sshd-hostkey`,
+`hostkey-sealed-with-tpm2`, `hostkey-unchanged`, `admin-vars-sealed` and `enrol-one-release`. The
+limits are below.
 
 ## Limits
 

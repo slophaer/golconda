@@ -72,15 +72,13 @@ GnuPG can leave the image. Until then the exception stays
 
 ## Status
 
-The dash test runs in `nix/tests.nix` and the boundary check in the sandboxed checks, both from
-`scripts/lint`. The duplicate rule has module tests. The `tls` feature has no test of its own. The
-CA store has module tests (`tests/eval/trust.nix`), a build check of the bundle (`checks.ca-store`)
-and four boot-test markers: `ca-store-links`, `ca-bundle-content`, `tls-anchor-trusted` and
-`tls-distrusted-refused`. The signed index is proven by `index-signed` and `index-keyring`. See
-[What is proven](../proven.md).
+Proven: the rows of [What is proven](../proven.md) that name `tests/eval/base.nix`,
+`checks.boundary`, `tests/eval/composer.nix`, `ca-bundle-content` and `index-signed`. The limits are
+below.
 
 ## Limits
 
+- The `tls` feature of the package set has no test of its own.
 - No check lists every library in the closure. Only the rules above are mechanical, and the rest is
   review.
 - OpenSSL is the TLS stack, but rustls is tolerated in Rust-only tools.

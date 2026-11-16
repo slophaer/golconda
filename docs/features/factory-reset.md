@@ -92,15 +92,9 @@ host key in `known_hosts` must remove it.
 
 ## Status
 
-The boot test proves this in QEMU ([What is proven](../proven.md)), with
-`--factory-reset --ssh-test`: `state-gone`, `machine-id-new`, `first-boot-rerun`,
-`multi-user-after-reset` and `slots-kept`, and the new host key on the console and a certificate
-login with no state (`hostkey-new-on-console-after-reset`, `cert-login-after-reset`). With `--enrol`
-on an image with `revokedKeys`, the enrolment above after a reset: `cert-refused-after-reset`,
-`reenrol-old-fingerprint-refused`, `reenrol-after-reset`, `host-cert-presented-after-reset` and
-`bootstrap-key-refused-after-reenrol`. With `--next`: `loader-reinstall`, `set-oneshot-other-slot`,
-`set-default-other-slot` and `reboot-to-firmware`. Fallback by boot counting has markers too
-(`fallback-to-old-slot`).
+Proven: the rows of [What is proven](../proven.md) that name `state-gone`, `cert-login-after-reset`,
+`reenrol-after-reset`, `set-oneshot-other-slot`, `fallback-to-old-slot`, `failed-boots-fallback` and
+`failed-boots-halt`. The limits are below.
 
 ## Limits
 

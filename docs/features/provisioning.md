@@ -68,34 +68,17 @@ units that start after the import. `sysusers.extra` misses it, as sysusers runs 
 is online. The user data is measured into PCR 12.
 
 `network.netdev.*`, `network.link.*` and `network.network.*` credentials from the user data take
-effect in the same boot, though `systemd-network-generator.service`, their reader, runs before
-networkd. The import pulls in `golconda-imds-network.service`, which runs after it:
-
-1. `systemd-imds-early-network.service` writes `85-imds-early.network` (DHCP and the IMDS lock), and
-   networkd brings the link up.
-1. `network-online.target`, then `systemd-imds-import.service`: the user data's credentials land in
-   `/run/credstore`.
-1. `golconda-imds-network.service` imports the `network.*` credentials, runs systemd's
-   `systemd-network-generator` again (it writes `/run/systemd/network/<name>.network`), then
-   `networkctl reload`, which configures each link whose file changed. All before `sysinit.target`.
-
-A `.network` file from the user data replaces `85-imds-early.network` on the links it matches, and
-with it the lock of `imds-network=locked`: the prohibit route to the endpoint and imdsd's route and
-rule by firewall mark. So `/imds` holds the lock on `lo` as well, in
-`10-golconda-imds-lock.network`, where no file for a link replaces it. Policy rules belong to no
-link: imdsd's packets (firewall mark `0x7FFF0815`, IPv4 and IPv6: `Family=both`) look in imdsd's
-table first (priority 32100), then in the main table (32101), and every other packet to an endpoint
-is refused (32102 on). The endpoints are every address of systemd 262.1's `40-imds.hwdb`, not those
-of the cloud the machine is on, as the lock is a static file that must hold before the generator has
-looked at DMI: IPv4 `169.254.169.254`, `169.254.42.42` (Scaleway) and `100.100.100.200` (Alibaba),
-IPv6 `fd00:ec2::254` (AWS), `fd00:c1::a9fe:a9fe` (Oracle) and `fd00:42::42` (Scaleway). A rule for
-another cloud's address costs nothing: no packet goes there. The IPv6 rules need
-`CONFIG_IPV6_MULTIPLE_TABLES=y`, which Golconda's kernel sets (the defconfig does not): without it
-networkd cannot set an IPv6 rule, and it then loses the file's IPv4 rules too. A systemd update that
-adds an IPv6 endpoint to the hwdb fails the `hwdb` package test until the lock names it. The user
-data needs nothing of the lock; turn the DHCP host name off in it. On Hetzner Cloud, where each
-server has a static IPv6 `/64` with no router advertisement, the user data for the server's address
-is:
+effect in the same boot: `golconda-imds-network.service` runs `systemd-network-generator` again
+after the import, then `networkctl reload`. A `.network` file from the user data replaces
+`85-imds-early.network` on the links it matches, and with it the lock of `imds-network=locked`. So
+`/imds` holds the lock on `lo` as well (`10-golconda-imds-lock.network`): only imdsd reaches the
+IPv4 and IPv6 endpoints of systemd 262.1's `40-imds.hwdb`. The IPv6 rules need
+`CONFIG_IPV6_MULTIPLE_TABLES=y`, which Golconda's kernel sets. A systemd update that adds an IPv6
+endpoint to the hwdb fails the `hwdb` package test until the lock names it. The user data needs
+nothing of the lock; turn the DHCP host name off in it. The
+[`/imds` module page](../reference/modules/generated/imds.md) lists the endpoints and the rules. On
+Hetzner Cloud, where each server has a static IPv6 `/64` with no router advertisement, the user data
+for the server's address is:
 
 ```json
 {"systemd.credentials": [
@@ -108,24 +91,15 @@ with the server's own prefix in `Address=`.
 
 ### Hetzner Cloud
 
-systemd 262's `40-imds.hwdb` has wrong paths for Hetzner: it asks for
-`/hetzner/v1/metadata/public-keys/0` and `/hetzner/v1/metadata/userdata`, and Hetzner answers both
-with 404, so the import fails. Hetzner serves the keys under `/hetzner/v1/metadata/` and the user
-data at `/hetzner/v1/userdata`. `packages/systemd` patches the entry (`hwdb-imds-hetzner.patch`, a
-commit prepared for systemd upstream) to the base URL `http://169.254.169.254/hetzner/v1`, the keys
-`/metadata/hostname`, `/metadata/region`, `/metadata/availability-zone`, `/metadata/public-ipv4` and
-`/userdata`, and no ssh key, and `packages/hwdb` compiles it into every image's `hwdb.bin`. The
-patch goes when systemd ships the fix.
-
-Hetzner lists the server's ssh keys only as one JSON array (`/metadata/public-keys`), and systemd
-262 reads one plain key only. `packages/systemd` carries two more patches, also drafted for systemd
-upstream: `imds-ssh-key-json.patch` adds the well-known key `ssh-key-json`, which the import writes
-as one line per key, after the plain `ssh-key`, to `ssh.authorized_keys.root` (an entry that is not
-a string, or that has a control character in it, is skipped with a warning);
-`hwdb-imds-hetzner-ssh-keys.patch` names `/metadata/public-keys` for it in the Hetzner entry. Most
-clouds' hwdb entries name only their first key. The import writes this credential before the user
+systemd 262's `40-imds.hwdb` asks Hetzner for paths that answer 404, so the import fails.
+`packages/systemd` patches the entry to Hetzner's paths (`hwdb-imds-hetzner.patch`), and
+`packages/hwdb` compiles it into every image's `hwdb.bin`. Hetzner lists the server's ssh keys only
+as one JSON array (`/metadata/public-keys`). Two more patches (`imds-ssh-key-json.patch`,
+`hwdb-imds-hetzner-ssh-keys.patch`) add the well-known key `ssh-key-json` and name the array for it.
+The import writes the keys as one line each to `ssh.authorized_keys.root`; it skips an entry that is
+not a string or that has a control character. The import writes this credential before the user
 data's credentials, so where the metadata has a key, a user data `ssh.authorized_keys.root` is
-skipped.
+skipped. The patches go when systemd ships the fixes.
 
 The metadata endpoint is plain HTTP without authentication. Whoever can answer on its address sets
 the host name, root's ssh key and any credential, such as `tmpfiles.extra`. Opt in only where the
@@ -153,34 +127,8 @@ It also takes `--credential NAME=FILE`. It finds the ESP in the GPT and refuses 
 
 ## Status
 
-The boot test proves this in QEMU ([What is proven](../proven.md)):
-
-- `hostname` and `ssh-login` with the SMBIOS credential (`--ssh-test`).
-- `hostname`, `esp-authorized-keys` and `ssh-login` with a key only the ESP holds
-  (`--ssh-test --esp-creds`). `esp-credentials-removed` and `esp-hostname-persisted`: the first boot
-  removed the credentials from the ESP and wrote `/etc/hostname`; `esp-key-after-reboot`,
-  `esp-hostname-after-reboot` and `esp-credentials-once`: the second boot imports none and keeps
-  both. With `--factory-reset`, `esp-key-refused-after-reset` and `esp-hostname-gone-after-reset`:
-  the reset machine refuses the old key. `esp-credentials-none`: every other run's remover finds
-  nothing and does not fail.
-- `no-firstboot-prompt`: first boot finishes without a prompt.
-- `imds-hostname`, `imds-hetzner-layout`, `imds-ssh-keys-json`, `imds-ssh-key-precedence`,
-  `imds-userdata-credential`, `imds-ipv6`, `imds-endpoint-locked`, `imds-lock-endpoints` and
-  `imds-dhcp-hostname` on a faked Hetzner Cloud (`--ssh-test --imds`): SMBIOS names Hetzner, and
-  nothing else. The guest finds the endpoint by hwdb alone, and the harness serves it at
-  `169.254.169.254` in Hetzner's layout.
-- `imds-lock-endpoints`: a process that is not imdsd is refused at every IPv4 and IPv6 endpoint the
-  lock names (`EACCES` at `connect`), with a cloud faked and without one (`--ssh-test`).
-- `imds-import-inactive`: without a cloud in DMI, the test image's `/imds` runs no import.
-
-On Hetzner Cloud (2026-11-09, [What is proven](../proven.md#not-proven)), the guide's run gave the
-host name and the key by the ESP route, and without `/imds` no IMDS unit ran. With `/imds` and no
-ESP credential, the current form ran: the hwdb patch, the lock on `lo` and the ssh keys from the
-JSON array. The import passed, the host name came from the metadata, both project keys logged in,
-the user data's `ssh.authorized_keys.root` was skipped, the user data's `.network` file (with no
-lock in it) gave the IPv6 address in the first boot, and the endpoint stayed locked. All of it held
-again after `systemctl reboot` and after a power cycle, with the clock right from the start
-([What is proven: Not proven](../proven.md#not-proven)).
+Proven: the rows of [What is proven](../proven.md) that name `hostname`, `esp-credentials-once`,
+`imds-hostname`, `imds-lock-endpoints` and `imds-import-inactive`. The limits are below.
 
 ## Limits
 

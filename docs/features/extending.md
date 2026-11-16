@@ -55,13 +55,13 @@ A module looks like the one on [Typed modules](typed-modules.md#using-it). The f
 
 ## Status
 
-Eval tests cover this path (`tests/eval/components.nix`, `tests/eval/provenance.nix` and
-`tests/real-packages/sbom.nix`). The boot-test image carries one downstream module,
-`/local/test-workload` (`tests/fixtures/image-workload/modules`, `nix/default.nix`); no boot test
-has a downstream package. See [What is proven](../proven.md).
+Proven: the rows of [What is proven](../proven.md) that name `tests/eval/components.nix` and
+`tests/eval/provenance.nix`. The limits are below.
 
 ## Limits
 
+- No boot test has a downstream package. The boot-test image carries one downstream module,
+  `/local/test-workload` (`tests/fixtures/image-workload/modules`).
 - A package option names a target package. A build-host tool cannot be named.
 - repkgs refuses a package that takes the name of one of its aliases: it applies aliases last, so
   the alias would win.

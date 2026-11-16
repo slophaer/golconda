@@ -79,24 +79,9 @@ no transfers and no update runs. Read the counters with `bootctl list`.
 
 ## Status
 
-The boot test proves this in QEMU with OVMF ([What is proven](../proven.md)):
-
-- `release-index`, `sysupdate-installed`, `boots-next`, `units-composed-only-after-update` and
-  `no-failed-units-after-update`: the update installs and the new version boots (`--next`).
-- `update-reboot-window`, `update-activated`, `update-reboot-skipped`: the reboot timer is on, it
-  reboots into the installed release by itself (its window moved to every 10 s), and then reboots no
-  more; `update-reboot-skipped-after-fallback`: after a fallback it does not reboot into the failed
-  release again (`--next --fail-health`).
-- `http-source`, `http-fetch`, `index-signed`: the guest fetches over HTTP with its own definition.
-- `health-check-broken`, `trial-boot-counted`, `trial-hang-rebooted`, `trial-fail-rebooted`,
-  `fallback-to-old-slot`, `counter-exhausted`: a health unit that hangs or fails costs one try each,
-  the machine reboots itself after each, and the old release boots after the third
-  (`--next --fail-health`). `blessed-no-trial-policy` and `exhausted-entry-stays-up`: on the blessed
-  old release, and on the candidate with no try left, the failed check reboots nothing.
-- `initrd-fail-rebooted`, `fallback-to-old-slot-initrd`, `counter-exhausted-initrd`: a candidate
-  whose initrd fails reboots each try by itself, and the old release boots after the third
-  (`--next --fail-initrd`).
-- `loader-update-ran` and `loader-update-not-run`: the loader updates after a good boot only.
+Proven: the rows of [What is proven](../proven.md) that name `sysupdate-installed`,
+`update-activated`, `fallback-to-old-slot`, `initrd-fail-rebooted`, `fail-panic-rebooted` and
+`loader-update-ran`. The limits are below.
 
 ## Limits
 

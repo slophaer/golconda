@@ -53,13 +53,12 @@ To see who emitted a path, read `/usr/lib/golconda/attribution.json` and
 
 ## Status
 
-Eval tests cover the composer and its check. No boot marker does. `tests/eval/composer.nix` asserts
-the exact message above, a unit that clashes with a file at one installed path, and a clash with a
-path the builder writes itself (`/usr/lib/os-release`). Every boot-test image comes from this
-composer. See [What is proven](../proven.md).
+Proven: the rows of [What is proven](../proven.md) that name `tests/eval/composer.nix`. The limits
+are below.
 
 ## Limits
 
+- No boot marker checks the composer; every boot-test image comes from it.
 - A unit is typed text: a stem, one of seven suffixes and a section header. The renderers produce
   the text; the types do not model systemd's directives.
 - No generic escape into the unit text. A module that needs a directive the type lacks adds a typed

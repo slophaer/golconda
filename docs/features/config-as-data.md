@@ -62,13 +62,12 @@ valid table names.
 
 ## Status
 
-The artifacts are built and checked by eval tests (`tests/real-packages/sbom.nix`,
-`tests/eval/schema.nix` and others), and `checks.sbom-schema` validates the test image's SBOM
-against the CycloneDX 1.5 schema. The boot-test images carry them. No boot marker reads these files.
-See [What is proven](../proven.md).
+Proven: the rows of [What is proven](../proven.md) that name `tests/eval/schema.nix` and
+`checks.sbom-schema`. The limits are below.
 
 ## Limits
 
+- No boot marker reads the files in `/usr/lib/golconda/`.
 - **Diffing is *(later)*.** `golconda diff <a> <b>` would compare two `config.json` files. It does
   not exist. The console's `golconda diff` of a document against git was removed with the console
   ([Configuration: Diffing](../design/config.md#diffing-later)).

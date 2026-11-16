@@ -92,19 +92,8 @@ file or on a token. Signing through step-ca's API is *(later)*, a part of worklo
 
 ## Status
 
-With `--ssh-test`, `sshd-active` and `ssh-login` show sshd up and root reachable,
-`sshd-golconda-only` shows no other ssh unit or socket, and `no-failed-units` shows a clean boot.
-The test image trusts a test user CA: `cert-login` logs in with a certificate for the allowed
-principal, and `cert-wrong-principal-refused` is refused. With `--esp-creds`, `esp-authorized-keys`
-shows a key that only the ESP holds. With `--next` the harness pushes the host certificate and a
-revocation list, and the next release, which turns both on, passes `host-cert-presented`,
-`cert-revoked-refused` and, after a second push, `krl-rotated`. With `--enrol` one release does all
-of it in its first boot: certificates are refused until `golconda vars enrol`
-(`cert-refused-before-enrol`), which refuses a fingerprint that is not the console's
-(`enrol-wrong-fingerprint-refused`) and enrols with the console's; then the same boot presents the
-host certificate and refuses both plain keys, which the KRL does not name
-(`bootstrap-key-refused-after-enrol`, and after a reboot `bootstrap-key-refused-after-reboot`). See
-[What is proven](../proven.md).
+Proven: the rows of [What is proven](../proven.md) that name `ssh-login`, `cert-login`,
+`sshd-golconda-only`, `host-cert-presented` and `enrol-one-release`. The limits are below.
 
 ## Limits
 

@@ -50,19 +50,9 @@ is in `result-release/release/`; serve it at `/system.updateSource`.
 
 ## Status
 
-The boot test proves this with `--next` ([What is proven](../proven.md)):
-
-- `release-index`: `golconda release check` passes on the release: the index has four lines in this
-  order, each digest matches its file, and the release key signed it.
-- `index-keyring`, `index-signed`, `sysupdate-installed`: the image's keyring is the release key,
-  and the guest checks the signed index.
-- `sysupdate-refused` with `--tamper-index`: a changed index installs nothing, and the old release
-  still runs after a reboot (`boots-old`).
-
-For reproducibility, two builds of the initrd give the same bytes (`initrd-reproducible`, which
-`scripts/verify` builds), and two runs of the signer on one unsigned output give the same release
-and `disk.raw` (`disk-reproducible`, which `scripts/verify` builds too;
-[What is proven](../proven.md)).
+Proven: the rows of [What is proven](../proven.md) that name `release-index`, `index-signed`,
+`sysupdate-refused`, `packages.x86_64-linux.initrd-reproducible` and
+`packages.x86_64-linux.disk-reproducible`. The limits are below.
 
 ## Limits
 
