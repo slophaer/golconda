@@ -28,6 +28,10 @@ credential when Secure Boot is off or the machine has no TPM2. With Secure Boot 
 present, PID 1 refuses it. Anyone who can write the ESP could otherwise plant a credential that the
 measured boot never vouched for. On such a machine use SMBIOS or fw_cfg.
 
+PID 1 imports SMBIOS and fw_cfg credentials at every boot with no such check, also with Secure Boot
+and a TPM2. A credential such as `tmpfiles.extra` writes files as root. So whoever sets SMBIOS or
+fw_cfg (the hypervisor, or a BMC on hardware) is root on the machine, and the vars unseal.
+
 PID 1 takes the host name from `systemd.hostname=` on the command line, then `/etc/hostname`, then
 the credential, then the fallback `golconda`. Nothing writes `/etc/hostname` from `system.hostname`,
 so an SMBIOS credential wins at every boot. systemd-firstboot writes it from `firstboot.hostname`,
