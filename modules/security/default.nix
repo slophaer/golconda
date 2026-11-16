@@ -1,12 +1,5 @@
-#! Kernel security hardening via sysctl.
-#!
-#! Installs `/usr/lib/sysctl.d/50-golconda.conf` with hardening settings.
-#! These are applied by systemd-sysctl.service at boot.
-#!
-#! Settings: Yama ptrace_scope=2 (admin-only), kptr_restrict=2 (hide kernel
-#! pointers), dmesg_restrict=1 (root-only dmesg), unprivileged_bpf_disabled=1,
-#! bpf_jit_harden=2, kexec_load_disabled=1 (defence-in-depth: kexec is also
-#! disabled in the kernel config).
+#! Kernel security hardening via sysctl: installs `/usr/lib/sysctl.d/50-golconda.conf`, which systemd-sysctl.service applies at boot.
+#! A built-in component. The settings and the reason for each: docs/design/kernel.md.
 _:
 let
   inherit (import ../lib/text.nix) lines;
