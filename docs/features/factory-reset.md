@@ -98,8 +98,8 @@ on an image with `revokedKeys`, the enrolment above after a reset: `cert-refused
 ## Limits
 
 - No local login and no rescue shell. A machine without working ssh has no console session.
-- No remote recovery channel. A failed candidate reboots by itself only on a trial boot or after a
-  hang ([Boot: Trial boot](../design/boot.md#trial-boot)).
+- No remote recovery channel. A failed boot reboots by itself in the cases that
+  [Boot: Trial boot](../design/boot.md#trial-boot) lists.
 - The reset test ran on the test image: one `/usr` slot, QEMU. A reset after an update, the TPM
   clear and sealed credentials, real firmware, and the case where ssh is down are manual steps.
 - The boot test does not exercise the menu. A headless machine needs serial redirection in its

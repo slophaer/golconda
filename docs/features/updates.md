@@ -98,10 +98,11 @@ The boot test proves this in QEMU with OVMF ([What is proven](../proven.md)):
 
 - A fresh disk has one slot. There the loader still boots the exhausted entry, so after three
   reboots the machine stays up and unblessed until you fill the other slot.
-- The reboots after a kernel panic, a PID 1 crash and an initrd that hangs have no test of their
-  own. A kernel that hangs without a panic is not caught: that needs a hardware watchdog.
-- The machine supports no downgrade except the boot-counting fallback. `golconda release` refuses a
-  version that does not increase before it is built or published.
+- An initrd that hangs has no test of its own, and a kernel that hangs needs a hardware watchdog
+  ([Boot: Trial boot](../design/boot.md#trial-boot)).
+- The machine goes back to an older release only by a fallback: boot counting, or the failed-boot
+  count ([Boot: Failed boots](../design/boot.md#failed-boots)). `golconda release` refuses a version
+  that does not increase before it is built or published.
 - Nothing stops an older image signed by the same key from booting. Rollback protection is
   *(later)*.
 - The tests use plain HTTP in QEMU. HTTPS from a real update server ran by hand on Hetzner Cloud
