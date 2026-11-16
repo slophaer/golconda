@@ -65,6 +65,9 @@ options and the policy text.
 
 - IPE checks only what the kernel executes or maps. A signed interpreter runs a script from
   anywhere: `/usr/bin/sh /var/tmp/script` works.
+- The policy trusts the initramfs (`boot_verified=TRUE`) for the whole boot, also after switch-root.
+  systemd empties the old root file system and mounts `/` over it. No test tries to write and run a
+  file there.
 - Phase 2, the BPF LSM for `RestrictFileSystems=`, and phase 3, AppArmor profiles from the typed
   service, are *(later)*. `CONFIG_BPF_LSM=y` is on, nothing uses it yet. SELinux is rejected.
 - A rotated `db` key needs new images and new firmware enrolment.
