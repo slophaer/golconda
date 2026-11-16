@@ -1,0 +1,26 @@
+# A comment block is at most 12 lines. The WHY is one reason in each sentence; a design that
+# a page of docs/ states is a link to that page. A module header (`#!`) has its own limit, in
+# tests/eval/module-docs.nix. The paths in `ignores` are blocks that are still to be cut.
+id: no-comment-essays-nix
+language: nix
+severity: error
+message: "comment block of 13+ lines; condense it to the WHY and link the docs/ page"
+ignores:
+  - examples/golconda.nix
+  - lib/image/initrd.nix
+  - lib/module-docs.nix
+  - lib/schema.nix
+  - lib/tree.nix
+  - lib/usr-tree.nix
+  - lib/version.nix
+  - nix/packages.nix
+  - packages/ca-bundle/package.nix
+  - packages/dbus-broker/package.nix
+  - packages/hwdb/package.nix
+  - packages/qemu-system/package.nix
+  - packages/secureboot-objects/package.nix
+rule:
+  kind: comment
+  not: {regex: "^#!"}
+  precedes: {not: {kind: comment}}
+  follows: {kind: comment, follows: {kind: comment, follows: {kind: comment, follows: {kind: comment, follows: {kind: comment, follows: {kind: comment, follows: {kind: comment, follows: {kind: comment, follows: {kind: comment, follows: {kind: comment, follows: {kind: comment, follows: {kind: comment}}}}}}}}}}}}
