@@ -1,69 +1,47 @@
 #!/bin/sh
-# make-keys [--reuse-pk-kek OLD] DIR: make a deployment key set for a release (golconda release
-# build).
-# make-keys --auth-only [--reuse-pk-kek OLD] DIR: write the enrolment files of an existing set again.
-#
-# The layout is the one the signer reads (lib/image/sign.nu) and whose public halves lib.mkImage
-# reads (lib/image/chain.nix, docs/design/trust.md):
-#   secureboot/db.key, secureboot/db.crt   systemd-boot, the UKI and the verity root hash
-#   secureboot/PK.*, secureboot/KEK.*      the firmware's platform key and key exchange key
-#   secureboot/auth/microsoft/*.auth       the Secure Boot variables systemd-boot enrols in Setup
-#   secureboot/auth/golconda/*.auth        Mode, signed by the PK and KEK keys here, once: with
-#                                          Microsoft's KEK, db CAs and dbx, and without them
-#                                          (golconda-enrol-auth, lib/image/enrol.nu); the signer
-#                                          copies one set onto the ESP and reads no PK or KEK key
-#   pcr/pcr.key, pcr/pcr.pub               the PCR 11 policy and its public half
-#   release/index.key, release/index.pgp   SHA256SUMS (OpenPGP: armored secret, binary public)
-#
-# A relative DIR is made absolute: lib.mkImage takes the key directory as a string path and
-# refuses a relative one. No private key enters the store: Nix copies the public halves
-# alone, and the signer reads the private keys here. DIR must not be in a git work tree, where a
-# file can reach the store with the checkout. DIR must not exist with anything in it, and is made
-# 0700. Every file is 0600. The script prints the paths, what each key signs and
-# the certificate's fingerprint; it never prints key material.
-#
-# The db certificate is a self-signed PEM X.509 certificate, the form
-# systemd-sbsign takes, with a key and no chain: lib/image/uki.nu verifies the
-# verity signature against the certificate alone. It carries the extensions a
-# firmware db entry carries (CA:TRUE, digitalSignature, codeSigning) and lasts
-# 3650 days, as the smoke keys do (lib/image/keys.nu).
-#
-# --reuse-pk-kek OLD: a db rotation. The new set gets copies of OLD's PK.crt and KEK.crt, no PK or
-# KEK key, and its enrolment files are signed by OLD's PK and KEK keys: a machine keeps its PK and
-# KEK, and a new machine enrols the same ones. Without it the set gets a PK and a KEK of its own.
-# The script cannot tell a rotation from a new deployment, so a rotation names the old set.
-#
-# --auth-only: DIR is an existing set; only secureboot/auth is written, anew. For a set made
-# before make-keys wrote the files (the signer refuses it for a Secure Boot image and names this
-# command), and for a newer dbx (packages/secureboot-objects). The PK and KEK keys that sign are
-# DIR's, or OLD's with --reuse-pk-kek (keys kept offline, or a rotated set). A set with neither
-# PK.crt nor KEK.crt gets a PK and a KEK of its own first. The db certificate stays.
-#
-# docs/reference/release.md is the procedure around this script.
-
+# make-keys [--auth-only] [--reuse-pk-kek OLD] DIR
+# Make a deployment key set in DIR for `golconda release build`. With --auth-only, write the
+# enrolment files (secureboot/auth) of the set in DIR again: for a newer dbx, or a set without them.
+#   --reuse-pk-kek OLD  a db rotation: copy OLD's PK.crt and KEK.crt, make no PK or KEK key, and
+#                       sign the enrolment files with OLD's keys. The script cannot tell a rotation
+#                       from a new deployment, so a rotation names the old set.
+# DIR must be new or empty and outside any git work tree. The script makes it 0700 and each file
+# 0600, and prints the paths and fingerprints, never key material. The layout is in
+# docs/reference/release.md.
 set -eu
 
-usage() {
-  echo "usage: scripts/make-keys [--auth-only] [--reuse-pk-kek OLD] DIR" >&2
-}
+usage() { sed -n '2,/^set -eu$/{/^set -eu$/d;s/^# \{0,1\}//p}' "$0"; }
 
 old=""
 auth_only=0
-while [ $# -gt 1 ]; do
+while [ $# -gt 0 ]; do
   case $1 in
+    -h | --help)
+      usage
+      exit 0
+      ;;
     --auth-only)
       auth_only=1
       shift
       ;;
     --reuse-pk-kek)
+      [ $# -ge 2 ] || {
+        echo "make-keys: --reuse-pk-kek needs the old key directory" >&2
+        exit 2
+      }
       old=$2
       shift 2
+      ;;
+    -*)
+      echo "make-keys: unknown option $1" >&2
+      usage >&2
+      exit 2
       ;;
     *) break ;;
   esac
 done
 [ $# -eq 1 ] || {
-  usage
+  usage >&2
   exit 2
 }
 if [ -n "$old" ]; then

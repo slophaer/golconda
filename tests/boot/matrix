@@ -1,7 +1,10 @@
 # The boot matrix: the sets that scripts/verify boots when it gets no --boot-set and no
-# --boot-args. One set for each line: scripts/boot-test's flags after the disk and --keys, with
-# the words of scripts/verify (@image=ATTR first, @next, @next=ATTR). A line without @image boots
-# --image's image (default image-smoke-test). Blank lines and lines that start with # are skipped.
+# --boot-args. One set for each line: scripts/boot-test's flags after the disk and --keys. Blank
+# lines and lines that start with # are skipped. Words of scripts/verify in a set:
+#   @image=ATTR     first word: boot packages.<system>.ATTR, not --image's image
+#   @next           the next release: <image>-next, built for the set's own image
+#   @next=ATTR      the next release is packages.<system>.ATTR (a set can name several, as
+#                   in "--next @next --later @next=image-smoke-test-later")
 --secure-boot --ssh-test --tpm --timeout 600
 --secure-boot --ssh-test --tpm --timeout 600 --next @next
 --secure-boot --ssh-test --tpm --timeout 900 --next @next --fail-health

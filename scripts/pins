@@ -1,7 +1,7 @@
 #!/bin/sh
 # scripts/pins COMMAND [ARGS]...: uptrack on pins/, the inputs Nix evaluates (repkgs, iets,
-# adios, flake-incompat). uptrack comes from the repkgs tree pinned
-# now, so a new repkgs pin takes effect on the next run.
+# adios, flake-incompat). uptrack comes from the pinned repkgs tree, so a new repkgs pin takes
+# effect on the next run.
 #   scripts/pins check            what moved upstream (exits 10 when a pin is behind)
 #   scripts/pins apply repkgs     write the new rev, hash and [pin] of repkgs
 set -eu

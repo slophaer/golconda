@@ -1,9 +1,8 @@
 #!/bin/sh
-# scripts/make-keys: run it into a temporary directory and check what lib.mkImage and the
-# firmware need: the layout in the script header, mode 0600 on every file and 0700 on every
-# directory, the db certificate's extensions and validity, the key pairs matching, and the
-# OpenPGP files. A relative DIR, and the refusals (non-empty directory, a git work tree) too. Run from anywhere with
-# nix on PATH and a Nix daemon; scripts/lint runs it.
+# scripts/make-keys into a temporary directory: the layout of docs/reference/release.md, mode
+# 0600 on every file and 0700 on every directory, the db certificate's extensions and validity,
+# the key pairs matching and the OpenPGP files; a relative DIR; the refusals (non-empty directory,
+# git work tree, unknown option). Needs nix on PATH and a Nix daemon; scripts/lint runs it.
 set -u
 repo=$(dirname "$(dirname "$(dirname "$(realpath "$0")")")")
 . "$repo/scripts/tools.sh"
@@ -141,8 +140,7 @@ cmp -s "$keys/secureboot/auth/microsoft/KEK.auth" "$keys2/secureboot/auth/micros
 grep -qF "copies of $keys" "$tmp/out2" || fail "rotation: the report names the old set"
 "$repo/scripts/make-keys" --reuse-pk-kek "$keys2" "$tmp/keys3" >/dev/null 2>&1 && fail "--reuse-pk-kek needs a set with PK.key and KEK.key"
 
-# --auth-only: a set made before make-keys wrote the enrolment files gets them, and a PK and a KEK
-# of its own; the command is the one the signer's refusal names (tests/sign/enrol-test.nu)
+# --auth-only: a set without enrolment files gets them, and a PK and a KEK of its own; the command is the one the signer's refusal names (tests/sign/enrol-test.nu)
 keys4=$tmp/keys4
 cp -R "$keys" "$keys4"
 rm -r "$keys4/secureboot/auth" "$keys4/secureboot/PK.key" "$keys4/secureboot/PK.crt" \
@@ -190,6 +188,13 @@ grep -qF "deployment key set: $tmp/cwd/rel/keys" "$tmp/out-rel" || fail "relativ
 # refusals
 "$repo/scripts/make-keys" "$keys" >/dev/null 2>&1 && fail "non-empty DIR is refused"
 "$repo/scripts/make-keys" >/dev/null 2>&1 && fail "no argument is refused"
+# --help prints the header and exits 0; an unknown option names itself and exits 2
+"$repo/scripts/make-keys" --help >"$tmp/help" 2>&1 || fail "--help exits 0"
+grep -q '^make-keys \[--auth-only\]' "$tmp/help" || fail "--help prints the usage: $(cat "$tmp/help")"
+"$repo/scripts/make-keys" --bogus "$tmp/keys9" >/dev/null 2>"$tmp/stderr9"
+[ $? = 2 ] || fail "an unknown option exits 2"
+grep -qx 'make-keys: unknown option --bogus' "$tmp/stderr9" || fail "an unknown option is named: $(cat "$tmp/stderr9")"
+[ ! -e "$tmp/keys9" ] || fail "an unknown option makes nothing"
 # a directory in a git work tree: a file there can reach the store with the checkout, so a set
 # made there, or kept there (--auth-only reads its PK and KEK keys), is refused; nothing is made
 git init -q "$tmp/checkout"

@@ -1,61 +1,16 @@
 #!/bin/sh
-# scripts/verify: is this commit good? Lint (scripts/lint in the dev shell: iets, the checks, the
-# treefmt check among them), build an image, build the test image's initrd a second time
-# (packages.<system>.initrd-reproducible: the same bytes), sign its release a second time
-# (packages.<system>.disk-reproducible: the same disk.raw and release files), build the release
-# checks pkcs11-signed-same and release-without-pk-kek, boot it with scripts/boot-test. All builds
-# start at once; the boots start when the images are built, and the four checks run beside them. A failed lint or image stops the run. Run it through the
-# build queue on a shared host (qbuild -g vm verify -- scripts/verify); a step's output goes to
-# stdout, a build's when it ends.
-#
-#   scripts/verify [-C DIR] [--image ATTR] [--boot-args ARGS | --boot-set ARGS...] [--jobs N]
-#                  [--no-boot] [--lint-only] [--each-commit BASE]
-#
-#   -C DIR              verify the tree in DIR (default: this repository)
-#   --image ATTR        the image under packages.<system> (default image-smoke-test); the out-link
-#                       is result-verify. A boot set may name another (@image below)
-#   --boot-args ARGS    one boot with scripts/boot-test's flags after the disk and --keys, in
-#                       place of the boot matrix. @next in the flags (and in
-#                       --boot-set) stands for the next release's image: verify builds
-#                       <image>-next too (image-smoke-test-next for the default image,
-#                       image-smoke-test-nosb-next for image-smoke-test-nosb; out-link
-#                       result-verify-next) and puts its path there, as in "--next @next". It
-#                       also builds golconda-cli and age, which --next and --enrol need
-#                       (BOOT_TEST_GOLCONDA, PATH)
-#   --boot-set ARGS     one boot of a list (repeat it), in place of the boot matrix. Without
-#                       --boot-set and --boot-args, the sets are the lines of tests/boot/matrix.
-#                       The sets boot at the same time (at most --jobs), each with
-#                       its own log, and the summary has one line per set with its result, time,
-#                       image and ARGS ("PASS boot[N] 300s @image=ATTR ARGS"), and a line with the
-#                       names of the checks that passed ("  passed boot[N] (COUNT): NAME ...").
-#                       The run fails when any set fails. A set that fails keeps its log (the line
-#                       names it); a set that passes removes it. Replaces --boot-args. The VMs
-#                       need about 2 GiB each.
-#                       A set that starts with the word @image=ATTR boots packages.<system>.ATTR
-#                       instead of --image's, as in "@image=image-smoke-test-nosb --ssh-test
-#                       --next @next": verify builds each image the sets name once (out-link
-#                       result-verify-ATTR, step image:ATTR), and @next in the set is the next
-#                       image of the set's own image (ATTR-next, result-verify-ATTR-next, step
-#                       image-next:ATTR). So one run boots the Secure Boot sets and the nosb sets.
-#                       @next=ATTR instead names the next image, packages.<system>.ATTR (out-link
-#                       result-verify-ATTR, step image-next:ATTR), for a next release that is no
-#                       <image>-next, as in "--next @next=image-smoke-test-rotated --rotate".
-#                       Each @next word of a set is replaced, so a set can name a third release,
-#                       as in "--next @next --later @next=image-smoke-test-later"
-#   --jobs N            boot at most N sets at the same time (default: MemAvailable / 2.5 GiB,
-#                       at least 1)
-#   --no-boot           build the image, do not boot it
-#   --lint-only         lint only
-#   --each-commit BASE  every commit in BASE..HEAD, in a scratch worktree: lint each, and build and
-#                       boot the last; one PASS or FAIL line per commit
-#
-# The tree must be clean: the result belongs to one commit and one repkgs pin, named on the first
-# line. No untracked file either, and no ignored one in modules/ or packages/: the build reads
-# them where they lie.
-#
-# The logs of --boot-set are in $BOOT_TEST_CACHE/verify.XXXXXX (default
-# ${XDG_CACHE_HOME:-$HOME/.cache}/golconda-boot-test, which is also where scripts/boot-test keeps
-# the work directory of a failed run); verify removes its own directories older than 7 days.
+# verify [-C DIR] [--image ATTR] [--boot-args ARGS | --boot-set ARGS...] [--jobs N]
+#        [--no-boot] [--lint-only] [--each-commit BASE]
+# Lint, build an image and the checks that build it again, and boot it (docs/reference/image.md).
+# A failed lint or image stops the run. The tree must be clean, without untracked files.
+#   -C DIR             verify the tree in DIR (default: this repository)
+#   --image ATTR       the image under packages.<system> (default image-smoke-test)
+#   --boot-set ARGS    one boot with boot-test's flags after the disk and --keys; repeat it for
+#                      several. Default: the lines of tests/boot/matrix, which names @image, @next
+#   --boot-args ARGS   one boot, in place of the sets
+#   --jobs N           boot at most N sets at once (default: MemAvailable / 2.5 GiB)
+#   --no-boot | --lint-only    build the image only | lint only
+#   --each-commit BASE lint each commit of BASE..HEAD; build and boot the last
 set -u
 self=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)/$(basename "$0")
 dir=$(dirname "$self")/..
@@ -66,22 +21,25 @@ jobs=
 lint_only=0
 each=
 boot_sets=
-usage() {
-  sed -n '2,/^set -u$/{/^set -u$/d;s/^# \{0,1\}//p}' "$self" >&2
-  exit 2
-}
+usage() { sed -n '2,/^set -u$/{/^set -u$/d;s/^# \{0,1\}//p}' "$self"; }
+# arg OPTION VALUE...: refuse an option without a value
+arg() { [ $# -ge 2 ] || { echo "verify: $1 needs a value" >&2; exit 2; }; }
 while [ $# -gt 0 ]; do
   case "$1" in
-  -C) dir=${2:?}; shift 2 ;;
-  --image) image=${2:?}; shift 2 ;;
-  --boot-args) boot_args=${2:?}; shift 2 ;;
-  --boot-set) boot_sets="$boot_sets${boot_sets:+
-}${2?}"; shift 2 ;;
-  --jobs) case ${2:-} in '' | *[!0-9]* | 0) usage ;; esac; jobs=$2; shift 2 ;;
+  -h | --help) usage; exit 0 ;;
+  -C) arg "$@"; dir=$2; shift 2 ;;
+  --image) arg "$@"; image=$2; shift 2 ;;
+  --boot-args) arg "$@"; boot_args=$2; shift 2 ;;
+  --boot-set) arg "$@"; boot_sets="$boot_sets${boot_sets:+
+}$2"; shift 2 ;;
+  --jobs)
+    arg "$@"
+    case $2 in '' | *[!0-9]* | 0) echo "verify: --jobs needs a number above 0" >&2; exit 2 ;; esac
+    jobs=$2; shift 2 ;;
   --no-boot) boot=0; shift ;;
   --lint-only) lint_only=1; shift ;;
-  --each-commit) each=${2:?}; shift 2 ;;
-  *) usage ;;
+  --each-commit) arg "$@"; each=$2; shift 2 ;;
+  *) echo "verify: unknown option $1" >&2; usage >&2; exit 2 ;;
   esac
 done
 cd "$dir" || exit 2

@@ -1,18 +1,10 @@
-# Tests for the signer's key checks and signatures (lib/image/sign.nu, verity.nu, uki.nu,
-# disk.nu). They call the functions the signer runs, on two key sets made here: a signature by
-# the right key verifies with the public half the image carries, one by another key does not,
-# and the signer refuses a key set that is not the half of the image's public keys. The whole
-# signer runs in every test image (lib/image/signer.nix signedWithTestKeys).
-#
-# Keys on a PKCS#11 token: the db and PCR keys of set A, and the db key of set B, go onto a
-# SoftHSM token (TEST-ONLY), and a key set names them by URI (secureboot/db.pkcs11,
-# pcr/pcr.pkcs11). The same checks hold, and a signature from the token is the file key's, byte
-# for byte.
-#
-# Run from the repo root with openssl, gpg, softhsm2-util on PATH, OPENSSL_MODULES naming
-# pkcs11-provider's lib/ossl-modules and SOFTHSM_MODULE its libsofthsm2.so (checks.image-signer
-# runs it so):
-#   nu --no-config-file --include-path lib/image tests/sign/test.nu
+# Tests for the signer's key checks and signatures (lib/image/sign.nu, verity.nu, uki.nu, disk.nu)
+# on two key sets made here: a signature by the right key verifies with the public half the image
+# carries, one by another key does not, and a key set that is not the half of the image's public
+# keys is refused. The same checks run with keys on a SoftHSM token (TEST-ONLY), named by URI
+# (secureboot/db.pkcs11, pcr/pcr.pkcs11), and its signature equals the file key's.
+# checks.image-signer (nix/checks.nix) runs it with openssl, gpg and softhsm2-util on PATH. It
+# takes no option: nu runs the file and ignores its arguments.
 
 use sign.nu
 use sign.nu [private-keys check-keys use-token]

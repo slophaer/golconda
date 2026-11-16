@@ -132,6 +132,18 @@ grep -q "boot-test $WORK/images/image-smoke-test/disk/disk.raw --keys $WORK/imag
   fail "boot-test not given the image's disk, keys and the smoke flags: $(cat "$CALLS")"
 grep -qE -- '--run ./scripts/lint$' "$CALLS" || fail "lint is not scripts/lint in the dev shell"
 
+# 1a --help prints the header and exits 0; an unknown option names itself and exits 2
+run scripts/verify --help
+[ $rc = 0 ] || fail "--help exited $rc: $out"
+echo "$out" | grep -q '^verify \[-C DIR\]' || fail "--help does not print the usage: $out"
+[ ! -s "$CALLS" ] || fail "--help ran a step: $(cat "$CALLS")"
+run scripts/verify --nonsense
+[ $rc = 2 ] || fail "an unknown option exited $rc: $out"
+echo "$out" | grep -q '^verify: unknown option --nonsense$' || fail "unknown option not named: $out"
+run scripts/verify --jobs
+[ $rc = 2 ] || fail "--jobs without a value exited $rc: $out"
+echo "$out" | grep -q '^verify: --jobs needs a value$' || fail "missing value not named: $out"
+
 # 1b --boot-args boots once with its flags, in place of the matrix
 run scripts/verify --boot-args '--timeout 480'
 [ $rc = 0 ] || fail "--boot-args run exited $rc: $out"

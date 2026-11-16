@@ -1,24 +1,25 @@
 #!/bin/sh
-# templates.default (docs/reference/pinning.md, "A flake"): `nix flake init -t` writes a flake
-# whose lock moves with `nix flake update golconda`. It makes a flake from this tree's template,
-# in a temporary directory, with Golconda's input as a bare clone of this repository (so that
-# it needs no network for Golconda), and checks that
-#   - the lock holds the older commit (HEAD~1) while the input says no commit,
+# flake-template [--build]
+# Make a flake from templates.default (docs/reference/pinning.md, "A flake") in a temporary
+# directory, with Golconda's input as a bare clone of this repository, and check that
+#   - the lock holds the older commit (HEAD~1) while the input names no commit,
 #   - `nix flake update golconda` moves the lock to HEAD, with HEAD's narHash,
 #   - the flake evaluates the /usr tree at HEAD.
-# With --build it also builds the image's unsigned output from the flake (`nix build .#image`),
-# with the public halves of a test key set (tests/fixtures/public-keys, copied as test-keys/; no
-# private key exists for the build to read), and checks that the output holds the manifest and
-# the signer and no private key: it takes the time of an image build, so queue it
-# (qbuild flake-template -- tests/flake-template/run.sh --build). Run from anywhere with
-# flakes on the client's nix and a Nix daemon with the fork's features; scripts/lint runs it
-# without --build.
+# --build also builds the unsigned image output (`nix build .#image`) with the public halves of
+# tests/fixtures/public-keys, and checks that it holds the manifest and the signer and no private
+# key. Needs two commits of history, flakes on nix, and a Nix daemon with the fork's features.
 set -eu
+usage() { sed -n '2,/^set -eu$/{/^set -eu$/d;s/^# \{0,1\}//p}' "$0"; }
 repo=$(dirname "$(dirname "$(dirname "$(realpath "$0")")")")
 build=false
-[ "${1:-}" != --build ] || build=true
+case "${1:-}" in
+'') ;;
+--build) build=true ;;
+-h | --help) usage; exit 0 ;;
+*) echo "flake-template: unknown option $1" >&2; usage >&2; exit 2 ;;
+esac
 git -C "$repo" rev-parse --verify -q HEAD~1 >/dev/null || {
-  echo "flake-template test: needs a history of two commits" >&2
+  echo "flake-template: needs a history of two commits" >&2
   exit 1
 }
 old=$(git -C "$repo" rev-parse HEAD~1)
@@ -27,7 +28,7 @@ new=$(git -C "$repo" rev-parse HEAD)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 fail() {
-  echo "FAIL flake-template: $1" >&2
+  echo "flake-template: FAIL: $1" >&2
   exit 1
 }
 # a bare clone: git+file takes its HEAD, and the checkout may have uncommitted changes. Its HEAD
