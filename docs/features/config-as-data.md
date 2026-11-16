@@ -68,9 +68,6 @@ Proven: the rows of [What is proven](../proven.md) that name `tests/eval/schema.
 ## Limits
 
 - No boot marker reads the files in `/usr/lib/golconda/`.
-- **Diffing is *(later)*.** `golconda diff <a> <b>` would compare two `config.json` files. It does
-  not exist. The console's `golconda diff` of a document against git was removed with the console
-  ([Configuration: Diffing](../design/config.md#diffing-later)).
 - Nix stays necessary for a module of your own and a package that is not in the set
   ([Your own modules and packages](extending.md)).
 - korora hides the members of structs and enums, so the schema marks those types
