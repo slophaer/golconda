@@ -43,9 +43,9 @@ A classic `nix-build` evaluates on the client, so the client's `nix.conf` needs 
 
 ## The first daemon: a chicken-and-egg
 
-`packages.<system>.nix` is not the daemon to start with. It is repkgs' own `nix` package, stock Nix
-2.35.2 with a relocation patch (repkgs `pkgs/ni/nix`), and repkgs builds it. So building it already
-needs a daemon with the features above.
+repkgs' own `nix` package is not the daemon to start with. It is stock Nix 2.35.2 with a relocation
+patch (repkgs `pkgs/ni/nix`), and repkgs builds it. So building it already needs a daemon with the
+features above.
 
 The first daemon comes from outside the set. repkgs `nix/nix/default.nix` builds Nix master from
 branch `repkgs` of `github.com/Mic92/nix-1`, with nixpkgs and not with repkgs, so any stock Nix can
@@ -73,8 +73,8 @@ nix.settings = {
 On another distribution, run this build's `nix-daemon` in place of the one the distribution starts,
 with the `nix.conf` above. The repo has no recipe for that; it is **unverified**.
 
-Whether `packages.<system>.nix` (2.35.2) can later replace that daemon is **unverified**: nothing
-here says whether it carries #16459.
+Whether repkgs' `nix` package (2.35.2) can later replace that daemon is **unverified**: nothing here
+says whether it carries #16459.
 
 There is no binary cache for the fork ([Comparison](../design/comparison.md)). The first build
 fetches the repkgs seed and builds the whole toolchain from it (repkgs README); after that, builds

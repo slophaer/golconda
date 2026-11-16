@@ -158,10 +158,7 @@ in
       };
     in
     {
-      # repkgs' own Nix package (stock Nix with a relocation patch), built by repkgs, so it
-      # needs a daemon with CA and dynamic derivations first (docs/reference/build-host.md)
-      inherit (pkgs) nix;
-      # the command line (cli/), built by repkgs like nix
+      # the command line (cli/), built by repkgs
       inherit (pkgs) golconda-cli;
       # what golconda vars encrypts with, on PATH beside it
       inherit (pkgs) age;
@@ -216,13 +213,8 @@ in
 
       # The image chain (lib/image) over the /base system, signed in the store with throwaway
       # keys. A release signs with the deployment's keys outside the store (lib.mkImage,
-      # `golconda release build`). The parts: the unsigned outputs, the initrd, the signer, and
-      # the signed disk and release directory.
+      # `golconda release build`).
       image-smoke = imageSmoke.smoke;
-      image-smoke-unsigned = imageSmoke.unsigned;
-      image-smoke-initrd = imageSmoke.initrd;
-      image-smoke-signer = imageSmoke.signer;
-      image-smoke-signed = imageSmoke.signed;
 
       image-smoke-test = smokeTest.smoke;
 
@@ -413,40 +405,6 @@ in
           # the running image trusts only its own release key: a db rotation keeps it
           indexKeys = throwawayKeys;
         }).smoke;
-
-      # Smoke test for the /usr tree builder: base system + jq via mkSystem.
-      usr-tree-smoke =
-        (mkSystem {
-          inherit system;
-          platform = system;
-          config = {
-            "/system" = {
-              name = "smoke";
-              version = "20261031.1";
-            };
-          };
-          extraFragments = [
-            {
-              name = "/smoke/jq";
-              packages = [ pkgs.jq ];
-            }
-          ];
-        }).usrTree;
-
-      # Smoke test for /base alone: no extra fragments, just the base packages.
-      # Verifies: no absolute symlinks, no GNU coreutils, base packages only.
-      usr-tree-base-smoke =
-        (mkSystem {
-          inherit system;
-          platform = system;
-          config = {
-            "/system" = {
-              name = "base-smoke";
-              version = "20261031.1";
-            };
-          };
-        }).usrTree;
-
     });
 
   checks =
@@ -474,28 +432,18 @@ in
   #   iets eval --json -E '(import ./default.nix).schema'
   schema = (import ../lib/schema.nix { }).toJsonSchema (tree { });
 
-  # Markdown reference pages generated from the schema (lib/module-docs.nix).
-  #   iets eval --raw -E '(import ./default.nix).docs-modules."/system"'
-  docs-modules = docsFromSchema.pages;
-
-  # The same pages by file name (services-sshd.md, index.md, types.md); scripts/docs writes these.
+  # The reference pages generated from the schema (lib/module-docs.nix), by file name
+  # (services-sshd.md, index.md, types.md); scripts/docs writes these.
   docs-pages = docsFromSchema.files;
 
   # The module-pages lines of docs/SUMMARY.md (the file is committed; scripts/docs checks them).
   docs-summary = docsFromSchema.summary;
-
-  # Module paths discovered from modules/ directory.
-  docs-module-paths = docsFromSchema.modulePaths;
 
   # TOML configuration loader: a document in, checked options out. Returns
   # { loadConfig; loadConfigText; checkOptions; optionError; validPaths; }.
   # It applies nothing: lib.mkSystem is the one entry point that does.
   #   (import ./default.nix).configLib.loadConfig ./config.toml
   configLib = import ../lib/config.nix { tree = tree { }; };
-
-  # The platforms table (repkgs nix/platforms.nix), for callers that need all target names.
-  # Not per-system: the same table on every build host.
-  platforms = import (sources.repkgs + "/nix/platforms.nix");
 
   # lib: Nix library functions for building Golconda systems.
   #   (import ./default.nix).lib.mkSystem { config = ./server.toml; }

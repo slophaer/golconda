@@ -41,7 +41,7 @@ in
     hasInfix "| `port` | integer | `22` |" docs.pages."/services/sshd"
   ))
   (check "module-docs: index lists every module path" (
-    all (p: hasInfix "[`${p}`](${docs.fileName.${p}})" docs.index) (attrNames docs.pages)
+    all (p: hasInfix "[`${p}`](${moduleDocs.fileName p})" docs.index) (attrNames docs.pages)
     &&
       attrNames docs.pages == [
         "/base"

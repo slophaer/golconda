@@ -381,6 +381,6 @@ in
   packages = setFull.downstream;
   usrTree = usrTreeDrv;
   config = normalizedConfig;
-  inherit (setFull) catalogue platform pkgs;
+  inherit (setFull) platform pkgs;
   inherit (composed) version name;
 }

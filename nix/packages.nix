@@ -1,19 +1,12 @@
 # The repkgs set for a target platform, built on the current machine.
 #
 # This is the only place that imports repkgs. It returns:
-#   { pkgs; platform; platforms; set; downstream; }
+#   { pkgs; platform; set; downstream; }
 #
 # - `pkgs`: the packages for the target platform
 # - `platform`: the elaborated platform record (cpu, os, name, march,
 #   names.{kernel,systemd,uefi,...}; see repkgs nix/platforms.nix)
-# - `platforms`: the full platforms table, for callers that build for several targets
 # - `set`: the full repkgs set (all packages, as repkgs defines it)
-# - `catalogue`: name -> { version; purl?; cpe?; origin; replaces?; } for every package of the
-#   target set (repkgs' tree, Golconda's packages/, the downstream directory; aliases are not
-#   names): the packages a package option can name. `origin` is downstream, golconda or
-#   repkgs; `replaces` is on downstream entries only. purl and cpe are what the SBOM generator
-#   writes for the package. A package the platform does not support is
-#   { origin; supported = false; }.
 # - `downstream`: name -> { replaces; } for each package of the downstream directory:
 #   `replaces` is "golconda" or "repkgs" when the name was taken, else null
 #
@@ -50,7 +43,6 @@
   replaces ? [ ],
 }:
 let
-  on = import ../modules/lib/on.nix;
   inherit (builtins)
     attrNames
     concatMap
@@ -102,8 +94,6 @@ let
   # every use of the downstream packages, or the record of them, sees the refusal
   checked = v: if replacementError != null then throw replacementError else v;
 
-  platforms = import (sources.repkgs + "/nix/platforms.nix");
-
   # Kernel config: the base config plus IPE boot policy path substitution.
   # builtins.toFile embeds the policy's store path so the kernel build can read it.
   # Use builtins.path for explicit store copy (satisfies iets path-copy lint).
@@ -140,63 +130,9 @@ let
     # Set-wide choices: one TLS stack, one of each (docs/design/principles.md).
     features.tls = "openssl";
   };
-  catalogueNames = builtins.attrNames (
-    listToAttrs (
-      map (n: {
-        name = n;
-        value = null;
-      }) (repkgsNames ++ attrNames golcondaPackages ++ attrNames downstreamPackages)
-    )
-  );
-  catalogueEntry =
-    n:
-    let
-      p = set.pkgs.${n};
-      origin =
-        if downstreamPackages ? ${n} then
-          "downstream"
-        else if golcondaPackages ? ${n} then
-          "golconda"
-        else
-          "repkgs";
-      replacement = on (downstreamInfo ? ${n}) { inherit (downstreamInfo.${n}) replaces; };
-      supported = (p.supported or true) && (builtins.tryEval (builtins.deepSeq p.version true)).success;
-      # the package's own component, as the SBOM generator writes it
-      root = builtins.head (
-        filter (c: c.type == "application")
-          (set.sbom {
-            roots = [ p ];
-            name = "catalogue";
-          }).bom.components
-      );
-    in
-    if supported then
-      {
-        inherit origin;
-      }
-      // builtins.intersectAttrs {
-        version = null;
-        purl = null;
-        cpe = null;
-      } root
-      // replacement
-    else
-      {
-        inherit origin;
-        supported = false;
-      }
-      // replacement;
 in
 {
   inherit (set) pkgs platform;
-  inherit platforms set;
+  inherit set;
   downstream = checked downstreamInfo;
-  catalogue = checked (
-    listToAttrs (
-      map (n: {
-        name = n;
-        value = catalogueEntry n;
-      }) catalogueNames
-    )
-  );
 }

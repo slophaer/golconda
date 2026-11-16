@@ -109,9 +109,6 @@ in
     touch $out
   '';
 
-  # the generated module pages alone: `nix-build -A checks.x86_64-linux.module-docs`
-  module-docs = moduleDocs;
-
   # the /usr tree builder's link-target conversion: this runs the Nu function the builder runs
   # (lib/usr-tree/main.nu) under the nu the builder runs, the seed's
   usr-tree-test = run "usr-tree-test" [ ] ''
@@ -235,9 +232,6 @@ in
     fi
     touch $out
   '';
-
-  # Export at evaluation time; the sandbox cannot fetch module sources.
-  schema = schemaFile;
 
   # the schema is valid JSON Schema 2020-12, and it accepts each fixture exactly when Nix does
   # (tests/schema), by python's jsonschema (packages/python-jsonschema): a whole implementation of

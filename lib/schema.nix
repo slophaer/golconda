@@ -121,9 +121,8 @@ let
       ./schema/registry-var.nix
     ];
 
-  # The walk of a module tree is lib/tree.nix; these names stay here for the callers
-  # (lib/config.nix, lib/system.nix) that read them from the schema library.
-  inherit (import ./tree.nix { }) pathComponents moduleAt modulesOf;
+  # the walk of a module tree (lib/tree.nix)
+  inherit (import ./tree.nix { }) modulesOf;
   inherit (import ./components.nix { }) internalOptions roleOf;
 
   # A module that declares options: it has a table in the configuration and in the schema.
@@ -396,9 +395,6 @@ in
     parseTypeName
     parseTypeArgs
     isPlainData
-    pathComponents
-    moduleAt
-    modulesOf
     hasOptions
     ;
 }

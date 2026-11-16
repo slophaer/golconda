@@ -1,5 +1,5 @@
 # Golconda: entry point for classic Nix and iets.
-#   iets build -A packages.x86_64-linux.nix
+#   iets build -A packages.x86_64-linux.golconda-cli
 #   nix-build -A checks.x86_64-linux.treefmt
 # Inputs are pinned in pins/ (uptrack, scripts/pins). The output schema is the
 # flake one, provided by flake-incompat; flake.nix is a thin wrapper.
@@ -22,9 +22,7 @@ flake-incompat.mkFlake {
   # `platform` (repkgs' record, nix/platforms.nix), and `set` (the full repkgs set, for
   # options."/pkgs".target). No nixpkgs here.
   #
-  # The build host (`system`) is the flake system; the target (`platform`) defaults to the
-  # same. Cross-compilation: nix/default.nix builds packages for other targets under the
-  # build host's output tree (e.g., packages.x86_64-linux.usr-tree-smoke-aarch64).
+  # The build host (`system`) is the flake system; the target (`platform`) is the same.
   argsFun =
     name:
     let
@@ -36,7 +34,7 @@ flake-incompat.mkFlake {
     in
     {
       inherit (r) set pkgs platform;
-      # `system` is the build host (the flake system), for nix/default.nix to build cross targets
+      # `system` is the build host (the flake system)
       system = name;
     };
 }

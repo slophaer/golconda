@@ -7,7 +7,6 @@
 #   types      Markdown for the types page
 #   summary    the module-pages lines of docs/SUMMARY.md (the rest is committed)
 #   files      file name ("services-sshd.md", "index.md", "types.md") -> Markdown
-#   fileName   module path -> file name
 #
 # Pure Nix; docs/reference/modules/generated/ is written from `files`
 # (scripts/docs, and the docs check in nix/checks.nix).
@@ -219,18 +218,13 @@ let
   # The main export function.
   toMarkdown =
     {
-      moduleSchemas ? (import ./schema.nix { }).moduleSchemas tree,
-      schema ? {
-        properties = { };
-      },
+      moduleSchemas,
       modulePaths,
       docComments,
       typeRegistry,
       tree,
     }:
     let
-      # Keep existing schema callers working without hiding internal modules.
-      mods = moduleSchemas // (schema.properties or { });
       allPaths = map (m: m.path) modulePaths;
       sortedPaths = sortStrings allPaths;
 
@@ -250,7 +244,7 @@ let
           path:
           let
             filePath = pathToFile.${path};
-            schemaProps = mods.${path} or { };
+            schemaProps = moduleSchemas.${path} or { };
             docComment = docComments.moduleDoc filePath;
             mod = getModule path;
             hasImpl = mod ? impl;
@@ -285,7 +279,7 @@ let
           p:
           let
             mod = getModule p;
-            optCount = toString (builtins.length (attrNames (mods.${p}.properties or { })));
+            optCount = toString (builtins.length (attrNames (moduleSchemas.${p}.properties or { })));
             hasImpl = if mod ? impl then "yes" else "no";
           in
           "| [`${p}`](${fileName p}) | ${optCount} | ${hasImpl} |"
@@ -314,14 +308,6 @@ let
           "index.md" = index;
           "types.md" = types;
         };
-      # fileName as a set mapping path -> file name (for backward compatibility with tests)
-      fileName = listToAttrs (
-        map (p: {
-          name = p;
-          value = fileName p;
-        }) sortedPaths
-      );
-      inherit modulePaths;
     };
 in
 {
