@@ -7,18 +7,18 @@ this shape: [design/modules](../../design/modules.md).
 
 ## Modules
 
-| path             | role                                                                                                                                                                       |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/system`        | the composer: `name`, `version`, `updateSource`, `updateReboot`, and `components` from `mkSystem` → the output below                                                       |
-| `/pkgs`          | the repkgs sets, passed once as `target` (and `build`); returns `{ target; build; pkgs }` to the modules that declare the input                                            |
-| `/base`          | built in, composed first: systemd, dbus-broker, dash, uutils coreutils, tpm2-tss, e2fsprogs, the kernel, the base units, `C.UTF-8`, `ntp`, `journalMaxUse` (details below) |
-| `/network`       | built in: networkd `.network` files (DHCP on every wired link by default) and resolved's fallback `dns`                                                                    |
-| `/security`      | built in: `/usr/lib/sysctl.d/50-golconda.conf`, the kernel hardening settings                                                                                              |
-| `/trust`         | built in: the CA store, `/usr/share/ca-certificates/ca-bundle.crt` (Mozilla's roots plus `anchors`, minus `distrust`) and the `/etc/ssl` links to it                       |
-| `/factory`       | built in: the `/etc` seed under `/usr/share/factory/etc` and the `L` lines that link it                                                                                    |
-| `/vars`          | installs `/usr/lib/golconda/golconda-var-run` (mode `0755`), the POSIX sh runner for var units (`modules/vars/golconda-var-run`); built in                                 |
-| `/services/sshd` | OpenSSH as a service with its configuration under `/usr/lib/sshd/` and an ed25519 host key var; keys and certificates only                                                 |
-| `/imds`          | optional, no options: systemd's IMDS stack and its own import (host name, root's ssh key, user data credentials) where hwdb finds a cloud                                  |
+| path             | role                                                                                                                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/system`        | the composer: `name`, `version`, `updateSource`, `updateReboot`, and `components` from `mkSystem` → the output below                                                                 |
+| `/pkgs`          | the repkgs sets, passed once as `target` (and `build`); returns `{ target; build; pkgs }` to the modules that declare the input                                                      |
+| `/base`          | built in, composed first: systemd, dbus-broker, dash, uutils coreutils, e2fsprogs, tzdata, hwdb, lvm2, the kernel, the base units, `C.UTF-8`, `ntp`, `journalMaxUse` (details below) |
+| `/network`       | built in: networkd `.network` files (DHCP on every wired link by default) and resolved's fallback `dns`                                                                              |
+| `/security`      | built in: `/usr/lib/sysctl.d/50-golconda.conf`, the kernel hardening settings                                                                                                        |
+| `/trust`         | built in: the CA store, `/usr/share/ca-certificates/ca-bundle.crt` (Mozilla's roots plus `anchors`, minus `distrust`) and the `/etc/ssl` links to it                                 |
+| `/factory`       | built in: the `/etc` seed under `/usr/share/factory/etc` and the `L` lines that link it                                                                                              |
+| `/vars`          | installs `/usr/lib/golconda/golconda-var-run` (mode `0755`), the POSIX sh runner for var units (`modules/vars/golconda-var-run`); built in                                           |
+| `/services/sshd` | OpenSSH as a service with its configuration under `/usr/lib/sshd/` and an ed25519 host key var; keys and certificates only                                                           |
+| `/imds`          | optional, no options: systemd's IMDS stack and its own import (host name, root's ssh key, user data credentials) where hwdb finds a cloud                                            |
 
 ## The composer output
 
@@ -192,23 +192,22 @@ cosmetic change.
 `merge [ fragmentA fragmentB ]` unions `units`, `files` and `links`, normalises every file to
 `{ text; mode; }`, concatenates `sysusers` and `tmpfiles` (each line once; two different lines for
 one tmpfiles path or one sysusers user or group throw), returns `packages` with each package once,
-and records in `packageOrigins` which fragments (by `name`) brought each. The output's `links` is
-one map: the composer derives `/usr/bin/<name>` for every name in a package's `bin` list (kind
-`package`) into the same map as the fragments' links.
+and records in `packageOrigins` which fragments (by `name`) brought each.
 
-One duplicate check covers it all. Each fragment claims paths in `/usr`: its units, files, links and
-its packages' `/usr/bin` links. A path claimed twice throws, whatever the kinds, and the message
-names both claims and both origins. `/usr/sbin` is the builder's alias to `bin`; fragments must use
-`/usr/bin` instead. The builder also checks paths inside expanded farms and rejects writes through
-symlink parents or over existing files. Shared real directories and identical-source farm entries
-remain valid. The composer permits repeated `package` links to the same target. This covers the same
-package from 2 fragments. It also covers a module whose own `merge` call already derived the
-package's `/usr/bin` links. `merge.duplicateError fragments` returns the message or `null`, so a
-test can read what the error says.
+One duplicate check covers what evaluation knows of the `/usr` tree. Each fragment claims paths: a
+unit `/usr/lib/systemd/system/<name>`, a file its path, a link its path. A path claimed twice
+throws, whatever the kinds, and the message names both claims and both origins. The paths that the
+system and the image builder write themselves (`os-release`, the `golconda.conf` of `sysusers.d` and
+`tmpfiles.d`, `/usr/lib/golconda/*.json`) are claimed before any fragment. `/usr/sbin` is the
+builder's alias to `bin`; fragments must use `/usr/bin` instead. The builder also rejects writes
+through symlink parents or over existing files. `/usr/bin/<name>` for a package's executables is not
+in the link map: the image builder links them from each package's `exports.json`, and the same rule
+holds there ([Layout: The symlink map](../../design/layout.md#the-symlink-map)).
+`merge.duplicateError fragments` returns the message or `null`, so a test can read what the error
+says.
 
-Error message examples:
+Error message examples, from `tests/eval/composer.nix`:
 `golconda: /usr/lib/foo.conf defined twice: file from /services/a, file from /services/b`;
-`golconda: /usr/bin/jq defined twice: package jq-1.7 from /local/a, explicit link to <store path>/bin/jq from /local/b`;
 `golconda: /usr/lib/os-release defined twice: file from lib/usr-tree/main.nu, file from /services/a`.
 
 ### `/pkgs`
@@ -232,7 +231,7 @@ them first, and a configuration never lists them.
 `/base` returns:
 
 - **packages**: systemd, dbus-broker, dash, uutils-coreutils, e2fsprogs (`mkfs.ext4` for the root
-  partition), tzdata, hwdb and linux-kernel.
+  partition), tzdata, hwdb, lvm2 (`dmsetup` and the device-mapper udev rules) and linux-kernel.
 - **units**: `golconda-health-network.service` and `golconda-loader-update.service`; `dbus.socket`
   is a link to the dbus-broker package, which installs it (upstream does not ship it).
 - **links**:
