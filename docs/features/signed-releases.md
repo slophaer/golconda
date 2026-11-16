@@ -64,9 +64,6 @@ For reproducibility, two builds of the initrd give the same bytes (`initrd-repro
 and `disk.raw` (`disk-reproducible`, which `scripts/verify` builds too;
 [What is proven: Reproducible builds](../proven.md#reproducible-builds)).
 
-One release signed with a `scripts/make-keys` set, passed as a path (so copied into the store),
-booted on the same markers as the throwaway set. Its next release installed over HTTP.
-
 ## Limits
 
 - The signature does not stop a replay of an older signed index. sysupdate installs only newer
@@ -75,8 +72,6 @@ booted on the same markers as the throwaway set. Its next release installed over
 - Root, and whoever writes the state partition, can change what an update trusts: systemd-pull also
   trusts a key in `/etc/systemd/import-pubring.pgp`, and a transfer file in `/etc/sysupdate.d`
   replaces the one of the same name in `/usr`.
-- No automated check runs `scripts/make-keys`. The string key directory is *(being built)*: no build
-  uses it.
 - No test builds a whole release twice from the same inputs, or on a second build file system, and
   compares the two.
 - The `release/` file mtimes are 1 in the store. Do not read them as a release date.
