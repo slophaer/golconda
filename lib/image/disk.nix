@@ -103,7 +103,7 @@ rec {
       definitions = repartDefinitions { inherit version; };
       architecture = platform.names.systemd;
       seed = common.uuidOfHex (common.hexOf "${imageId}_${version}.disk");
-      epoch = common.versionToEpoch version;
+      epoch = (import ../version.nix { }).toEpoch version;
       inherit espBytes;
     };
 

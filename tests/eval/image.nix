@@ -19,6 +19,7 @@ let
     split
     tryEval
     ;
+  inherit (import ../../lib/version.nix { }) toEpoch;
 in
 [
   # lvm2's device-mapper rules exec dmsetup by its compiled-in path, so lvm2 is a farm package
@@ -59,32 +60,24 @@ in
   (check "usr-tree: stripUsrPrefix returns null for non-/usr paths" (
     usrTreeLib.stripUsrPrefix "/etc/foo" == null && usrTreeLib.stripUsrPrefix "/var/lib/x" == null
   ))
-  (check "usr-tree: versionToEpoch parses date versions" (
+  (check "version: toEpoch throws on a bad format" (
     let
-      e1 = usrTreeLib.versionToEpoch "20261031.1";
-      e2 = usrTreeLib.versionToEpoch "20261031.2";
-    in
-    e2 > e1 # revision 2 is later than revision 1
-  ))
-  (check "usr-tree: versionToEpoch throws on a bad format" (
-    let
-      bad = v: !(tryEval (usrTreeLib.versionToEpoch v)).success;
+      bad = v: !(tryEval (toEpoch v)).success;
     in
     bad "1" && bad "2026.10.31" && bad "20261031" && bad "v1.0.0" && bad "" && !bad "20261031.1"
   ))
-  (check "image: versionToEpoch throws on a bad format too" (
-    !(tryEval (imageLib.versionToEpoch "1")).success
-  ))
-  (check "image: versionToEpoch stays inside the date, so no revision aliases a day" (
+  (check "version: toEpoch stays inside the date, so no revision aliases a day" (
     let
-      epoch = usrTreeLib.versionToEpoch;
-      bad = v: !(tryEval (epoch v)).success;
+      bad = v: !(tryEval (toEpoch v)).success;
     in
+    toEpoch "20261031.1" == 1793404801
+    && toEpoch "20261031.2" == 1793404802
+    && toEpoch "20261101.1" == 1793404801 + 86400
     # month, leap-year and day boundaries
-    epoch "20240229.0" - epoch "20240228.0" == 86400
-    && epoch "20240301.0" - epoch "20240229.0" == 86400
-    && epoch "20250228.0" + 86400 == epoch "20250301.0"
-    && epoch "20261031.86399" + 1 == epoch "20261101.0"
+    && toEpoch "20240229.0" - toEpoch "20240228.0" == 86400
+    && toEpoch "20240301.0" - toEpoch "20240229.0" == 86400
+    && toEpoch "20250228.0" + 86400 == toEpoch "20250301.0"
+    && toEpoch "20261031.86399" + 1 == toEpoch "20261101.0"
     # not dates, or past the day: these would share or pass another day's epoch
     && bad "20260231.1"
     && bad "20250229.1"
@@ -108,12 +101,6 @@ in
     && hasInfix "ARCHITECTURE=\"x86_64\"\n" osRel
   ))
   # 12. The image chain's pure parts (lib/image)
-  (check "image: versionToEpoch is lib/usr-tree.nix's, one function" (
-    imageLib.versionToEpoch "20261031.1" == usrTreeLib.versionToEpoch "20261031.1"
-    && imageLib.versionToEpoch "20261031.1" == 1793404801
-    && imageLib.versionToEpoch "20261031.2" == 1793404802
-    && imageLib.versionToEpoch "20261101.1" == 1793404801 + 86400
-  ))
   (check "image: the UKI's installed name carries the boot counter" (
     imageLib.ukiName {
       imageId = "golconda";
@@ -289,7 +276,7 @@ in
       v = imageLib.verityParams a;
     in
     e.fileName == "t_20261031.1.usr.raw"
-    && e.epoch == imageLib.versionToEpoch "20261031.1"
+    && e.epoch == toEpoch "20261031.1"
     && e.uuid == imageLib.uuidOfHex (imageLib.hexOf "t_20261031.1.usr.raw")
     # the whole record: compression is the one fixed parameter
     &&

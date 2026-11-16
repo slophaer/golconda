@@ -254,10 +254,10 @@ in
     && s.name.verify "a\\b" != null
     && fr.targetName.verify "a\\b.target" != null
   ))
-  # lib/version.nix refuses a date that does not exist; so must the schema and the type
-  (check "version: a refused version is refused by lib/version.nix, the schema and /system" (
+  # the type, the schema and the timestamp refuse a date that does not exist
+  (check "version: a refused version is refused by /system, the schema and toEpoch" (
     let
-      versionLib = import ../../lib/version.nix { };
+      epochOf = x: (builtins.tryEval ((import ../../lib/version.nix { }).toEpoch x)).success;
       pattern = schemaLib.typeRegistry.version.pattern;
       schemaAccepts = x: match (substring 1 (stringLength pattern - 2) pattern) x != null;
       refused = [
@@ -274,7 +274,7 @@ in
         "20261031.86399"
       ];
     in
-    all (x: !versionLib.check x && !schemaAccepts x && !versionAccepted x) refused
-    && all (x: versionLib.check x && schemaAccepts x && versionAccepted x) accepted
+    all (x: !epochOf x && !schemaAccepts x && !versionAccepted x) refused
+    && all (x: epochOf x && schemaAccepts x && versionAccepted x) accepted
   ))
 ]

@@ -4,8 +4,6 @@
 # lib/usr-tree.nix uses it), with structured attrs and the step's tools on PATH. The nu modules
 # live next to the .nix files; only *.nu enter the store (builderTree), so a .nix edit does not
 # rebuild every step.
-#
-# versionToEpoch is lib/usr-tree.nix's: one function for the version timestamp.
 _:
 let
   inherit (builtins)
@@ -28,11 +26,8 @@ let
       name = "image-builder";
       filter = p: t: t == "regular" && builtins.elem (baseNameOf p) names;
     };
-  usrTreeLib = import ../usr-tree.nix { };
 in
 {
-  inherit (usrTreeLib) versionToEpoch;
-
   # nuDerivation { name; buildSystem; module; tools; attrs; modules ? null; }: runs
   # `use <module>.nu; <module> build` with every package in `tools` on PATH (bin/, plus
   # lib/systemd for systemd's libexec tools). The libraries systemd's tools dlopen (libcrypto,

@@ -19,7 +19,7 @@ in
     { imageId, version }:
     {
       fileName = "${imageId}_${version}.usr.raw";
-      epoch = common.versionToEpoch version;
+      epoch = (import ../version.nix { }).toEpoch version;
       uuid = common.uuidOfHex (common.hexOf "${imageId}_${version}.usr.raw");
       compression = "lz4hc";
     };

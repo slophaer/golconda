@@ -15,15 +15,14 @@ A version is `YYYYMMDD.N`: a real calendar date and the revision `N` inside that
 | year         | 1970 or later                                                          |
 | month, day   | a real date; leap years count (`20240229` is valid, `20250229` is not) |
 | revision `N` | 0 to 86399, so the timestamp stays inside its date                     |
-| timestamp    | `versionToEpoch = epoch(date) + N`, in seconds since 1970-01-01 UTC    |
+| timestamp    | `toEpoch = epoch(date) + N`, in seconds since 1970-01-01 UTC           |
 
-One grammar enforces this (`lib/version.nix`): the `/system.version` type refuses the value at
-evaluation, and `versionToEpoch` (`lib/usr-tree.nix`, re-exported by `lib/image/common.nix`) throws
-before a builder runs. Versions are unique and increase: a revision can never share or pass the next
-date's timestamp. sysupdate orders versions with `strverscmp`, which this format sorts correctly.
-The revision has no leading zero: `20261031.01` is refused (`lib/version.nix`), because two
-spellings of one version would share one timestamp, and `ConditionNeedsUpdate=` would not fire
-between them.
+One grammar enforces this (`version` in `modules/lib/grammar.nix`): the `/system.version` type
+refuses the value at evaluation, and `toEpoch` (`lib/version.nix`) throws before a builder runs.
+Versions are unique and increase: a revision can never share or pass the next date's timestamp.
+sysupdate orders versions with `strverscmp`, which this format sorts correctly. The revision has no
+leading zero: `20261031.01` is refused, because two spellings of one version would share one
+timestamp, and `ConditionNeedsUpdate=` would not fire between them.
 
 The timestamp has two uses:
 
@@ -44,7 +43,7 @@ output signed again with the same keys gives the same release, byte for byte
 | value                               | stable across builds    | per release                    |
 | ----------------------------------- | ----------------------- | ------------------------------ |
 | image id, version                   | yes                     | version changes                |
-| `versionToEpoch`                    | yes                     | yes                            |
+| `toEpoch`                           | yes                     | yes                            |
 | `/usr` content and its erofs mtime  | yes                     | yes                            |
 | verity root hash and the `@u` UUIDs | yes                     | yes                            |
 | release file names                  | yes                     | yes                            |

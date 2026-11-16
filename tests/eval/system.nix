@@ -6,6 +6,7 @@
   hasInfix,
   hasPrefix,
   hasSuffix,
+  types,
   versionAccepted,
   ...
 }:
@@ -75,14 +76,14 @@ in
   ))
   (check "version format: a revision with a leading zero is refused (two spellings, one epoch)" (
     let
-      versionLib = import ../../lib/version.nix { };
+      versionType = (import ../../modules/system/default.nix { inherit types; }).options.version.type;
     in
     !(any versionAccepted [
       "20261031.01"
       "20261031.00"
       "20261031.0086399"
     ])
-    && hasInfix "leading zero" (versionLib.error "20261031.01")
+    && hasInfix "leading zero" (versionType.verify "20261031.01")
     && all versionAccepted [
       "20261031.0"
       "20261031.10"

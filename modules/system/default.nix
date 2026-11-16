@@ -7,7 +7,6 @@
 let
   ini = import ../lib/ini.nix;
   grammar = import ../lib/grammar.nix;
-  versionLib = import ../../lib/version.nix { };
   # /system.updateSource -> /usr/lib/sysupdate.d/*.transfer (image/sysupdate.nix), and the timer
   # that runs them. The static .wants link enables the timer without presets (docs/design/layout.md).
   # It is systemd-sysupdate-update.timer: systemd 262 renamed it and keeps the old name as an alias.
@@ -104,10 +103,8 @@ let
   fragmentT = (import ../lib/fragment.nix { inherit types; }).fragment;
   merge = import ../lib/merge.nix;
 
-  # Version format: YYYYMMDD.N (a real calendar date plus a revision within the day).
-  # strverscmp orders these correctly. The type accepts what grammar.version matches, the
-  # pattern the schema exports; lib/version.nix, whose toEpoch derives the erofs timestamp,
-  # gives the reason for a refusal, and nix/tests.nix checks that the two agree.
+  # Version format: YYYYMMDD.N (a real calendar date plus a revision within the day), as
+  # grammar.version matches it, the pattern the schema exports (docs/design/releases.md).
   version = types.typedef' "version" (
     v:
     if !isString v then
@@ -115,10 +112,7 @@ let
     else if match grammar.version v != null then
       null
     else
-      let
-        reason = versionLib.error v;
-      in
-      if reason != null then reason else "'${v}' is not a version: YYYYMMDD.N, such as 20261031.1"
+      "'${v}' is not a version: YYYYMMDD.N, a real date from 1970 on and a revision 0-86399 without a leading zero, such as 20261031.1"
   );
 in
 {

@@ -54,13 +54,6 @@ let
     name = "usr-tree-builder";
   };
 
-  # Derive epoch from version: YYYYMMDD.N -> seconds since Unix epoch. The one grammar
-  # and function for it: lib/version.nix (re-exported by lib/image/common.nix). A version
-  # with an impossible date or a revision past its day throws; the /system version type
-  # refuses it too. The rule from lib/version.nix: each version has a unique increasing
-  # timestamp, and no revision reaches the next date's.
-  versionToEpoch = versionLib.toEpoch;
-
   # One os-release value, quoted for a shell and for systemd: os-release(5) wants a value with a
   # space or a special character in quotes, and a shell that sources the file reads them the same
   # way. Double quotes, with \, $, " and ` escaped. Every value is quoted, so none is missed.
@@ -186,7 +179,7 @@ in
         origins = origins.packages.${merge.pkgKey p} or [ ];
       }) roots;
 
-      epoch = versionToEpoch version;
+      epoch = versionLib.toEpoch version;
       osRelease = renderOsRelease {
         inherit version platform;
         imageId = composerOutput.name;
@@ -260,7 +253,6 @@ in
   # Export helpers for tests
   inherit
     stripUsrPrefix
-    versionToEpoch
     renderOsRelease
     ;
 }

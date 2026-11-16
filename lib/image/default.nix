@@ -17,7 +17,7 @@ in
 // (import ./signer.nix { })
 // (import ./smoke.nix { })
 // {
-  inherit (common) versionToEpoch uuidOfHex hexOf;
+  inherit (common) uuidOfHex hexOf;
 
   # throwawayKeys { buildSystem; pkgs; variant ? null; reusePkKek ? null; } -> derivation with the
   # key pairs of the test images: the Secure Boot db, the PCR policy key and the release key. They

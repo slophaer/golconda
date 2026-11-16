@@ -93,7 +93,7 @@ and the `sbin` link. No file has a setuid or setgid bit: the Nix sandbox refuses
 one, and the store keeps only the modes `0444` and `0555`.
 
 A Nix store path carries no mtimes (Nix sets them to 1), so the tree itself has none. The erofs step
-applies the timestamp derived from the version (`YYYYMMDD.N` → epoch seconds, `versionToEpoch`) with
+applies the timestamp derived from the version (`YYYYMMDD.N` → epoch seconds, `toEpoch`) with
 `mkfs.erofs -T`.
 
 ### Software bill of materials

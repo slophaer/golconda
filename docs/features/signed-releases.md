@@ -8,10 +8,10 @@ it, and a hostile update server cannot slip in a payload.
 
 A version is `YYYYMMDD.N`: a real date, and a counter `N` inside that day (`20261031.1`). The
 `/system.version` type refuses anything else. The version also gives a timestamp,
-`versionToEpoch = epoch(date) + N` (`lib/usr-tree.nix`, on `toEpoch` in `lib/version.nix`). That
-timestamp is the mtime of every file in the `/usr` image. The verity salt and the filesystem UUID
-come from the version string. So the same inputs (image id, version, `/usr` tree, keys) give the
-same `/usr` image, root hash, file names and `SHA256SUMS`.
+`toEpoch = epoch(date) + N` (`lib/version.nix`). That timestamp is the mtime of every file in the
+`/usr` image. The verity salt and the filesystem UUID come from the version string. So the same
+inputs (image id, version, `/usr` tree, keys) give the same `/usr` image, root hash, file names and
+`SHA256SUMS`.
 
 The release directory `release/` holds:
 

@@ -24,8 +24,8 @@ let
     "slice"
   ];
 
-  # YYYYMMDD.N, as lib/version.nix defines it: a real date from 1970 on (leap
-  # years included) and a revision 0-86399 without a leading zero.
+  # YYYYMMDD.N: a real date from 1970 on (leap years included) and a revision
+  # 0-86399 without a leading zero (docs/design/releases.md).
   year = "(19[7-9][0-9]|[2-9][0-9]{3})";
   leapYear = "(19(7[26]|8[048]|9[26])|[2-9][0-9](0[48]|[2468][048]|[13579][26])|([2468][048]|[3579][26])00)";
   monthDay = concatStringsSep "|" [
