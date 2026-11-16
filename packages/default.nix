@@ -73,8 +73,6 @@
   rclone = ./rclone;
   # repkgs' update tool: scripts check the packages' upstreams with it
   uptrack = ./uptrack;
-  # an S3-compatible store: the release tool's tests publish to it through rclone
-  garage = ./garage;
   # development tools (nix/dev, nix/checks.nix), in place of nixpkgs' (the former dev pin)
   nixfmt-rs = ./nixfmt-rs;
   treefmt = ./treefmt;
