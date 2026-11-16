@@ -41,7 +41,10 @@ Local vars run once. The runner writes `/var/lib/golconda/vars/<name>/done` last
 and removes the plaintext from the runtime directory.
 
 **Rotation.** To rotate an admin var, push a new value. The consumer restarts and reads the new
-sealed credential. To rotate a local var, remove its `done` marker and reboot.
+sealed credential. To rotate a local var, remove its `done` marker and reboot. After a new
+`sshd-hostkey`, run `golconda vars enrol HOST` again
+([CLI](../reference/cli.md#golconda-vars-enrol)). Until then, clients see a plain host key, and
+`golconda vars push` refuses the machine: its host key is not the one in `vars/HOST/.hostkey`.
 
 ## Using it
 
