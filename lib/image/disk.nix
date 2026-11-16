@@ -1,30 +1,12 @@
 # lib/image/disk.nix: the GPT disk image, with systemd-repart.
 #
-# repartDefinitions { version } → attrset <name>.conf → INI text: image/repart.nix's build-time
-#   definitions (every partition but root, which repart creates on the machine at first boot)
-#   with the builder's fields: the ESP's CopyFiles, slot A's labels (slotLabel: the sysupdate
-#   target patterns of image/sysupdate.nix with the version), CopyBlocks and the two UUIDs
-#   systemd derives from the root hash (usr: its first 128 bits, usr-verity: its last 128 bits;
-#   systemd-veritysetup-generator(8)). Values the builder knows only at build time stay as
-#   {esp} {usr} {verity} {sig} {usrUuid} {verityUuid}, which disk.nu fills in.
-#   Rendered with modules/lib/ini.nix.
-#
-# diskParams { imageId; version; platform; } → the manifest's `disk` (lib/image/manifest.nix):
-#   definitions (the above), architecture, seed (from the version), epoch, espBytes (the ESP's
-#   size: the signer refuses a UKI larger than half of it without 8 MiB). The signer
-#   (lib/image/disk.nu) runs systemd-repart --empty=create --size=auto --offline=yes --seed: no
-#   loop device, no root. It writes
-#   disk.raw        GPT: ESP (the signed systemd-boot as EFI/systemd/systemd-boot<arch>.efi and
-#                   EFI/BOOT/BOOT<ARCH>.EFI, loader.conf at loader/loader.conf, the UKI in
-#                   EFI/Linux/), usr-a, usr-a-verity, usr-a-verity-sig filled from the images,
-#                   the B slots empty, no root partition
-#   disk.json       systemd-repart's own listing (--json=pretty) of what it made
-#   release/        the release under the names image/sysupdate.nix's sources match
-#                   (releaseNames): <id>_<v>.usr.<uuid>.raw, <id>_<v>.usr-verity.<uuid>.raw with
-#                   the hash-derived UUIDs, <id>_<v>.usr-verity-sig.raw, <id>_<v>.efi,
-#                   SHA256SUMS, the index a url-file source reads, and SHA256SUMS.gpg, its
-#                   signature with the release key
-#
+# repartDefinitions { version } -> <name>.conf -> INI text: the build-time definitions of
+#   image/repart.nix (every partition but root) with the builder's fields: the ESP's CopyFiles,
+#   slot A's labels, CopyBlocks and the two UUIDs derived from the root hash. Values known only
+#   at build time stay as {esp} {usr} {verity} {sig} {usrUuid} {verityUuid}, which disk.nu fills in.
+# diskParams { imageId; version; platform; } -> the manifest's `disk` (lib/image/manifest.nix).
+#   The signer (lib/image/disk.nu) runs systemd-repart --offline=yes: no loop device, no root.
+#   The files it writes (disk.raw, disk.json, release/): docs/reference/image.md.
 # The usr slots are 10 GiB each (image/repart.nix), so disk.raw is sparse.
 _:
 let

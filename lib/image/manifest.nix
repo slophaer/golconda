@@ -1,22 +1,14 @@
 # lib/image/manifest.nix: the unsigned outputs of the image chain, what the signer takes.
 #
 # manifest { imageId; version; platform; buildSystem; pkgs; usrTree; initrd; signer; publicKeys;
-#   secureBoot; microsoftKeys; }
-#   → derivation with
-#   manifest.json   every input of the signer (lib/image/sign.nu): the /usr tree, the initrd, the
-#                   kernel, systemd's stub and unsigned systemd-boot (store paths, so they are
-#                   this output's closure), and the parameters of each step from the version:
-#                   erofs (erofs.nix), verity (verity.nix), uki (uki.nix), loader (loader.nix),
-#                   disk with the repart definitions (disk.nix), the release file names
-#                   (releaseNames), and publicKeys
-#   keys/           db.crt, pcr.pub, index.pgp: copies of the public halves of the keys the image
-#                   trusts (publicKeys: { dbCert; pcrPublicKey; indexKeyring; }). The build fails
-#                   on a file that holds a private key
-#   sign            the signer of this image's package set (signer.nix): sign -> bin/golconda-sign
-#
-# Nothing here is signed, and no private key is an input: the output path does not change with
-# the private keys, only with their public halves (the /usr tree holds the release keyring, the
-# kernel of an image without Secure Boot the db certificate).
+#   secureBoot; microsoftKeys; } -> derivation with
+#   manifest.json  every input of the signer (lib/image/sign.nu): store paths and the parameters
+#                  of each step (erofs, verity, uki, loader, disk, the release file names)
+#   keys/          db.crt, pcr.pub, index.pgp: copies of the public halves (publicKeys); the build
+#                  fails on a file that holds a private key
+#   sign           the signer of this image's package set (signer.nix)
+# No private key is an input, so the output path changes only with the public halves: the /usr
+# tree holds the release keyring, and the kernel holds the db certificate.
 _:
 let
   common = import ./common.nix { };

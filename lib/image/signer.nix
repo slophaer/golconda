@@ -1,25 +1,14 @@
 # lib/image/signer.nix: the signer as a program, and the test images it signs in the store.
 #
-# signer { pkgs; buildSystem; } → derivation with bin/golconda-sign (lib/image/sign-main.nu):
-#   golconda-sign UNSIGNED --keys DIR [--pcr-keys DIR] [--index-keys DIR]
-#     [--pkcs11-module FILE] --out DIR
-#   The tools are the image's own (its package set, downstream replacements included):
-#   systemd-sbsign, ukify and systemd-measure, mkfs.erofs, veritysetup, openssl, systemd-repart
-#   with mtools and dosfstools, gpg, and pkcs11-provider for keys on a token (OPENSSL_MODULES).
-#   The release host runs it (`golconda release build`), with the key set where it lies; nothing
-#   of it enters the store.
-#
+# signer { pkgs; buildSystem; } -> derivation with bin/golconda-sign (lib/image/sign-main.nu), built
+#   from the image's own package set. The release host runs it (`golconda release build`) with the
+#   key set where it lies; nothing of it enters the store.
 # signedWithTestKeys { unsigned; name; keys; pcrKeys ? keys; indexKeys ? keys; buildSystem; }
-#   → derivation: the release of `unsigned` (lib/image/manifest.nix) signed in the store with
-#   throwaway keys (lib/image/default.nix throwawayKeys), for the test images only. Its builder
-#   is the program the release host runs, `unsigned`'s `sign`, so the boot test tests the
-#   production signer. A key set given here enters the store: never give it a deployment's keys.
-#
-# signedWithTestToken { unsigned; name; keys; pcrKeys ? keys; indexKeys ? keys; buildSystem;
-#   pkgs; } → derivation: the same release, signed with the db and PCR keys on a SoftHSM token
-#   (TEST-ONLY) through pkcs11-provider, as a release host signs with keys on a YubiKey
-#   (lib/image/token.nu). The release key stays a file. RSA PKCS#1 v1.5 draws no random numbers,
-#   so the release is the one signedWithTestKeys makes, byte for byte (checks pkcs11-signed-same).
+#   -> the release of `unsigned` signed in the store with throwaway keys, for the test images only:
+#   never give it a deployment's keys. Its builder is the production signer.
+# signedWithTestToken { ...; pkgs; } -> the same release, signed with the db and PCR keys on a
+#   SoftHSM token (TEST-ONLY) through pkcs11-provider. RSA PKCS#1 v1.5 draws no random numbers, so
+#   it equals signedWithTestKeys' release (checks pkcs11-signed-same).
 _:
 let
   common = import ./common.nix { };
