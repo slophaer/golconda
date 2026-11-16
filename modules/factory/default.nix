@@ -1,17 +1,8 @@
-#! The seed for `/etc` as symlinks into `/usr/share/factory/etc`.
-#!
-#! Each factory file is a symlink from `/etc/<path>` to
-#! `/usr/share/factory/etc/<path>`. An admin file at the same path (a regular
-#! file, not a symlink) wins: tmpfiles `L` (not `L+`) creates only what is
-#! missing. `find /etc -type f` lists admin changes.
-#!
-#! Hostname is not in the factory: it comes from the bootstrap credential
-#! `system.hostname`, which PID 1 reads at every boot (see docs/design/boot.md).
-#!
-#! The factory knows no service: a service owns its user and directories in
-#! its own fragment. Only `/etc` content is here, so `pam.d/sshd` is a
-#! built-in seed. `/factory` is a built-in component (`lib/components.nix`):
-#! every system has it.
+#! The seed for `/etc`: each factory file is a symlink from `/etc/<path>` to `/usr/share/factory/etc/<path>`.
+#! tmpfiles `L` (not `L+`) creates only what is missing, so an admin's regular file at the same path wins; `find /etc -type f` lists admin changes.
+#! The host name is not here: it is the bootstrap credential `system.hostname`, which PID 1 reads at every boot (docs/design/boot.md).
+#! The factory knows no service: a service owns its user and directories in its own fragment. A built-in component (`lib/components.nix`).
+#! Seeds and options: docs/design/modules.md, "/factory", and docs/reference/modules/README.md.
 { types, ... }:
 let
   inherit (builtins)
