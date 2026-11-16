@@ -108,8 +108,3 @@ only for processes with `CAP_SYS_PTRACE`. This blocks lateral movement via ptrac
 
 `CONFIG_BPF_LSM=y` is enabled. Phase 2 adds `CONFIG_DEBUG_INFO_BTF` (kernel size cost: 1–3 MB) and
 rebuilds systemd with `bpf-framework=enabled`. This unlocks `RestrictFileSystems=` per service.
-
-## Phase 3: AppArmor
-
-Path-based MAC profiles generated from the typed service definitions. The research report is outside
-the repository.

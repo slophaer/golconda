@@ -739,5 +739,4 @@ signature ([status](#2-verity-key)), so programs on `/usr` run, and a program co
 carry the signer's certificate (`lib.mkImage` builds it in): a `/usr` signed by another key, also
 one that the firmware `db` holds, is activated unsigned, and PID 1's re-exec after switch-root is
 denied, so the machine stops with "Failed to execute /sbin/init". Phase 2 is the BPF LSM for
-`RestrictFileSystems=`; phase 3 AppArmor profiles generated from the typed service. SELinux is
-rejected.
+`RestrictFileSystems=`. SELinux is rejected.

@@ -110,7 +110,7 @@ Wanted, but not needed for v0.1:
 
 - `golconda diff` between two built images, by their `config.json`: no diff tool exists; the
   console's diff of a document against git left with the console
-  ([Configuration: Diffing](design/config.md#diffing-later));
+  ([Scope: Later](design/scope.md#later));
 - automatic Secure Boot enrolment (manual enrolment works);
 - the release key on a token: the `db` and PCR keys can be on a PKCS#11 token, the release key is a
   file ([Trust: Keys on a token](design/trust.md#keys-on-a-token));
