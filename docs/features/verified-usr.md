@@ -7,7 +7,7 @@ partition, so you know what an update replaces and what it keeps.
 ```mermaid
 flowchart LR
   uki["signed UKI: usrhash= + root-hash signature"] --> vs[systemd-veritysetup]
-  vs --> dm["dm-verity checks the signature against the firmware db"]
+  vs --> dm["dm-verity checks the signature against the built-in db certificate"]
   dm --> usr["/usr: erofs, read-only"]
   usr -->|tmpfiles L links| etc["/etc"]
 ```
@@ -20,8 +20,9 @@ flowchart LR
 - **The signature rides in the UKI.** The kernel command line (in the signed UKI, a unified kernel
   image) holds `usrhash=` and `systemd.verity_usr_options=root-hash-signature=base64:<sig>`.
   `usrhash=` names the two partitions by UUID, so no root partition is needed to find `/usr`. The
-  kernel checks the signature against the firmware `db`. The build fails if the signature does not
-  match the UKI's certificate.
+  kernel checks the signature against the `db` certificate built into it, never against the firmware
+  `db` ([Trust: verity key](../design/trust.md#2-verity-key)). The build fails if the signature does
+  not match the UKI's certificate.
 - **A/B slots.** The disk has `usr-a` and `usr-b`, each with a verity and a signature partition (10
   GiB, 128 MiB, 16 KiB). An update writes the inactive slot and its UKI. systemd-boot counts boots
   and falls back after three failures.

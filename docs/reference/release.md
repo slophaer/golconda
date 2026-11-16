@@ -168,9 +168,9 @@ that the update installed nothing.
 ## 4. Enrol the certificate in the firmware
 
 Firmware must hold `secureboot/db.crt` in `db`. It verifies the signed loader and UKI with that
-certificate, and the kernel checks each verity root hash signature against the `db` in the platform
-keyring ([Trust: Deployment keys](../design/trust.md#deployment-keys)). Only certificates are
-enrolled; the private keys stay on the build host and never enter the image.
+certificate. The kernel checks each verity root hash signature against the copy of `db.crt` built
+into it, never against the firmware `db` ([Trust: verity key](../design/trust.md#2-verity-key)).
+Only certificates are enrolled; the private keys stay on the build host and never enter the image.
 
 **A machine in Setup Mode needs nothing.** The release's ESP carries
 `loader/keys/auto/{PK,KEK,db,dbx}.auth` from the key set: by default with Microsoft's KEK, UEFI CAs
