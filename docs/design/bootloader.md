@@ -147,10 +147,10 @@ certificate beside the vendor's keys in firmware setup
 The files are copied only for an image with `/system.secureBoot` (the manifest's `loader.enrol`). An
 image for a host without Secure Boot carries the certificate in its kernel; enrolling it would make
 the firmware check every later loader against a key the operator did not mean to enrol. A key set
-without `secureboot/auth` (made before `scripts/make-keys` wrote it) is refused for a Secure Boot
-image, and the error names the command that adds the files, with the set's path:
-`scripts/make-keys --auth-only DIR` (it makes a PK and a KEK for a set that has none), or
-`scripts/make-keys --auth-only --reuse-pk-kek KEYS DIR` when the PK and KEK keys are in `KEYS`.
+without `secureboot/auth` is refused for a Secure Boot image, and the error names the command that
+adds the files, with the set's path: `scripts/make-keys --auth-only DIR` (it makes a PK and a KEK
+for a set that has none), or `scripts/make-keys --auth-only --reuse-pk-kek KEYS DIR` when the PK and
+KEK keys are in `KEYS`.
 
 **Microsoft keys, and why they are the default.** On hardware a graphics card, network card or
 storage controller often carries an option ROM signed by the Microsoft UEFI CA (2011, and the Option
@@ -252,11 +252,10 @@ the KEK's private key, an authenticated `db` append or `dbx` update can be writt
 system, but the image has no tool for it. The boot test writes the variable store offline with
 `virt-fw-vars`: `--add-db` for step 3, `--delete db --add-db <new> --add-dbx-cert <old>` for step 6.
 
-Step 5 is there because of what happens without it. In a test run that left `bootctl set-default` on
-the old entry, the boot after step 6 stopped: systemd-boot logged
-`Error loading EFI binary \EFI\Linux\boot-test_20261031.1.efi: Access denied` and returned to
-firmware, which found no other bootable option. A blessed entry has no counter, so systemd-boot does
-not fall back from it by itself.
+Step 5 is necessary. A blessed entry has no counter, so systemd-boot does not fall back from it by
+itself. If `bootctl set-default` still names the old entry after step 6, systemd-boot logs
+`Error loading EFI binary …: Access denied` and returns to firmware, which finds no other bootable
+option.
 
 ## Recovery
 

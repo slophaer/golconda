@@ -100,12 +100,11 @@ one table of what has run and what has not.
 
 Not there yet: real hardware with Secure Boot and a TPM (only QEMU and Hetzner Cloud have run),
 aarch64, an encrypted state partition (LUKS2 with TPM2 is later), and protection against booting an
-older signed image. The management console was removed for v0.1 (git tag
-`archive/console-2026-11-08`); the `golconda` command keeps `vars` and `release`. The docs mark each
-claim that no test proves ([CONTRIBUTING: Markers](CONTRIBUTING.md#markers)): *(planned)* has no
-code, *(being built)* has code but no test, and *(later)* is deliberately not in the current
-release. [Scope](docs/design/scope.md) says what is in the current release, what comes later, and
-what is out of scope.
+older signed image. The docs mark each claim that no test proves
+([CONTRIBUTING: Markers](CONTRIBUTING.md#markers)): *(planned)* has no code, *(being built)* has
+code but no test, and *(later)* is deliberately not in the current release.
+[Scope](docs/design/scope.md) says what is in the current release, what comes later, and what is out
+of scope.
 
 ## Quick start
 

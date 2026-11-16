@@ -150,10 +150,10 @@ configuration:
 - `systemctl cat <name>` therefore shows the whole command; nothing is baked into a binary and
   nothing is interpolated at run time.
 
-Why not wrap the program into a launcher that carries its configuration? That was tried; it bought
-nothing the plain `ExecStart=` does not, and it cost a second renderer, a `/wrap` module, an
-exception to the duplicate rule and a unit that hid its arguments. repkgs keeps `wrap` for developer
-shells and tools shipped to other hosts, not for services.
+Why not wrap the program into a launcher that carries its configuration? It buys nothing the plain
+`ExecStart=` does not, and it costs a second renderer, a `/wrap` module, an exception to the
+duplicate rule and a unit that hides its arguments. repkgs keeps `wrap` for developer shells and
+tools shipped to other hosts, not for services.
 
 An `app` file must not carry a per-machine value: one image serves every machine, so a credential
 path or a key marker in its text is a type error that names the file.

@@ -143,17 +143,15 @@ can write the ESP can plant one ([The ESP](#the-esp)).
 The certificate is an input of the kernel derivation, but not of its config: every key set has the
 same config, so a new certificate compiles only the certificate object and the compressed kernel's
 wrapper again, relinks, and takes the rest from jig's compile cache. A store path in the config
-would change `include/generated/autoconf.h`, which every object includes. jig's cache does not see
-an `.incbin` input (clang's depfile leaves it out): without more, a second certificate got the first
-one's cached `certs/system_certificates.o`, and the kernel trusted the old key while its record
-named the new one. So the build puts the digest of the certificate file on that object's command
-line, and the digest of `vmlinux` on that of `arch/x86/boot/compressed/piggy.o`. jig itself now
-refuses to cache a compile that names `.incbin` or `.include` (repkgs, llvm/llvm-project#54996); the
-digests stay as a second guard, because a stale certificate object would be a trust failure, not a
-slow build. A missing file fails the build (the copy, then make, which has no rule for it), and so
-does an empty one (`extract-cert` needs at least one certificate): the keyring is never silently
-empty. The kernel package installs the certificate as `lib/modules/<version>/trusted-keys.pem`, so
-`/usr` records which key its kernel trusts; the config names only the path.
+would change `include/generated/autoconf.h`, which every object includes. clang's depfile leaves out
+an `.incbin` input, so jig refuses to cache a compile that names `.incbin` or `.include` (repkgs,
+llvm/llvm-project#54996). The build also puts the digest of the certificate file on the command line
+of `certs/system_certificates.o`, and the digest of `vmlinux` on that of
+`arch/x86/boot/compressed/piggy.o`: a stale certificate object would be a trust failure. A missing
+file fails the build (the copy, then make, which has no rule for it), and so does an empty one
+(`extract-cert` needs at least one certificate): the keyring is never silently empty. The kernel
+package installs the certificate as `lib/modules/<version>/trusted-keys.pem`, so `/usr` records
+which key its kernel trusts; the config names only the path.
 
 **Status.** Proven by boot with `--secure-boot`: the kernel's built-in key verifies the signature,
 and with `/sys/kernel/security/ipe/success_audit` on, IPE logs

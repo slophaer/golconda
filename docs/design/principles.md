@@ -83,5 +83,4 @@ The boot test's virtual machine is no exception: QEMU, swtpm and virt-firmware a
 OVMF is the edk2 build that the QEMU project ships in its release tarball (`pc-bios/edk2-*`,
 edk2-stable202408), kept in `qemu-system`'s `share/qemu`: prebuilt by QEMU, trusted by the tarball's
 pinned hash, and not rebuilt here. Building edk2 from source is a later step. `checks.boundary`
-fails when a Nix file or a script names nixpkgs as a search path or as the old `nixpkgs-dev-only`
-pin, or when `pins/` pins it.
+fails when a Nix file or a script names nixpkgs, or when `pins/` pins it.

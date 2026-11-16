@@ -86,10 +86,10 @@ daemon or a machine's own firmware, that no test here has shown. It is not a fea
 ## The repkgs fork
 
 Golconda pins a fork of [Mic92/repkgs](https://github.com/Mic92/repkgs): the branch and URL are in
-`pins/repkgs/sources.toml` (`?branch=`, today `golconda`). That branch is upstream `main` plus
-commits meant for upstream, one per topic, and nothing else; each commit message is the text we
-would send upstream. List them with `git log --oneline origin/main..fork/golconda` in a repkgs
-clone. The packages the image needs are not in the fork: they are in `packages/`.
+`pins/repkgs/sources.toml` (`?branch=golconda`). That branch is upstream `main` plus commits meant
+for upstream, one per topic, and nothing else; each commit message is the text we would send
+upstream. List them with `git log --oneline origin/main..fork/golconda` in a repkgs clone. The
+packages the image needs are not in the fork: they are in `packages/`.
 
 To change the fork, commit to its `golconda` branch, in the topic the change belongs to, and push it
 to the forge and to its public GitHub mirror, `slophaer/repkgs`. The pin follows the mirror: its
@@ -103,8 +103,8 @@ $ scripts/verify
 ```
 
 `apply` writes the commit (`rev`), its date as the version (`0-unstable-<date>`) and the hash of the
-unpacked tree. uptrack itself comes from the repkgs tree pinned before, so the new fork takes effect
-for it on the next run.
+unpacked tree. uptrack comes from the pinned repkgs tree, so a new pin changes the uptrack of the
+next run, not of this one.
 
 ## Prerequisites
 

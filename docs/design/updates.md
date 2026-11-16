@@ -33,9 +33,8 @@ name and the update source; artifact names are in [reference/image](../reference
 
 The image enables the update timer with a static link,
 `/usr/lib/systemd/system/timers.target.wants/systemd-sysupdate-update.timer` →
-`../systemd-sysupdate-update.timer` (`modules/system/default.nix`). systemd 262 renamed
-`systemd-sysupdate.timer` to `systemd-sysupdate-update.timer` and keeps the old name as an alias;
-the service is `systemd-sysupdate-update.service`.
+`../systemd-sysupdate-update.timer` (`modules/system/default.nix`). `systemd-sysupdate.timer` is an
+alias of it, and the service is `systemd-sysupdate-update.service`.
 
 ## Activation
 
@@ -154,12 +153,6 @@ the store. A release that changes that package's store path leaves the link dang
 does not start. To enable a unit by hand so that it survives updates, link the stable path:
 `mkdir -p /etc/systemd/system/<target>.wants`, then
 `ln -s /usr/lib/systemd/system/<unit> /etc/systemd/system/<target>.wants/<unit>`.
-
-A machine whose first boot ran a release from before `00-golconda.preset` has the links of systemd's
-preset in `/etc/systemd/system`, about 390, and 370 of them name a store path. Remove every link
-there whose target starts with `/usr/nix/store/` before it installs a release with another systemd:
-the next release does not rewrite them, and a dangling link for a unit such as `basic.target` stops
-the boot.
 
 ## Rollback protection *(later)*
 
