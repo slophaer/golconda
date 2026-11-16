@@ -19,7 +19,7 @@ flowchart LR
   (`lib/image/verity.nu`).
 - **The signature rides in the UKI.** The kernel command line (in the signed UKI, a unified kernel
   image) holds `usrhash=` and `systemd.verity_usr_options=root-hash-signature=base64:<sig>`.
-  `usrhash=` names the two partitions by UUID, so no root partition is needed to find `/usr`. The
+  `usrhash=` names the two partitions by UUID, so `/usr` is found without the state partition. The
   kernel checks the signature against the `db` certificate built into it, never against the firmware
   `db` ([Trust: verity key](../design/trust.md#2-verity-key)). The build fails if the signature does
   not match the UKI's certificate.
@@ -28,8 +28,8 @@ flowchart LR
   and falls back after three failures.
 - **`/etc` links into the factory.** `/factory` seeds `/usr/share/factory/etc`. Tmpfiles lines
   `L /etc/<path> - - - - /usr/share/factory/etc/<path>` link each file. `L` creates only what is
-  missing, so an administrator's regular file at the same path wins and stays. PID 1 writes
-  `machine-id`, and sysusers write `passwd`, `group` and `shadow`. Nothing writes `hostname`.
+  missing, so an operator's regular file at the same path wins and stays. PID 1 writes `machine-id`,
+  and sysusers write `passwd`, `group` and `shadow`. Nothing writes `hostname`.
 - **`/var` is state.** Services use `StateDirectory=` and so `/var/lib/<app>`. Vars sit under
   `/var/lib/golconda/vars`. `/home` and `/root` are on the same partition. `/tmp` and `/run` are
   tmpfs.
@@ -60,7 +60,7 @@ Proven: the rows of [What is proven](../proven.md) that name `multi-user-reached
   activates `/usr` unsigned. IPE then denies PID 1's re-exec and the boot stops at switch-root.
 - Both slots are fixed at 10 GiB, and each must hold any release.
 - A rotated `db` key needs new images.
-- Nothing checks `/var` or an administrator's `/etc` file.
+- Nothing checks `/var` or an operator's `/etc` file.
 - Hardware and real-firmware enrolment have not run.
 
 ## More

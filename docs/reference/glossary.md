@@ -13,10 +13,19 @@
   first boot (the host name). Not a var: it carries no secret.
 - **build host**: the machine whose Nix daemon builds packages and images, with `ca-derivations`,
   `dynamic-derivations` and `builder-rpc-v0` ([Build host](build-host.md)).
+- **built-in**: a component that every system has: `/base`, `/network`, `/security`, `/trust`,
+  `/factory` and `/vars` (`lib/components.nix`). Its table only configures it.
+- **component**: a module that returns a fragment for the image (`lib/components.nix`). A built-in
+  is in every system; an optional component, such as `/services/sshd` or `/imds`, is in a system
+  when the document has its table. In the SBOM, a component is a CycloneDX entry, not a module.
 - **composer**: the `/system` module. It unions fragments into one system and refuses duplicates.
 - **credential**: a file a service receives from systemd at start (`LoadCredentialEncrypted=`),
   readable as `%d/<name>` in `argv`. The on-disk form is sealed to the TPM in
   `/etc/credstore.encrypted/<var>.<file>`.
+- **deploy host**: the machine that keeps the admin vars of the machines, encrypted with age, and
+  pushes them with `golconda vars` ([Commands](cli.md#golconda-vars)).
+- **downgrade**: a boot of an older release that an attacker chooses. Nothing stops an older image
+  signed by the same key; downgrade protection is *(later)*. Not a fallback.
 - **downstream package**: a package in `packages/` beside the document. One that takes the name of a
   Golconda or repkgs package replaces it only when `[golconda] replaces` lists that name
   ([Configuration](config.md#your-own-packages)).
@@ -25,6 +34,8 @@
   UKIs and `loader/credentials/`.
 - **factory**: `/usr/share/factory/etc`, the seed for `/etc`, written by the `/factory` module and
   linked into `/etc` by tmpfiles `L` lines.
+- **fallback**: the boot of the other slot after failed boots, by boot counting or by the
+  failed-boot count ([Boot: Failed boots](../design/boot.md#failed-boots)). Not a downgrade.
 - **farm** (symlink farm): `/usr/bin`, `/usr/lib` and `/usr/share` as symlinks into
   `/usr/nix/store`, made by the `/usr` tree builder from the composer's `links` map. The word means
   only the tree; the link kind `farm` names a directory expanded file by file into it.
@@ -36,8 +47,12 @@
   active) ([Boot: Boot health](../design/boot.md#boot-health)).
 - **iets**: the evaluator. Evaluates the Nix expressions, lints them strictly (`iets.toml`), and
   talks to the Nix daemon that builds.
+- **image id**: `/system.name`, the `ID` and `IMAGE_ID` of the image's `os-release`. Each release
+  file name starts with it: `<id>_<version>`.
 - **IPE**: Integrity Policy Enforcement, the kernel LSM that lets a program run only from a
   dm-verity volume whose signature the kernel verified ([Kernel](../design/kernel.md)).
+- **key set**: the directory that `scripts/make-keys` writes: `secureboot/`, `pcr/` and `release/`,
+  each private key with its public half ([Making a release](release.md)).
 - **korora**: the type library adios uses; every option and every shared type (`modules/lib/`) is a
   korora type, and `lib/schema.nix` exports them as JSON Schema.
 - **launcher**: a repkgs `launch` record, a small program that runs another with fixed arguments and
@@ -47,9 +62,13 @@
   `/usr/bin` links are not links of a fragment: the builder makes them from its `exports.json`.
 - **`/local`**: the module path of the `modules/` directory beside the document; its modules are
   selected by their table like any optional module ([Configuration](config.md#your-own-modules)).
+- **operator**: the person who writes the document, makes the releases and logs in to the machines
+  as root.
 - **PCR**: a TPM Platform Configuration Register; PCR 11 holds the UKI measurements.
 - **prefixed package**: a package compiled with `prefix = "/usr"` (systemd, dbus-broker, openssh)
   because it addresses its own files by absolute path; reached through the farm.
+- **release host**: the machine that holds the key set and runs `golconda release build`. The signer
+  runs there, outside Nix ([Trust: Signing outside Nix](../design/trust.md#signing-outside-nix)).
 - **release key**: the OpenPGP key (`release/index.key`) that signs a release's `SHA256SUMS`; its
   public half is the image's keyring for `Verify=yes`
   ([Releases: The signed index](../design/releases.md#the-signed-index)).
@@ -60,10 +79,17 @@
   a cpe per component ([Image artifacts](image.md#software-bill-of-materials)).
 - **service**: a typed value (`modules/lib/service.nix`) that embeds an `app` and adds credentials,
   state, user, sandbox tier and ordering. `render service` returns a fragment.
+- **signer**: the program that signs and assembles a release from the unsigned outputs, outside the
+  Nix store (`lib/image/sign.nu`, run as `unsigned/sign`).
 - **slot**: one of the two `/usr` partition triples (usr, verity, signature) of the A/B layout; each
   has its own UKI. An update writes to the inactive slot.
+- **state partition**: the one writable partition, type and label `root`, made on the first boot. It
+  holds `/etc`, `/var`, `/home` and `/root`; a factory reset makes it again
+  ([Partitions and paths](layout.md#partitions)).
 - **sysupdate**: `systemd-sysupdate`, which fetches a release and writes it to the inactive slot
   ([Updates](../design/updates.md)).
+- **trial boot**: a counted boot whose entry had a try left. A failed one reboots, so the counter
+  moves ([Boot: Trial boot](../design/boot.md#trial-boot)).
 - **UKI**: Unified Kernel Image, one signed PE file with the stub, the kernel, the initrd, the
   cmdline and the PCR signature; one per slot on the ESP.
 - **var**: a value the image names but never contains. Class `local`: a oneshot unit generates it on

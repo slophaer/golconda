@@ -1,4 +1,4 @@
-# A/B updates with health-checked rollback
+# A/B updates with health-checked fallback
 
 An update writes a new version to the inactive copy of `/usr` and installs its boot image beside the
 old one. The machine boots the new version on trial. If the trial fails three times, the boot loader
@@ -30,9 +30,9 @@ stateDiagram-v2
   t3 --> t2: systemd-boot starts try 1
   t2 --> t1: try 1 fails, next boot
   t1 --> t0: try 2 fails, next boot
-  t2 --> good: health checks pass, bless-boot
-  t1 --> good: health checks pass, bless-boot
-  t0 --> good: health checks pass, bless-boot
+  t2 --> good: health units pass, bless-boot
+  t1 --> good: health units pass, bless-boot
+  t0 --> good: health units pass, bless-boot
   t0 --> [*]: try 3 fails: systemd-boot prefers the other slot
 ```
 
@@ -45,7 +45,7 @@ When both pass, `systemd-bless-boot` removes the suffix. When one fails, or the 
 reached within 15 minutes, the machine reboots by itself and the next try starts; a kernel panic, a
 PID 1 crash and an initrd failure reboot it too ([Boot: Trial boot](../design/boot.md#trial-boot)).
 After a good boot, `golconda-loader-update.service` copies this release's signed systemd-boot to the
-ESP. A release that fails its health gate never touches the loader.
+ESP. A release that fails its health units never touches the loader.
 
 ## Using it
 
@@ -92,7 +92,7 @@ Proven: the rows of [What is proven](../proven.md) that name `sysupdate-installe
 - The machine goes back to an older release only by a fallback: boot counting, or the failed-boot
   count ([Boot: Failed boots](../design/boot.md#failed-boots)). `golconda release` refuses a version
   that does not increase before it is built or published.
-- Nothing stops an older image signed by the same key from booting. Rollback protection is
+- Nothing stops an older image signed by the same key from booting. Downgrade protection is
   *(later)*.
 - The tests use plain HTTP in QEMU. HTTPS from a real update server ran by hand on Hetzner Cloud
   ([What is proven](../proven.md#not-proven)); it has no marker. The timer and real hardware have

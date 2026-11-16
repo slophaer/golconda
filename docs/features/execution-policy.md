@@ -29,7 +29,7 @@ either. Root can still run scripts (see [Limits](#limits)).
   `kernel.unprivileged_bpf_disabled=1`, `net.core.bpf_jit_harden=2` and
   `kernel.kexec_load_disabled=1`.
 - **All of it is fixed.** The LSM order `lsm=lockdown,yama,ipe,bpf` sits in the UKI command line,
-  which is signed and measured. No administrator edits it.
+  which is signed and measured. No operator edits it.
 
 ## Using it
 

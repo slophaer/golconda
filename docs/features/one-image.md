@@ -17,7 +17,7 @@ flowchart LR
 ## How it works
 
 - **No per-machine value in the image.** A host name, key, certificate or password hash is one of
-  three things: a bootstrap credential, a var generated on the machine, or a value the administrator
+  three things: a bootstrap credential, a var generated on the machine, or a value the operator
   pushes. A bootstrap credential arrives by SMBIOS, qemu fw_cfg or a file on the ESP (the EFI system
   partition). PID 1 reads `system.hostname`. A var is a value the image names but never contains.
   The ssh host key is a local var: `golconda-var-sshd-hostkey.service` makes it on first boot and

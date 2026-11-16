@@ -27,10 +27,10 @@ Code enforces what it can:
 - **Shell.** A test (`tests/eval/base.nix`) checks that `/usr/bin/sh` is dash and that no bash
   package is in the base.
 - **nixpkgs.** `checks.boundary` fails when a Nix file, a script or a pin refers to nixpkgs.
-- **CA store.** The image ships one bundle in `/usr`: cacert's Mozilla roots, plus the
-  administrator's anchors, minus a distrust list of SHA-256 fingerprints (`/trust`). p11-kit's
-  `trust extract` makes it when the image is built, so it is read-only and covered by dm-verity.
-  Tmpfiles links it to `/etc/ssl/cert.pem` and `/etc/ssl/certs/ca-certificates.crt`.
+- **CA store.** The image ships one bundle in `/usr`: cacert's Mozilla roots, plus the operator's
+  anchors, minus a distrust list of SHA-256 fingerprints (`/trust`). p11-kit's `trust extract` makes
+  it when the image is built, so it is read-only and covered by dm-verity. Tmpfiles links it to
+  `/etc/ssl/cert.pem` and `/etc/ssl/certs/ca-certificates.crt`.
 
 ## Against NixOS
 

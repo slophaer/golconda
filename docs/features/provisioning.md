@@ -41,7 +41,7 @@ An ESP credential holds for one boot: `golconda-esp-credentials.service` removes
 once the first boot applied it, so a factory reset or a later boot does not apply it again
 ([Boot: Bootstrap credentials](../design/boot.md#bootstrap-credentials)).
 
-On first boot, `systemd-repart` makes the root partition, PID 1 sets the host name, and
+On first boot, `systemd-repart` makes the state partition, PID 1 sets the host name, and
 `systemd-firstboot` runs with `--mute-console=yes`, so it never prompts. tmpfiles writes the root
 key.
 

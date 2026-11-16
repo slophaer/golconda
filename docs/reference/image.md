@@ -285,18 +285,18 @@ The UKI step (`lib/image/uki.nu`) fills `{usrhash}` and `{usrhashSig}` and appen
 the EFI stub would cut the line after the signature. The result is in the UKI's `.cmdline` section
 and in the step's `cmdline` output.
 
-| parameter                                                 | meaning                                                                                                                                                   |
-| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `usrhash={usrhash}`                                       | the verity root hash; the generators derive the two `/usr` partition UUIDs from it, which is how a UKI finds its own slot                                 |
-| `systemd.verity_usr_options=root-hash-signature=…`        | the base64 PKCS#7 signature of that hash; the kernel checks it against its built-in db certificate, and IPE trusts only such volumes                      |
-| `rw`                                                      | the root partition carries the state; without it the initrd mounts root read-only and the host key var fails to seal. `/usr` stays read-only by dm-verity |
-| `panic=10`                                                | a kernel panic reboots after 10 s, so a release whose kernel panics loses a try ([Boot: Trial boot](../design/boot.md#trial-boot))                        |
-| `softlockup_panic=1 nmi_watchdog=panic hung_task_panic=1` | a soft lockup, a hard one (the NMI watchdog: `kernel.hardlockup_panic`) or a task blocked for 120 s panics, so `panic=10` reboots a hang the kernel sees  |
-| `lsm=lockdown,yama,ipe,bpf`                               | the LSM stack order (capability is always first)                                                                                                          |
-| `lockdown=integrity`                                      | kernel lockdown level: blocks kexec, `/dev/mem` and similar                                                                                               |
-| `ipe.enforce=1`                                           | IPE runs only the initramfs and verity volumes whose signature the kernel verified                                                                        |
-| `systemd.imds.import=0`                                   | systemd-imds-generator does not pull `systemd-imds-import.service` into the initrd, which has no network; `/imds` pulls it into the host, on a cloud only |
-| `console=tty0 console=ttyS0,115200`                       | the local console and the serial line; output only, there is no getty                                                                                     |
+| parameter                                                 | meaning                                                                                                                                                        |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `usrhash={usrhash}`                                       | the verity root hash; the generators derive the two `/usr` partition UUIDs from it, which is how a UKI finds its own slot                                      |
+| `systemd.verity_usr_options=root-hash-signature=…`        | the base64 PKCS#7 signature of that hash; the kernel checks it against its built-in db certificate, and IPE trusts only such volumes                           |
+| `rw`                                                      | the state partition is the root file system; without it the initrd mounts it read-only and the host key var fails to seal. `/usr` stays read-only by dm-verity |
+| `panic=10`                                                | a kernel panic reboots after 10 s, so a release whose kernel panics loses a try ([Boot: Trial boot](../design/boot.md#trial-boot))                             |
+| `softlockup_panic=1 nmi_watchdog=panic hung_task_panic=1` | a soft lockup, a hard one (the NMI watchdog: `kernel.hardlockup_panic`) or a task blocked for 120 s panics, so `panic=10` reboots a hang the kernel sees       |
+| `lsm=lockdown,yama,ipe,bpf`                               | the LSM stack order (capability is always first)                                                                                                               |
+| `lockdown=integrity`                                      | kernel lockdown level: blocks kexec, `/dev/mem` and similar                                                                                                    |
+| `ipe.enforce=1`                                           | IPE runs only the initramfs and verity volumes whose signature the kernel verified                                                                             |
+| `systemd.imds.import=0`                                   | systemd-imds-generator does not pull `systemd-imds-import.service` into the initrd, which has no network; `/imds` pulls it into the host, on a cloud only      |
+| `console=tty0 console=ttyS0,115200`                       | the local console and the serial line; output only, there is no getty                                                                                          |
 
 ## Boot test (`scripts/boot-test`)
 
@@ -343,7 +343,7 @@ nix-build -A packages.x86_64-linux.image-smoke-test-rotated -o next-rotated
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --next next-rotated \
   --rotate --timeout 480
 
-# With --fail-health the candidate never passes its health check: three tries that
+# With --fail-health the candidate never passes its health units: three tries that
 # reboot by themselves, then the old release boots again (see the update test below)
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --next next \
   --fail-health --timeout 900
@@ -484,7 +484,7 @@ enrolment files back to `loader/keys/auto` over ssh, stops QEMU, empties the var
 Mode again, as after a CMOS clear) and boots: the serial log must have no enrolment message, the
 kernel's line, and `Secure boot disabled`. The harness stops QEMU there, so it is the run's last.
 
-The script creates a 40 GiB qcow2 overlay (room for the root partition), copies the OVMF variable
+The script creates a 40 GiB qcow2 overlay (room for the state partition), copies the OVMF variable
 store, passes the host name `boot-test` as a credential (`-smbios type=11,...`, not with
 `--esp-creds` or `--imds`), and logs the serial console to a file. QEMU runs with `-display none`
 and no monitor or QMP socket: the harness reaches the guest through the serial log and ssh, and
@@ -626,7 +626,7 @@ With `--next DIR` ([The update test](#the-update-test)):
 | `update-reboot-skipped-after-failed-boots`, `failed-boots-fallback-holds` | with `--fail-blessed`, the reboot timer, moved to every 10 s, finds nothing to activate, and with no one-shot set a reboot starts the old release                                                                                                                                                  |
 | `later-release-installed`, `later-release-tried`                          | with `--fail-blessed`, sysupdate installs `--later`'s release with three tries beside the old one, and the timer starts its first try, which is blessed                                                                                                                                            |
 | `failed-boots-halt`                                                       | with `--fail-blessed` and both releases crashing, the seventh boot in a row logged `kernel.panic=0` and `CrashAction=freeze`, crashed, and nothing rebooted it for 20 s                                                                                                                            |
-| `exhausted-entry-stays-up`, `oneshot-exhausted-is-once`                   | with `--fail-health`, the candidate started with no try left fails its health check and is not rebooted; the next boot is the old release                                                                                                                                                          |
+| `exhausted-entry-stays-up`, `oneshot-exhausted-is-once`                   | with `--fail-health`, the candidate started with no try left fails a health unit and is not rebooted; the next boot is the old release                                                                                                                                                             |
 | `hwdb-after-update`                                                       | the updated release's `/usr/lib/udev/hwdb.bin` answers for DMI, PCI and USB; none in `/etc`                                                                                                                                                                                                        |
 | `dm-usr-device-after-update`                                              | `dm-usr-device` on the updated release                                                                                                                                                                                                                                                             |
 | `loader-replaced`                                                         | when the loader bytes differ, the new loader is on the ESP and the old one is `systemd-boot-fallbackx64.efi`                                                                                                                                                                                       |
@@ -836,7 +836,7 @@ boot of its own: do not combine it with `--next`, and give a `--timeout` large e
    the reset boot's serial log.
 
 `slots-kept` compares the `id:` lines of `bootctl list`, with the boot counter removed, and
-`IMAGE_VERSION` before and after the reset: systemd-repart rewrites the root partition only, so the
+`IMAGE_VERSION` before and after the reset: systemd-repart rewrites the state partition only, so the
 ESP and the `/usr` slots stay. `state-gone` asks the guest to print `absent` for the marker file, so
 an ssh failure cannot count as a pass.
 

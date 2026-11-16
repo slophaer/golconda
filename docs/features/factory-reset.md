@@ -7,10 +7,10 @@ lists the five ways back and what each one costs.
 
 ## How it works
 
-`image/repart.nix` marks the root partition (`/etc`, `/var`, `/home`, `/root`) with
+`image/repart.nix` marks the state partition (`/etc`, `/var`, `/home`, `/root`) with
 `FactoryReset=yes`. The ESP (EFI System Partition) and both `/usr` slots stay. Run
 `systemctl start factory-reset.target`. It sets the `FactoryResetRequest` EFI variable and reboots.
-On the next boot `systemd-repart` deletes the root partition and makes it again, empty. First boot
+On the next boot `systemd-repart` deletes the state partition and makes it again, empty. First boot
 then runs again: new machine id, new host key, no state.
 
 Do not run `systemd-repart --factory-reset=yes` for this. It deletes the partition at once, on the

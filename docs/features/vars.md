@@ -82,7 +82,7 @@ limits are below.
 
 ## Limits
 
-- **Rollback.** Any image signed with the same PCR 11 key unseals the credentials. Someone with an
+- **Downgrade.** Any image signed with the same PCR 11 key unseals the credentials. Someone with an
   older, vulnerable image can boot it and read the secrets. The fixes are *(later)*: pcrlock, key
   rotation, policyref, a TPM counter.
 - **One secret.** The sshd host key is the only sealed secret. The state partition is not encrypted

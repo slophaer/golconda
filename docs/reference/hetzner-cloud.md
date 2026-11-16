@@ -127,7 +127,7 @@ reboots all the same.
 ## 6. First boot
 
 Watch it in the Cloud Console (or `hcloud server request-console web1`): the screen shows the
-kernel's messages and the journal. On the first boot repart makes the root partition in the rest of
+kernel's messages and the journal. On the first boot repart makes the state partition in the rest of
 the disk and moves the GPT's backup header to its end, firstboot runs without a prompt, and the
 health units bless the entry ([Boot: First boot](../design/boot.md#first-boot)).
 
