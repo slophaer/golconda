@@ -59,9 +59,8 @@ Units are enabled by static `.wants` symlinks, not by presets:
 /usr/lib/systemd/system/multi-user.target.wants/sshd.service -> ../sshd.service
 ```
 
-The service renderer writes these from `wantedBy`; `[Install]` stays in the unit text so
-`systemctl enable/disable` still works for an administrator's overrides in `/etc`. Static links work
-without a first-boot step, also in the initrd.
+The service renderer writes these from `wantedBy`. Static links work without a first-boot step, also
+in the initrd.
 
 No preset enables a unit. PID 1 runs `preset-all` on the first boot, when `/etc` is empty, and the
 first line that matches a unit wins, in the order of the file names. `/base` ships
@@ -82,8 +81,9 @@ Two units that systemd's preset enabled are needed, so `/base` links them:
 The other units that `systemctl enable systemd-networkd.service` would add are not linked: networkd
 and resolved open their varlink sockets themselves, and they own their D-Bus names while they run.
 
-An administrator's `systemctl enable` writes a link that names a store path, which an update can
-leave dangling ([Updates](updates.md#enable-links-and-systemds-store-path)).
+Do not use `systemctl enable` on the machine: it writes a link that names a store path, which an
+update can leave dangling. [Updates](updates.md#enable-links-and-systemds-store-path) says how to
+enable a unit by hand.
 
 ## State
 
