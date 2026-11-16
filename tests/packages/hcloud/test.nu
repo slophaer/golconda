@@ -2,7 +2,7 @@
 # instead of reaching the network.
 use checks.nu *
 let hcloud = $"($env.pkg)/bin/hcloud"
-assert "version is the pin" ((^$hcloud version | str trim) == "hcloud 1.70.2")
+assert "version is the pin" ((^$hcloud version | str trim) == $"hcloud ($env.version)")
 $env.HCLOUD_CONFIG = $"($env.TMPDIR? | default /tmp)/hcloud-test.toml"
 let r = (^$hcloud server list | complete)
 assert $"without a token it fails and says why: ($r.stderr)" ($r.exit_code != 0 and ($r.stderr | str lowercase | str contains "token"))

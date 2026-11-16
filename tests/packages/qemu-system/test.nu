@@ -12,7 +12,7 @@ rm -rf $t
 mkdir $t
 
 let v = (^$qemu --version | lines | first)
-assert $"version is the pin: ($v)" ($v | str contains "version 11.1.1")
+assert $"version is the pin: ($v)" ($v | str contains $"version ($env.version)")
 
 # NAME is listed: a word of its own on a line ("q35   Standard PC", "  emulator   TPM emulator
 # backend driver") or quoted (name "tpm-tis", bus System)

@@ -7,7 +7,7 @@ rm -rf $t
 mkdir $t
 cd $t
 
-assert "version is the pin" ((^$"($bin)/age" --version | str trim) == "v1.3.2")
+assert "version is the pin" ((^$"($bin)/age" --version | str trim) == $"v($env.version)")
 ^$"($bin)/age-keygen" -o key.txt
 ^$"($bin)/age-keygen" -o other.txt
 ^$"($bin)/age-keygen" -y key.txt | save recipients.txt

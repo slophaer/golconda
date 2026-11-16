@@ -24,7 +24,7 @@ let conf = $"($t)/garage.toml"
 
 # "garage cargo:2.5.0 [features: lmdb, system-libs]"
 let v = (^$garage --version | str trim)
-assert $"version is the pin, with the features of the build: ($v)" ($v == "garage cargo:2.5.0 [features: lmdb, system-libs]")
+assert $"version is the pin, with the features of the build: ($v)" ($v == $"garage cargo:($env.version) [features: lmdb, system-libs]")
 
 let pid = (^sh -c $"'($garage)' -c '($conf)' server > '($t)/server.log' 2>&1 & echo $!" | str trim)
 mut up = false

@@ -11,7 +11,7 @@ for n in [pcscd yubico-piv-tool ykcs11-module] {
 }
 
 let v = (^$"($bin)/yubico-piv-tool" --version | complete)
-assert $"yubico-piv-tool runs: ($v.stderr)" ($v.exit_code == 0 and ($v.stdout | str contains "2.7.3"))
+assert $"yubico-piv-tool runs: ($v.stderr)" ($v.exit_code == 0 and ($v.stdout | str starts-with "yubico-piv-tool "))
 let module = (^$"($bin)/ykcs11-module" | str trim)
 assert $"ykcs11-module prints the module: ($module)" (($module | str ends-with "/libykcs11.so") and ($module | path exists))
 assert "it is yubico-piv-tool's" ((($module | path expand) | str starts-with ($env.yubico-piv-tool | path expand)))

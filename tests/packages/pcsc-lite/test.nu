@@ -8,7 +8,7 @@ let p = $env.pkg
 let pcscd = $"($p)/bin/pcscd"
 
 let v = (^$pcscd --version | complete)
-assert $"pcscd --version names the pin: ($v.stdout) ($v.stderr)" ($"($v.stdout)($v.stderr)" | str contains "2.5.3")
+assert $"pcscd --version names the pin: ($v.stdout) ($v.stderr)" ($"($v.stdout)($v.stderr)" | str contains $env.version)
 assert "libpcsclite, the client library" ($"($p)/lib/libpcsclite.so.1" | path exists)
 assert "and the library it forwards to" ($"($p)/lib/libpcsclite_real.so.1" | path exists)
 assert "winscard.h, for the PIV tool" ($"($p)/include/PCSC/winscard.h" | path exists)

@@ -11,7 +11,7 @@ let tools = (^$"($bin)/coreutils" --list | lines | where { $in != "[" })
 let links = (ls $bin | where type == symlink | get name | path basename)
 assert "every tool of coreutils --list is a link" (($tools | sort) == ($links | sort))
 assert "bin holds coreutils and the links" ((ls -a $bin | get name | path basename | sort) == ($links | append coreutils | sort))
-assert "version is the pin" ((^$"($bin)/coreutils" --version | str trim) | str contains "0.12.0")
+assert "version is the pin" ((^$"($bin)/coreutils" --version | str trim) | str contains $env.version)
 assert "ls -la / lists the root" ((^$"($bin)/ls" -la / | lines | length) > 3)
 
 "hello\n" | save -f $"($t)/a"

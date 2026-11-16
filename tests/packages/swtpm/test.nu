@@ -11,7 +11,7 @@ mkdir $t
 mkdir $"($t)/state"
 
 let v = (^$"($bin)/swtpm" --version | lines | first)
-assert $"version is the pin: ($v)" ($v | str contains "0.10.2")
+assert $"version is the pin: ($v)" ($v | str contains $env.version)
 # the capabilities are JSON (json-glib); a TPM 2.0 build without the CUSE interface
 let caps = (^$"($bin)/swtpm" socket --tpm2 --print-capabilities | from json)
 assert $"the TPM 2.0 is there: ($caps)" ("tpm-2.0" in $caps.features)

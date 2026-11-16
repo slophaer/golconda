@@ -13,7 +13,7 @@ $env.SOFTHSM2_CONF = $"($t)/softhsm2.conf"
 let module = $"($p)/lib/softhsm/libsofthsm2.so"
 let util = $"($p)/bin/softhsm2-util"
 
-assert "version is the pin" ((^$util --version | str trim) == "2.7.0")
+assert "version is the pin" ((^$util --version | str trim) == $env.version)
 assert "the module callers load" ($module | path exists)
 
 let init = (^$util --module $module --init-token --free --label golconda-test --pin 1234 --so-pin 5678 | complete)

@@ -10,7 +10,7 @@ cd $t
 ^chmod +x fmt.sh
 $"[formatter.mark]\ncommand = \"($t)/fmt.sh\"\nincludes = [\"*.txt\"]\n" | save treefmt.toml
 "text\n" | save a.txt
-assert "version is the pin" ((^$treefmt --version | str trim) == "treefmt v2.6.0")
+assert "version is the pin" ((^$treefmt --version | str trim) == $"treefmt v($env.version)")
 assert "--ci fails while a file changes" ((^$treefmt --ci --no-cache --tree-root . | complete).exit_code != 0)
 assert "the formatter ran" ((open --raw a.txt) == "text\nformatted\n")
 assert "--ci passes on a formatted tree" ((^$treefmt --ci --no-cache --tree-root . | complete).exit_code == 0)

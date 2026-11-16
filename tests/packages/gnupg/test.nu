@@ -10,7 +10,7 @@ rm -rf $t
 mkdir $t
 cd $t
 
-assert "version is the pin" ((^$"($bin)/gpg" --version | lines | first) | str contains "2.4.9")
+assert "version is the pin" ((^$"($bin)/gpg" --version | lines | first) | str contains $env.version)
 
 # 1. a signing key in a scratch home (short path: the agent socket lives in it), the public key in
 # binary form, and the index with its detached binary signature

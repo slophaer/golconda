@@ -10,7 +10,7 @@ cd $t
 "id: no-unwrap\nlanguage: rust\nseverity: error\nmessage: no unwrap\nrule:\n  pattern: $X.unwrap()\n" | save rules/no-unwrap.yml
 "fn main() { let x: Option<u8> = None; x.unwrap(); }\n" | save bad.rs
 "fn main() { let x: Option<u8> = None; let _ = x.unwrap_or(0); }\n" | save good.rs
-assert "version is the pin" ((^$sg --version | str trim) == "ast-grep 0.51.0")
+assert "version is the pin" ((^$sg --version | str trim) == $"ast-grep ($env.version)")
 let bad = (^$sg scan bad.rs | complete)
 assert $"a match is an error: ($bad.stdout)" ($bad.exit_code != 0 and ($bad.stdout | str contains "no-unwrap"))
 assert "a file without one passes" ((^$sg scan good.rs | complete).exit_code == 0)

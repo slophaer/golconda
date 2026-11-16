@@ -9,7 +9,7 @@ mkdir $t
 $env.RCLONE_CONFIG = $"($t)/rclone.conf"
 "" | save $env.RCLONE_CONFIG
 
-assert "version is the pin" ((^$rclone --version | lines | first) == "rclone v1.75.2")
+assert "version is the pin" ((^$rclone --version | lines | first) == $"rclone v($env.version)")
 
 "SHA256SUMS of a release\n" | save $"($t)/src"
 ^$rclone copyto $"($t)/src" $"($t)/dest/web/SHA256SUMS"

@@ -9,7 +9,7 @@ let p = $env.pkg
 let tool = $"($p)/bin/yubico-piv-tool"
 let module = $"($p)/lib/libykcs11.so"
 
-assert "the version is the pin" ((^$tool --version | str trim) | str contains "2.7.3")
+assert "the version is the pin" ((^$tool --version | str trim) | str contains $env.version)
 assert "libykcs11.so" ($module | path exists)
 assert "libykpiv" (ls $"($p)/lib" | get name | any {|f| $f =~ 'libykpiv\.so' })
 
