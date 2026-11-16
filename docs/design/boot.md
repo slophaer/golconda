@@ -322,7 +322,7 @@ Secure Boot image ([Trust: PCR 7](trust.md#pcr-7)); locking the rest with `syste
 
 ## Secure Boot
 
-Keys are generated once per deployment with `ukify genkey`. The UKI (`lib/image/uki.nu`) and
+Keys are generated once per deployment with `scripts/make-keys`. The UKI (`lib/image/uki.nu`) and
 systemd-boot (`lib/image/loader.nu`, `systemd-sbsign`) are signed at build time with the same db key
 and certificate, so one enrolled certificate covers the loader and the image it starts. The signed
 loader ships in `/usr`, and a machine installs it on the ESP after a good boot; the loader update,

@@ -13,19 +13,25 @@ flowchart TD
     base["/base: what every image contains (built in)"]
     net["/network: networkd (built in)"]
     sec["/security: sysctl hardening (built in)"]
+    trust["/trust: the CA bundle (built in)"]
     factory["/factory: the /etc seed (built in)"]
     vars["/vars: the var runner (built in)"]
     sshd["/services/sshd (optional: its table)"]
+    imds["/imds: cloud metadata (optional: its table)"]
     system["/system: the composer"]
   end
   pkgs -.->|input| base
   pkgs -.->|input| sshd
+  pkgs -.->|input| trust
+  net -.->|input| imds
   base -->|fragment| system
   net -->|fragment| system
   sec -->|fragment| system
+  trust -->|fragment| system
   factory -->|fragment| system
   vars -->|fragment| system
   sshd -->|fragment| system
+  imds -->|fragment| system
   lib["modules/lib: fragment, app, service, var types"] -.->|checks| system
   system --> out["{ units; files; sysusers; tmpfiles; packages; links }"]
   out --> usr["/usr tree builder"]
@@ -70,9 +76,9 @@ stays platform-independent. `/pkgs.target` is the one option that is not configu
 TOML loader refuses it.
 
 The composer records which fragment brought each package (`packageOrigins`: a component's module
-path such as `/base` or `/services/sshd`, another fragment's own `name`, or its index), and the
-`/usr` tree writes it as `/usr/lib/golconda/packages.json`, so "why is this here" has an answer
-without a second declaration.
+path such as `/base` or `/services/sshd`, or another fragment's own `name`), and the `/usr` tree
+writes it as `/usr/lib/golconda/packages.json`, so "why is this here" has an answer without a second
+declaration.
 
 ## Which modules a system has
 
@@ -87,8 +93,8 @@ Every module has one role, and one function decides which modules enter a system
 | group     | holds children and has no `impl` (`/services`)    | never: its children may be       |
 
 A built-in component (`/base`, `/network`, `/security`, `/trust`, `/factory`, `/vars`) is in every
-system; its table only configures it. An optional component (`/services/sshd`) is in the system when
-the document has its table, and an empty table selects it with its defaults:
+system; its table only configures it. The optional components are `/services/sshd` and `/imds`: one
+is in the system when the document has its table, and an empty table selects it with its defaults:
 
 ```toml
 ["/services/sshd"]
@@ -108,8 +114,8 @@ under `/local`, never a bare fragment.
 
 ## The base system
 
-`/base`, `/network`, `/security` and `/trust` are built in, and composed first. A system with no
-table still boots with:
+The built-in components ([Which modules a system has](#which-modules-a-system-has)) are composed
+first. A system with no table still boots with:
 
 - systemd;
 - D-Bus;
@@ -180,11 +186,11 @@ var names its credential id in `credentials` and orders itself after the var's u
 
 ## The composer
 
-`/system` takes `name`, `version`, `updateSource` and `updateReboot`, and from `mkSystem` the
-selected components' fragments and the build's own as `components`, each named
-([Which modules a system has](#which-modules-a-system-has)). It merges them, then the sysupdate
-definitions it renders from `updateSource` and the reboot timer from `updateReboot`. The merge
-follows four rules:
+`/system` takes `name`, `version`, `updateSource`, `updateReboot`, `secureBoot` and
+`secureBootMicrosoftKeys`, and from `mkSystem` the selected components' fragments and the build's
+own as `components`, each named ([Which modules a system has](#which-modules-a-system-has)). It
+merges them, then the sysupdate definitions it renders from `updateSource` and the reboot timer from
+`updateReboot`. The merge follows four rules:
 
 - Attribute-set fields are unioned, and a key that appears twice throws with the key's name.
 - List fields are concatenated, and an identical line is kept once. A tmpfiles line claims its path
