@@ -33,17 +33,13 @@ These exist in the code and the docs, but no test checks them.
   [deploy tool](#build). ([Vars](features/vars.md#status))
 - [x] **IPE denies a copy.** A binary copied to `/var` gets `Permission denied`, with the IPE audit
   record. Test: a boot-test marker. ([Execution policy](features/execution-policy.md))
-- [x] **hwdb from `/base`.** The images of `7438a3f` pass the `hwdb` marker in every `--ssh-test`
-  run, with and without Secure Boot.
+- [x] **hwdb from `/base`.** The images pass the `hwdb` marker in every `--ssh-test` run, with and
+  without Secure Boot.
 - [x] **One run outside QEMU**, on Hetzner Cloud. Write the disk, enrol or provision, boot, log in
   with a certificate, install the next release over HTTPS, roll back once. Test: the
   [Hetzner guide](reference/hetzner-cloud.md) run step by step, its *(planned)* removed, the results
-  recorded in [What is proven](proven.md#not-proven). Ran on 2026-11-09 on a `cpx12`: the ESP route,
-  a certificate login, two updates over HTTPS, and one fallback from a third release to the second.
-  Found there, not part of this item, and fixed since: `/imds` imported only the host name on
-  Hetzner (now the hwdb patch, `ssh-key-json` and the lock on `lo`), the user data's IPv6 `.network`
-  file came too late (now the generator runs again after the import), and the first boot started at
-  the build epoch (now `time-epoch`).
+  recorded in [What is proven](proven.md#not-proven). The run covered the ESP route, a certificate
+  login, two updates over HTTPS, and one fallback from a third release to the second.
 
 ## Build
 
@@ -111,11 +107,9 @@ Wanted, but not needed for v0.1:
 - `golconda diff` between two built images, by their `config.json`: no diff tool exists; the
   console's diff of a document against git left with the console
   ([Scope: Later](design/scope.md#later));
-- automatic Secure Boot enrolment (manual enrolment works);
 - the release key on a token: the `db` and PCR keys can be on a PKCS#11 token, the release key is a
   file ([Trust: Keys on a token](design/trust.md#keys-on-a-token));
-- a read-only `/etc` (a confext built from the image): built and boot-tested on 2026-11-05, then
-  shelved; the code is the tag `archive/readonly-etc`. It would also drop enable links for units a
+- a read-only `/etc` (a confext built from the image). It would also drop enable links for units a
   release no longer ships;
 - loader recovery by hand and a boot without the `db` enrolled
   ([Boot loader: Recovery](design/bootloader.md#recovery)): documented, no marker;
