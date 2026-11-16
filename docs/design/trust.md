@@ -615,6 +615,12 @@ LUKS), the machine-id (a plain file PID 1 writes), the admin vars (the host cert
 revocation list are sealed once `golconda vars push` delivers them, see
 [Secrets and vars](#secrets-and-vars)), and administrator credentials for the machine itself.
 
+The state partition is not encrypted, and nothing checks `/etc` or `/var`. So whoever writes the
+partition offline, with the disk in hand or through a cloud's disk API, gets root at the next boot:
+a unit in `/etc/systemd/system` runs as root, and IPE does not stop a script that the shell on
+`/usr` reads. That boot is a signed boot with the expected PCR values, so the vars unseal in it. The
+fix is LUKS2 bound to the TPM2 *(later)* ([Scope](scope.md#later)).
+
 **Status.** A boot with `--secure-boot --tpm` prints
 `sshd-hostkey.key sealed with: host key + TPM2 + signed PCR policy` (`scripts/boot-test` reads the
 credential header); after a reboot in the same QEMU with the same swtpm state the key is unchanged,
