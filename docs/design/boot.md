@@ -26,12 +26,12 @@ sequenceDiagram
 
 ## The initrd
 
-The initrd is a second `/usr` tree from the same store (`lib/image/initrd.nix`): `/base` plus
-cryptsetup, minus the kernel, as a zstd cpio. systemd is PID 1 (`/init` points at it), udev runs
-with systemd's rules and two of lvm2's device-mapper rules, `10-dm` and `13-dm-disk` (lvm2 is a farm
-package, so they exec `/usr/bin/dmsetup`), and `dmsetup`, all from `/base`, so the host has them
-too; `blkid` must be there as well, or `13-dm-disk` cannot probe the verity device and systemd keeps
-it at `SYSTEMD_READY=0`. With them `/dev/mapper/usr` exists, in the initrd and on the host, and
+The initrd is a second `/usr` tree from the same store (`lib/image/initrd.nix`): `/base` minus the
+kernel, as a zstd cpio. systemd is PID 1 (`/init` points at it), udev runs with systemd's rules and
+two of lvm2's device-mapper rules, `10-dm` and `13-dm-disk` (lvm2 is a farm package, so they exec
+`/usr/bin/dmsetup`), and `dmsetup`, all from `/base`, so the host has them too; `blkid` must be
+there as well, or `13-dm-disk` cannot probe the verity device and systemd keeps it at
+`SYSTEMD_READY=0`. With them `/dev/mapper/usr` exists, in the initrd and on the host, and
 `dev-mapper-usr.device`, which `usr.mount` requires, is active. lvm2 is built without `udev_sync`:
 libdevmapper would link libudev, which is systemd's, and systemd → cryptsetup → lvm2 → libudev is a
 cycle; libdevmapper does not wait on udev cookies, and systemd's device units do the waiting. So

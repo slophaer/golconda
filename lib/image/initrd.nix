@@ -1,10 +1,10 @@
 # lib/image/initrd.nix: the initrd, a zstd cpio around a minimal /usr tree.
 #
-# initrdSystem { imageId; version; platform; buildSystem; pkgs; packagesDir ? null;
+# initrdSystem { imageId; version; platform; buildSystem; packagesDir ? null;
 #   replaces ? [ ]; sources ? the pins; secureBoot ? true; } → the mkSystem of the initrd: /base
-#   (systemd, dash, uutils-coreutils, dbus-broker, lvm2) as lib/system.nix composes it, plus
-#   cryptsetup. `secureBoot` is the image's /system.secureBoot: with it the initrd halts when the
-#   firmware does not enforce Secure Boot (golconda-secure-boot-required.service).
+#   (systemd, dash, uutils-coreutils, dbus-broker, lvm2) as lib/system.nix composes it.
+#   `secureBoot` is the image's /system.secureBoot: with it the initrd halts when the firmware
+#   does not enforce Secure Boot (golconda-secure-boot-required.service).
 #   `packagesDir` and `replaces` are the configuration's downstream package directory and its
 #   [golconda] replaces, so a replacement reaches the initrd too, under the same opt-in;
 #   `sources` are the image's pins, so the initrd's set is the system's.
@@ -72,7 +72,6 @@ let
       version,
       platform,
       buildSystem,
-      pkgs,
       packagesDir ? null,
       replaces ? [ ],
       # the pins the image's own system has (chain.nix passes them)
@@ -103,23 +102,15 @@ let
             };
           }
       );
-      extraFragments = [
-        {
-          name = "/image/initrd";
-          packages = [
-            pkgs.cryptsetup # veritysetup, for the initrd's own checks
-          ];
-          # The initrd reaches sockets.target and sysinit.target, which pull networkd (its
-          # socket) and timesyncd through /base's .wants links. sysusers does not run in the
-          # initrd, so /base gives those units ConditionPathExists=!/etc/initrd-release.
-          # resolved is wanted by multi-user.target only, which the initrd does not reach.
-        }
-      ]
-      ++ on secureBoot [ refuseFragment ];
+      # The initrd reaches sockets.target and sysinit.target, which pull networkd (its socket)
+      # and timesyncd through /base's .wants links. sysusers does not run in the initrd, so /base
+      # gives those units ConditionPathExists=!/etc/initrd-release. resolved is wanted by
+      # multi-user.target only, which the initrd does not reach.
+      extraFragments = on secureBoot [ refuseFragment ];
     };
 in
 {
-  # the system mkSystem makes of /base alone (lib/system.nix), plus cryptsetup
+  # the system mkSystem makes of /base alone (lib/system.nix)
   inherit initrdSystem;
 
   # initrdTree: the initrd system's /usr tree, without the kernel
