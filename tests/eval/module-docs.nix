@@ -15,8 +15,12 @@ let
   inherit (builtins)
     all
     attrNames
+    filter
+    isString
+    length
     pathExists
     sort
+    split
     ;
 in
 [
@@ -119,6 +123,9 @@ in
   ))
   (check "module-docs: every module file has a #! doc comment" (
     all (m: docComments.moduleDoc m.filePath != null) modulePaths
+  ))
+  (check "module-docs: no module doc comment is longer than 5 lines" (
+    all (m: length (filter isString (split "\n" (docComments.moduleDoc m.filePath))) <= 5) modulePaths
   ))
   (check "module-docs: discoverModulePaths finds each module file once" (
     let
