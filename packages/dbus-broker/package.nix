@@ -2,18 +2,11 @@
 # The launcher (dbus-broker-launch) execs dbus-broker by compiled-in path, so this is a farm
 # package with prefix=/usr.
 #
-# Upstream ships no system bus policy and no dbus.socket (distributions take dbus's), so the
-# package installs its own beside its unit (phase install-bus):
-# - share/dbus-1/system.conf (system.conf here): the policy of dbus's bus/system.conf.in (dbus
-#   1.16). Every user may connect; no one owns a name or calls a method unless a policy file in
-#   system.d allows it (systemd's, for network1, resolve1, login1, ...). <user>, <listen> and
-#   <auth> are for dbus-daemon: dbus-broker takes its socket from dbus.socket and ignores them.
-#   <servicedir> is required: dbus-broker compiles in no default, so without it an on-demand
-#   name (org.freedesktop.timedate1, for one) is "not activatable" and timedatectl fails. The
-#   image farms systemd's share/dbus-1/system-services there; each file names its unit
-#   (SystemdService=), and systemd starts it on the first call.
-# - lib/systemd/system/dbus.socket (dbus.socket here): the system bus socket, which activates
-#   dbus-broker.service (the image's dbus.service alias).
+# Upstream ships no system bus policy and no dbus.socket, so phase install-bus adds both:
+# - share/dbus-1/system.conf: the policy of dbus 1.16's bus/system.conf.in. Its <servicedir> is
+#   required: dbus-broker compiles in no default, and without it an on-demand name such as
+#   org.freedesktop.timedate1 is "not activatable".
+# - lib/systemd/system/dbus.socket: the system bus socket; it activates dbus-broker.service.
 {
   package,
   sources,

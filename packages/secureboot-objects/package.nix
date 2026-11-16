@@ -2,22 +2,11 @@
 # microsoft/secureboot_objects (pinned by tag and hash). Data for the Secure Boot variables that
 # systemd-boot enrols from the ESP (lib/image/enrol.nu, scripts/make-keys); nothing of it is in
 # an image's /usr, and nothing here is private.
-#
-#   share/secureboot-objects/KEK/   Microsoft Corporation KEK CA 2011 and KEK 2K CA 2023: Microsoft
-#                                   signs its db and dbx updates with them
-#   share/secureboot-objects/db/    Microsoft Corporation UEFI CA 2011, Microsoft UEFI CA 2023 and
-#                                   Microsoft Option ROM UEFI CA 2023 (third-party loaders such as
-#                                   shim, and option ROMs); Microsoft Windows Production PCA 2011
-#                                   and Windows UEFI CA 2023 (only Windows' boot manager; Golconda
-#                                   leaves them out of db, the boot test checks they stay out)
-#   share/secureboot-objects/dbx/   DBXUpdate-amd64.bin, Microsoft's revocation list for x86_64 as
-#                                   it ships it: an authenticated variable signed by Microsoft's
-#                                   KEK. Golconda takes its signature lists and signs them with the
-#                                   deployment's KEK
-#
-# The names are Golconda's; the files are the repository's PreSignedObjects/{KEK,DB}/Certificates
-# and PostSignedObjects/DBX/amd64/DBXUpdate.bin, byte for byte. tests/packages/secureboot-objects
-# checks each certificate's subject and SHA-1 fingerprint against systemd's loader.conf(5).
+# Which of them a key set enrols, and why the Windows CAs stay out: docs/design/bootloader.md,
+# "Enrolment". The names are Golconda's; the files are the repository's
+# PreSignedObjects/{KEK,DB}/Certificates and PostSignedObjects/DBX/amd64/DBXUpdate.bin, byte for
+# byte. tests/packages/secureboot-objects checks each certificate's subject and SHA-1 fingerprint
+# against systemd's loader.conf(5).
 { package }:
 package {
   name = "secureboot-objects";

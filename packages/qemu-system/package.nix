@@ -2,23 +2,13 @@
 # development tool, not part of an image. repkgs' own `qemu` is the user-mode emulators only (its
 # cross tests), so this is a second build of the same source with another target list.
 #
-# Only what the boot test uses: the q35 machine with SMM (Secure Boot's variable store), KVM with
-# TCG as the fallback, pflash, virtio-blk/net, the user network with hostfwd and guestfwd
-# (libslirp), and the TPM (tpm-tis on swtpm's socket, the emulator backend). Every feature that is
-# `auto` stays off (--without-default-features): no display (pixman, VNC, GTK, SDL), no audio, no
-# guest agent, no seccomp, no vhost-user, no virtfs. The option ROMs (efi-virtio.rom,
-# vgabios-stdvga.bin) and kvmvapic.bin stay, q35 loads them.
+# Only what the boot test uses (the configure line); every `auto` feature stays off.
 #
-# The boot test's firmware (OVMF) is the one QEMU's release tarball ships in pc-bios/, kept in
-# share/qemu: edk2-x86_64-secure-code.fd (Secure Boot, SMM, TPM 2.0), edk2-x86_64-code.fd (the
-# same without Secure Boot and SMM), and edk2-i386-vars.fd, the empty variable store for both
-# (QEMU's descriptors pair the 32-bit name with the 64-bit code). The code images are 3.5 MB and the
-# store 528 KB: together the 4 MB flash. The QEMU project builds them with edk2-stable202408
-# (roms/edk2-build.config: OvmfPkgX64.dsc, TPM2_ENABLE, and for the secure one SECURE_BOOT_ENABLE and
-# SMM_REQUIRE, no EFI shell) and checks the .bz2 blobs into the tarball; meson unpacks them at install.
-# Trust: prebuilt by the QEMU project, inside the tarball that sources.toml pins by hash; not rebuilt
-# here. The other edk2 images (32-bit, ARM, RISC-V, LoongArch, microvm) and the firmware descriptors
-# are removed. Building edk2 from source (its BaseTools, nasm, iasl) is a later step.
+# The firmware (OVMF) is the one QEMU's release tarball ships in pc-bios/, kept in share/qemu:
+# edk2-x86_64-secure-code.fd (Secure Boot, SMM, TPM 2.0), edk2-x86_64-code.fd (neither), and
+# edk2-i386-vars.fd, the empty variable store for both. The QEMU project builds them from
+# edk2-stable202408; they are prebuilt, inside the tarball that sources.toml pins by hash, and not
+# rebuilt here. The other edk2 images and the firmware descriptors are removed.
 {
   package,
   pkgs,

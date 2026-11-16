@@ -1,24 +1,13 @@
-# The one walker of the module tree. Two views of the same tree, both here so that
-# nothing else walks it:
-#
-#   modulePaths root        the module files, found the way adios finds them:
-#                           [ { path = "/services/sshd"; filePath = <default.nix>; } ]
+# The one walker of the module tree; nothing else walks it.
+#   modulePaths root          [ { path = "/services/sshd"; filePath = <default.nix>; } ]
 #   modulePathsAt prefix dir  the same for a directory mounted at `prefix` (/local)
-#   pathComponents p        "/services/sshd" -> [ "services" "sshd" ]
-#   moduleAt tree p         the module at path p of a loaded or evaluated tree
-#   modulesOf tree          every module of that tree, parent before child:
-#                           [ { path; module; } ]
-#
-# `modulePaths` mirrors `adios.lib.importModules`. A directory with a default.nix, and a
-# `<name>.nix` file, is a module of the directory that is entered. The root is entered
-# always; a module's own directory is entered only when the module, loaded as adios loads
-# it, has `modules` (the way /services imports its children). A file beside a module that
-# no module declares, such as modules/base/foo.nix, is not a module and is not listed. A
-# directory without a default.nix (modules/lib, shared types) is skipped. adios keeps no
-# file of a loaded module, so the walker pairs what adios loads with the directory.
-#
-# Usage:
-#   let t = import ./lib/tree.nix { }; in t.modulePaths ../modules
+#   pathComponents p          "/services/sshd" -> [ "services" "sshd" ]
+#   moduleAt tree p           the module at path p of a loaded or evaluated tree
+#   modulesOf tree            every module, parent before child: [ { path; module; } ]
+# `modulePaths` finds the files the way `adios.lib.importModules` does. adios keeps no file of a
+# loaded module, so the walker pairs what adios loads with the directory. A module's directory is
+# entered only when the module has `modules`; a directory without a default.nix (modules/lib) is
+# skipped.
 _:
 let
   inherit (builtins)

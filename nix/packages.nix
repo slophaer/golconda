@@ -1,30 +1,14 @@
-# The repkgs set for a target platform, built on the current machine.
-#
-# This is the only place that imports repkgs. It returns:
-#   { pkgs; platform; set; downstream; }
-#
-# - `pkgs`: the packages for the target platform
-# - `platform`: the elaborated platform record (cpu, os, name, march,
-#   names.{kernel,systemd,uefi,...}; see repkgs nix/platforms.nix)
-# - `set`: the full repkgs set (all packages, as repkgs defines it)
-# - `downstream`: name -> { replaces; } for each package of the downstream directory:
-#   `replaces` is "golconda" or "repkgs" when the name was taken, else null
-#
-# `downstream` (the argument) is a downstream repository's package directory, or null: each
-# subdirectory with a package.nix is a package (package.nix + sources.toml, as in packages/).
-# It goes after Golconda's own, so a name it shares replaces that package. `replaces` (the
-# document's [golconda] replaces) must list exactly the names it takes: a replacement is an
-# opt-in, never an accident (lib/config.nix replacementError). mkSystem returns each one in
-# `packages`.
-#
-# `sources.repkgs` is the repkgs tree: the pin, or the eval tests' stand-in tests/fixtures/repkgs,
-# which reads packages as data. Its files are named with `+`, not interpolated, so a local tree is
-# read in place rather than copied to the store.
-#
-# Cross-compilation: `system` is the build host (builtins.currentSystem by default),
-# `platform` is the target (defaults to the build host). When they differ, repkgs
-# builds packages that run on the target, using the build host's toolchain.
-# Example: `platform = "aarch64-linux"` on an x86_64 host builds aarch64 binaries.
+# The repkgs set for a target platform; the only place that imports repkgs. Returns
+# { pkgs; platform; set; downstream; }: the target's packages, repkgs' platform record
+# (nix/platforms.nix in repkgs), the full set, and for each downstream package
+# { replaces = "golconda" | "repkgs" | null; }.
+# `downstream` (the argument) is a downstream package directory or null; it goes after
+# Golconda's own, so a name it shares replaces that package, and `replaces` (the document's
+# [golconda] replaces) must list exactly those names
+# (docs/design/config.md, "From document to image").
+# `sources.repkgs` is the pin or the eval tests' stand-in tests/fixtures/repkgs; its files are
+# named with `+`, so a local tree is read in place. `system` is the build host, `platform` the
+# target (default: the build host).
 {
   sources,
   system,

@@ -1,17 +1,10 @@
-# hwdb: systemd's hardware database, compiled into lib/udev/hwdb.bin. /base links it to
-# /usr/lib/udev/hwdb.bin.
+# hwdb: systemd's hardware database, compiled into lib/udev/hwdb.bin; /base links it to
+# /usr/lib/udev/hwdb.bin (docs/design/packaging.md).
 #
-# Why compiled at build time: udev, the IMDS generator and networkctl read only hwdb.bin, never
-# the sources, and systemd-hwdb-update.service would write it to /etc/udev on the machine at
-# first boot (ConditionNeedsUpdate=/etc). With /usr/lib/udev/hwdb.bin present the service does
-# nothing. Without any, every hwdb lookup fails with no error: the udev properties are missing.
-#
-# The sources are the target systemd's own lib/udev/hwdb.d, so the database always matches the
-# udev that reads it and carries its version; no second pin can drift from packages/systemd. The
-# SBOM names systemd's source, at its hwdb.d (sourceOf). The
-# compiler is the build machine's systemd-hwdb (buildDependencies). Only the files in files.nix
-# go in; a file there that systemd no longer ships fails the build, so a rename is noticed.
-# The output is the same bytes for the same inputs.
+# Compiled at build time: udev reads only hwdb.bin, and without it systemd-hwdb-update.service
+# would write one to /etc on the first boot. The sources are the target systemd's own hwdb.d, so
+# the database matches the udev that reads it. Only the files in files.nix go in; a file there
+# that systemd does not ship fails the build.
 {
   package,
   pkgs,

@@ -2,29 +2,13 @@
 # /usr/share/ca-certificates/ca-bundle.crt, and tmpfiles make /etc/ssl/cert.pem (OpenSSL) and
 # /etc/ssl/certs/ca-certificates.crt (curl) point at that (docs/design/trust.md, "3. CA store").
 #
-# Why extracted at build time: the image is immutable and /usr is verified by dm-verity, so the
-# list of whom the machine trusts is signed with the release, and an update replaces it whole.
-# Nothing on the machine writes or derives it: no unit, no writable bundle, no `trust` binary.
-#
-# What goes in: the roots of cacert (Mozilla's, server-auth only), plus the administrator's
-# anchors, minus the distrusted certificates. The distrust list holds SHA-256 fingerprints of the
-# DER form (modules/trust normalises them to 64 lower-case hex digits). p11-kit's trust module
-# does the arithmetic: the roots and the anchors go into `anchors/`, each certificate whose
-# fingerprint is listed (found among both) into `blocklist/`, and `trust extract` writes every
-# anchor that is not blocklisted (a blocklisted certificate loses even when it is also an anchor).
-# A listed fingerprint that matches no certificate of the roots or the anchors fails the build: a
-# typo, or a root a cacert update dropped, must not pass in silence. The module is told the directory through a user module config
-# (`x-init-reserved: paths=`) in the build directory, so the build reads no ambient path.
-# The lists arrive as JSON in GOLCONDA_CA_ANCHORS (one PEM certificate per entry) and
-# GOLCONDA_CA_DISTRUST (one fingerprint per entry); nix/packages.nix sets them from /trust's options (lib/system.nix), and they default
-# to empty, which is cacert's roots as they are.
-#
-# The build checks the result itself, because `trust` skips a file it cannot parse without a
-# word: the certificates of the bundle must be exactly (cacert's + anchors) - distrusted, as sets.
-# A package that fails here fails the image build, not the boot.
-#
-# The source is cacert's directory, so there is no second pin to keep in step: a cacert update
-# updates this. No sources.toml; the SBOM purl is cacert's plus a subpath (sourceOf).
+# Made from cacert's roots (server-auth) when the image is built, plus the anchors, minus the
+# distrusted fingerprints; p11-kit's trust module does the arithmetic, and the build checks the
+# result as sets, because `trust` skips a file it cannot parse in silence (docs/design/ca-store.md).
+# The lists arrive as JSON in GOLCONDA_CA_ANCHORS (PEM certificates) and GOLCONDA_CA_DISTRUST
+# (fingerprints); nix/packages.nix sets them from /trust's options. The trust module reads its
+# directory from a module config in the build directory (`x-init-reserved: paths=`), no ambient
+# path. No sources.toml: the source is cacert's directory (sourceOf).
 {
   package,
   pkgs,

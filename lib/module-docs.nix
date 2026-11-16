@@ -1,17 +1,12 @@
-# Markdown reference pages from the internal module schemas in lib/schema.nix,
-# plus module doc comments, types documentation, and the module list for SUMMARY.md.
-#
+# Markdown reference pages from the module schemas (lib/schema.nix), the module doc comments and
+# the type registry. Pure Nix; scripts/docs and checks.docs write docs/reference/modules/generated/
+# from `files`.
 # `toMarkdown { moduleSchemas; modulePaths; docComments; typeRegistry; tree; }` returns
 #   pages      module path ("/services/sshd") -> Markdown
-#   index      Markdown listing every module
-#   types      Markdown for the types page
+#   index, types   the index and types pages
 #   summary    the module-pages lines of docs/SUMMARY.md (the rest is committed)
 #   files      file name ("services-sshd.md", "index.md", "types.md") -> Markdown
-#
-# Pure Nix; docs/reference/modules/generated/ is written from `files`
-# (scripts/docs, and the docs check in nix/checks.nix).
-#
-# Usage, for the module tree of this repository (nix/default.nix, nix/checks.nix):
+# For this repository's tree (nix/default.nix, nix/checks.nix):
 #   (import ./module-docs.nix { }).forTree ((import ../modules { inherit (adios) adios; }) { })
 _:
 let

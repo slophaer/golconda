@@ -1,31 +1,13 @@
-# lib/image/initrd.nix: the initrd, a zstd cpio around a minimal /usr tree.
+# lib/image/initrd.nix: the initrd, a zstd cpio around a minimal /usr tree (docs/design/boot.md).
 #
 # initrdSystem { imageId; version; platform; buildSystem; packagesDir ? null;
 #   replaces ? [ ]; sources ? the pins; secureBoot ? true; } → the mkSystem of the initrd: /base
-#   (systemd, dash, uutils-coreutils, dbus-broker, lvm2) as lib/system.nix composes it.
-#   `secureBoot` is the image's /system.secureBoot: with it the initrd halts when the firmware
-#   does not enforce Secure Boot (golconda-secure-boot-required.service).
-#   `packagesDir` and `replaces` are the configuration's downstream package directory and its
-#   [golconda] replaces, so a replacement reaches the initrd too, under the same opt-in;
-#   `sources` are the image's pins, so the initrd's set is the system's.
-# initrdTree (the same arguments) → the initrd's /usr tree: that system without the kernel (the
-#   UKI carries it); lib/usr-tree.nix builds it as for the system.
-#
-# initrd { usrTree; imageId; version; buildSystem; pkgs; } → derivation with
-#   initrd.cpio.zst
-#
-# The cpio holds: /usr (the tree), /init -> usr/lib/systemd/systemd, /etc/initrd-release ->
-# ../usr/lib/os-release (systemd knows it runs in an initrd by it) with /etc/os-release pointing
-# at it, the merged-/usr links /bin /sbin /lib and the empty mount points. lvm2's device-mapper
-# udev rules and dmsetup are /base's, as on the host (systemd's libcryptsetup needs them for
-# /dev/mapper/usr). No machine-id, no shadow, no
-# static /init: systemd itself is PID 1 and finds the /usr partition by usrhash= (its
-# veritysetup and gpt-auto generators).
-#
-# The kernel execs /init, its default. repkgs binaries find ld.so and their libraries
-# relative to their own path, and before /proc is mounted that path is AT_EXECFN as the kernel
-# spelled it: the fork's crt-interp and glibc resolve its symlinks (/init -> usr/lib/systemd/
-# systemd -> the store) without /proc.
+#   as lib/system.nix composes it, with the image's /system.secureBoot, downstream packages,
+#   [golconda] replaces and pins, so the initrd's set is the system's.
+# initrdTree (the same arguments) → that system's /usr tree without the kernel (the UKI has it).
+# initrd { usrTree; imageId; version; buildSystem; pkgs; } → derivation with initrd.cpio.zst:
+#   the tree, /init -> usr/lib/systemd/systemd, /etc/initrd-release, the merged-/usr links and
+#   the empty mount points.
 _:
 let
   inherit (builtins) filter;

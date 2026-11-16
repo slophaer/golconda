@@ -1,27 +1,13 @@
-# JSON Schema 2020-12 export from the adios module tree.
+# JSON Schema 2020-12 export from the adios module tree (docs/reference/outputs.md).
 #
-# `toJsonSchema tree` walks the loaded tree and emits one JSON Schema object
-# with `properties.<modulePath>` per module. Options become properties with
-# their description, default/example when they are plain data, and a type
-# derived from the korora type name.
-#
-# Korora does not expose `members` on struct types or `elems` on enum types.
-# A local registry (lib/schema/registry-*.nix) lets Golconda's own types register their
-# schema explicitly.
-# Mark the gap with `x-golconda-opaque` for types that cannot be introspected.
-#
-# Provenance: every option carries `x-golconda-declaredIn` ({ module;
-# file?; }: the module path that declares it and that module's file relative to
-# the repo, with no line, which only some evaluators report), and every module `x-golconda-inputs`,
-# the module paths it reads (its `inputs.<x>.path`, sorted): the edges of the module
-# graph. `toJsonSchemaWith { files; root; }` knows the files: `files` maps a module
-# path to its file path (lib/tree.nix `modulePaths`, as a list of
-# { path; filePath; }), `root` is the repo directory as a string; the files
-# are left out without them.
-#
-# Usage:
-#   let schema = import ./lib/schema.nix { };
-#   in schema.toJsonSchema tree
+# `toJsonSchema tree` gives one object with `properties.<modulePath>` per module: each option
+# with its description, its default or example when they are plain data, and a type from the
+# korora type name. Korora does not expose a struct's members or an enum's elements, so
+# Golconda's types register their schema in lib/schema/registry-*.nix; a type that is neither
+# is `x-golconda-opaque`.
+# Every option carries `x-golconda-declaredIn` ({ module; file?; }) and every module
+# `x-golconda-inputs`, the module paths it reads. `toJsonSchemaWith { files; root; }` adds the
+# files: `files` is lib/tree.nix `modulePaths`, `root` the repo directory as a string.
 _:
 let
   on = import ../modules/lib/on.nix;
