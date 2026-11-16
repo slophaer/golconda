@@ -1,16 +1,7 @@
-#! The repkgs package sets, entering the tree once.
-#!
-#! The configuration passes the set of its platform as `options."/pkgs".target`
-#! (`nix/default.nix` takes it from `nix/packages.nix`); `options."/pkgs".build`
-#! is the build host's set and defaults to `{ pkgs = target.buildPkgs; }`, the
-#! same set when the platform is not cross. A module that needs a package
-#! declares `inputs.pkgs.path = "/pkgs"` and reads `results.pkgs.pkgs.<name>`
-#! (the target's packages) or `results.pkgs.build.pkgs.<name>` (tools that run
-#! on the builder); an option that holds a package defaults from there
-#! (`defaultFunc = { results }: results.pkgs.pkgs.openssh`). The rule: a module
-#! never imports repkgs and never reads a set it did not declare; a second kind
-#! of set is a second module path, never a second argument. A configuration
-#! document cannot name a package.
+#! The repkgs package sets, entering the tree once: `options."/pkgs".target` is the platform's set (`nix/packages.nix`), `build` the build host's.
+#! A module that needs a package declares `inputs.pkgs.path = "/pkgs"` and reads `results.pkgs.pkgs.<name>`; a package option defaults from there.
+#! A module never imports repkgs and never reads a set it did not declare. `target` is not configuration data: the TOML loader refuses a `/pkgs` table.
+#! docs/design/modules.md, "How packages enter the tree".
 { types, ... }:
 let
   inherit (builtins) isAttrs typeOf;
