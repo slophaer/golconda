@@ -1,6 +1,6 @@
 # Checks that need the real package set: the outputs, the packages' build specs as repkgs
-# resolves them, the catalogue as the SBOM generator writes it, and the platforms. Moved from
-# tests/eval, which reads packages as data only (tests/fixtures/repkgs).
+# resolves them, the catalogue as the SBOM generator writes it, and the platforms.
+# tests/eval reads packages as data only (tests/fixtures/repkgs).
 # A function of ./default.nix's harness; it returns a list of checks.
 {
   check,

@@ -1,4 +1,4 @@
-#! The repkgs package sets, entering the tree once: `options."/pkgs".target` is the platform's set (`nix/packages.nix`), `build` the build host's.
+#! The repkgs package sets, entering the tree once: mkSystem binds `options."/pkgs".target`, the platform's set (`nix/packages.nix`), and `build`, the build host's.
 #! A module that needs a package declares `inputs.pkgs.path = "/pkgs"` and reads `results.pkgs.pkgs.<name>`; a package option defaults from there.
 #! A module never imports repkgs and never reads a set it did not declare. `target` is not configuration data: the TOML loader refuses a `/pkgs` table.
 #! docs/design/modules.md, "How packages enter the tree".
@@ -35,7 +35,7 @@ in
   impl =
     { options }:
     if !(options ? target) then
-      throw ''golconda: /pkgs has no target set; pass the repkgs set as options."/pkgs".target (nix/default.nix does)''
+      throw ''golconda: /pkgs has no target set; mkSystem (lib/system.nix) binds options."/pkgs".target''
     else
       {
         inherit (options) target;

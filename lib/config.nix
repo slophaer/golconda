@@ -157,7 +157,7 @@ let
       options = checkOptions (removeAttrs toml [ "golconda" ]);
     in
     if toml ? "/pkgs" then
-      throw "golconda: /pkgs is not configuration: the repkgs set comes from nix (nix/default.nix), not from the document"
+      throw "golconda: /pkgs is not configuration: mkSystem binds the repkgs set; remove the table from the document"
     else
       builtins.seq options { inherit options; };
 

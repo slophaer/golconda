@@ -1,6 +1,5 @@
 # Public image composition must keep configured modules alongside image-owned links: the image
-# chain over the real package set (moved from tests/eval/image-config.nix, which keeps the
-# mkSystem part).
+# chain over the real package set. tests/eval/image-config.nix has the mkSystem part.
 {
   check,
   f,
