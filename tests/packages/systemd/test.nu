@@ -28,6 +28,14 @@ assert $"no sysext or confext unit \(($ext | str join ' ')\)" ($ext | is-empty)
 # AuthorizedKeysFile of its own
 assert "no systemd-ssh-generator" (not ($"($p)/lib/systemd/system-generators/systemd-ssh-generator" | path exists -n))
 
+# the parts Golconda leaves out (packages/systemd/package.nix): no userdb, no run0, no installer,
+# storage target mode, binfmt_misc, mountfsd or nsresourced, and no ssh drop-ins
+for f in [bin/userdbctl bin/run0 bin/systemd-sysinstall lib/pam.d/systemd-run0 lib/systemd/systemd-userdbd lib/systemd/systemd-storagetm lib/systemd/systemd-binfmt lib/systemd/systemd-mountfsd lib/systemd/systemd-nsresourced lib/systemd/sshd_config.d lib/systemd/ssh_config.d] {
+  assert $"no ($f)" (not ($"($p)/($f)" | path exists -n))
+}
+let left = (ls $"($p)/lib/systemd/system" | get name | path basename | where {|n| $n =~ '(userdb|sysinstall|storagetm|binfmt|mountfsd|nsresourced)' })
+assert $"no unit of them \(($left | str join ' ')\)" ($left | is-empty)
+
 # userspace hardening: the set-wide flags (repkgs builder/hardening.nu) reach PID 1 and the
 # shared library every program links; only the flags the EFI code cannot take are off
 # (packages/systemd/package.nix). _FORTIFY_SOURCE shows as glibc's checked variants

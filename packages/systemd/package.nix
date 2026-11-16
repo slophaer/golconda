@@ -81,7 +81,15 @@ package {
     elfutils = "disabled"; # no coredump backtrace symbolization
     bpf-framework = "disabled"; # no BPF
     libidn2 = "disabled"; # no IDN
-    polkit = "disabled"; # no run0 yet, root over ssh
+    polkit = "disabled"; # no run0, root over ssh
+    # no per-human users, no userdb, no polkit, no run0 (docs/design/scope.md): no userdbd
+    # stack; nss-systemd and PID 1 serve the system users without it
+    userdb = false;
+    sysinstall = false; # an image is installed by sysupdate and repart, not by an installer
+    storagetm = false; # no storage target mode: the disk is not served to another host
+    binfmt = false; # no foreign binary formats
+    mountfsd = false; # no unprivileged image mounts
+    nsresourced = false; # no unprivileged user namespaces handed out
     # no systemd-sysext or systemd-confext: they overlay /usr and /etc with images from
     # /var/lib/extensions, /etc/extensions and the ESP, which an offline write can plant.
     # Software comes from modules at build time (docs/design/comparison.md)
@@ -143,10 +151,11 @@ package {
     fallback-hostname = "golconda";
     create-log-dirs = false;
 
-    # === SSH drop-in ===
-    # Install the 20-systemd-userdb.conf drop-in for sshd: enables nss-systemd for user lookup.
-    # Golconda has no userdb daemon yet, but the drop-in is harmless and enables future use.
-    sshdconfdir = "/etc/ssh/sshd_config.d";
+    # === SSH drop-ins ===
+    # none: sshd reads only Golconda's config (/services/sshd), and the systemd-ssh-proxy client
+    # config would serve the ssh generator, which factory-cleanup deletes
+    sshdconfdir = "no";
+    sshconfdir = "no";
 
     # === util-linux libraries ===
     fdisk = "enabled"; # for systemd-repart
@@ -206,6 +215,8 @@ package {
         # to any address an ssh.listen credential or systemd.ssh_listen= names. meson has no
         # option for it; Golconda's sshd.service (/services/sshd) is the one ssh server
         rm $"($c.out)/lib/systemd/system-generators/systemd-ssh-generator"
+        # run0 (systemd-run as another user, through PAM) has no meson option: no run0 in the image
+        rm $"($c.out)/bin/run0" $"($c.out)/lib/pam.d/systemd-run0"
         # Remove symlinks that point outside (to /usr or other system paths):
         # they're only valid at /etc at runtime, not in the package
         for f in (glob $"($c.out)/share/factory/etc/**/*") {
@@ -288,7 +299,6 @@ package {
     "systemd-run"
     "systemd-socket-activate"
     "systemd-stdio-bridge"
-    "systemd-sysinstall"
     "systemd-sysusers"
     "systemd-tmpfiles"
     "systemd-tty-ask-password-agent"
@@ -300,9 +310,7 @@ package {
     "importctl"
     "oomctl"
     "resolvconf"
-    "run0"
     "storagectl"
-    "userdbctl"
     "varlinkctl"
 
     # Mount helpers (called by systemd units)
