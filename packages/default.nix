@@ -73,7 +73,7 @@
   rclone = ./rclone;
   # repkgs' update tool: scripts check the packages' upstreams with it
   uptrack = ./uptrack;
-  # development tools (nix/dev, nix/checks.nix), in place of nixpkgs' (the former dev pin)
+  # development tools (nix/dev, nix/checks.nix), in place of nixpkgs'
   nixfmt-rs = ./nixfmt-rs;
   treefmt = ./treefmt;
   statix = ./statix;
