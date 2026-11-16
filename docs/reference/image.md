@@ -389,12 +389,14 @@ in the flags, in `BOOT_TEST_GOLCONDA` and on `PATH`. A set that starts with the 
 boots `packages.<system>.ATTR` instead of `--image`'s image, and its `@next` is `ATTR-next`: verify
 builds each image the sets name once (out-link `result-verify-ATTR`, step `image:ATTR`; the next
 image `result-verify-ATTR-next`, step `image-next:ATTR`), so one run boots the Secure Boot sets and
-`@image=image-smoke-test-nosb` sets together. Its summary has one line per set, with the image,
-`PASS boot[N] 59s @image=ATTR FLAGS` or `FAIL(CODE) boot[N] 59s @image=ATTR FLAGS (log PATH)`,
-followed by the checks that passed, `  passed boot[N] (COUNT): NAME …`, so a check that stops
-running shows without a log. The exit status is non-zero when any set fails. A set that passes
-removes its log, as `scripts/boot-test` removes the work directory of a run that passes; a set that
-fails keeps both.
+`@image=image-smoke-test-nosb` sets together. `@next=ATTR` names `packages.<system>.ATTR` as a next
+release instead (out-link `result-verify-ATTR`, step `image-next:ATTR`), and a set can name several:
+`--next @next --later @next=image-smoke-test-later`. Its summary has one line per set, with the
+image, `PASS boot[N] 59s @image=ATTR FLAGS` or
+`FAIL(CODE) boot[N] 59s @image=ATTR FLAGS (log PATH)`, followed by the checks that passed,
+`  passed boot[N] (COUNT): NAME …`, so a check that stops running shows without a log. The exit
+status is non-zero when any set fails. A set that passes removes its log, as `scripts/boot-test`
+removes the work directory of a run that passes; a set that fails keeps both.
 
 The work directory of every run is `run.XXXXXX` under `$BOOT_TEST_CACHE` (default
 `${XDG_CACHE_HOME:-$HOME/.cache}/golconda-boot-test`), not under `/tmp`, which a queue task or a

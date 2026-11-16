@@ -121,6 +121,13 @@ file against the set's `PK.crt` and `KEK.crt`, and that `PK`, `KEK` and `db` enr
 certificates and the image's `db` certificate first: a set for another key fails the release, not
 the boot.
 
+**The file format.** Each file is a time-based authenticated variable (UEFI 2.10, 8.2.2): an
+`EFI_VARIABLE_AUTHENTICATION_2` (an `EFI_TIME` and a `WIN_CERTIFICATE_UEFI_GUID` with a PKCS#7
+SignedData), then the payload, a series of `EFI_SIGNATURE_LIST`s. The signature covers the variable
+name (UTF-16, no NUL), its vendor GUID, the attributes, the `EFI_TIME` and the payload. The
+SignedData has no signed attributes and no ContentInfo around it. RSA PKCS#1 v1.5 draws no random
+numbers, so the same keys and time give the same files.
+
 **On the machine.** systemd-boot looks at `loader/keys/` only when the firmware is in Setup Mode or
 Audit Mode. With `secure-boot-enroll force` in the new disk's `loader.conf` it enrols the set named
 `auto`: it writes `db`, `dbx`, `KEK` and `PK`, in that order, and resets the machine. Writing PK

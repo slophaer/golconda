@@ -119,7 +119,8 @@ scripts/provision-esp web1.raw --hostname web1 --authorized-keys ~/.ssh/id_ed255
 ```
 
 It also takes `--credential NAME=FILE`. It finds the ESP in the GPT and refuses a path in
-`/nix/store`, so give it a copy. With qemu, use SMBIOS instead:
+`/nix/store`, so give it a copy. It exits 0 on success, 2 on a usage error, and non-zero on any
+other failure. With qemu, use SMBIOS instead:
 
 ```sh
 -smbios type=11,value=io.systemd.credential:system.hostname=web1

@@ -1,15 +1,9 @@
 # enrol.nu: the Secure Boot variables that systemd-boot enrols from the ESP: the two sets under
 # secureboot/auth/ that scripts/make-keys writes once into a key set (golconda-enrol-auth,
 # enrol-main.nu) and the signer checks and copies (`check-set`); docs/design/bootloader.md,
-# "Enrolment". They depend on the certificates only, not on an image.
-#
-# Each file is a time-based authenticated variable (UEFI 2.10, 8.2.2): EFI_VARIABLE_AUTHENTICATION_2
-# (an EFI_TIME and a WIN_CERTIFICATE_UEFI_GUID with a PKCS#7 SignedData), then the payload, a
-# series of EFI_SIGNATURE_LISTs. The signature covers the variable name (UTF-16, no NUL), its
-# vendor GUID, the attributes, the EFI_TIME and the payload. The SignedData has no signed
-# attributes and no ContentInfo around it. RSA PKCS#1 v1.5 draws no random numbers, so the same
-# keys and time give the same files. efitools writes them; `verify` takes a file apart with code
-# of its own and has openssl check the signature.
+# "Enrolment" (the file format is there too). They depend on the certificates only, not on an
+# image. efitools writes them; `verify` takes a file apart with code of its own and has openssl
+# check the signature.
 
 use common.nu *
 
