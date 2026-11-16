@@ -217,8 +217,10 @@ same cmdline. Libraries need no such flag: the fork's RUNPATH reaches every dlop
 
 gpt-auto-generator mounts the root partition (writable), the ESP and `/usr` by `usrhash=`. systemd
 finds the libraries it dlopens through the RUNPATH the fork gives it. IPE enforces from the first
-boot: `/usr` runs only if the kernel verified the verity signature, so the signer must be in the
-firmware `db` ([Kernel: IPE](kernel.md#ipe-integrity-policy-enforcement)).
+boot: `/usr` runs only if the kernel verified the verity signature. The kernel checks it against the
+`db` certificate built into it, never against the firmware `db`
+([Trust: Verity key](trust.md#2-verity-key),
+[Kernel: IPE](kernel.md#ipe-integrity-policy-enforcement)).
 
 ## Serial console
 

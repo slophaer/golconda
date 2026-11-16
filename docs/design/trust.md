@@ -12,9 +12,9 @@ own copy of any of them:
    boot, with Microsoft's keys or without (`auto-enrolled`, `db-enrolled`, `dbx-enrolled`; proven in
    a virtual machine, hardware *(being built)*: [Boot loader: Enrolment](bootloader.md#enrolment)).
 1. **The verity signing key** decides *what is read*: it signs the root hash of every `/usr` image.
-   Today it is the Secure Boot `db` key, and the kernel checks the signature against the firmware
-   `db` at every boot; without Secure Boot, against the same certificate built into the kernel
-   ([status](#2-verity-key)).
+   It is the Secure Boot `db` key. At every boot the kernel checks the signature against the `db`
+   certificate built into the kernel, never against the firmware `db`, with or without Secure Boot
+   ([Verity key](#2-verity-key)).
 1. **The CA store** decides *whom the machine talks to*: one bundle for every TLS client, made when
    the image is built from cacert's Mozilla roots, the administrator's anchors and a distrust list
    ([status](#3-ca-store)).
@@ -358,12 +358,11 @@ a derivation, with throwaway keys that are test fixtures, so every boot test tes
 release uses. The `db` key and the PCR key can also stay on a hardware token
 ([Keys on a token](#keys-on-a-token)).
 
-The unsigned outputs depend on the public halves only: the release keyring is in `/usr`, an image
-without Secure Boot has the `db` certificate in its kernel, and the manifest carries copies of all
-three. A new private key with the same public half is impossible, so the proof is the other way
-round: a new `db` and PCR key pair leaves the `/usr` tree, the initrd, the kernel and the signer of
-a Secure Boot image at their store paths; only the manifest, which holds the new public halves,
-changes.
+The unsigned outputs depend on the public halves only: the release keyring is in `/usr`, the kernel
+holds the `db` certificate, and the manifest carries copies of all three. A new private key with the
+same public half is impossible, so the proof is the other way round. A new PCR key changes only the
+manifest. A new `db` key changes the manifest and the kernel, and with the kernel the `/usr` tree
+that holds it; the initrd and the signer keep their store paths.
 
 No private key enters the image or the machine either; only the certificates are enrolled in
 firmware, and the ESP holds them only inside the signed `.auth` files. The test outputs
