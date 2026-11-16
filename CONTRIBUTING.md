@@ -101,6 +101,21 @@ $ scripts/verify
 unpacked tree. uptrack itself comes from the repkgs tree pinned before, so the new fork takes effect
 for it on the next run.
 
+## Prerequisites
+
+- **The Nix of the repkgs fork, as daemon and as client.** Every package and the dev shell are
+  content-addressed derivations, and repkgs' fetchers are dynamic derivations. The daemon's
+  `nix.conf` needs `ca-derivations` and `dynamic-derivations` in `experimental-features`, and
+  `builder-rpc-v0` in `system-features`. [Build host](docs/reference/build-host.md) says where that
+  Nix comes from. `nix-shell`, `scripts/lint` and `scripts/verify` run the client (`nix-build`,
+  `nix-instantiate`, `nix-shell`).
+- **`flakes` on the client.** `nix fmt` and the lint's flake-template test (`nix flake`, `nix eval`)
+  need `experimental-features = nix-command flakes ca-derivations dynamic-derivations` in the
+  client's `nix.conf`.
+- **A full clone.** The flake-template test reads `HEAD~1`; a clone of depth 1 fails the lint.
+- **KVM for a boot.** `scripts/boot-test` and the boots of `scripts/verify` stop when they cannot
+  open `/dev/kvm`; `--allow-tcg` runs QEMU without it, much slower.
+
 ## Getting started
 
 ```sh
@@ -127,9 +142,6 @@ cold run can build these packages; a cached run reuses their results.
 
 The dev shell carries iets, uptrack, treefmt (the formatter output, `nix fmt`, which also scans with
 the rules in `lints/`), `golconda-ast-grep` (those rules; `checks.lint-rules` tests them), and
-mdbook and its diagram preprocessor for `scripts/docs`. `./scripts/lint` now builds native package
-tests and needs the same patched Nix client and daemon as package builds. The daemon needs
-`ca-derivations`, `dynamic-derivations` and the system feature `builder-rpc-v0`;
-[reference/build-host](docs/reference/build-host.md) says how to get one. Start reading at
-[README](README.md), then [docs/SUMMARY](docs/SUMMARY.md); the module code is small enough to read
-whole, starting with `modules/system/default.nix` and `modules/lib/`.
+mdbook and its diagram preprocessor for `scripts/docs`. Start reading at [README](README.md), then
+[docs/SUMMARY](docs/SUMMARY.md); the module code is small enough to read whole, starting with
+`modules/system/default.nix` and `modules/lib/`.

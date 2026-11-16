@@ -109,15 +109,15 @@ what is out of scope.
 
 ## Quick start
 
-You need Nix. Image builds also need a Nix daemon with `ca-derivations` and `dynamic-derivations`
-([Build host](docs/reference/build-host.md)).
+You need the Nix of the repkgs fork as daemon and as client, `flakes` on the client, a full clone,
+and KVM for a boot: [Prerequisites](CONTRIBUTING.md#prerequisites).
 
 ```sh
 nix-shell                      # or: direnv allow
 ./scripts/lint                 # strict iets lint, module tests, sandboxed checks
 scripts/docs serve             # the book (generates the module pages first)
 
-# build the test image and boot it in QEMU (needs KVM and the daemon above)
+# build the test image and boot it in QEMU
 nix-build -A packages.x86_64-linux.image-smoke-test
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-test
 ```
