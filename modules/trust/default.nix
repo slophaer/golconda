@@ -2,7 +2,7 @@
 #! It is made when the image is built (`trust extract`, in the `ca-bundle` package), so it is read-only and no unit runs on the machine.
 #! Tmpfiles link `/etc/ssl/cert.pem` and `/etc/ssl/certs/ca-certificates.crt` to it; an admin file at either path wins. A built-in component.
 #! An `anchors` entry is one PEM certificate, a `distrust` entry the SHA-256 fingerprint of one (64 hex digits). A duplicate entry is an error.
-#! Run-time anchors are not built, by design: a new release is the way (docs/design/trust.md, "CA store").
+#! Run-time anchors are not built, by design: a new release is the way (docs/design/trust.md, "3. CA store").
 { types, ... }:
 let
   inherit (builtins)
@@ -85,7 +85,7 @@ in
       dup = duplicates options.anchors ++ duplicates (map normalise options.distrust);
     in
     if dup != [ ] then
-      throw "golconda: /trust lists the same certificate twice; a duplicate is an error, not a merge"
+      throw "golconda: /trust lists the same certificate twice, in `anchors` or in `distrust`; remove the duplicate"
     else
       {
         # the bundle package is built from these options (lib/system.nix -> nix/packages.nix),

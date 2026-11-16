@@ -8,11 +8,9 @@ let
   ini = import ../lib/ini.nix;
   grammar = import ../lib/grammar.nix;
   versionLib = import ../../lib/version.nix { };
-  # /system.updateSource -> /usr/lib/sysupdate.d/*.transfer (image/sysupdate.nix), and the
-  # timer that runs them. systemd 257 named the suffix .transfer (.conf still loads, with a
-  # warning). systemd 262 renamed systemd-sysupdate.timer to systemd-sysupdate-update.timer
-  # and keeps the old name as an alias; the static .wants link enables it without presets
-  # (docs/design/layout.md).
+  # /system.updateSource -> /usr/lib/sysupdate.d/*.transfer (image/sysupdate.nix), and the timer
+  # that runs them. The static .wants link enables the timer without presets (docs/design/layout.md).
+  # It is systemd-sysupdate-update.timer: systemd 262 renamed it and keeps the old name as an alias.
   sysupdateFragment =
     options:
     if options.updateSource == null then

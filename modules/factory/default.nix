@@ -83,18 +83,14 @@ in
 
       paths = sort (a: b: a < b) (attrNames builtIn);
 
-      # Links the tmpfiles lines make under /etc.
+      # The links that tmpfiles make under /etc, outside the factory.
       links = {
         "/etc/localtime" = "/usr/share/zoneinfo/${options.timezone}";
         "/etc/os-release" = "../usr/lib/os-release";
       };
-      # Tmpfiles lines: L for symlinks into the factory and to the static targets.
-      # Each file is a symlink into the factory (L); an admin file in its place wins.
+      # L, not L+: an admin file at a path is left alone.
       tmpfilesLines =
-        # L /etc/<path> - - - - /usr/share/factory/etc/<path>
-        # Uses L (not L+): an existing file (admin override) is left alone.
         map (p: "L /etc/${p} - - - - ${factoryDir}/${p}") paths
-        # Symlinks to paths outside the factory (os-release, timezone)
         ++ map (p: "L ${p} - - - - ${links.${p}}") (attrNames links);
     in
     {

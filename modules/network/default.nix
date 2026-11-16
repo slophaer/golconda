@@ -144,7 +144,6 @@ in
         text = renderNetwork name cfg;
       }) allNetworks;
 
-      # DNS fallback configuration
       dnsFile = on (options.dns != null) {
         "/usr/lib/systemd/resolved.conf.d/golconda-dns.conf" = {
           # FallbackDNS=, not DNS=: the option promises servers for the

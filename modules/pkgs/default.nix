@@ -35,7 +35,7 @@ in
   impl =
     { options }:
     if !(options ? target) then
-      throw ''golconda: /pkgs has no target set: the configuration passes the repkgs set as options."/pkgs".target (nix/default.nix does); a module reads it through inputs.pkgs.path = "/pkgs"''
+      throw ''golconda: /pkgs has no target set; pass the repkgs set as options."/pkgs".target (nix/default.nix does)''
     else
       {
         inherit (options) target;

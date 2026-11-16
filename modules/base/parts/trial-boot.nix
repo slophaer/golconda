@@ -1,19 +1,9 @@
-# Part of /base (modules/base/default.nix merges it): the trial boot policy, what reboots a boot
-# that fails (docs/design/boot.md, "Trial boot"). Returns { units; files; links; }.
-#
-# Two kinds of failure, two rules:
-# - before the machine can be reached (a kernel panic, a PID 1 crash, an initrd that fails or
-#   hangs, emergency.target in the host): it reboots on every boot. Nothing could reach it anyway, and on a counted entry the
-#   reboot is the next try. A failure that repeats on every boot is the failed-boot counter's
-#   (parts/failed-boots.nix): the other slot once, then a boot that reboots on no failure, where
-#   both reboot units below skip themselves;
-# - after (boot-complete.target failed, or not reached by the deadline): it reboots only on a
-#   trial boot, a counted boot that had a try left. golconda-trial-boot-generator decides that at
-#   each boot from LoaderBootCountPath and links the drop-in. A blessed entry, or one with no try
-#   left, stays up for its operator: a reboot there would start the same entry again, for ever.
-#
-# The kernel's half, panic= and the lockup detectors' *_panic=, is on the UKI cmdline
-# (image/uki.nix); the hardware watchdog is PID 1's (golconda-watchdog.conf).
+# Part of /base (modules/base/default.nix merges it): the trial boot policy. A failure before the
+# machine can be reached reboots on every boot; a failure after (boot-complete.target failed, or
+# not reached by the deadline) reboots only on a trial boot, a counted boot that had a try left;
+# another entry stays up, as a reboot would start it again. A repeating failure is the failed-boot
+# counter's (parts/failed-boots.nix). The kernel's panic and lockup panics are on the UKI cmdline
+# (image/uki.nix). Policy: docs/design/boot.md, "Trial boot".
 let
   inherit (import ../../lib/text.nix) lines;
   ini = import ../../lib/ini.nix;

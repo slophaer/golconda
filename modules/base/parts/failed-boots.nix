@@ -1,5 +1,5 @@
 # Part of /base (modules/base/default.nix merges it): the failed-boot counter, for a failure that
-# repeats on every boot, also of a blessed entry that boot counting no longer counts
+# repeats on every boot, also of a blessed entry, which boot counting does not count
 # (docs/design/boot.md, "Failed boots"). Returns { units; files; links; }.
 #
 # golconda-failed-boots.service counts each boot early in the initrd;

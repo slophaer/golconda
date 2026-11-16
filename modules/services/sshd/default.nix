@@ -114,22 +114,17 @@ in
       hasPrincipals = options.principals != { };
       hasKRL = options.revokedKeys;
 
-      # The revocation list until a KRL is pushed: sshd reads the credential
-      # whether or not the push has come (RevokedKeys= must name a readable
-      # file, or sshd refuses every key). Before the push PID 1 gives this text
-      # instead (SetCredential=, a fallback): a flat list that names the user
-      # CAs, so sshd refuses every certificate they signed and revocation is
-      # never off, while the plain bootstrap keys log in for the push. One
-      # release goes from first boot to certificates (docs/design/trust.md).
-      # Fail closed once enrolled: when the host certificate is sealed, plain
-      # keys stop (no authorized_keys file at all) and only certificates of the
-      # user CAs log in. golconda-sshd-enrolled.service links enrolled.conf into
-      # /run/golconda-sshd only when the sealed certificate exists; sshd_config
-      # includes that directory before its AuthorizedKeysFile line, and sshd
-      # takes the first value it reads. The unit is PartOf= and wanted by sshd,
-      # so the push's restart of sshd runs it again (a start when it was skipped,
-      # a restart when it ran); RuntimeDirectory= empties the directory on each
-      # stop. The credential is on the state partition: the refusal survives
+      # Until a KRL is pushed, PID 1 gives sshd a fallback revocation list (SetCredential=) that
+      # names the user CAs. sshd refuses every key when RevokedKeys= names no readable file, and
+      # this list refuses every certificate the CAs signed, so revocation is never off while the
+      # plain bootstrap keys log in for the push (docs/design/trust.md).
+
+      # Fail closed once enrolled: when the host certificate is sealed, plain keys stop and only
+      # certificates of the user CAs log in. golconda-sshd-enrolled.service links enrolled.conf
+      # (AuthorizedKeysFile none) into /run/golconda-sshd; sshd_config includes that directory
+      # before its AuthorizedKeysFile line, and sshd takes the first value it reads. The unit is
+      # PartOf= sshd, so the push's restart runs it again, and RuntimeDirectory= empties the
+      # directory on each stop. The credential is on the state partition: the refusal survives
       # reboots and updates, and only a reflash undoes it.
       enrolledUnit = "golconda-sshd-enrolled.service";
       enrolledDir = "/run/golconda-sshd";
@@ -182,8 +177,7 @@ in
           # the certificate principal and key id are the audit trail
           "LogLevel VERBOSE"
           "PidFile none"
-          # file transfer without a second binary: sshd_config content, not a
-          # unit field (docs/design/modules.md, "no extras")
+          # file transfer without a second binary: sshd_config content, not a unit field
           "Subsystem sftp internal-sftp"
         ]
       );
@@ -244,8 +238,7 @@ in
           # PCR 11 holds enter-initrd:leave-initrd:sysinit from this barrier on; a
           # service with default dependencies (after basic.target) starts later, and
           # sshd must not load the sealed host key before the phase its .pcrsig
-          # signs (image/uki.nix, systemd-pcrphase.service(8)). Stated, not left to
-          # basic.target's ordering.
+          # signs (image/uki.nix, systemd-pcrphase.service(8)).
           "systemd-pcrphase-sysinit.service"
         ]
         ++ on options.hostCertificate [ enrolledUnit ];
