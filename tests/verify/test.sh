@@ -151,6 +151,14 @@ echo "$out" | grep -qE "^PASS boot [0-9]+s$" || fail "no PASS line for the boot:
 [ "$(grep -c '^boot-test' "$CALLS")" = 1 ] || fail "want 1 boot: $(cat "$CALLS")"
 grep -q "boot-test .* --keys .* --timeout 480$" "$CALLS" || fail "--boot-args not given to boot-test: $(cat "$CALLS")"
 
+# 1d --lint-only reads no matrix: a commit without the file lints
+git rm -q tests/boot/matrix
+git -c user.email=t@t -c user.name=t commit -qm "no matrix"
+run scripts/verify --lint-only
+[ $rc = 0 ] || fail "--lint-only without a matrix exited $rc: $out"
+[ "$(cut -d' ' -f1 "$CALLS" | sort -u)" = nix-shell ] || fail "--lint-only ran more than lint: $(cat "$CALLS")"
+git reset -q --hard HEAD~1
+
 # 1c the builds run at the same time, and the second builds of the initrd and the release run beside
 #    the boots: the image build waits for the disk's start, the disk's for a boot's start
 rm -f "$WORK"/started-*

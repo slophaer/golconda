@@ -44,7 +44,7 @@ while [ $# -gt 0 ]; do
 done
 cd "$dir" || exit 2
 system=${GOLCONDA_SYSTEM:-$(uname -m)-linux}
-if [ -z "$boot_sets" ] && [ -z "$boot_args" ]; then
+if [ $lint_only = 0 ] && [ -z "$boot_sets" ] && [ -z "$boot_args" ]; then
   boot_sets=$(grep -v -e '^#' -e '^[[:space:]]*$' tests/boot/matrix) ||
     { echo "verify: no boot set in $(pwd)/tests/boot/matrix" >&2; exit 2; }
 fi
