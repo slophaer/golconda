@@ -120,6 +120,19 @@ plus `N`). systemd's `ConditionNeedsUpdate=` compares `/usr`'s mtime with `/etc/
 sysusers, tmpfiles and the other first-boot units run exactly once per new image while the image
 itself stays reproducible. Other downgrades than the boot-counting fall-back are unsupported.
 
+## State across releases
+
+After a fallback, the older release runs on the `/etc` and `/var` that the newer release wrote. So a
+release must not change the state in a way that the release before it cannot read. The known cases:
+
+- A factory file that only the newer release ships leaves its tmpfiles `L` link in `/etc`. Under the
+  older release the link dangles, and nothing removes it.
+- A user or group that the newer release's sysusers adds stays in `/etc/passwd` and `/etc/group`.
+  The older release does not run sysusers again: its `/usr` is older than `/etc/.updated`, so
+  `ConditionNeedsUpdate=` is false.
+- A service that writes its data under `/var/lib` in a new format: the older release cannot read it.
+  Ship a release that reads both formats before the release that writes the new one.
+
 ## Factory reset
 
 The root partition is defined with `FactoryReset=yes`. `systemctl start factory-reset.target` asks
