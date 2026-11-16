@@ -3,15 +3,11 @@
 # The CA store checks (docs/design/trust.md, "3. CA store"): two HTTPS servers for the guest, one
 # whose certificate chains to an anchor the test image names, one to a CA it names in both
 # `anchors` and `distrust`, and the checks of the bundle and of the two fetches.
-# shellcheck disable=SC2154 # the globals are set by scripts/boot-test and the other parts
-# shellcheck disable=SC2034,SC2153 # and read there
 
 # The servers are QEMU guestfwds, like the update server's (boot-test-http.sh): the guest connects
-# to 169.254.169.5:443 and 169.254.169.6:443, QEMU starts the command per connection with the
-# connection on its stdin and stdout, and no host port opens. The command is a TLS server over
-# standard input and output (python's ssl with memory BIOs), with the certificates of
-# tests/fixtures/ca-store (the CAs are named by nix/test-config.nix). The addresses are the
-# fixtures' subject alternative names; .3, the DNS server of QEMU's network, is not used.
+# to 169.254.169.5:443 and 169.254.169.6:443 (the SANs of the fixtures in tests/fixtures/ca-store,
+# whose CAs nix/test-config.nix names), and QEMU runs a TLS server over stdio for each connection.
+# .3, the DNS server of QEMU's network, is not used.
 TLS_ADDR_ANCHOR=169.254.169.5
 TLS_ADDR_DISTRUSTED=169.254.169.6
 TLS_FIXTURES=$SCRIPT_DIR/../tests/fixtures/ca-store

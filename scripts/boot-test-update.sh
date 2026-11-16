@@ -1,8 +1,6 @@
 # shellcheck shell=sh
 # Part of scripts/boot-test, sourced by it (no processes start when sourced).
 # The modes of --next: the update, the fallback, the recovery paths, the key rotation.
-# shellcheck disable=SC2154 # the globals are set by scripts/boot-test and the other parts
-# shellcheck disable=SC2034 # and read there
 
 # The drop-ins --fail-health writes in /etc on the state partition, so they hold for every slot:
 # the health unit hangs on the first boot that runs it and fails at once on every later one (the
@@ -38,7 +36,7 @@ activate_never() {
   guest "rm -f $REBOOT_DROPIN && rmdir ${REBOOT_DROPIN%/*} && systemctl daemon-reload && systemctl restart systemd-sysupdate-reboot.timer" || true
 }
 
-# check_reboot_skipped NAME: the reboot timer fired on this boot, golconda-update-pending found
+# reboot_skipped NAME: the reboot timer fired on this boot, golconda-update-pending found
 # nothing to activate, and the boot goes on
 reboot_skipped() {
   guest journalctl -b -u systemd-sysupdate-reboot.service -o cat --no-pager 2>/dev/null \
@@ -84,11 +82,9 @@ fallback_after() {
 
 # test_fail_health: the trial boot policy and the three-boot fallback of docs/design/boot.md. A
 # drop-in in /etc breaks golconda-health-network.service: the candidate's first try hangs until the
-# deadline, its second and third fail at once. The reboot timer starts the first try, and the
-# harness only watches. The policy must reboot each try by itself, systemd-boot must count it, and the
-# fourth boot must be the old release, blessed, where the broken unit does not run and nothing
-# reboots. Then the candidate, with no try left, is started once more by hand: it fails its health
-# check and must stay up.
+# deadline, its second and third fail at once. Each try must reboot by itself and be counted, and
+# the fourth boot must be the old release, blessed, where nothing reboots. The candidate, with no
+# try left, then started by hand, fails its health check and must stay up. The harness only watches.
 test_fail_health() {
   echo ""
   echo "=== the fallback: $NEXT_VERSION fails its health check three times ==="
@@ -239,13 +235,12 @@ time_reboots() {
   return 1
 }
 
-# test_fail_tries KIND: the panic (KIND panic) or PID 1 crash (pid1) row of the trial boot policy
-# (docs/design/boot.md, "Trial boot"). The harness arms the test image's boot-test-panic.service
-# (sysrq c) or boot-test-crash.service (kill -SEGV 1) for the candidate, and the reboot timer starts
-# its first try. panic=10 or CrashAction=reboot must reboot each of the three tries after 10 s, not
-# the hardware watchdog after 30 s, each try counted, and the fourth boot must run the old release;
-# the harness only watches. The kernel's "Rebooting in 10 seconds.." can stay in its buffer when
-# another CPU had the console: the time from the failure to the next kernel tells the two apart
+# test_fail_tries KIND: the panic or PID 1 crash (pid1) row of the trial boot policy
+# (docs/design/boot.md, "Trial boot"). The candidate's boot-test-panic.service (sysrq c) or
+# boot-test-crash.service (kill -SEGV 1) fails each of three tries: panic=10 or CrashAction=reboot
+# must reboot after 10 s, not the hardware watchdog after 30 s, and the fourth boot must run the old
+# release. The kernel's "Rebooting in 10 seconds.." can stay in its buffer when another CPU had the
+# console, so the time from the failure to the next kernel tells the two apart
 test_fail_tries() {
   case $1 in
     panic)
@@ -328,13 +323,10 @@ wait_blessed() {
 }
 
 # test_fail_blessed: the failed-boot counter (docs/design/boot.md, "Failed boots") on a blessed
-# entry, which boot counting no longer counts. $NEXT_VERSION, blessed, crashes PID 1 on every boot
-# (boot-test-crash.service): after three boots the fourth starts $OLD_VERSION once, which completes,
-# resets the count and marks $NEXT_VERSION bad (+0-3). From then on systemd-boot's default is
-# $OLD_VERSION: the reboot timer finds nothing to activate and a reboot starts $OLD_VERSION again.
-# A later release ($LATER_VERSION, served in place of $NEXT_VERSION) is installed and tried as
-# usual. Then it and $OLD_VERSION crash: the seventh boot in a row reboots on no failure. The
-# harness reboots at the start of each half and then only watches.
+# entry, which boot counting does not count. $NEXT_VERSION crashes PID 1 on every boot: the fourth
+# boot starts $OLD_VERSION once, which completes and marks $NEXT_VERSION bad (+0-3), so the reboot
+# timer finds nothing to activate. A later release ($LATER_VERSION) is tried as usual; then it and
+# $OLD_VERSION crash, and the seventh boot in a row reboots on no failure.
 test_fail_blessed() {
   echo ""
   echo "=== failed boots: the blessed $NEXT_VERSION crashes PID 1 on every boot ==="
@@ -490,18 +482,15 @@ test_update_refused() {
   check_clock clock-not-reset-after-refused-update
 }
 
-# test_verity_keyring: the running kernel checks the signed root hash of the slot sysupdate just
-# filled. dm-verity trusts the kernel's built-in certificate only, never the firmware's db
-# (docs/design/trust.md): the next release of a plain --next is signed with the running kernel's
-# key, so the signature activates the volume; under --rotate it is signed with the new db key,
-# which db holds in this boot beside the old one but the running kernel does not carry, so the
-# kernel refuses it (ENOKEY) and systemd-veritysetup activates the volume unsigned. A signed
-# activation shows no "retrying without"; the volume is detached again before the reboot.
+# test_verity_keyring: dm-verity checks the signed root hash of the slot sysupdate just filled
+# against the kernel's built-in certificate, never the firmware's db (docs/design/trust.md). A
+# plain --next is signed with that key and activates the volume; under --rotate it is signed with
+# the new db key, which the running kernel does not carry, so the kernel refuses it (ENOKEY) and
+# veritysetup activates the volume unsigned. A signed activation shows no "retrying without".
 test_verity_keyring() {
   echo ""
   echo "=== the kernel's verity keyring: the signature of $NEXT_VERSION's /usr ==="
   SIG_JSON=$(guest "cat /dev/disk/by-partlabel/usr-verity-sig_$NEXT_VERSION" | tr -d '\000') || true
-  # shellcheck disable=SC2016 # python's own text
   FIELDS=$(printf %s "$SIG_JSON" | python3 -c '
 import json, sys
 d, _ = json.JSONDecoder().raw_decode(sys.stdin.read())

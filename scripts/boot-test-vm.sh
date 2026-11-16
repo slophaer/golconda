@@ -1,8 +1,6 @@
 # shellcheck shell=sh
 # Part of scripts/boot-test, sourced by it (no processes start when sourced).
 # The VM: Secure Boot keys, the TPM, the guest's credentials and keys, QEMU.
-# shellcheck disable=SC2154 # the globals are set by scripts/boot-test and the other parts
-# shellcheck disable=SC2034 # and read there
 
 # real_path PATH: PATH with its symlinks followed
 real_path() {
@@ -18,10 +16,9 @@ real_path() {
 }
 
 # --- host ports ---
-# The one host port a run needs is the guest's ssh (hostfwd). Runs on one host must not take the
-# same port, and two runs that both look for a free port must not find the same one: each claims a
-# port with a flock on $PORT_LOCKS/PORT, held on a file descriptor until the run ends (the kernel
-# drops it when the process dies, so no stale lock stays), and also checks that nothing listens.
+# The one host port a run needs is the guest's ssh (hostfwd). Each run claims a port with a flock
+# on $PORT_LOCKS/PORT, held on a file descriptor until the run ends (the kernel drops it when the
+# process dies), and checks that nothing listens, so runs on one host never take the same port.
 PORT_LOCKS=${BOOT_TEST_PORT_LOCKS:-${XDG_RUNTIME_DIR:-/tmp}/boot-test-ports-$(id -u)}
 
 # port_in_use PORT: true when 127.0.0.1:PORT is already bound
@@ -102,9 +99,8 @@ enroll_keys() {
 }
 
 # --- --auto-enrol: systemd-boot enrols the ESP's keys (docs/design/bootloader.md) ---
-# The variable store is the firmware's empty template, in Setup Mode: enroll_keys does not run.
-# systemd-boot finds loader/keys/auto on the ESP, writes db, KEK and PK (in that order; PK ends
-# Setup Mode) and resets the machine; the next boot runs with Secure Boot on.
+# The variable store is the firmware's empty template, in Setup Mode. systemd-boot finds
+# loader/keys/auto on the ESP, writes db, KEK and PK (PK ends Setup Mode) and resets the machine.
 
 # efivar_holds NAME GUID SPEC...: the guest's EFI variable NAME-GUID (kept in the work directory)
 # holds each SPEC +FILE and none of -FILE. FILE is a certificate (.crt PEM, .der DER), found as
@@ -139,11 +135,9 @@ sys.exit(0 if ok else 1)
 EOF
 }
 
-# check_auto_enrol: systemd-boot enrolled the keys, and PK, KEK, db and dbx hold what the key set
-# and, unless --no-microsoft-keys, Microsoft's objects (packages/secureboot-objects) say: KEK the
-# key set's KEK.crt and Microsoft's KEK CA 2011 and 2023; db its db.crt and the Microsoft UEFI CA
-# 2011 and 2023 and Option ROM UEFI CA 2023, never the two Windows CAs; dbx Microsoft's list. With
-# --no-microsoft-keys none of Microsoft's, and no dbx. secure-boot-enabled is test_ssh's.
+# check_auto_enrol: systemd-boot enrolled the keys: PK, KEK, db and dbx hold the key set's
+# certificates and, unless --no-microsoft-keys, Microsoft's (packages/secureboot-objects; never the
+# two Windows CAs, and dbx is Microsoft's list). secure-boot-enabled is test_ssh's.
 check_auto_enrol() {
   echo ""
   echo "=== Secure Boot keys enrolled by systemd-boot ==="
@@ -183,12 +177,10 @@ check_auto_enrol() {
   verdict "dbx-enrolled (dbx is Microsoft's revocation list: $([ "$M" = + ] && echo yes || echo none))" $RC
 }
 
-# test_no_reenrol: the machine's later life, after the first good boot (--auto-enrol, run last:
-# the machine does not boot afterwards). Someone who can write the ESP puts enrolment files back
-# at loader/keys/auto (here the key set's own, which the guest gets over ssh), and the firmware is
-# in Setup Mode again (the empty variable store, as after a CMOS clear). systemd-boot must enrol
-# nothing: /usr's loader.conf, on the ESP since the first good boot, says secure-boot-enroll off.
-# It starts the UKI, and the kernel reports Secure Boot off; the harness stops QEMU there.
+# test_no_reenrol: after the first good boot (--auto-enrol, run last: the machine does not boot
+# afterwards), enrolment files are put back at loader/keys/auto and the firmware is in Setup Mode
+# again (as after a CMOS clear). systemd-boot must enrol nothing, because /usr's loader.conf on the
+# ESP says secure-boot-enroll off; the UKI starts and the kernel reports Secure Boot off.
 test_no_reenrol() {
   echo ""
   echo "=== Setup Mode again, enrolment files back on the ESP ==="
@@ -335,10 +327,10 @@ start_qemu() {
   if [ "$ENROL" = 1 ]; then
     SMBIOS_BOOTSTRAP="-smbios type=11,value=io.systemd.credential.binary:ssh.authorized_keys.root=$(base64 -w0 "$SSH_DIR/bootstrap.pub")"
   fi
-  # --imds: Hetzner by DMI, and nothing else: the guest takes the endpoint from hwdb and the
-  # image, as on Hetzner. Its address, 169.254.169.254, must be on the guest's link (imdsd's route
-  # to it has Scope=link), so QEMU's user network is GUEST_NET in every mode, and QEMU answers ARP
-  # for the guestfwd address. QEMU's DHCP server offers a host name, which networkd must not apply.
+  # --imds: Hetzner by DMI, and nothing else: the guest takes the endpoint from hwdb and the image.
+  # Its address, 169.254.169.254, must be on the guest's link (imdsd's route has Scope=link), so
+  # QEMU's user network is GUEST_NET in every mode. QEMU's DHCP server offers a host name, which
+  # networkd must not apply.
   SMBIOS_IMDS=""
   NET_IMDS=""
   if [ "$IMDS" = 1 ]; then

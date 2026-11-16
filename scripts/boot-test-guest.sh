@@ -1,8 +1,6 @@
 # shellcheck shell=sh
 # Part of scripts/boot-test, sourced by it (no processes start when sourced).
 # The guest: ssh, waiting for a login, a verdict, small queries, reboot.
-# shellcheck disable=SC2154 # the globals are set by scripts/boot-test and the other parts
-# shellcheck disable=SC2034 # and read there
 
 # --- SSH tests ---
 # ssh takes the first value of an option: the host key options are separate
@@ -79,7 +77,6 @@ guest_hash() {
   guest "sha256sum < $1" 2>/dev/null | cut -c1-64
 }
 
-# shellcheck disable=SC2016 # $IMAGE_VERSION is the guest's
 guest_version() {
   guest '. /usr/lib/os-release && echo "$IMAGE_VERSION"' 2>/dev/null
 }

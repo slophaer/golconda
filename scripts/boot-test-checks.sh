@@ -1,8 +1,6 @@
 # shellcheck shell=sh
 # Part of scripts/boot-test, sourced by it (no processes start when sourced).
 # The checks: each is one function that every mode that needs it calls (docs/release-checklist.md).
-# shellcheck disable=SC2154 # the globals are set by scripts/boot-test and the other parts
-# shellcheck disable=SC2034 # and read there
 
 # vars CMD...: `golconda vars` against this guest, as an operator runs it: an ssh
 # config names the guest boot-test, the store is $WORKDIR/vars, encrypted to a fresh age key
@@ -10,14 +8,11 @@ vars() {
   GOLCONDA_SSH="ssh -F $WORKDIR/ssh/config" "$GOLCONDA" vars "$@"
 }
 
-# push_admin_vars: the host CA signs the guest's host key once its fingerprint matches the one
-# the first boot printed on the serial console; the host certificate and a revocation list naming
-# cert-revoked are stored and pushed with golconda vars, and both must be sealed. With --next the
-# harness runs the steps one by one (vars pub, ssh-keygen -s, vars set, vars push); with --enrol it
-# runs the one command an operator runs, golconda vars enrol, with the console's fingerprint, after
-# a wrong fingerprint was refused. From then on a release with hostCertificate on refuses plain
-# keys, so the harness also offers the certificate cert-admin (GUEST_EXTRA_ID: guest, the vars ssh
-# config, check_unsealed)
+# push_admin_vars: sign the guest's host key with the host CA once its fingerprint matches the
+# first boot's console line, store the certificate and a KRL naming cert-revoked with golconda
+# vars, and push them. --next runs the steps one by one; --enrol runs `golconda vars enrol`. From
+# then on a release with hostCertificate on refuses plain keys, so the harness also offers the
+# certificate cert-admin (GUEST_EXTRA_ID)
 push_admin_vars() {
   echo ""
   echo "=== admin vars: the host certificate and the revocation list, with golconda vars ==="
@@ -76,12 +71,9 @@ EOF
   verdict "admin-vars-sealed (golconda vars list: stored here, sealed there)" $RC
 }
 
-# enrol_admin_vars: golconda vars enrol, as an operator enrols a machine
-# (docs/features/ssh-login.md): it reads the host key over ssh, compares its fingerprint with the
-# one given (the harness reads it from the first boot's serial console), signs it with the host
-# CA, stores the certificate and the KRL, and pushes them (push.out). A fingerprint that is not
-# the console's must be refused before anything is signed, stored or sealed. Leaves RC, the
-# command's result, for admin-vars-pushed.
+# enrol_admin_vars: `golconda vars enrol` as an operator runs it (docs/features/ssh-login.md). A
+# fingerprint that is not the console's must be refused before anything is signed, stored or
+# sealed. Leaves RC, the command's result, for admin-vars-pushed.
 enrol_admin_vars() {
   CONSOLE_FP=$(grep -a "golconda: ssh host key" "$FIRST_SERIAL_LOG" | tail -1 |
     grep -o 'SHA256:[A-Za-z0-9+/]*') || CONSOLE_FP=""
@@ -110,10 +102,8 @@ enrol_admin_vars() {
   RC=$ENROL_RC
 }
 
-# test_certs LOGIN: the release with hostCertificate and revokedKeys on reads what was pushed:
-# it presents the certificate, takes a good user certificate (the check LOGIN), refuses the
-# revoked one, and a second revocation list, pushed while it runs, takes effect when sshd restarts
-# (rotation)
+# test_certs LOGIN: the release presents the host certificate, takes a good user certificate (the
+# check LOGIN), refuses the revoked one, and takes effect of a second KRL when sshd restarts
 test_certs() {
   echo ""
   echo "=== certificates: $1 ==="
@@ -152,12 +142,10 @@ bootstrap_login() {
   ssh $SSH_OPTS $NO_HOSTKEY_CHECK -o IdentitiesOnly=yes -i "$WORKDIR/ssh/bootstrap" root@localhost true
 }
 
-# check_plain_refused NAME: neither plain key logs in: the SMBIOS credential's bootstrap key nor the
-# image's authorizedKeys test key. The pushed KRL names neither, so the refusal is the enrolment's
-# (modules/services/sshd: AuthorizedKeysFile none once the host certificate is sealed)
-# Each refused connection costs this source 5 s of sshd's PerSourcePenalties (authfail), and 15 s
-# block it ("Not allowed at this time"); every connection of the harness comes from QEMU's one
-# gateway address. So each refusal here starts after the last penalty ran out.
+# check_plain_refused NAME: neither plain key (the SMBIOS credential's, the image's test key) logs
+# in: the KRL names neither, so the refusal is the enrolment's. Each refusal costs the QEMU gateway
+# address 5 s of sshd's PerSourcePenalties, and 15 s block it, so each starts after the last
+# penalty ran out.
 check_plain_refused() {
   RC=0
   sleep 6
@@ -171,11 +159,9 @@ check_plain_refused() {
   verdict "$1 (the bootstrap key and the image's test key are refused; the KRL names neither)" $RC
 }
 
-# test_enrol: one release from first boot to certificates (docs/design/trust.md, "Identity"). The
-# image has hostCertificate and revokedKeys on from its first boot; test_ssh showed the bootstrap
-# key in and certificates refused. Push the host certificate and a KRL, then the same boot of the
-# same release presents the certificate, takes certificates, refuses the revoked one, refuses every
-# plain key (the KRL names none), and takes a rotated KRL.
+# test_enrol: one release from first boot to certificates (docs/design/trust.md, "Identity"):
+# push the host certificate and a KRL, then the same boot presents the certificate, takes
+# certificates, refuses the revoked one and every plain key, and takes a rotated KRL.
 test_enrol() {
   ENROL_VERSION=$(guest_version)
   push_admin_vars
@@ -201,11 +187,8 @@ test_enrol_after_reboot() {
 }
 
 # test_reenrol_after_reset: --enrol --factory-reset (docs/features/factory-reset.md). The reset
-# took the sealed host certificate and KRL with the state, and the machine made a new host key. The
-# image has revokedKeys: until a KRL is pushed again its fallback list refuses the user CA's
-# certificates, so the harness logs in with a plain key (the image's test key; an operator: the
-# provisioning key, which SMBIOS gives this guest at every boot). golconda vars enrol refuses the
-# first boot's fingerprint and enrols the reset boot's, from its console line
+# took the sealed certificate and KRL, and the machine made a new host key, so the harness logs in
+# with a plain key; `golconda vars enrol` refuses the first boot's fingerprint and enrols the new.
 test_reenrol_after_reset() {
   echo ""
   echo "=== after the factory reset: golconda vars enrol again ==="
@@ -239,10 +222,9 @@ test_reenrol_after_reset() {
   check_plain_refused bootstrap-key-refused-after-reenrol
 }
 
-# check_hwdb NAME: the hardware database is compiled into /usr (packages/hwdb, linked by /base), so
-# nothing writes one to /etc and lookups answer: the IMDS entry for Hetzner Cloud's DMI vendor, and
-# PCI and USB names (virtio-net's vendor, the root hub's). Run on the first release and on the one
-# an update installed: each image carries its own.
+# check_hwdb NAME: lookups answer from the hardware database compiled into /usr (packages/hwdb):
+# the IMDS entry for Hetzner Cloud, and PCI and USB names. Each image carries its own, so it runs
+# on the first release and the one an update installed.
 check_hwdb() {
   echo ""
   echo "=== $1 ==="
@@ -283,13 +265,10 @@ check_hang_panic() {
   verdict "watchdog-armed (watchdog0 is the i6300esb, active, timeout 30 s; 10 min for a reboot)" $RC
 }
 
-# check_units_composed [SUFFIX]: every enabled unit is enabled by a static link in /usr, which the
-# configuration composed (docs/design/layout.md, "Unit enablement"). 00-golconda.preset says
-# `disable *`, so the first boot's preset-all writes nothing to /etc/systemd/system, and every unit
-# file systemctl calls enabled has a link in a .wants, .requires or .upholds directory of
-# /usr/lib/systemd/system (a template counts by any instance). The generators' links, in /run, make
-# units enabled-runtime: those are not counted. The sysext and confext stack is not built: no unit
-# file and no program of either. SUFFIX names a later boot (-after-update).
+# check_units_composed [SUFFIX]: every enabled unit has a static link in a .wants, .requires or
+# .upholds directory of /usr/lib/systemd/system (docs/design/layout.md, "Unit enablement"), because
+# 00-golconda.preset says `disable *` and nothing writes to /etc/systemd/system. The generators'
+# links in /run (enabled-runtime) are not counted. SUFFIX names a later boot (-after-update).
 check_units_composed() {
   echo ""
   echo "=== enabled units${1:+ ($1)} ==="
@@ -352,14 +331,10 @@ check_no_failed() {
   verdict "$1" $RC
 }
 
-# check_clock NAME: the clock the kernel read at boot was kept in the running boot (every boot is
-# checked: the first, and each later one under its own NAME). PID 1 resets a clock more than 15
-# years past systemd's built-in epoch (`time-epoch`: repkgs sets SOURCE_DATE_EPOCH to the pin date
-# of packages/systemd), and until timesyncd syncs, DNSSEC validation and TLS certificate times
-# fail. Under KVM the guest reads the host's time (kvm-clock,
-# not the CMOS RTC, so QEMU's -rtc base does not move it), so it shows here. The journal of this
-# boot (journalctl -b) has no "further ahead than" reset message, and its oldest entry is not before
-# the epoch's year.
+# check_clock NAME: the clock the kernel read at boot was kept (every boot is checked, each under
+# its NAME). PID 1 resets a clock more than 15 years past systemd's epoch, and until timesyncd
+# syncs, DNSSEC and TLS times fail. Under KVM the guest reads the host's time (kvm-clock, not the
+# RTC), so the journal must have no "further ahead than" reset message.
 check_clock() {
   echo ""
   echo "=== the clock ($1) ==="
@@ -395,11 +370,9 @@ check_unsealed() {
   verdict "hostkey-unchanged ($1: the first boot's host key, credential not re-sealed, sshd $A)" $RC
 }
 
-# cred_pcrs FILE: the PCRs the sealed credential FILE in the guest is bound to, as
-# "hashed=7 signed=11" ("-" for none): systemd's creds-util.c puts the TPM2 header after the
-# header and its IV, aligned to 8 bytes: the mask of the PCRs bound by value, the blob and the
-# policy hash; then the public key header, with the mask of the PCRs of the signed policy. Another
-# kind of credential gives "unreadable" or masks read from the wrong bytes
+# cred_pcrs FILE: the PCRs the sealed credential FILE in the guest is bound to, as "hashed=7
+# signed=11" ("-" for none). It reads the TPM2 header of systemd's creds-util.c: the mask of the
+# PCRs bound by value, then the public key header with the mask of the signed policy's PCRs.
 cred_pcrs() {
   guest "base64 -d < $1" > "$WORKDIR/cred.bin" 2>/dev/null || : > "$WORKDIR/cred.bin"
   python3 - "$WORKDIR/cred.bin" <<'EOF'
@@ -606,12 +579,10 @@ check_imds_layout() {
   verdict "imds-hetzner-layout (no imds.* credential; GET /hetzner/v1/metadata/hostname and /hetzner/v1/userdata answered 200; no 404)" $RC
 }
 
-# check_imds_ssh_keys: both keys of Hetzner's JSON array /metadata/public-keys log in as root (the
-# image's own file names only the test key), from the 0600 /root/.ssh/authorized_keys tmpfiles
-# wrote from the credential ssh.authorized_keys.root (systemd's ssh-key-json key, a Golconda patch
-# until systemd has it). The bad entry the server puts between them is skipped alone, with a
-# warning. The import writes that credential before the user data's credentials, so
-# it skips the user data's ssh.authorized_keys.root, and that key does not log in.
+# check_imds_ssh_keys: both keys of Hetzner's JSON array /metadata/public-keys log in as root, from
+# the 0600 authorized_keys that tmpfiles wrote from the ssh.authorized_keys.root credential
+# (systemd's ssh-key-json key, a Golconda patch until systemd has it). The bad entry between them
+# is skipped alone, with a warning; the user data's own key of that name is skipped too.
 check_imds_ssh_keys() {
   echo ""
   echo "=== /imds: ssh keys ==="
@@ -709,11 +680,9 @@ check_imds_locked() {
 # routing decision, taken before any server answers.
 IMDS_LOCKED="169.254.169.254 169.254.42.42 100.100.100.200 fd00:ec2::254 fd00:c1::a9fe:a9fe fd00:42::42"
 
-# check_imds_lock_endpoints: a root process that is not imdsd (ssh, the image's client) gets EACCES
-# from the prohibit rule on lo (10-golconda-imds-lock.network) at connect(), for every endpoint
-# hwdb names, IPv6 ones too. Without a rule for the address the error differs: the network is
-# unreachable, the connection is refused, or it times out. The link's .network file does not
-# matter (the rule is on lo), so this also holds without a cloud in DMI.
+# check_imds_lock_endpoints: a root process that is not imdsd gets EACCES at connect() from the
+# prohibit rule on lo (10-golconda-imds-lock.network) for every endpoint hwdb names, IPv6 too; a
+# missing rule gives another error. The rule is on lo, so this also holds without a cloud in DMI.
 check_imds_lock_endpoints() {
   echo ""
   echo "=== /imds: the lock covers every endpoint of 40-imds.hwdb, IPv6 too ==="

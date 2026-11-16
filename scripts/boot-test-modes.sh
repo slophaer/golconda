@@ -1,8 +1,6 @@
 # shellcheck shell=sh
 # Part of scripts/boot-test, sourced by it (no processes start when sourced).
 # The modes of one boot: the first-boot checks, --imds, the TPM reboot, the factory reset.
-# shellcheck disable=SC2154 # the globals are set by scripts/boot-test and the other parts
-# shellcheck disable=SC2034 # and read there
 
 test_ssh() {
   echo ""
@@ -205,11 +203,11 @@ test_reboot() {
   return 0
 }
 
-# --- --factory-reset: the request and the reset boot (docs/design/recovery.md) ---
-# The reset is requested with `systemctl start factory-reset.target`: the target sets the
-# FactoryResetRequest EFI variable, and systemd-repart deletes and recreates the FactoryReset=
-# root partition on the next boot (systemd-factory-reset(8), systemd-repart(8)). The ESP and the
-# /usr slots must stay, and first boot must run again.
+# --- --factory-reset (docs/design/recovery.md) ---
+# `systemctl start factory-reset.target` sets the FactoryResetRequest EFI variable, and
+# systemd-repart recreates the FactoryReset= root partition on the next boot. The ESP and the /usr
+# slots must stay, and first boot must run again.
+
 # check_esp_credentials_removed NAME [FILE...]: golconda-esp-credentials.service ran, the ESP holds
 # no credential, and the service's journal names each FILE it removed from loader/credentials
 check_esp_credentials_removed() {
@@ -268,7 +266,6 @@ test_esp_after_reset() {
 test_factory_reset() {
   echo ""
   echo "=== factory reset ==="
-  # shellcheck disable=SC2016 # $IMAGE_ID is the guest's
   IMG_ID=$(guest '. /usr/lib/os-release && echo "$IMAGE_ID"' 2>/dev/null) || true
   if [ "$IMG_ID" != "boot-test" ]; then
     verdict "factory-reset-test-image (IMAGE_ID=${IMG_ID:-empty}; --factory-reset needs the test image)" 1
@@ -363,9 +360,9 @@ test_factory_reset() {
   tail -100 "$RESET_LOG"
 }
 
-# --- --secure-boot-off: a Secure Boot image on firmware with Secure Boot off ---
-# (docs/design/boot.md, "Secure Boot off"). The variable store keeps PK, KEK and db, and only
-# SecureBootEnable changes, so PCR 7 differs from the first boot's by the Secure Boot state alone.
+# --- --secure-boot-off: a Secure Boot image on firmware with Secure Boot off (docs/design/boot.md,
+# "Secure Boot off"). The variable store keeps PK, KEK and db, so PCR 7 differs from the first
+# boot's by the Secure Boot state alone.
 REFUSE_UNIT=golconda-secure-boot-required.service
 
 # set_secure_boot true|false: SecureBootEnable in the variable store (QEMU stopped)

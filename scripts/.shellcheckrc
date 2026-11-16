@@ -1,0 +1,11 @@
+# shellcheck, run by treefmt (nix/dev/default.nix). This file replaces the one in the repository
+# root for scripts/: shellcheck reads the first .shellcheckrc it finds.
+# The tests and boot-test hand shell code to eval, `guest` and nix in single quotes on purpose.
+disable=SC2016
+# `trap cleanup EXIT` calls the function; shellcheck 0.11 does not see that
+disable=SC2329
+# The parts of boot-test set variables that other parts read (SC2034, SC2153).
+disable=SC2034,SC2153
+# boot-test sources its parts beside it
+external-sources=true
+source-path=SCRIPTDIR

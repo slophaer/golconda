@@ -2,18 +2,14 @@
 # Part of scripts/boot-test, sourced by it (no processes start when sourced).
 # The update server: the release directory over HTTP for --next, as a QEMU guest forward; the fake
 # IMDS endpoint (--imds).
-# shellcheck disable=SC2154 # the globals are set by scripts/boot-test and the other parts
-# shellcheck disable=SC2034,SC2153 # and read there
 
 # --- the release HTTP server (--next) ---
 # The image's url-file source is http://$UPDATE_ADDR:$HTTP_PORT/ (169.254.169.2:8074 in the test
-# image), and --imds serves Hetzner's metadata at http://169.254.169.254/. The harness opens no host port for
-# either: QEMU's user network forwards the guest's connections to such an address to a command
-# (start_qemu: guestfwd=tcp:$UPDATE_ADDR:$HTTP_PORT-cmd:$WORKDIR/serve-http), which QEMU starts once
-# per connection with the connection on its stdin and stdout. Two runs on one host both serve
-# "8074" to their own guest and share nothing. The command is the standard library's
-# SimpleHTTPRequestHandler over stdio, so the guest sees the same server `python3 -m http.server`
-# was (HTTP/1.0, one request per connection, no ranges).
+# image), and --imds serves Hetzner's metadata at http://169.254.169.254/. The harness opens no
+# host port: QEMU's user network forwards the guest's connections to such an address to a command
+# (start_qemu guestfwd=...-cmd:$WORKDIR/serve-http), which QEMU starts once per connection with
+# the connection on stdin and stdout, so two runs on one host share nothing. The command is the
+# standard library's SimpleHTTPRequestHandler over stdio (HTTP/1.0, one request per connection).
 
 # write_http_server NAME: $WORKDIR/serve-NAME serves $WORKDIR/NAME and logs to $WORKDIR/NAME.log
 write_http_server() {
@@ -92,18 +88,13 @@ start_http_server() {
 }
 
 # --- the fake IMDS endpoint (--imds) ---
-# start_imds_server: what Hetzner Cloud's metadata service answers, at its own address and paths:
-# QEMU's user network is $GUEST_NET, so http://$IMDS_ADDR/ is on the guest's link
-# (a guestfwd, like the update server's: no host port), and the guest finds the endpoint by hwdb
-# alone, as on Hetzner: base URL http://$IMDS_ADDR/hetzner/v1, the host name and the other keys under
-# /metadata/, the user data at /userdata. /metadata/public-keys is Hetzner's JSON array of the
-# project's keys: two key pairs made here, each with Hetzner's trailing newline, and between them a
-# bad entry (two keys in one string) that the import skips with a warning. The user data
-# lists four credentials: imds-canary; login.motd, which tmpfiles writes to /etc/motd.d;
-# ssh.authorized_keys.root, a third key made here (the import skips it: the metadata's keys come
-# first, under the same credential name); and network.network.$IMDS_NET_CRED,
-# a static global IPv6 address, as Hetzner gives one (no router advertisement, no DHCPv6), with
-# nothing of the IMDS lock. The server's log shows every GET and its status.
+# start_imds_server: what Hetzner Cloud's metadata service answers at http://$IMDS_ADDR/hetzner/v1
+# (a guestfwd like the update server's), so the guest finds the endpoint by hwdb alone.
+# /metadata/public-keys is Hetzner's JSON array of two keys made here, with a bad entry (two keys in
+# one string) between them that the import skips with a warning. The user data lists four
+# credentials: imds-canary; login.motd; ssh.authorized_keys.root, a third key that the import skips
+# (the metadata's keys come first under that name); and network.network.$IMDS_NET_CRED, a static
+# global IPv6 address with nothing of the IMDS lock. The server's log shows every GET and status.
 start_imds_server() {
   IMDS_ROOT="$WORKDIR/imds"
   IMDS_LOG="$WORKDIR/imds.log"
