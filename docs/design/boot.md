@@ -351,11 +351,11 @@ An image with `/system.secureBoot` (the default) is built for firmware that enfo
 firmware that does not, nothing checked the loader or the UKI, so the initrd refuses to go on:
 `golconda-secure-boot-required.service` (`ConditionSecurity=!uefi-secureboot`,
 `lib/image/initrd.nix`) runs before `sysinit.target`, writes
-`golconda: Secure Boot is off, and this image needs it (/system.secureBoot): halting. …` to the
-kernel log, which reaches the serial console and the screen, and halts the machine with
-`SuccessAction=halt-force`, which stops no unit: the initrd's TPM measurement units reboot when they
-are stopped mid-run (`FailureAction=reboot-force`). Nothing in the initrd that comes after it runs:
-no state partition is made or mounted, and no switch to it happens. The
+`golconda: Secure Boot is off, and this image needs it (/system.secureBoot): halting.` and a line
+that says how to turn it on to the kernel log, which reaches the serial console and the screen, and
+halts the machine with `SuccessAction=halt-force`, which stops no unit: the initrd's TPM measurement
+units reboot when they are stopped mid-run (`FailureAction=reboot-force`). Nothing in the initrd
+that comes after it runs: no state partition is made or mounted, and no switch to it happens. The
 [failed-boot counter](#failed-boots) comes after it too, so a halted boot is not a failed boot.
 
 It halts, and does not reboot into the firmware setup (`systemctl reboot --firmware-setup`): the

@@ -40,7 +40,8 @@ let
       "Type=oneshot"
       # the kernel log reaches the serial console and the screen (as golconda-emergency-reboot's)
       "StandardOutput=file:/dev/kmsg"
-      "ExecStart=/usr/bin/echo \"golconda: Secure Boot is off, and this image needs it (/system.secureBoot): halting. Turn Secure Boot on in the firmware setup, with the deployment's keys, and boot again.\""
+      "ExecStart=/usr/bin/echo \"golconda: Secure Boot is off, and this image needs it (/system.secureBoot): halting.\""
+      "ExecStart=/usr/bin/echo \"golconda: turn Secure Boot on in the firmware setup, with the deployment's keys, and boot again.\""
     ];
     links."/usr/lib/systemd/system/sysinit.target.wants/${refuseUnit}" = {
       target = "../${refuseUnit}";
