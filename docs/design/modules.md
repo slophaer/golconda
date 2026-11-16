@@ -75,7 +75,7 @@ set is a second module path, never a second argument. No option takes a function
 stays platform-independent. `/pkgs.target` is the one option that is not configuration data, and the
 TOML loader refuses it.
 
-The composer records which fragment brought each package (`packageOrigins`: a component's module
+The composer records which fragment brought each package (`origins.packages`: a component's module
 path such as `/base` or `/services/sshd`, or another fragment's own `name`), and the `/usr` tree
 writes it as `/usr/lib/golconda/packages.json`, so "why is this here" has an answer without a second
 declaration.
@@ -196,7 +196,7 @@ merges them, then the sysupdate definitions it renders from `updateSource` and t
 - List fields are concatenated, and an identical line is kept once. A tmpfiles line claims its path
   and a sysusers `u` or `g` line its user or group: two different lines for one key throw. A line
   with a control character throws.
-- `packages` is one list with each package once, and `packageOrigins` says which fragments brought
+- `packages` is one list with each package once, and `origins.packages` says which fragments brought
   it.
 - The fragments' links are one map, and one duplicate check covers the whole map.
 

@@ -2,7 +2,7 @@
 #! `mkSystem` (`lib/components.nix`) passes the fragments of the selected components as `components`: the built-ins first, then each optional one.
 #! `updateSource` adds the sysupdate transfers and the update timer, `updateReboot` the reboot timer (docs/design/updates.md, "Activation").
 #! `secureBoot` adds `/usr/lib/golconda/vars.d/tpm2-pcrs`, which seals the vars to PCR 7 as well (docs/design/trust.md).
-#! The composer: docs/design/modules.md. Its output (`units`, `files`, `links`, `packageOrigins`, …): docs/reference/modules/README.md.
+#! The composer: docs/design/modules.md. Its output (`units`, `files`, `links`, `origins`, …): docs/reference/modules/README.md.
 { types, ... }:
 let
   ini = import ../lib/ini.nix;
@@ -219,8 +219,6 @@ in
       inherit (options)
         name
         version
-        updateSource
-        updateReboot
         secureBoot
         secureBootMicrosoftKeys
         ;

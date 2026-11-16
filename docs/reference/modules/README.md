@@ -22,20 +22,18 @@ this shape: [design/modules](../../design/modules.md).
 
 ## The composer output
 
-`/system` returns
-`{ name; version; updateSource; updateReboot; units; files; sysusers; tmpfiles; packages; packageOrigins; links }`:
+`/system` returns `{ name; version; units; files; sysusers; tmpfiles; packages; origins; links }`:
 
-| field            | shape                                                                                      | installed as                                                                       |
-| ---------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `units`          | `{ unitName = text; }`                                                                     | `/usr/lib/systemd/system/<name>`                                                   |
-| `files`          | `{ path = { text; mode; }; }`                                                              | the path, a canonical path under `/usr/`                                           |
-| `sysusers`       | `[ line ]`                                                                                 | `/usr/lib/sysusers.d/golconda.conf`                                                |
-| `tmpfiles`       | `[ line ]`                                                                                 | `/usr/lib/tmpfiles.d/golconda.conf`                                                |
-| `packages`       | `[ drv ]`                                                                                  | the closure in `/usr/nix/store`, each package once                                 |
-| `packageOrigins` | `{ "name-version" = [ origin ]; }`                                                         | `/usr/lib/golconda/packages.json`: a component's path or a build fragment's `name` |
-| `origins`        | `{ packages; files; links; units; sysusers; tmpfiles; programs }`, each key → `[ origin ]` | `/usr/lib/golconda/attribution.json`; `packageOrigins` is `origins.packages`       |
-| `links`          | `{ path = { target; kind; }; }`                                                            | the fragments' symlinks of `/usr`: expanded directories, dlopen sonames, `.wants`  |
-| `programs`       | `[ name ]`                                                                                 | nowhere: the image builder fails when `/usr/bin/<name>` does not exist             |
+| field      | shape                                                                                      | installed as                                                                                    |
+| ---------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `units`    | `{ unitName = text; }`                                                                     | `/usr/lib/systemd/system/<name>`                                                                |
+| `files`    | `{ path = { text; mode; }; }`                                                              | the path, a canonical path under `/usr/`                                                        |
+| `sysusers` | `[ line ]`                                                                                 | `/usr/lib/sysusers.d/golconda.conf`                                                             |
+| `tmpfiles` | `[ line ]`                                                                                 | `/usr/lib/tmpfiles.d/golconda.conf`                                                             |
+| `packages` | `[ drv ]`                                                                                  | the closure in `/usr/nix/store`, each package once                                              |
+| `origins`  | `{ packages; files; links; units; sysusers; tmpfiles; programs }`, each key → `[ origin ]` | `/usr/lib/golconda/attribution.json`; `origins.packages` also `/usr/lib/golconda/packages.json` |
+| `links`    | `{ path = { target; kind; }; }`                                                            | the fragments' symlinks of `/usr`: expanded directories, dlopen sonames, `.wants`               |
+| `programs` | `[ name ]`                                                                                 | nowhere: the image builder fails when `/usr/bin/<name>` does not exist                          |
 
 Units, files and links are installed into one `/usr` tree, so a path that two of them claim is an
 error that names both claims and both origins (a module path, or a build fragment's `name`). Each
@@ -82,7 +80,7 @@ The return type of every module.
 
 | field      | type                                         | installed to                                                                  |
 | ---------- | -------------------------------------------- | ----------------------------------------------------------------------------- |
-| `name`     | string                                       | nowhere: the origin label in `packageOrigins` (a module sets its path)        |
+| `name`     | string                                       | nowhere: the origin label in `origins` (a module sets its path)               |
 | `units`    | attrs `unitName` → `unitText`                | `/usr/lib/systemd/system/<name>`                                              |
 | `files`    | attrs path → file                            | the path: canonical, under `/usr/`                                            |
 | `sysusers` | list of string                               | `/usr/lib/sysusers.d/` lines                                                  |
@@ -192,7 +190,7 @@ cosmetic change.
 `merge [ fragmentA fragmentB ]` unions `units`, `files` and `links`, normalises every file to
 `{ text; mode; }`, concatenates `sysusers` and `tmpfiles` (each line once; two different lines for
 one tmpfiles path or one sysusers user or group throw), returns `packages` with each package once,
-and records in `packageOrigins` which fragments (by `name`) brought each.
+and records in `origins.packages` which fragments (by `name`) brought each.
 
 One duplicate check covers what evaluation knows of the `/usr` tree. Each fragment claims paths: a
 unit `/usr/lib/systemd/system/<name>`, a file its path, a link its path. A path claimed twice

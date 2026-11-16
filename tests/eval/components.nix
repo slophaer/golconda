@@ -270,7 +270,7 @@ in
     # a module brings the new package into the image
     && builtins.elem sys.pkgs.hello sys.composed.packages
     &&
-      sys.composed.packageOrigins.${(import ../../modules/lib/merge.nix).pkgKey sys.pkgs.hello} == [
+      sys.composed.origins.packages.${(import ../../modules/lib/merge.nix).pkgKey sys.pkgs.hello} == [
         "/local/hello"
       ]
   ))

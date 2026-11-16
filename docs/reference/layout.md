@@ -41,7 +41,7 @@ UKI's `usrhash=` names.
 | `/usr/lib/sysupdate.d/*.transfer`               | image | `/system` from `updateSource` and `image/sysupdate.nix`                                                                                 |
 | `/usr/lib/repart.d/30-root.conf`                | image | `/base`, rendered from `image/repart.nix`                                                                                               |
 | `/usr/lib/os-release`                           | image | `lib/usr-tree.nix` from `image/os-release.nix`; `ID`/`IMAGE_ID` are `/system.name`                                                      |
-| `/usr/lib/golconda/packages.json`               | image | `lib/usr-tree.nix` from the composer's `packageOrigins`                                                                                 |
+| `/usr/lib/golconda/packages.json`               | image | `lib/usr-tree.nix` from the composer's `origins.packages`                                                                               |
 | `/usr/lib/golconda/vars.d/`, `golconda-var-run` | image | `/vars` and the var renderer                                                                                                            |
 | `/usr/lib/<service>/`                           | image | the service renderer: the app's files                                                                                                   |
 | `/usr/share/factory/etc`                        | image | `/factory`                                                                                                                              |

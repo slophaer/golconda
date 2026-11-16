@@ -178,7 +178,7 @@ in
       }) roots;
 
       # packages.json: each package once, with the fragments that brought it
-      # (composerOutput.packageOrigins); `path` keeps the store path's context
+      # (composerOutput.origins.packages); `path` keeps the store path's context
       packageList = map (p: {
         name = p.pname or (p.name or "unknown");
         version = p.version or null;

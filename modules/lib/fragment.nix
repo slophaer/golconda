@@ -179,7 +179,7 @@ let
   );
 
   fragmentStruct = struct "fragment" {
-    # who brought this fragment, for packageOrigins (merge.nix); a module sets its path
+    # who brought this fragment, for origins (merge.nix); a module sets its path
     name = optionalAttr string;
     # unit file name -> unit file text, installed to /usr/lib/systemd/system
     units = optionalAttr units;

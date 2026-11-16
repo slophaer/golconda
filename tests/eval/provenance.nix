@@ -39,7 +39,7 @@ in
         }
         { packages = [ openssh ]; }
       ];
-      o = s2.packageOrigins;
+      o = s2.origins.packages;
     in
     o.${merge.pkgKey standIn} == [
       "fragments[0]"
@@ -50,8 +50,8 @@ in
   ))
   (check "attribution: /base's systemd has origin /base; /network and sshd are named" (
     let
-      o = (compose [ { packages = [ stubSystemd ]; } ]).packageOrigins;
-      sshdO = system.packageOrigins;
+      o = (compose [ { packages = [ stubSystemd ]; } ]).origins.packages;
+      sshdO = system.origins.packages;
     in
     o.${merge.pkgKey stubSystemd} == [
       "/base"
@@ -60,8 +60,9 @@ in
     && o.${merge.pkgKey stubDash} == [ "/base" ]
     && sshdO.${merge.pkgKey fixturePkgs.openssh} == [ "/services/sshd" ]
   ))
-  (check "attribution: packageOrigins keys exactly the packages" (
-    sort lessThan (attrNames system.packageOrigins) == sort lessThan (map merge.pkgKey system.packages)
+  (check "attribution: origins.packages keys exactly the packages" (
+    sort lessThan (attrNames system.origins.packages)
+    == sort lessThan (map merge.pkgKey system.packages)
   ))
   # Provenance data: explicit per option, declaredIn, inputs, attribution
   (check "provenance: config.json marks a TOML-set option explicit and a default not" (
@@ -179,7 +180,6 @@ in
     && o.tmpfiles."d /var/b" == [ "/services/b" ]
     # negative: nothing is attributed to a fragment that did not emit it
     && !(o.files ? "/usr/lib/nowhere")
-    && o.packages == (compose [ ]).packageOrigins
-    && system.packageOrigins == system.origins.packages
+    && o.packages == (compose [ ]).origins.packages
   ))
 ]

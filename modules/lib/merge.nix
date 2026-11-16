@@ -67,7 +67,7 @@ let
     packages:
     foldl' (acc: p: if any (q: pkgId q == pkgId p) acc then acc else acc ++ [ p ]) [ ] packages;
 
-  # The key of a package in packageOrigins: its name-version. Not the output
+  # The key of a package in origins.packages: its name-version. Not the output
   # path (a placeholder for a content-addressed output) and not the .drv path
   # (a stand-in shares its parent's).
   pkgKey = pkgName;
@@ -307,11 +307,7 @@ in
     let
       origins = originsOf labelled;
     in
-    unionOf labelled
-    // {
-      inherit origins;
-      packageOrigins = origins.packages;
-    };
+    unionOf labelled // { inherit origins; };
 
   __functor = _: union;
 }
