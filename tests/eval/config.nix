@@ -43,7 +43,7 @@ in
     cfg.options."/system".name == "server" && cfg.options."/services/sshd".port == 22
   ))
   (check "config: loadConfig rejects unknown table" (
-    !(tryEval (configLib.loadConfig ../../examples/bad.toml)).success
+    !(tryEval (configLib.loadConfig ../fixtures/bad.toml)).success
   ))
   # The loader checks option names too: its options are safe to hand to
   # f.modules (the probe: prot = 2222 kept Port 22 through loadAndApply)

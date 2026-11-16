@@ -9,8 +9,8 @@ then checks each input against both the schema and its expected Nix result. It u
 `jsonschema` (`packages/python-jsonschema`), a whole implementation of the draft. No validator ships
 in the image.
 
-Every example TOML file enters the table after `builtins.fromTOML` converts it to data.
-`examples/bad.toml` must fail; the other examples must pass. The JSON fixtures cover null values,
+Every example TOML file enters the table after `builtins.fromTOML` converts it to data. Every
+example must pass, and `tests/fixtures/bad.toml` must fail. The JSON fixtures cover null values,
 which TOML cannot express. They contain input options, not the normalized `{ value; explicit; }`
 rows from `config.json`.
 

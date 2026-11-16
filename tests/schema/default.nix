@@ -65,18 +65,25 @@ let
         else
           configAccepted fixture.value;
     };
-  # bad.toml is the intentionally invalid example; every other example must pass.
+  # every example must pass; tests/fixtures/bad.toml must fail
   examples =
     map
       (name: {
         name = "example ${name}";
-        accepted = name != "bad.toml";
+        accepted = true;
         value = fromTOML (readFile (../../examples + "/${name}"));
       })
       (
         builtins.filter (name: builtins.match ".*\\.toml" name != null) (
           attrNames (builtins.readDir ../../examples)
         )
-      );
+      )
+    ++ [
+      {
+        name = "fixture bad.toml";
+        accepted = false;
+        value = fromTOML (readFile ../fixtures/bad.toml);
+      }
+    ];
 in
 map withResult ((fromJSON (readFile ./fixtures.json)) ++ examples)
