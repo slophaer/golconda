@@ -120,12 +120,17 @@ unstripped `vmlinux` with full DWARF 5, for `gdb` and crash analysis; it is larg
 
 ## What is packaged
 
-| in the image                                                                                                                                  | build only                                             |
-| --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| systemd (with repart, sysupdate, cryptsetup, TPM2, PKCS#11, PAM), dbus-broker, dash, uutils coreutils, the kernel                             | clang/lld, nushell, cpython, perl, rust, GNU coreutils |
-| openssh, linux-pam (no setuid helpers), p11-kit, tpm2-tss (ESYS only), iproute2 (minimal)                                                     | ukify, dosfstools, erofs-utils                         |
-| e2fsprogs (first-boot `mkfs.ext4`), lvm2 (device-mapper only), libtasn1, libmnl, json-c, popt                                                 | automake, libtool                                      |
-| tzdata (zoneinfo), ca-bundle (the CA bundle, from cacert), hwdb (compiled hardware database), GnuPG and its libraries (signed update indexes) |                                                        |
+The image holds these packages and their closures:
+
+- systemd (with repart, sysupdate, cryptsetup, TPM2, PKCS#11, PAM), dbus-broker, dash, uutils
+  coreutils, the kernel;
+- openssh, linux-pam (no setuid helpers), p11-kit, tpm2-tss (ESYS only);
+- e2fsprogs (first-boot `mkfs.ext4`), lvm2 (device-mapper only), libtasn1, json-c, popt;
+- tzdata (zoneinfo), ca-bundle (the CA bundle, from cacert), hwdb (compiled hardware database),
+  GnuPG and its libraries (signed update indexes).
+
+Golconda's other packages, for the build, the release host and the tests, are in
+[`packages/default.nix`](../../packages/default.nix); the toolchain comes from repkgs.
 
 `/base` includes tzdata and links `/usr/share/zoneinfo` to its zoneinfo directory. It includes hwdb
 too: systemd-hwdb compiles a server's selection of the target systemd's `hwdb.d` at build time, and
