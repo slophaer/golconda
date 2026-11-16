@@ -29,8 +29,8 @@ and runs `gpg --verify` against `/usr/lib/systemd/import-pubring.pgp`, the relea
 inside the running image. A payload whose digest the signed index does not list is never written.
 OpenPGP is the one signature systemd 262 checks here, so the image carries GnuPG.
 
-No image turns this off: there is no `Verify=no`, with or without Secure Boot. The signed index
-matters most without Secure Boot, where nothing else checks a UKI before it runs
+The image has no `Verify=no`, with or without Secure Boot. The signed index matters most without
+Secure Boot, where nothing else checks a UKI before it runs
 ([Updates: What an update authenticates](../design/updates.md#what-an-update-authenticates)).
 
 ## Using it
@@ -71,7 +71,10 @@ booted on the same markers as the throwaway set. Its next release installed over
 
 - The signature does not stop a replay of an older signed index. sysupdate installs only newer
   versions, and rollback protection is *(later)*.
-- The image trusts only the release key it carries. Changing that key takes two releases.
+- The image carries one release key. Changing that key takes two releases.
+- Root, and whoever writes the state partition, can change what an update trusts: systemd-pull also
+  trusts a key in `/etc/systemd/import-pubring.pgp`, and a transfer file in `/etc/sysupdate.d`
+  replaces the one of the same name in `/usr`.
 - No automated check runs `scripts/make-keys`. The string key directory is *(being built)*: no build
   uses it.
 - No test builds a whole release twice from the same inputs, or on a second build file system, and
