@@ -14,10 +14,10 @@ own copy of any of them:
 1. **The verity signing key** decides *what is read*: it signs the root hash of every `/usr` image.
    It is the Secure Boot `db` key. At every boot the kernel checks the signature against the `db`
    certificate built into the kernel, never against the firmware `db`, with or without Secure Boot
-   ([Verity key](#2-verity-key)).
+   ([Verity key](verity-key.md)).
 1. **The CA store** decides *whom the machine talks to*: one bundle for every TLS client, made when
    the image is built from cacert's Mozilla roots, the administrator's anchors and a distrust list
-   ([status](#3-ca-store)).
+   ([CA store](ca-store.md)).
 
 A fourth thing, who may log in, is decided outside the image ([Identity](#identity)).
 
@@ -64,207 +64,15 @@ flowchart LR
 
 ### 2. Verity key
 
-```mermaid
-flowchart LR
-  db["Secure Boot db key"] --> vsig["PKCS#7 of the hex root hash"]
-  vsig --> part["usr-verity-sig partition"]
-  vsig --> cmdline["UKI cmdline: systemd.verity_usr_options=root-hash-signature=base64:"]
-  cert["db certificate"] --> keyring["kernel built-in keyring"]
-  cmdline --> veritysetup[systemd-veritysetup]
-  veritysetup --> dm["dm-verity: signature checked against the built-in key"]
-  keyring --> dm
-  dm --> ipe["IPE: dmverity_signature=TRUE for /usr"]
-```
-
-The image builder signs the hex root hash (the string the kernel gets in the verity table) with the
-Secure Boot `db` key, as PKCS#7 without certificates (`lib/image/verity.nu`). The signature goes to
-two places: the `usr-verity-sig` partition, systemd's JSON, for tools that dissect the disk; and the
-UKI cmdline as `systemd.verity_usr_options=root-hash-signature=base64:<sig>` (`image/uki.nix`). The
-generator passes the option to `systemd-veritysetup@usr.service`, which activates `/usr` with
-`crypt_activate_by_signed_key`; dm-verity checks the signature against the secondary keyring
-(`CONFIG_DM_VERITY_VERIFY_ROOTHASH_SIG_SECONDARY_KEYRING`), which holds the keys built into the
-kernel: the `db` certificate of the image's key set, and nothing else. IPE's `dmverity_signature` is
-true only for a volume whose signature the kernel verified, and an IPE policy update must be signed
-by a key of the same keyring (`CONFIG_IPE_POLICY_SIG_SECONDARY_KEYRING`).
-
-Why the cmdline and not the partition: systemd reads the partition's signature only on the gpt-auto
-path (`root-hash-signature=auto`, from the udev property `ID_DISSECT_PART_ROOTHASH_SIG` that the
-`dissect_image` builtin sets on the boot disk). Golconda finds `/usr` by `usrhash=` through the
-veritysetup generator, which takes no signature unless an option names one. The cmdline is in the
-signed UKI and measured into PCR 11, so it is as trusted as `usrhash=` itself. The signature is
-about 550 base64 characters; the cmdline is about 1250 bytes of the kernel's 2048
-(`COMMAND_LINE_SIZE`), and `lib/image/uki.nu` fails the build at 2048.
-
-Why the `db` key: a second key would add nothing, because whoever holds the `db` key can already
-sign a UKI with any `usrhash=`. A rotated `db` key needs new images, as it does for the UKI
-([Boot loader: Key rotation](bootloader.md#key-rotation)).
-
-Why not the firmware's `db`: `db` is not Golconda's alone. With `secureBootMicrosoftKeys = true`,
-the default, it also holds Microsoft's UEFI CAs. The kernel accepts a PKCS#7 signature whose signer
-certificate chains to any key in the keyring it checks (`crypto/asymmetric_keys/pkcs7_trust.c`, with
-no key usage check for dm-verity). If dm-verity trusted the `.platform` keyring, which the kernel
-fills from `db` (`CONFIG_LOAD_UEFI_KEYS`), a root hash signed by a certificate that Microsoft's CA
-issued would activate `/usr` as signed, and IPE would run it. So Golconda turns off
-`CONFIG_DM_VERITY_VERIFY_ROOTHASH_SIG_PLATFORM_KEYRING` and
-`CONFIG_IPE_POLICY_SIG_PLATFORM_KEYRING`, and the kernel trusts only the `db` certificate built into
-it. The kernel still loads `db` into `.platform` and logs each certificate, but nothing checks a
-signature against that keyring.
-
-What this costs: each key set builds its own kernel, with the same config (below). A `db` rotation
-needs no other step: the next release's kernel carries the new certificate, its `/usr` is signed
-with the new key, and the UKI pairs them (`usrhash=`). The running kernel does not trust the new
-key, even while `db` holds both certificates. It does not need to: it never activates the next
-release's `/usr`.
-
-A signature that does not verify does not stop `systemd-veritysetup`: it logs "Unable to activate
-verity device ... with root hash signature ..., retrying without" at info level and activates `/usr`
-unsigned. The boot then stops at switch-root, where IPE denies PID 1's re-exec from `/usr`
-([Execution policy](#execution-policy)). So `lib/image/uki.nu` checks the signature against the
-UKI's own signing certificate at build time and fails on a mismatch. On the machine, the firmware
-`db` must hold that certificate to start the UKI; the boot test enrols it only with `--secure-boot`.
-
-**The built-in certificate.** `lib.mkImage` passes the `db` certificate of its `publicKeys` to
-`mkSystem`. The kernel build copies it to a fixed path in the kernel tree,
-`certs/golconda-verity.pem`, and `CONFIG_SYSTEM_TRUSTED_KEYS` names that path
-(`packages/kernel/kbuild.nu`, `GOLCONDA_KERNEL_FILES`); the kernel loads it into
-`.builtin_trusted_keys`, which the secondary keyring includes. The kernel of the set changes, so
-`/usr` and the UKI carry the same one. A system that no image signs (`lib.mkSystem` alone, for a
-`/usr` tree) has no certificate, and its kernel verifies no `/usr`.
-
-**Without Secure Boot** (`/system.secureBoot = false`, for a host whose firmware has none, such as
-Hetzner Cloud): the kernel trusts the same built-in certificate, and `mkSystem` without the image's
-keys is an error. What is lost is the check before the kernel: no firmware verifies the loader or
-the UKI, so whoever can write the ESP can boot a kernel that trusts another key. IPE and the `/usr`
-signature still hold against a changed `/usr`, and the vars still seal (to the host key alone,
-without a TPM). The bootstrap credentials on the ESP are accepted there because Secure Boot is off
-([Boot: Bootstrap credentials](boot.md#bootstrap-credentials)); they hold for one boot, and whoever
-can write the ESP can plant one ([The ESP](#the-esp)).
-
-The certificate is an input of the kernel derivation, but not of its config: every key set has the
-same config, so a new certificate compiles only the certificate object and the compressed kernel's
-wrapper again, relinks, and takes the rest from jig's compile cache. A store path in the config
-would change `include/generated/autoconf.h`, which every object includes. clang's depfile leaves out
-an `.incbin` input, so jig refuses to cache a compile that names `.incbin` or `.include` (repkgs,
-llvm/llvm-project#54996). The build also puts the digest of the certificate file on the command line
-of `certs/system_certificates.o`, and the digest of `vmlinux` on that of
-`arch/x86/boot/compressed/piggy.o`: a stale certificate object would be a trust failure. A missing
-file fails the build (the copy, then make, which has no rule for it), and so does an empty one
-(`extract-cert` needs at least one certificate): the keyring is never silently empty. The kernel
-package installs the certificate as `lib/modules/<version>/trusted-keys.pem`, so `/usr` records
-which key its kernel trusts; the config names only the path.
-
-**Status.** Proven by boot with `--secure-boot`: the kernel's built-in key verifies the signature,
-and with `/sys/kernel/security/ipe/success_audit` on, IPE logs
-`rule="op=EXECUTE dmverity_signature=TRUE action=ALLOW"` for files on `/usr` (`dm-0`). With
-`ipe.enforce=1` the boot passes every check and logs no IPE denial. `verity-sig-builtin-accepted`
-checks that the built-in key activates the next release's `/usr` as signed. In one boot of
-`--rotate`, with the new certificate in `db`, `verity-sig-db-only-refused` checks that the running
-kernel refuses the next release's signature, and `boots-after-rotation` that the next release boots
-under the new key ([What is proven](../proven.md)).
-
-Without Secure Boot, proven by boot on OVMF with neither Secure Boot nor a TPM:
-`image-smoke-test-nosb` logs `Secure boot disabled` and
-`Loaded X.509 cert 'Golconda smoke Secure Boot db: …'`, reaches `multi-user.target` with
-`ipe.enforce=1`, and passes the update test (`--next`, over HTTP). A kernel that holds another
-certificate refuses the signature: the same image with the rotated throwaway certificate in its
-kernel (a manual run, not a `scripts/boot-test` mode) logs
-`Loaded X.509 cert 'Golconda smoke Secure Boot db rotated: …'`, then
-`verity: Root hash verification failed (-ENOKEY)`, and stops at switch-root: IPE logs
-`ipe_op=EXECUTE … comm="systemd" … dev="dm-0" … rule="DEFAULT op=EXECUTE action=DENY"` for PID 1's
-re-exec from `/usr`.
+The `db` key signs the root hash of every `/usr` image. The kernel checks the signature against the
+`db` certificate built into it, never against the firmware `db`, so each key set builds its own
+kernel. The design, its cost and the case without Secure Boot are in [Verity key](verity-key.md).
 
 ### 3. CA store
 
-```mermaid
-flowchart LR
-  moz["cacert: Mozilla's roots"] --> extract
-  opts["/trust: anchors, distrust (the image's configuration)"] --> extract
-  extract["trust extract, when the image is built (ca-bundle)"] --> bundle["/usr/share/ca-certificates/ca-bundle.crt (dm-verity)"]
-  bundle --> pem["/etc/ssl/cert.pem (tmpfiles L link)"]
-  bundle --> crt["/etc/ssl/certs/ca-certificates.crt (tmpfiles L link)"]
-  pem --> openssl["OpenSSL (OPENSSLDIR=/etc/ssl)"]
-  crt --> curl["curl (CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt)"]
-```
-
-The image ships one CA file, `/usr/share/ca-certificates/ca-bundle.crt`. It holds cacert's Mozilla
-roots, plus the administrator's `anchors`, minus the `distrust` list. The configuration names them
-(`/trust`, [reference](../reference/modules/README.md)). An `anchors` entry is the text of one PEM
-certificate, which is public data. A `distrust` entry is the SHA-256 fingerprint of a certificate's
-DER form, which is how a CA is named in a report or by `openssl x509 -noout -fingerprint -sha256`; a
-fingerprint is the only form, so the list does not carry a certificate that the bundle must drop:
-
-```toml
-["/trust"]
-anchors = ["""
------BEGIN CERTIFICATE-----
-MIIB…
------END CERTIFICATE-----
-"""]
-# 64 hex digits; colons between the bytes are optional and the case does not matter
-distrust = ["17:93:92:7A:06:14:54:97:89:AD:CE:2F:8F:34:F7:F0:B6:6D:0F:3A:E3:A3:B8:4D:21:EC:15:DB:BA:4F:AD:C7"]
-```
-
-The module keeps one form (64 lower-case hex digits), so two spellings of one fingerprint are a
-duplicate. An entry that is not a fingerprint fails when the configuration is read.
-
-A certificate in both lists is distrusted. Distrusting a Mozilla root removes that root and keeps
-the others. A fingerprint that matches no certificate of cacert or of the anchors fails the build,
-so a typo does not pass in silence (and neither does a root that a cacert update dropped). A
-duplicate entry is an error, as every duplicate is
-([Principles](principles.md#duplicates-are-errors)).
-
-**Built when the image is built.** The `ca-bundle` package (`packages/ca-bundle`) runs p11-kit's
-`trust extract` over the roots and the two lists and writes the bundle. The roots and the anchors go
-to the trust module's `anchors/`, each certificate whose fingerprint is listed to its `blocklist/`,
-and the module writes every anchor that is not blocklisted, for the purpose `server-auth` as plain
-PEM. The build then compares the file with (roots + anchors) − the distrusted certificates as sets
-and fails on any difference, since `trust` skips a file it cannot parse without a word. The bundle
-is read-only, covered by dm-verity like the rest of `/usr`, and signed with the release, and an
-update replaces it whole. No unit runs on the machine, nothing writes the bundle, and the image has
-no `trust` binary and no module configuration for p11-kit's trust module, so nothing there reads
-`anchors` or `blocklist` directories.
-
-Why not a unit on the machine that runs `trust extract` over `/etc/ssl/anchors` into `/etc` or
-`/var`: the bundle would be a writable file that decides whom every TLS client trusts, so any root
-process could change that without a signed image; a unit must order itself before every client,
-`sysupdate` among them; and the image would carry the trust tool and its module. What it would buy
-is an anchor added without a release. The image already updates by a release, which is minutes of
-work and one signed index, and the administrator's CA certificates are public, fleet-wide data, not
-per-machine values. A secret does not belong in a CA store, so the vars
-([Secrets and vars](#secrets-and-vars)) have no part in it. An administrator who must change trust
-on one machine at once can put a file at `/etc/ssl/cert.pem` or
-`/etc/ssl/certs/ca-certificates.crt`: the `L` lines do not replace an existing file. That is a hand
-repair, outside the image. A run-time anchor directory is out of scope
-([Scope](scope.md#out-of-scope-by-design)): a new release is the way.
-
-Two tmpfiles lines make the paths the image's TLS clients read by default: `L /etc/ssl/cert.pem`,
-which OpenSSL reads because `openssl version -d` says `OPENSSLDIR=/etc/ssl`, and
-`L /etc/ssl/certs/ca-certificates.crt`, which libcurl reads because it is built with
-`CURL_CA_BUNDLE` set to that path. Both are links to the one file in `/usr`, so `/etc` holds no copy
-to go stale. These are the readers in the image: the systemd tools that open an HTTPS URL
-(`systemd-pull`, `systemd-sysupdate`, the IMDS import) through libcurl, and OpenSSL in systemd
-(`systemd-resolved`'s DNS over TLS, when it is on). libcurl and OpenSSL also search the directory
-`/etc/ssl/certs` by hash, and it holds no hashed link. No package ships `certifi` or its own bundle;
-there is no Java, so no keystore.
-
-**Status.** Proven by build checks and by boot. `checks.ca-store` builds the bundle from an anchor,
-an anchor that is also distrusted and a distrusted Mozilla root, both named by fingerprint: the
-bundle is exactly the roots plus the anchor minus the other two, and OpenSSL verifies a server
-certificate of the anchor and refuses one of the distrusted CA. `checks.ca-store-select` runs the
-distrust arithmetic on cacert's real roots: a Mozilla root and an anchor go by fingerprint, and a
-fingerprint that matches nothing, or is no fingerprint, is an error. The package test
-`tests-ca-bundle` checks the default bundle. The eval tests (`tests/eval/trust.nix`) check the
-options, that `/base` no longer carries cacert, and how the lists reach the build. The boot test's
-markers `ca-store-links`, `ca-bundle-content`, `tls-anchor-trusted` and `tls-distrusted-refused` run
-on the test image, which names those certificates in `/trust`: the guest's bundle has Mozilla's
-roots and the anchor and not the distrusted ones, `systemd-pull` fetches an HTTPS page from a server
-whose certificate chains to the anchor, and the same fetch to a server of the distrusted CA fails on
-the certificate ([What is proven](../proven.md)). The distrust of a real Mozilla root is proven on
-the bundle (`ca-bundle-content`, `checks.ca-store`); no test server holds the key of a Mozilla root,
-so no fetch to one runs.
-
-Leaf revocation is not unified: OpenSSL, rustls and Go do not share a mechanism. Golconda's own PKI
-uses short-lived certificates instead.
+The image ships one CA bundle in `/usr`: cacert's Mozilla roots plus the `/trust` anchors, minus the
+`/trust` distrust list, made when the image is built. Two tmpfiles links put it where OpenSSL and
+libcurl read. The design is in [CA store](ca-store.md).
 
 ## Deployment keys
 
@@ -308,7 +116,7 @@ key and the release key from the old set (`pcrPublicKeys` and `indexPublicKeys` 
 The `db` key signs both the UKI (`ukify --secureboot-private-key`, `lib/image/uki.nu`) and the
 verity root hash (`lib/image/verity.nu`), and the same key signs the loader (`lib/image/loader.nu`).
 The kernel checks the root hash signature against the `db` certificate built into it, not against
-the firmware's `db` ([Verity key](#2-verity-key)). The signer checks each private key against the
+the firmware's `db` ([Verity key](verity-key.md)). The signer checks each private key against the
 public half the image carries before it signs, and the root hash signature against the `db`
 certificate before it writes the disk (`lib/image/sign.nu`, `lib/image/uki.nu`), so a mismatched key
 fails the release rather than the boot. A rotated `db` key needs new images: the UKI, the root hash
@@ -428,22 +236,9 @@ token is the release signed from the same keys in files, byte for byte. The chec
 ([What is proven](../proven.md)). A run on a real YubiKey has not been done *(being built)*: the
 procedure is in [Making a release](../reference/release.md#6-keys-on-a-token).
 
-**The release key.** gpg signs `SHA256SUMS`, because systemd-sysupdate checks an OpenPGP signature,
-and gpg reaches a token only as an OpenPGP card through scdaemon, not through PKCS#11. The options:
-
-1. **PKCS#7 manifests** (recommended): systemd#44292, merged after v262, lets sysupdate check a
-   PKCS#7 signature of `SHA256SUMS`. With it the release key signs as the `db` key does, through
-   pkcs11-provider, and GnuPG leaves the image. It waits for systemd v263, and moving to it changes
-   the key every machine trusts, a release-key rotation ([Releases](releases.md#the-signed-index)).
-1. **An OpenPGP card through scdaemon**: a YubiKey's OpenPGP applet holds the Ed25519 key, so the
-   key in the image stays the same. The signer's gpg needs scdaemon, which the image's GnuPG is
-   built without, and scdaemon needs pcsc-lite or its own USB driver on the release host. A second
-   applet, with its own PIN, beside the PIV one. No software token stands in for it in a test.
-1. **gnupg-pkcs11-scd**, an scdaemon that talks PKCS#11: it signs with RSA keys only, so the release
-   key would change from Ed25519 to RSA, and it adds pkcs11-helper.
-
-Until one of them is built *(later)*, the release key is a file; the signer refuses a
-`release/index.pkcs11`.
+**The release key** stays a file: gpg signs `SHA256SUMS`, and gpg reaches a token only as an OpenPGP
+card, not through PKCS#11. The signer refuses a `release/index.pkcs11`. A token for the release key
+is *(later)* ([Scope](scope.md#later)).
 
 ## Identity
 
@@ -480,27 +275,15 @@ Both are designed, not built *(later)*.
 ### Enrolment
 
 A new machine goes from its first boot to certificate login in one release, with `hostCertificate`
-and `revokedKeys` on from the start:
-
-1. At first boot `golconda-var-sshd-hostkey.service` makes the host key, seals it, and writes its
-   fingerprint to the journal and the console:
-   `golconda: ssh host key 256 SHA256:… root@HOST (ED25519)`.
-1. sshd starts before anything is pushed. The host certificate is missing, so sshd logs that and
-   presents the plain host key. The revocation list is missing, so PID 1 gives sshd a fallback under
-   the same credential id (`SetCredential=`): a flat list that names the user CAs of
-   `trustedUserCAKeys`. sshd refuses every certificate those CAs signed; plain keys log in (the
-   image's `authorizedKeys`, or the provisioning credential `ssh.authorized_keys.root`).
-1. The operator runs `golconda vars enrol HOST --ca-key … --krl …`, which logs in with a plain key.
-   It reads the host key (as `golconda vars pub HOST sshd-hostkey key.pub` does), shows its
-   fingerprint and goes on only when the operator says it is the console's line, or when it equals
-   `--fingerprint`. It signs the key as a host certificate with `ssh-keygen -s` (key id HOST, the
-   principals the names clients use), with the host CA key in a file or on a PKCS#11 token
-   (`ssh-keygen -D`), stores the certificate and the deployment's KRL (as `golconda vars set` does),
-   and pushes both (as `golconda vars push` does), the KRL first and the certificate last
-   ([Commands: golconda vars enrol](../reference/cli.md#golconda-vars-enrol)).
-1. The machine seals both, and the push restarts sshd (`KillMode=process` keeps the push's own
-   session). sshd now presents the certificate, checks the pushed KRL, and refuses every plain key:
-   from here on only certificates of the user CAs log in.
+and `revokedKeys` on from the start. At first boot the machine makes and seals its host key and
+writes the fingerprint to the journal and the console. Until the push, sshd presents the plain host
+key, and PID 1 gives it a fallback revocation list under the same credential id (`SetCredential=`)
+that names the user CAs of `trustedUserCAKeys`: sshd refuses every certificate of those CAs, and
+plain keys log in. `golconda vars enrol HOST` then checks the fingerprint against the console line,
+signs the host key with the host CA key and pushes the KRL and the host certificate
+([Commands: golconda vars enrol](../reference/cli.md#golconda-vars-enrol)). The machine seals both,
+and the push restarts sshd (`KillMode=process` keeps the push's own session). sshd then presents the
+certificate, checks the KRL and refuses every plain key.
 
 ```mermaid
 sequenceDiagram
@@ -559,18 +342,7 @@ sshd declares both admin vars whether or not the options are on, so a release wi
 accepts the push and a later release that turns them on reads it: a machine that runs without
 certificates moves to them by a push and an update, in either order.
 
-**Status.** Proven by boot with `--enrol`: the first boot of a release with both options on logs in
-with the bootstrap key and refuses a good certificate (`bootstrap-key-login`,
-`cert-refused-before-enrol`); `golconda vars enrol` refuses a fingerprint that is not the console's
-and stores and seals nothing (`enrol-wrong-fingerprint-refused`), then enrols with the console's
-fingerprint (`hostkey-fingerprint-on-console`, `admin-vars-pushed`), and in the same boot the host
-certificate is presented, a certificate logs in, the revoked one is refused, both plain keys are
-refused though the KRL names neither, and a second KRL takes effect (`host-cert-presented`,
-`cert-login-after-enrol`, `cert-revoked-refused`, `bootstrap-key-refused-after-enrol`,
-`krl-rotated`, `enrol-one-release`). With `--tpm` all of it holds after a reboot
-(`host-cert-presented-after-reboot`, `cert-revoked-refused-after-reboot`,
-`bootstrap-key-refused-after-reboot`). `--next` pushes to a release with the options off and checks
-that the next release reads it, with a certificate.
+Proven by boot with `--enrol` ([What is proven](../proven.md)).
 
 The signer is `ssh-keygen`, with the host CA key in a file or on a token: a host certificate is
 signed once per machine and per renewal, offline like the release keys, and needs no CA service. The
@@ -621,10 +393,7 @@ a unit in `/etc/systemd/system` runs as root, and IPE does not stop a script tha
 `/usr` reads. That boot is a signed boot with the expected PCR values, so the vars unseal in it. The
 fix is LUKS2 bound to the TPM2 *(later)* ([Scope](scope.md#later)).
 
-**Status.** A boot with `--secure-boot --tpm` prints
-`sshd-hostkey.key sealed with: host key + TPM2 + signed PCR policy` (`scripts/boot-test` reads the
-credential header); after a reboot in the same QEMU with the same swtpm state the key is unchanged,
-so it was unsealed, not regenerated.
+Proven by boot with `--secure-boot --tpm` ([What is proven](../proven.md)).
 
 A phase path is the colon-separated chain of words systemd has measured into PCR 11 up to one boot
 state (`systemd-pcrphase.service(8)`); `systemd-measure --phase=` signs exactly one path, and
@@ -682,12 +451,9 @@ as a firmware update that brings a new `dbx`, leaves the host key, the host cert
 sealed: sshd does not start, and nothing logs in. Undoing the change unseals them again; otherwise
 the way back is a reflash, and the machine enrols again.
 
-**Status.** With `--secure-boot --tpm` the host key's credential header names PCR 7 by value and PCR
-11 by signature (`hostkey-sealed-pcr7`), and the `--rotate` run reseals around the rotation and
-unseals after it. With Secure Boot off and the refusal bypassed the key does not unseal, and with
-Secure Boot on again it does (`secure-boot-off-vars-sealed`, [What is proven](../proven.md)). The
-`--secure-boot-off` run prints PCR 7's event log (`systemd-pcrlock log`): the events above, in that
-order. On hardware, which events firmware measures into PCR 7 is **unverified**.
+Proven by boot with `--secure-boot --tpm`, `--rotate` and `--secure-boot-off`
+([What is proven](../proven.md)). On hardware, which events firmware measures into PCR 7 is
+**unverified**.
 
 ### Rollback weakness
 

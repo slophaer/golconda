@@ -43,6 +43,8 @@
 - [Releases](design/releases.md)
 - [Recovery](design/recovery.md)
 - [Trust](design/trust.md)
+  - [Verity key](design/verity-key.md)
+  - [CA store](design/ca-store.md)
 - [Kernel](design/kernel.md)
 - [Modules](design/modules.md)
 - [Configuration](design/config.md)
