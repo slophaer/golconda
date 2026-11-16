@@ -303,7 +303,7 @@ in
     # no signed phase to match
     hasInfix "\nAfter=systemd-pcrphase-sysinit.service\n" unit
   ))
-  # the units of the fixture, exactly: a new unit is a decision, not an accident
+  # the units of the fixture: a new unit must change this list
   (check "sshd: the fixture composes exactly these units" (
     attrNames system.units == [
       "golconda-emergency-reboot.service"

@@ -1,7 +1,7 @@
 # Checks of /trust: the CA store of the image (docs/design/trust.md, "3. CA store"). The options
-# `anchors` (PEM certificates) and `distrust` (SHA-256 fingerprints), the one bundle file in /usr and the paths that link it, and how the
-# options reach the build of the ca-bundle package. What the build makes of them (the bundle's
-# certificates) is checked by tests/real-packages/ca-store.nix.
+# `anchors` (PEM certificates) and `distrust` (SHA-256 fingerprints), the one bundle file in /usr,
+# the paths that link it, and how the options reach the build of the ca-bundle package. The
+# bundle's certificates are checked by `checks.ca-store` (nix/checks.nix).
 # A function of the harness (./harness.nix); it returns a list of checks.
 {
   check,

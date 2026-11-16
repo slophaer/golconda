@@ -128,8 +128,7 @@ in
         };
       };
     in
-    # systemd 262 renamed systemd-sysupdate.timer to systemd-sysupdate-update.timer; the old
-    # name is an alias of it
+    # systemd 262 renamed systemd-sysupdate.timer to this name and keeps the old one as an alias
     result.links."/usr/lib/systemd/system/timers.target.wants/systemd-sysupdate-update.timer" == {
       target = "../systemd-sysupdate-update.timer";
       kind = "explicit";

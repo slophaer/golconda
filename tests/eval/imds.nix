@@ -57,7 +57,7 @@ let
   lan = {
     "/network".networks.lan.match.Name = "eth1";
   };
-  # the udev rule that carried Hetzner's paths before packages/systemd patched 40-imds.hwdb
+  # /imds ships no udev rule for Hetzner's paths: packages/systemd patches 40-imds.hwdb
   hetznerRule = "/usr/lib/udev/rules.d/70-golconda-imds.rules";
   # the second run of systemd-network-generator, for the user data's network.* credentials
   netUnit = "golconda-imds-network.service";

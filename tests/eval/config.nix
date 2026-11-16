@@ -45,8 +45,8 @@ in
   (check "config: loadConfig rejects unknown table" (
     !(tryEval (configLib.loadConfig ../fixtures/bad.toml)).success
   ))
-  # The loader checks option names too: its options are safe to hand to
-  # f.modules (the probe: prot = 2222 kept Port 22 through loadAndApply)
+  # The loader checks option names too, so its options are safe to hand to f.modules: a misspelt
+  # `prot = 2222` would keep Port 22 without a word
   (check "config: loadConfigText refuses a misspelt option and names it" (
     let
       load = text: tryEval (deepSeq (configLib.loadConfigText text).options true);
@@ -219,7 +219,7 @@ in
       };
       accepted = config: (tryEval (deepSeq (mkSystem { inherit config; }).name true)).success;
     in
-    # sshd declares port, not prot (the probe: Port 22 was emitted for prot)
+    # sshd declares port, not prot: a misspelt option must not keep Port 22 silently
     !(accepted (base // { "/services/sshd".prot = 2222; }))
     # a declared option still passes
     && accepted (
