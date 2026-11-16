@@ -1,27 +1,8 @@
-#! The CA store of the image: whom the machine talks to over TLS.
-#!
-#! One bundle, `/usr/share/ca-certificates/ca-bundle.crt`: Mozilla's roots (cacert), plus the
-#! administrator's `anchors`, minus the `distrust` list. It is made when the image is built
-#! (`trust extract`, in the `ca-bundle` package), so it is read-only, covered by dm-verity and
-#! replaced whole by an update; no unit runs on the machine and nothing writes it. A built-in
-#! component: every system has it, and its table only configures it.
-#!
-#! Tmpfiles link the two paths the image's TLS clients read by default to that file:
-#! `L /etc/ssl/cert.pem` (OpenSSL: `openssl version -d` says OPENSSLDIR=/etc/ssl) and
-#! `L /etc/ssl/certs/ca-certificates.crt` (libcurl is built with CURL_CA_BUNDLE set to it). An
-#! admin file at either path wins, as with every `L` line. No client reads another bundle.
-#!
-#! An entry of `anchors` is the text of one PEM certificate (public data, not a secret). An entry
-#! of `distrust` is the SHA-256 fingerprint of a certificate's DER form: 64 hex digits, colons
-#! between the bytes optional, any case. A certificate in both lists is distrusted. Distrusting a
-#! Mozilla root removes it from the bundle; the other roots stay. A duplicate entry is an error
-#! (a fingerprint is compared in its normal form). The build checks the result: the bundle holds
-#! exactly the roots plus the anchors minus the distrusted ones, and a fingerprint that matches no
-#! certificate of the roots or the anchors fails the build, so a typo does not pass.
-#!
-#! Leaf revocation is not covered: OpenSSL has no revocation list shared with other TLS stacks.
-#! Run-time anchors (a unit that extracts from a directory in `/etc` or `/var`) are not built, by
-#! design: a new release is the way; see `docs/design/trust.md`, "CA store".
+#! The CA store of the image: one bundle, `/usr/share/ca-certificates/ca-bundle.crt`: Mozilla's roots plus `anchors`, minus `distrust`.
+#! It is made when the image is built (`trust extract`, in the `ca-bundle` package), so it is read-only and no unit runs on the machine.
+#! Tmpfiles link `/etc/ssl/cert.pem` and `/etc/ssl/certs/ca-certificates.crt` to it; an admin file at either path wins. A built-in component.
+#! An `anchors` entry is one PEM certificate, a `distrust` entry the SHA-256 fingerprint of one (64 hex digits). A duplicate entry is an error.
+#! Run-time anchors are not built, by design: a new release is the way (docs/design/trust.md, "CA store").
 { types, ... }:
 let
   inherit (builtins)
