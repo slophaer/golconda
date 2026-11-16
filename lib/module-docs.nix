@@ -11,18 +11,8 @@
 # Pure Nix; docs/reference/modules/generated/ is written from `files`
 # (scripts/docs, and the docs check in nix/checks.nix).
 #
-# Usage:
-#   let
-#     schemaLib = import ./schema.nix { };
-#     tree = import ../modules { inherit (adios) adios; };
-#     docComments = import ./doc-comments.nix { };
-#     modulePaths = (import ./tree.nix { }).modulePaths ../modules;
-#   in
-#   toMarkdown {
-#     moduleSchemas = schemaLib.moduleSchemas (tree { });
-#     inherit modulePaths docComments;
-#     typeRegistry = schemaLib.typeRegistry;
-#   }
+# Usage, for the module tree of this repository (nix/default.nix, nix/checks.nix):
+#   (import ./module-docs.nix { }).forTree ((import ../modules { inherit (adios) adios; }) { })
 _:
 let
   on = import ../modules/lib/on.nix;
@@ -309,9 +299,24 @@ let
           "types.md" = types;
         };
     };
+
+  # toMarkdown for Golconda's own modules: `tree` is the evaluated tree (`tree { }`)
+  forTree =
+    tree:
+    let
+      schemaLib = import ./schema.nix { };
+    in
+    toMarkdown {
+      moduleSchemas = schemaLib.moduleSchemas tree;
+      modulePaths = treeLib.modulePaths ../modules;
+      docComments = import ./doc-comments.nix { };
+      inherit (schemaLib) typeRegistry;
+      inherit tree;
+    };
 in
 {
   inherit
+    forTree
     toMarkdown
     page
     typeOf

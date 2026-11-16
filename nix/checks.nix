@@ -45,21 +45,9 @@ let
   src = import ./source.nix self;
 
   # the generated Markdown (lib/module-docs.nix): the pages by file name, the SUMMARY lines
-  md =
-    let
-      adiosPin = import sources.adios;
-      tree = import ../modules { inherit (adiosPin) adios; };
-      schemaLib = import ../lib/schema.nix { };
-      docsLib = import ../lib/module-docs.nix { };
-      docComments = import ../lib/doc-comments.nix { };
-      modulePaths = (import ../lib/tree.nix { }).modulePaths ../modules;
-    in
-    docsLib.toMarkdown {
-      moduleSchemas = schemaLib.moduleSchemas (tree { });
-      inherit modulePaths docComments;
-      inherit (schemaLib) typeRegistry;
-      tree = tree { };
-    };
+  md = (import ../lib/module-docs.nix { }).forTree (
+    (import ../modules { inherit (import sources.adios) adios; }) { }
+  );
   # one directory of the pages, each written by toFile (plain text, no store references)
   moduleDocs = run "module-docs" [ ] (
     "mkdir $out\n"

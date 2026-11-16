@@ -37,6 +37,12 @@ in
   (check "module-docs: sshd page has the principals row and its default" (
     hasInfix "| `principals` | object of array of string | `{}` |" docs.pages."/services/sshd"
   ))
+  (check "module-docs: forTree makes the same pages and SUMMARY lines from the tree alone" (
+    let
+      own = moduleDocs.forTree (f.modules { });
+    in
+    own.files == docs.files && own.summary == docs.summary
+  ))
   (check "module-docs: sshd page has the port row with default 22" (
     hasInfix "| `port` | integer | `22` |" docs.pages."/services/sshd"
   ))

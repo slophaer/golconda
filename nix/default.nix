@@ -39,19 +39,7 @@ let
     else
       mkSystem a;
 
-  docsFromSchema =
-    let
-      schemaLib = import ../lib/schema.nix { };
-      moduleDocs = import ../lib/module-docs.nix { };
-      docComments = import ../lib/doc-comments.nix { };
-      modulePaths = (import ../lib/tree.nix { }).modulePaths ../modules;
-    in
-    moduleDocs.toMarkdown {
-      moduleSchemas = schemaLib.moduleSchemas (tree { });
-      inherit modulePaths docComments;
-      inherit (schemaLib) typeRegistry;
-      tree = tree { };
-    };
+  docsFromSchema = (import ../lib/module-docs.nix { }).forTree (tree { });
   imageLib = import ../lib/image { };
 
   # The image chain over one system, unsigned, as a release builds it (lib/image/chain.nix).
