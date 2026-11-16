@@ -146,8 +146,8 @@ pin, so PID 1 keeps the firmware's time, and `systemd-timesyncd` then syncs it.
 
 ## 7. Updates
 
-Change `version` in the document, build again, and publish the new `release/` directory at
-`updateSource`
+Run `golconda release build` again: it picks the next version, writes it into the document and
+commits it. Publish the new `release/` directory at `updateSource`
 ([Making a release: Publish the release directory](release.md#3-publish-the-release-directory)).
 `systemd-sysupdate-update.timer` on the machine installs it into the B slots and the ESP; the next
 boot runs it, and three failed boots return to the old slot ([Updates](../design/updates.md)). To

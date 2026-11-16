@@ -293,7 +293,8 @@ in the first boot of a release that has both options on (`enrol-one-release`). S
 
 Set `updateSource = "https://updates.example.com/server/"` in `"/system"` and the composer adds
 `/usr/lib/sysupdate.d/{10-usr,20-usr-verity,30-usr-verity-sig,40-uki}.transfer` and the update timer
-*(eval)*. To release a new version, change `version`, rebuild and publish the `release/` directory
+*(eval)*. To release a new version, run `golconda release build` again: it picks the next version,
+writes it into the document and commits it. Then publish the `release/` directory
 ([Releases](../design/releases.md)); `systemd-sysupdate-update.service` on the machine writes the B
 slots and the new UKI to the ESP, and `systemd-sysupdate-reboot.timer` reboots into them at 04:10
 (`/system.updateReboot`). Three failed boots make systemd-boot choose the other slot
