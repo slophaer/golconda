@@ -63,6 +63,8 @@ in
       ...
     }:
     let
+      run = import ./run.nix set;
+
       throwawayKeys = imageLib.throwawayKeys {
         inherit pkgs sources;
         buildSystem = system;
@@ -233,42 +235,14 @@ in
       # The test image's release is bit-reproducible: the signer runs again on the same unsigned
       # output with the same keys, with one variable more that it does not read (the first
       # run's output, so it starts after the first ends), and every file of the two releases is
-      # the same bytes: disk.raw, cmdline and release/, and disk.json without the directories of
-      # its "file" and "node" paths (repart's definitions and the output: each run has its own).
-      # A clock that reaches the disk (mkfs.fat's volume label, an mtime in the ESP) shows; the
-      # check names each file that differs and its first differing bytes. scripts/verify builds
-      # it after the image.
+      # the same bytes (nix/run.nix sameRelease). A clock that reaches the disk (mkfs.fat's volume
+      # label, an mtime in the ESP) shows. scripts/verify builds it after the image.
       disk-reproducible =
         let
           inherit (smokeTest) signed;
           again = derivation (signed.drvAttrs // { reproducibilityRunAfter = "${signed}"; });
         in
-        import ./run.nix set "check-disk-reproducible" [ ] ''
-          cd ${signed}
-          find . | sort > $TMPDIR/a.txt
-          (cd ${again} && find . | sort) > $TMPDIR/b.txt
-          if ! cmp -s $TMPDIR/a.txt $TMPDIR/b.txt; then
-            echo "the two releases have other files:"
-            diff $TMPDIR/a.txt $TMPDIR/b.txt || true
-            exit 1
-          fi
-          strip() { sed -e 's|"file" : "[^"]*/|"file" : "|' -e 's|"node" : "[^"]*/|"node" : "|' "$1"; }
-          strip disk.json > $TMPDIR/a.json
-          strip ${again}/disk.json > $TMPDIR/b.json
-          rc=0
-          for f in $(find . -type f | sort); do
-            a=$f b=${again}/$f
-            [ "$f" = ./disk.json ] && a=$TMPDIR/a.json b=$TMPDIR/b.json
-            if ! cmp -s "$a" "$b"; then
-              cmp -l "$a" "$b" > $TMPDIR/diff.txt || true
-              echo "differs: $f, $(wc -l < $TMPDIR/diff.txt) bytes; first (offset, octal a, b):"
-              head -8 $TMPDIR/diff.txt
-              rc=1
-            fi
-          done
-          [ $rc = 0 ] || exit 1
-          touch $out
-        '';
+        import ./run.nix set "check-disk-reproducible" [ ] (run.sameRelease signed again + "touch $out\n");
 
       # The test image signed from a PKCS#11 token (SoftHSM, TEST-ONLY, through pkcs11-provider),
       # as a release host signs with keys on a YubiKey: scripts/boot-test boots it as
@@ -283,18 +257,11 @@ in
           a = smokeTest.signed;
           b = smokeTestToken.signed;
         in
-        import ./run.nix set "check-pkcs11-signed-same" [ pkgs.golconda-cli pkgs.gnupg ] ''
-          golconda release check ${b}/release --keys ${throwawayKeys.public}
-          cd ${a}
-          rc=0
-          for f in $(find . -type f | sort); do
-            [ "$f" = ./disk.json ] && continue # names the build's own directories
-            cmp "$f" ${b}/"$f" || rc=1
-          done
-          [ "$(cd ${b} && find . | sort)" = "$(find . | sort)" ] || { echo "other files"; rc=1; }
-          [ $rc = 0 ] || exit 1
-          touch $out
-        '';
+        import ./run.nix set "check-pkcs11-signed-same" [ pkgs.golconda-cli pkgs.gnupg ] (
+          "golconda release check ${b}/release --keys ${throwawayKeys.public}\n"
+          + run.sameRelease a b
+          + "touch $out\n"
+        );
 
       # A release needs no PK or KEK key: make-keys signed the enrolment files once. The test
       # image signed with a copy of its key set without secureboot/PK.key and KEK.key is the same
@@ -313,18 +280,11 @@ in
             indexKeys = throwawayKeys;
           };
         in
-        import ./run.nix set "check-release-without-pk-kek" [ ] ''
-          [ ! -e ${noPkKek}/secureboot/PK.key ] && [ ! -e ${noPkKek}/secureboot/KEK.key ]
-          cd ${a}
-          rc=0
-          for f in $(find . -type f | sort); do
-            [ "$f" = ./disk.json ] && continue # names the build's own directories
-            cmp "$f" ${b}/"$f" || rc=1
-          done
-          [ "$(cd ${b} && find . | sort)" = "$(find . | sort)" ] || { echo "other files"; rc=1; }
-          [ $rc = 0 ] || exit 1
-          touch $out
-        '';
+        import ./run.nix set "check-release-without-pk-kek" [ ] (
+          "[ ! -e ${noPkKek}/secureboot/PK.key ] && [ ! -e ${noPkKek}/secureboot/KEK.key ]\n"
+          + run.sameRelease a b
+          + "touch $out\n"
+        );
 
       # The test image whose disk enrols the key set's certificates alone, without Microsoft's
       # (/system.secureBootMicrosoftKeys = false): boot-test --auto-enrol --no-microsoft-keys
