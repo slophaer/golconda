@@ -1,30 +1,10 @@
-# systemd-sysupdate transfer definitions
-#
-# Rendered to /usr/lib/sysupdate.d/*.transfer on the image (modules/system).
-# Defines how updates are fetched and applied.
-#
-# All transfers use InstancesMax=2 to keep exactly two versions (A/B).
-# ProtectVersion=%A prevents overwriting the currently booted version.
-#
-# The update source URL is /system.updateSource: the composer renders these
-# definitions into /usr/lib/sysupdate.d/ with Path= set when it is given.
-#
-# The naming contract (`slots`) is shared with the disk builder (lib/image/disk.nix), which labels
-# slot A and names the release artifacts from the same patterns:
-#   - label: the GPT partition label of an installed instance. sysupdate finds an installed
-#     version by this pattern and writes it, formatted, as the label of the slot it fills; a free
-#     slot is `_empty` (image/repart.nix). The partition type already tells the transfers apart,
-#     so the label carries only a short kind and the version, never the image id: GPT allows 36
-#     characters, and `usr-verity-sig_` (15) leaves 21 for the version (YYYYMMDD.N is 10 + N's digits).
-#   - artifact: the release file name after `<imageId>_`. The data and hash files carry `@u`, the
-#     partition UUID systemd derives from the verity root hash (usr: its first 128 bits,
-#     usr-verity: its last); sysupdate sets the written partition's UUID from it, so the new UKI's
-#     usrhash= finds the new slot. The signature has no hash-derived UUID (its JSON names the root
-#     hash), so its name has no `@u`.
-#
-# Called as a function ({ imageId; updateSource; } → transfers); `slots` is the contract.
-#
-# See docs/reference/image.md for artifact naming conventions.
+# systemd-sysupdate transfer definitions, rendered to /usr/lib/sysupdate.d/*.transfer by the
+# composer (modules/system), with Path= set from /system.updateSource. InstancesMax=2 keeps two
+# versions (A/B) and ProtectVersion=%A keeps the booted one.
+# `slots` is the naming contract that the disk builder (lib/image/disk.nix) shares: the GPT label
+# of an installed instance (a free slot is `_empty`) and the release artifact name after
+# `<imageId>_`. The patterns, the 36-character GPT limit and the `@u` UUID: docs/reference/image.md,
+# "A release". Called as a function: { imageId; updateSource; } -> transfers.
 let
   bootCounting = import ./boot-counting.nix;
   slots = {
@@ -44,13 +24,10 @@ let
 
   transfer = {
     ProtectVersion = "%A";
-    # systemd-pull fetches SHA256SUMS.gpg beside SHA256SUMS and runs gpg on it against
-    # /usr/lib/systemd/import-pubring.pgp (lib/image/index.nix); the signer signs the index
-    # with the release key (docs/design/releases.md). OpenPGP is the only signature systemd 262
-    # verifies here, so the image carries GnuPG and libgcrypt beside OpenSSL. Replace it with the
-    # PKCS#7 manifest of systemd PR #44292 (https://github.com/systemd/systemd/pull/44292,
-    # UAPI.16 manifests with an inline PKCS#7 signature, checked against x509 certificates) once
-    # a release has it: the db key could sign the index, and GnuPG would leave the image.
+    # systemd-pull fetches SHA256SUMS.gpg beside SHA256SUMS and checks it against
+    # /usr/lib/systemd/import-pubring.pgp (lib/image/index.nix), which the signer signs with the
+    # release key (docs/design/releases.md). systemd 262 verifies only OpenPGP here, so the image
+    # carries GnuPG and libgcrypt beside OpenSSL.
     Verify = true;
   };
 

@@ -1,30 +1,9 @@
-# systemd-repart partition definitions
-#
-# Rendered to /usr/lib/repart.d/*.conf at build time.
-# These define what partitions exist and how they are created/updated.
-#
-# Build-time definitions (used by the image builder):
-#   esp, usr-a, usr-a-verity, usr-a-verity-sig
-#
-# First-boot definitions (in /usr/lib/repart.d on the image):
-#   root
-#
-# Empty slot definitions (reserved space for A/B updates):
-#   usr-b, usr-b-verity, usr-b-verity-sig
-#
-# IMPORTANT: The usr-a and usr-a-verity partition UUIDs must be derived from
-# the dm-verity root hash for GPT auto-discovery:
-#   - usr-a UUID: first 16 bytes of root hash, formatted as UUID
-#   - usr-a-verity UUID: second 16 bytes of root hash, formatted as UUID
-#
-# The builder computes these and sets them in the partition definitions.
-#
-# Labels: slot A's are the sysupdate target patterns with the version (image/sysupdate.nix
-# `slots`, such as usr_20261031.1), set by the builder; how sysupdate recognizes the installed
-# instance. The B slots are `_empty`, how it recognizes a free slot.
+# systemd-repart partition definitions, rendered to /usr/lib/repart.d/*.conf at build time.
+# The builder sets what a definition cannot hold: the labels (the sysupdate target patterns with
+# the version, image/sysupdate.nix), the files to copy, and the usr-a and usr-a-verity UUIDs. They
+# are the first and second 16 bytes of the dm-verity root hash, for GPT auto-discovery.
+# Slot B is `_empty`, how sysupdate recognizes a free slot. `30-root` is made on the machine.
 {
-  # ======== Build-time partitions (created by image builder) ========
-
   "00-esp" = {
     Partition = {
       Type = "esp";
@@ -66,7 +45,6 @@
     };
   };
 
-  # ======== Empty B slot (for A/B updates) ========
   # The same fixed sizes as A: sysupdate writes the next version into whichever slot is free,
   # so both must hold any release (usr 10 GiB; a hash tree is ~1 % of its data).
   # Label `_empty`: an empty partition without it breaks the dissection of the whole disk (an
@@ -83,7 +61,6 @@
       # slot A's flags: sysupdate keeps a slot's flags when it writes it (image/sysupdate.nix)
       ReadOnly = true;
       GrowFileSystem = false;
-      # Empty until first update
     };
   };
 
@@ -107,11 +84,6 @@
     };
   };
 
-  # ======== First-boot partition (created on machine) ========
-  # This definition goes into /usr/lib/repart.d on the image, not
-  # into the build-time definitions. systemd-repart runs on first
-  # boot to create the root partition.
-
   "30-root" = {
     Partition = {
       Type = "root";
@@ -120,7 +92,6 @@
       SizeMinBytes = "512M";
       GrowFileSystem = true;
       FactoryReset = true;
-      # Future: Encrypt = "tpm2"; for TPM2-bound LUKS
       # The mount points and top-level directories. /dev /proc /sys /run must exist:
       # switch-root chases them in the new root without creating them
       # (systemd src/shared/switch-root.c, chase() without CHASE_NONEXISTENT). /usr is the
