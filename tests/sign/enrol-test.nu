@@ -150,7 +150,7 @@ for want in [
   $"($set_abs)/secureboot/auth/microsoft is missing"
   $"scripts/make-keys --auth-only ($set_abs)"
   $"scripts/make-keys --auth-only --reuse-pk-kek DIR ($set_abs)"
-  "secureboot/PK.key and KEK.key"
+  $"($set_abs).private, from offline media"
 ] {
   if not ($msg | str contains $want) { error make {msg: $"the refusal does not say '($want)': ($msg)"} }
 }

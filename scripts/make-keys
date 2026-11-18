@@ -1,14 +1,16 @@
 #!/bin/sh
 # make-keys [--auth-only] [--reuse-pk-kek OLD] DIR
-# Make a deployment key set in DIR for `golconda release build`. With --auth-only, write the
-# enrolment files (secureboot/auth) of the set in DIR again: for a newer dbx, or a set without them.
+# Make a deployment key set in DIR for `golconda release build`, and the PK and KEK keys in
+# DIR.private, for offline media: no release reads them. With --auth-only, write the enrolment
+# files (secureboot/auth) of the set in DIR again, with the keys in DIR.private: for a newer dbx,
+# or a set without them.
 #   --reuse-pk-kek OLD  a db rotation: copy OLD's PK.crt and KEK.crt, make no PK or KEK key, sign
-#                       the enrolment files with OLD's keys, and copy OLD's release key, which
-#                       cannot change. The script cannot tell a rotation from a new deployment, so
-#                       a rotation names the old set.
-# DIR must be new or empty and outside any git work tree. The script makes it 0700 and each file
-# 0600, and prints the paths and fingerprints, never key material. The layout is in
-# docs/reference/release.md.
+#                       the enrolment files with the keys in OLD.private, and copy OLD's release
+#                       key, which cannot change. The script cannot tell a rotation from a new
+#                       deployment, so a rotation names the old set.
+# DIR and DIR.private must be new or empty and outside any git work tree. The script makes them
+# 0700 and each file 0600, and prints the paths and fingerprints, never key material. The layout
+# is in docs/reference/release.md.
 set -eu
 
 usage() { sed -n '2,/^set -eu$/{/^set -eu$/d;s/^# \{0,1\}//p}' "$0"; }
@@ -46,17 +48,20 @@ done
   exit 2
 }
 if [ -n "$old" ]; then
-  for f in PK.key PK.crt KEK.key KEK.crt; do
-    [ -f "$old/secureboot/$f" ] || {
-      echo "make-keys: --reuse-pk-kek $old: no secureboot/$f there" >&2
+  old=$(realpath -m -- "$old")
+  for f in secureboot/PK.crt secureboot/KEK.crt release/index.key release/index.pgp .private/PK.key .private/KEK.key; do
+    case $f in .private/*) p=$old$f ;; *) p=$old/$f ;; esac
+    [ -f "$p" ] || {
+      echo "make-keys: --reuse-pk-kek $old: no $p (the PK and KEK keys are in $old.private)" >&2
       exit 2
     }
   done
-  old=$(realpath "$old")
 fi
 
 # absolute, as lib.mkImage needs it; -s: a symlink stays one, and is refused below
 dir=$(realpath -ms -- "$1")
+# the PK and KEK keys, beside the set: the operator moves them to offline media
+private=$dir.private
 # Not in a git work tree: Nix reads a checkout's files where they lie, and a file there that
 # reaches the store is world-readable. The nearest directory that exists decides.
 at=$dir
@@ -89,6 +94,20 @@ run_openssl() {
     cat "$work/openssl.log" >&2
     exit 1
   fi
+}
+
+# signing_set WORK SET: WORK/secureboot with SET's PK.crt and KEK.crt and links to the keys in
+# SET.private, the layout golconda-enrol-auth --signing-keys reads
+signing_set() {
+  mkdir -p "$1/secureboot"
+  cp "$2/secureboot/PK.crt" "$2/secureboot/KEK.crt" "$1/secureboot/"
+  ln -s "$2.private/PK.key" "$2.private/KEK.key" "$1/secureboot/"
+}
+
+# private_modes: DIR.private 0700, its keys 0600
+private_modes() {
+  chmod 700 "$private"
+  chmod 600 "$private/PK.key" "$private/KEK.key"
 }
 
 # keypair DIR NAME [-addext EXT]...: a self-signed CA pair DIR/NAME.key and DIR/NAME.crt, with
@@ -128,17 +147,27 @@ if [ "$auth_only" = 1 ]; then
       fi
     done
   elif [ ! -e "$sb/PK.crt" ] && [ ! -e "$sb/KEK.crt" ]; then
-    keypair "$sb" PK
-    keypair "$sb" KEK
-    echo "made $sb/PK.key, PK.crt, KEK.key, KEK.crt"
-  elif [ ! -f "$sb/PK.key" ] || [ ! -f "$sb/KEK.key" ]; then
-    echo "make-keys: $sb has PK.crt or KEK.crt but not both keys; name the set that holds" >&2
-    echo "make-keys: secureboot/PK.key and KEK.key: scripts/make-keys --auth-only --reuse-pk-kek DIR $dir" >&2
+    if [ -L "$private" ] || { [ -e "$private" ] && [ -n "$(find "$private" -mindepth 1 -maxdepth 1 -print -quit)" ]; }; then
+      echo "make-keys: $private exists and is not empty; it is where the new PK and KEK keys go" >&2
+      exit 1
+    fi
+    mkdir -p "$private"
+    keypair "$work" PK
+    keypair "$work" KEK
+    mv "$work/PK.key" "$work/KEK.key" "$private/"
+    mv "$work/PK.crt" "$work/KEK.crt" "$sb/"
+    private_modes
+    echo "made $sb/PK.crt, KEK.crt and $private/PK.key, KEK.key"
+    echo "move $private to offline media: only scripts/make-keys --auth-only and --reuse-pk-kek read it"
+  elif [ ! -f "$private/PK.key" ] || [ ! -f "$private/KEK.key" ]; then
+    echo "make-keys: $sb has PK.crt or KEK.crt but $private has not both keys: bring it back from" >&2
+    echo "make-keys: offline media, or name the set whose .private holds them: scripts/make-keys --auth-only --reuse-pk-kek DIR $dir" >&2
     exit 1
   fi
   mkdir "$work/secureboot"
   cp "$sb/PK.crt" "$sb/KEK.crt" "$sb/db.crt" "$work/secureboot/"
-  if ! golconda-enrol-auth --keys "$work" --signing-keys "${old:-$dir}" >"$work/log" 2>&1; then
+  signing_set "$work/sign" "${old:-$dir}"
+  if ! golconda-enrol-auth --keys "$work" --signing-keys "$work/sign" >"$work/log" 2>&1; then
     echo "make-keys: golconda-enrol-auth failed:" >&2
     cat "$work/log" >&2
     exit 1
@@ -148,7 +177,7 @@ if [ "$auth_only" = 1 ]; then
   find "$sb" -type f -exec chmod 600 {} +
   find "$sb" -type d -exec chmod 700 {} +
   echo "wrote $sb/auth/microsoft (PK, KEK, db, dbx) and $sb/auth/golconda (PK, KEK, db)"
-  echo "signed by ${old:-$dir}'s PK and KEK keys; keep those keys offline"
+  echo "signed by the PK and KEK keys in ${old:-$dir}.private; keep them on offline media"
   exit 0
 fi
 
@@ -163,6 +192,16 @@ fi
 if [ -d "$dir" ] && [ -n "$(find "$dir" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
   echo "make-keys: $dir is not empty; give a new directory" >&2
   exit 1
+fi
+if [ -z "$old" ]; then
+  if [ -L "$private" ] || { [ -e "$private" ] && [ ! -d "$private" ]; }; then
+    echo "make-keys: $private exists and is not a directory; the PK and KEK keys go there" >&2
+    exit 1
+  fi
+  if [ -d "$private" ] && [ -n "$(find "$private" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+    echo "make-keys: $private is not empty; the PK and KEK keys go there" >&2
+    exit 1
+  fi
 fi
 
 umask 077
@@ -188,7 +227,8 @@ for k in PK KEK; do
 done
 # the enrolment files, signed now by this set's PK and KEK keys (or the old set's), so that no
 # release needs them; their output on failure only
-if ! golconda-enrol-auth --keys "$stage" ${old:+--signing-keys "$old"} >"$stage/enrol.log" 2>&1; then
+[ -z "$old" ] || signing_set "$stage/sign" "$old"
+if ! golconda-enrol-auth --keys "$stage" ${old:+--signing-keys "$stage/sign"} >"$stage/enrol.log" 2>&1; then
   echo "make-keys: golconda-enrol-auth failed:" >&2
   cat "$stage/enrol.log" >&2
   exit 1
@@ -216,6 +256,11 @@ fi
 index_fpr=$(GNUPGHOME="$stage/g" gpg --batch --with-colons --show-keys "$stage/release/index.pgp" | awk -F: '$1 == "fpr" { print $10; exit }')
 GNUPGHOME="$stage/g" gpgconf --kill gpg-agent 2>/dev/null || true
 
+if [ -z "$old" ]; then
+  mkdir -p "$private"
+  mv "$stage/secureboot/PK.key" "$stage/secureboot/KEK.key" "$private/"
+  private_modes
+fi
 mv "$stage/secureboot" "$stage/pcr" "$stage/release" "$dir"
 trap - EXIT HUP INT TERM
 rm -rf "$stage"
@@ -231,8 +276,8 @@ deployment key set: $dir
 $(if [ -n "$old" ]; then
   echo "  $dir/secureboot/PK.crt, KEK.crt (0600)  copies of $old's: its keys signed this set"
 else
-  echo "  $dir/secureboot/PK.key  (0600)  signed PK.auth and KEK.auth; later, a new PK or KEK"
-  echo "  $dir/secureboot/KEK.key (0600)  signed db.auth and dbx.auth; later, db and dbx updates"
+  echo "  $private/PK.key  (0600)  signed PK.auth and KEK.auth; later, a new PK or KEK"
+  echo "  $private/KEK.key (0600)  signed db.auth and dbx.auth; later, db and dbx updates"
   echo "  $dir/secureboot/PK.crt, KEK.crt (0600)  their certificates: firmware PK and KEK"
 fi)
   $dir/secureboot/auth/microsoft/  PK, KEK, db, dbx with Microsoft's keys (/system.secureBootMicrosoftKeys)
@@ -246,4 +291,5 @@ PK.crt sha256 (DER): $(fp PK)
 KEK.crt sha256 (DER): $(fp KEK)
 release key fingerprint: $index_fpr
 keep the private keys out of the store: docs/reference/release.md
+$([ -n "$old" ] || echo "move $private to offline media: only scripts/make-keys --auth-only and --reuse-pk-kek read it")
 EOF

@@ -217,11 +217,11 @@ Every step from 2 on changes PCR 7, to which the vars are sealed ([Trust: PCR 7]
 so the vars are sealed without it first and with it again at the end.
 
 1. Make the new key pair and keep the old one, with `scripts/make-keys --reuse-pk-kek OLD NEW`. The
-   new set keeps the old PK and KEK (copies of their certificates, no keys), and its enrolment files
-   enrol the new `db` certificate, signed by the old KEK: a machine installed later enrols the same
-   PK and KEK as the fleet, so one KEK still signs every `db` and `dbx` update. Without
-   `--reuse-pk-kek` the set gets a PK and a KEK of its own; `make-keys` cannot tell a rotation from
-   a new deployment, so the rotation names the old set.
+   new set keeps the old PK and KEK (copies of their certificates; the keys stay in `OLD.private`)
+   and the old release key, and its enrolment files enrol the new `db` certificate, signed by the
+   old KEK: a machine installed later enrols the same PK and KEK as the fleet, so one KEK still
+   signs every `db` and `dbx` update. Without `--reuse-pk-kek` the set gets a PK and a KEK of its
+   own; `make-keys` cannot tell a rotation from a new deployment, so the rotation names the old set.
 
 1. On each machine with a TPM2, seal the vars without PCR 7:
    `ssh root@HOST /usr/lib/golconda/golconda-var-run --reseal --without-pcr7`.

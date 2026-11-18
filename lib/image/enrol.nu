@@ -215,7 +215,7 @@ export def require-set [set: string, which: string] {
     $"($dir) is missing: a Secure Boot image puts these enrolment files on its ESP."
     "Write them on the release host with the set's PK and KEK keys (a set without them gets a pair):"
     $"  scripts/make-keys --auth-only ($set)"
-    "If secureboot/PK.key and KEK.key are in another directory (kept offline, or a db rotation), name it:"
+    $"The keys are in ($set).private, from offline media; for a db rotation, name the old set:"
     $"  scripts/make-keys --auth-only --reuse-pk-kek DIR ($set)"
     "(docs/reference/release.md)"
   ] | str join "\n")}

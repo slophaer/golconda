@@ -28,14 +28,17 @@ SHA-256 fingerprint. It never prints key material. Keep the directory on the rel
 reads the private keys, and no step copies them
 ([Trust: Signing outside Nix](../design/trust.md#signing-outside-nix)).
 
+The PK and KEK keys go to a second directory beside the set, `DIR.private/` (`PK.key` and `KEK.key`,
+mode `0600`, the directory `0700`; new or empty, as `DIR`). The script ends with one line that says
+to move it to offline media. No release reads it: only `scripts/make-keys --auth-only` and
+`--reuse-pk-kek` do, from that place beside the set.
+
 | file                 | what it does                                                           |
 | -------------------- | ---------------------------------------------------------------------- |
 | `secureboot/db.key`  | signs systemd-boot, each UKI and each verity root hash                 |
 | `secureboot/db.crt`  | the certificate for those signatures; the firmware `db` must hold it   |
-| `secureboot/PK.key`  | signed `PK.auth` and `KEK.auth`; no release reads it                   |
-| `secureboot/PK.crt`  | the platform key's certificate                                         |
-| `secureboot/KEK.key` | signed `db.auth` and `dbx.auth`; a rotation's new set is signed by it  |
-| `secureboot/KEK.crt` | the key exchange key's certificate                                     |
+| `secureboot/PK.crt`  | the platform key's certificate; its key is `DIR.private/PK.key`        |
+| `secureboot/KEK.crt` | the key exchange key's certificate; its key is `DIR.private/KEK.key`   |
 | `secureboot/auth/`   | `microsoft/{PK,KEK,db,dbx}.auth`, `golconda/{PK,KEK,db}.auth` (step 4) |
 | `pcr/pcr.key`        | signs the PCR 11 policy (`.pcrsig`) in each UKI                        |
 | `pcr/pcr.pub`        | the public half, embedded in each UKI as `.pcrpkey`                    |
@@ -46,28 +49,28 @@ reads the private keys, and no step copies them
 `digitalSignature`, `keyCertSign`, `cRLSign` and `codeSigning`. `PK.crt` and `KEK.crt` are the same
 without `codeSigning`; each has a key of its own. The enrolment files are signed once, here, by
 `golconda-enrol-auth` with Microsoft's certificates and revocation list
-(`packages/secureboot-objects`), so a release needs neither the PK key nor the KEK key: keep them
-offline. `systemd-sbsign` takes a PEM certificate (systemd 262, `systemd-sbsign(1)`). The signer
-checks each private key against its public half and each verity root hash signature against the
-certificate, so a key and certificate that do not match fail the release and not the boot. Keep the
-set: a rotation uses the old `pcr/` key and the old release key (step 5).
+(`packages/secureboot-objects`), so a release needs neither the PK key nor the KEK key: keep
+`DIR.private` offline. `systemd-sbsign` takes a PEM certificate (systemd 262, `systemd-sbsign(1)`).
+The signer checks each private key against its public half and each verity root hash signature
+against the certificate, so a key and certificate that do not match fail the release and not the
+boot. Keep the set: a rotation uses the old `pcr/` key and the old release key (step 5).
 
 **A set without the enrolment files** is refused for a Secure Boot image; the error names the
 command for that set. `scripts/make-keys --auth-only DIR` writes `secureboot/auth` into the existing
-set and keeps its `db` certificate; a set with no PK and KEK gets a pair of its own first. If the PK
-and KEK keys are elsewhere, name the directory that holds them:
-`scripts/make-keys --auth-only --reuse-pk-kek KEYS DIR`.
+set and keeps its `db` certificate, with the keys in `DIR.private`; a set with no PK and KEK gets a
+pair of its own first. A rotated set has the PK and KEK of another set: name that set, whose
+`KEYS.private` holds the keys: `scripts/make-keys --auth-only --reuse-pk-kek KEYS DIR`.
 
 **The `dbx` is fixed when the files are made.** `auth/microsoft/dbx.auth` holds Microsoft's
 revocation list as `packages/secureboot-objects` pins it on the day `make-keys` ran. To take a newer
 list: move the package's pin in the Golconda tree (uptrack on `packages/`, with
 `UPTRACK_ROOT=packages` as for `pins/` in [Pinning](pinning.md#uptrack-recommended):
-`uptrack check secureboot-objects`, `uptrack apply secureboot-objects`), bring the PK and KEK keys
-from where they are kept offline, run `scripts/make-keys --auth-only --reuse-pk-kek KEYS DIR`, and
-put the keys away again. The next release carries the new files. That changes only what a machine
-enrols in Setup Mode: a machine that is already enrolled keeps the `dbx` it got and ignores the
-ESP's files. Updating `dbx` on an enrolled machine (an authenticated append signed by the KEK) is
-*(later)* ([Scope: Later](../design/scope.md#later)).
+`uptrack check secureboot-objects`, `uptrack apply secureboot-objects`), bring `DIR.private` back
+from offline media to its place beside the set, run `scripts/make-keys --auth-only DIR` (or
+`--reuse-pk-kek KEYS DIR` for a rotated set), and put it away again. The next release carries the
+new files. That changes only what a machine enrols in Setup Mode: a machine that is already enrolled
+keeps the `dbx` it got and ignores the ESP's files. Updating `dbx` on an enrolled machine (an
+authenticated append signed by the KEK) is *(later)* ([Scope: Later](../design/scope.md#later)).
 
 `tests/make-keys/run.sh` (run by `scripts/lint`) runs the script into a temporary directory and
 checks the layout, the modes, the certificate's extensions, that each key matches its public half,

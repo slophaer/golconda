@@ -1,6 +1,7 @@
 #!/bin/sh
-# scripts/make-keys into a temporary directory: the layout of docs/reference/release.md, mode
-# 0600 on every file and 0700 on every directory, the db certificate's extensions and validity,
+# scripts/make-keys into a temporary directory: the layout of docs/reference/release.md (the PK
+# and KEK keys in DIR.private), mode 0600 on every file and 0700 on every directory, the db
+# certificate's extensions and validity,
 # the key pairs matching and the OpenPGP files; a relative DIR; the refusals (non-empty directory,
 # git work tree, unknown option). Needs nix on PATH and a Nix daemon; scripts/lint runs it.
 set -u
@@ -37,13 +38,23 @@ out=$("$repo/scripts/make-keys" "$keys" 2>"$tmp/stderr") || {
 
 # the layout: these files, and nothing else (in C order: upper case first)
 auth="secureboot/auth/golconda/KEK.auth secureboot/auth/golconda/PK.auth secureboot/auth/golconda/db.auth secureboot/auth/microsoft/KEK.auth secureboot/auth/microsoft/PK.auth secureboot/auth/microsoft/db.auth secureboot/auth/microsoft/dbx.auth"
-files="pcr/pcr.key pcr/pcr.pub release/index.key release/index.pgp secureboot/KEK.crt secureboot/KEK.key secureboot/PK.crt secureboot/PK.key $auth secureboot/db.crt secureboot/db.key"
+files="pcr/pcr.key pcr/pcr.pub release/index.key release/index.pgp secureboot/KEK.crt secureboot/PK.crt $auth secureboot/db.crt secureboot/db.key"
 found=$(cd "$keys" && find . -type f | sed 's|^\./||' | LC_ALL=C sort | tr '\n' ' ')
 [ "$found" = "$(printf '%s ' "$files")" ] || fail "layout: found: $found"
+# the PK and KEK keys, for offline media: in DIR.private, and nothing else there
+private=$keys.private
+found=$(cd "$private" && find . -type f | sed 's|^\./||' | LC_ALL=C sort | tr '\n' ' ')
+[ "$found" = "KEK.key PK.key " ] || fail "DIR.private holds PK.key and KEK.key: found: $found"
+printf '%s\n' "$out" | grep -qx "move $private to offline media: only scripts/make-keys --auth-only and --reuse-pk-kek read it" ||
+  fail "the report names DIR.private and offline media"
 
 # modes
 mode() { stat -c %a "$1"; }
 [ "$(mode "$keys")" = 700 ] || fail "DIR is 0700 (is $(mode "$keys"))"
+[ "$(mode "$private")" = 700 ] || fail "DIR.private is 0700 (is $(mode "$private"))"
+for k in PK KEK; do
+  [ "$(mode "$private/$k.key")" = 600 ] || fail "$k.key is 0600 (is $(mode "$private/$k.key"))"
+done
 for d in secureboot pcr release secureboot/auth secureboot/auth/microsoft secureboot/auth/golconda; do
   [ "$(mode "$keys/$d")" = 700 ] || fail "$d/ is 0700 (is $(mode "$keys/$d"))"
 done
@@ -78,7 +89,7 @@ check "db.crt is PEM" grep -q "BEGIN CERTIFICATE" "$cert"
 # self-signed certificate of its own key, named by its role, and no key is another's
 for k in PK KEK; do
   c=$keys/secureboot/$k.crt
-  [ "$(openssl x509 -in "$c" -noout -pubkey)" = "$(openssl pkey -in "$keys/secureboot/$k.key" -pubout)" ] \
+  [ "$(openssl x509 -in "$c" -noout -pubkey)" = "$(openssl pkey -in "$private/$k.key" -pubout)" ] \
     || fail "$k.key matches $k.crt"
   openssl x509 -in "$c" -noout -subject | grep -qF "golconda deployment $k " || fail "$k.crt names its role"
   openssl x509 -in "$c" -noout -subject -issuer \
@@ -129,8 +140,8 @@ keys2=$tmp/keys2
   cat "$tmp/stderr2" >&2
   fail "make-keys --reuse-pk-kek exits 0"
 }
+[ ! -e "$keys2.private" ] || fail "rotation: no DIR.private for the new set"
 for k in PK KEK; do
-  [ ! -e "$keys2/secureboot/$k.key" ] || fail "rotation: no $k.key in the new set"
   cmp -s "$keys/secureboot/$k.crt" "$keys2/secureboot/$k.crt" || fail "rotation: $k.crt is the old set's"
 done
 cmp -s "$keys/secureboot/db.crt" "$keys2/secureboot/db.crt" && fail "rotation: a new db certificate"
@@ -144,20 +155,21 @@ for f in index.key index.pgp; do
 done
 [ "$(grep '^release key fingerprint:' "$tmp/out2")" = "$(printf '%s\n' "$out" | grep '^release key fingerprint:')" ] ||
   fail "rotation: the report names the old release key"
-"$repo/scripts/make-keys" --reuse-pk-kek "$keys2" "$tmp/keys3" >/dev/null 2>&1 && fail "--reuse-pk-kek needs a set with PK.key and KEK.key"
+"$repo/scripts/make-keys" --reuse-pk-kek "$keys2" "$tmp/keys3" >/dev/null 2>&1 && fail "--reuse-pk-kek needs OLD.private with PK.key and KEK.key"
 
 # --auth-only: a set without enrolment files gets them, and a PK and a KEK of its own; the command is the one the signer's refusal names (tests/sign/enrol-test.nu)
 keys4=$tmp/keys4
 cp -R "$keys" "$keys4"
-rm -r "$keys4/secureboot/auth" "$keys4/secureboot/PK.key" "$keys4/secureboot/PK.crt" \
-  "$keys4/secureboot/KEK.key" "$keys4/secureboot/KEK.crt"
+rm -r "$keys4/secureboot/auth" "$keys4/secureboot/PK.crt" "$keys4/secureboot/KEK.crt"
 "$repo/scripts/make-keys" --auth-only "$keys4" >"$tmp/out4" 2>"$tmp/stderr4" || {
   cat "$tmp/stderr4" >&2
   fail "make-keys --auth-only exits 0"
 }
+[ "$(mode "$keys4.private")" = 700 ] || fail "--auth-only: DIR.private is 0700"
 for k in PK KEK; do
-  [ -f "$keys4/secureboot/$k.key" ] || fail "--auth-only: makes $k.key for a set without one"
-  [ "$(mode "$keys4/secureboot/$k.key")" = 600 ] || fail "--auth-only: $k.key is 0600"
+  [ -f "$keys4.private/$k.key" ] || fail "--auth-only: makes DIR.private/$k.key for a set without one"
+  [ "$(mode "$keys4.private/$k.key")" = 600 ] || fail "--auth-only: $k.key is 0600"
+  [ ! -e "$keys4/secureboot/$k.key" ] || fail "--auth-only: no $k.key in the set"
 done
 for s in microsoft golconda; do
   for v in PK KEK db; do
@@ -177,8 +189,8 @@ rm -r "$keys2/secureboot/auth"
   fail "make-keys --auth-only --reuse-pk-kek exits 0"
 }
 holds "$keys2/secureboot/auth/microsoft/db.auth" "$keys2/secureboot/db.crt" || fail "--auth-only --reuse-pk-kek: db.auth"
-[ ! -e "$keys2/secureboot/PK.key" ] || fail "--auth-only --reuse-pk-kek: no PK.key in the set"
-"$repo/scripts/make-keys" --auth-only "$keys2" >/dev/null 2>"$tmp/stderr6" && fail "--auth-only refuses a set with PK.crt but no PK.key"
+[ ! -e "$keys2.private" ] || fail "--auth-only --reuse-pk-kek: no DIR.private for the set"
+"$repo/scripts/make-keys" --auth-only "$keys2" >/dev/null 2>"$tmp/stderr6" && fail "--auth-only refuses a set with PK.crt but no DIR.private"
 grep -qF -- "--reuse-pk-kek" "$tmp/stderr6" || fail "--auth-only without the keys names --reuse-pk-kek"
 "$repo/scripts/make-keys" --auth-only --reuse-pk-kek "$keys4" "$keys2" >/dev/null 2>&1 &&
   fail "--auth-only --reuse-pk-kek refuses another PK than the set's"
@@ -188,11 +200,16 @@ grep -qF -- "--reuse-pk-kek" "$tmp/stderr6" || fail "--auth-only without the key
 mkdir "$tmp/cwd"
 (cd "$tmp/cwd" && "$repo/scripts/make-keys" rel/keys) >"$tmp/out-rel" 2>&1 || fail "relative DIR: make-keys exits 0"
 [ -f "$tmp/cwd/rel/keys/secureboot/db.crt" ] || fail "relative DIR: the set is made under the working directory"
+[ -f "$tmp/cwd/rel/keys.private/PK.key" ] || fail "relative DIR: DIR.private is made beside it"
 grep -qF "deployment key set: $tmp/cwd/rel/keys" "$tmp/out-rel" || fail "relative DIR: the report names the absolute path"
 (cd "$tmp/cwd" && "$repo/scripts/make-keys" --auth-only rel/keys) >/dev/null 2>&1 || fail "relative DIR: --auth-only exits 0"
 
 # refusals
 "$repo/scripts/make-keys" "$keys" >/dev/null 2>&1 && fail "non-empty DIR is refused"
+mkdir "$tmp/keys8.private"
+touch "$tmp/keys8.private/PK.key"
+"$repo/scripts/make-keys" "$tmp/keys8" >/dev/null 2>&1 && fail "a non-empty DIR.private is refused"
+[ ! -e "$tmp/keys8" ] || fail "a non-empty DIR.private makes nothing"
 "$repo/scripts/make-keys" >/dev/null 2>&1 && fail "no argument is refused"
 # --help prints the header and exits 0; an unknown option names itself and exits 2
 "$repo/scripts/make-keys" --help >"$tmp/help" 2>&1 || fail "--help exits 0"
@@ -209,6 +226,7 @@ git init -q "$tmp/checkout"
 grep -q 'git work tree' "$tmp/stderr-git" || fail "the refusal names the git work tree: $(cat "$tmp/stderr-git")"
 [ -e "$tmp/checkout/site" ] && fail "nothing is made in the git work tree"
 cp -R "$keys" "$tmp/checkout/keys"
+cp -R "$private" "$tmp/checkout/keys.private"
 "$repo/scripts/make-keys" --auth-only "$tmp/checkout/keys" >/dev/null 2>&1 &&
   fail "--auth-only refuses a set in a git work tree"
 

@@ -79,21 +79,22 @@ libcurl read. The design is in [CA store](ca-store.md).
 A release is signed with the deployment's keys, not the store's throwaways, and the signing happens
 outside Nix ([Signing outside Nix](#signing-outside-nix)). The procedure, from making the set to
 enrolling the certificate, is in [Making a release](../reference/release.md). A key set is a
-directory of ten key files and the enrolment files (`scripts/make-keys`):
+directory of eight key files and the enrolment files, and the PK and KEK keys go to a directory
+beside it, `DIR.private/`, for offline media (`scripts/make-keys`):
 
-| file                 | used for                                                         | read by       |
-| -------------------- | ---------------------------------------------------------------- | ------------- |
-| `secureboot/db.key`  | signs the loader, the UKI and the verity root hash               | the signer    |
-| `secureboot/db.crt`  | the certificate for those signatures; firmware `db` must hold it | `lib.mkImage` |
-| `secureboot/PK.key`  | signed `PK.auth` and `KEK.auth`; later, a new KEK                | `make-keys`   |
-| `secureboot/PK.crt`  | the platform key's certificate, enrolled as `PK`                 | the signer    |
-| `secureboot/KEK.key` | signed `db.auth` and `dbx.auth`; later, `db` and `dbx` updates   | `make-keys`   |
-| `secureboot/KEK.crt` | the key exchange key's certificate, enrolled as `KEK`            | the signer    |
-| `secureboot/auth/`   | `microsoft/{PK,KEK,db,dbx}.auth` and `golconda/{PK,KEK,db}.auth` | the signer    |
-| `pcr/pcr.key`        | signs the PCR 11 policy of each boot phase (`.pcrsig`)           | the signer    |
-| `pcr/pcr.pub`        | the public half, embedded in the UKI as `.pcrpkey`               | `lib.mkImage` |
-| `release/index.key`  | signs each release's `SHA256SUMS` (OpenPGP Ed25519)              | the signer    |
-| `release/index.pgp`  | the public half, the image's keyring for `Verify=yes`            | `lib.mkImage` |
+| file                  | used for                                                         | read by       |
+| --------------------- | ---------------------------------------------------------------- | ------------- |
+| `secureboot/db.key`   | signs the loader, the UKI and the verity root hash               | the signer    |
+| `secureboot/db.crt`   | the certificate for those signatures; firmware `db` must hold it | `lib.mkImage` |
+| `DIR.private/PK.key`  | signed `PK.auth` and `KEK.auth`; later, a new KEK                | `make-keys`   |
+| `secureboot/PK.crt`   | the platform key's certificate, enrolled as `PK`                 | the signer    |
+| `DIR.private/KEK.key` | signed `db.auth` and `dbx.auth`; later, `db` and `dbx` updates   | `make-keys`   |
+| `secureboot/KEK.crt`  | the key exchange key's certificate, enrolled as `KEK`            | the signer    |
+| `secureboot/auth/`    | `microsoft/{PK,KEK,db,dbx}.auth` and `golconda/{PK,KEK,db}.auth` | the signer    |
+| `pcr/pcr.key`         | signs the PCR 11 policy of each boot phase (`.pcrsig`)           | the signer    |
+| `pcr/pcr.pub`         | the public half, embedded in the UKI as `.pcrpkey`               | `lib.mkImage` |
+| `release/index.key`   | signs each release's `SHA256SUMS` (OpenPGP Ed25519)              | the signer    |
+| `release/index.pgp`   | the public half, the image's keyring for `Verify=yes`            | `lib.mkImage` |
 
 `lib.mkImage` takes the directory as `publicKeys` and copies the three public files into the store,
 each alone; it reads nothing else of the set. The signer reads the three private files where they
