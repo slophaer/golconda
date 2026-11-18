@@ -1,4 +1,4 @@
-# Checks of /pkgs (the package set, target and build sets) and cross-compilation.
+# Checks of /pkgs (the target package set) and cross-compilation.
 # A function of the harness (./harness.nix); it returns a list of checks.
 {
   adios,
@@ -26,21 +26,6 @@ let
   # the set enters once: a tree without /pkgs cannot build what needs a package
   noSet = f.modules { options."/services/sshd" = { }; };
   pkgsResult = (withPkgs { }).modules.pkgs { };
-  # a cross set: the host's packages are other than the target's
-  crossBuildPkgs = {
-    host = true;
-  };
-  crossPkgs =
-    extra:
-    (f.modules {
-      options."/pkgs" = {
-        target = stubSet // {
-          buildPkgs = crossBuildPkgs;
-        };
-      }
-      // extra;
-    }).modules.pkgs
-      { };
 in
 [
   (check "pkgs: /pkgs returns the set and its pkgs, nothing else" (
@@ -48,7 +33,6 @@ in
     && pkgsResult.pkgs.openssh == openssh
     &&
       attrNames pkgsResult == [
-        "build"
         "pkgs"
         "target"
       ]
@@ -123,20 +107,6 @@ in
 
   # 10. Boundary tests: config-in-store boundary enforcement
   # (docs/design/config.md, docs/design/modules.md)
-  # /pkgs: target and build sets
-  (check "pkgs: build is the target's buildPkgs; equal to target when not cross" (
-    pkgsResult.build.pkgs == pkgsResult.target.pkgs
-    && pkgsResult.pkgs == pkgsResult.target.pkgs
-    && (crossPkgs { }).build.pkgs == crossBuildPkgs
-    && (crossPkgs { }).pkgs == stubSet.pkgs
-  ))
-  (check "pkgs: an explicit build set wins over the default" (
-    (crossPkgs {
-      build = {
-        pkgs = { };
-      };
-    }).build.pkgs == { }
-  ))
   (check "pkgs: the stale option `set` is no target: /pkgs throws" (
     !(tryEval (
       deepSeq (

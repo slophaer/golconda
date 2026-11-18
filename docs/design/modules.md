@@ -58,14 +58,10 @@ renderers produce the text and the tests read it.
 
 ## How packages enter the tree
 
-The repkgs sets enter the tree once, as the options of `/pkgs`:
+The repkgs set enters the tree once, as the option `target` of `/pkgs`: the set of the platform the
+image runs on (`mkSystem`, `lib/system.nix`, binds it from `nix/packages.nix`; a document cannot).
 
-- `target` is the set of the platform the image runs on (`mkSystem`, `lib/system.nix`, passes it
-  from `nix/packages.nix`; a document cannot);
-- `build` is the build host's set, for tools that run on the builder. It defaults to the target's
-  `buildPkgs`, which is the same set when the build is not a cross build.
-
-`/pkgs` returns `{ target; build; pkgs; }`. A module that needs a package declares
+`/pkgs` returns `{ target; pkgs; }`. A module that needs a package declares
 `inputs.pkgs.path = "/pkgs"` and reads `results.pkgs.pkgs.openssh`. No option takes a package: a
 downstream package that `[golconda] replaces` lists is the one way to use another build
 ([Your own modules and packages](../features/extending.md)).

@@ -144,7 +144,7 @@
 
   # modules/pkgs/default.nix
   repkgsSet = {
-    description = "The repkgs set of one platform (nix/packages.nix): `pkgs` and the rest. nix/default.nix passes it as options.\"/pkgs\".target and options.\"/pkgs\".build; a configuration document cannot.";
+    description = "The repkgs set of one platform (nix/packages.nix): `pkgs` and the rest. mkSystem (lib/system.nix) binds it as options.\"/pkgs\".target; a configuration document cannot.";
     "x-golconda" = "set";
   };
 }

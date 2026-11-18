@@ -10,7 +10,7 @@ this shape: [design/modules](../../design/modules.md).
 | path             | role                                                                                                                                                                                 |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `/system`        | the composer: `name`, `version`, `updateSource`, `updateReboot`, and `components` from `mkSystem` → the output below                                                                 |
-| `/pkgs`          | the repkgs sets, passed once as `target` (and `build`); returns `{ target; build; pkgs }` to the modules that declare the input                                                      |
+| `/pkgs`          | the repkgs set, passed once as `target`; returns `{ target; pkgs }` to the modules that declare the input                                                                            |
 | `/base`          | built in, composed first: systemd, dbus-broker, dash, uutils coreutils, e2fsprogs, tzdata, hwdb, lvm2, the kernel, the base units, `C.UTF-8`, `ntp`, `journalMaxUse` (details below) |
 | `/network`       | built in: networkd `.network` files (DHCP on every wired link by default) and resolved's fallback `dns`                                                                              |
 | `/security`      | built in: `/usr/lib/sysctl.d/50-golconda.conf`, the kernel hardening settings                                                                                                        |
@@ -211,15 +211,13 @@ Error message examples, from `tests/eval/composer.nix`:
 
 ### `/pkgs`
 
-Two options: `target`, the repkgs set of the platform (`nix/packages.nix`), which `mkSystem`
-(`lib/system.nix`) passes as `options."/pkgs".target`; and `build`, the build host's set (default
-`{ pkgs = target.buildPkgs; }`, the same packages as `target` when not cross). The module returns
-`{ target; build; pkgs; }`, `pkgs` being `target.pkgs`. A module that needs a package declares
-`inputs.pkgs.path = "/pkgs"` and reads `results.pkgs.pkgs.<name>`. A tree without `target` throws
-when a module first needs a package. A module never imports repkgs and never reads a set it did not
-declare; a second kind of set is a second module path, never a second argument. `target` is the one
-option that is not configuration data: the TOML loader refuses a `/pkgs` table, and `mkSystem` binds
-the platform's set.
+One option: `target`, the repkgs set of the platform (`nix/packages.nix`), which `mkSystem`
+(`lib/system.nix`) binds as `options."/pkgs".target`. The module returns `{ target; pkgs; }`, `pkgs`
+being `target.pkgs`. A module that needs a package declares `inputs.pkgs.path = "/pkgs"` and reads
+`results.pkgs.pkgs.<name>`. A tree without `target` throws when a module first needs a package. A
+module never imports repkgs and never reads a set it did not declare; a second kind of set is a
+second module path, never a second argument. `target` is the one option that is not configuration
+data: the TOML loader refuses a `/pkgs` table, and `mkSystem` binds the platform's set.
 
 ### `/base`, `/network` and `/security`
 

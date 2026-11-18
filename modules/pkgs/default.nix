@@ -1,4 +1,4 @@
-#! The repkgs package sets, entering the tree once: mkSystem binds `options."/pkgs".target`, the platform's set (`nix/packages.nix`), and `build`, the build host's.
+#! The repkgs package set, entering the tree once: mkSystem binds `options."/pkgs".target`, the platform's set (`nix/packages.nix`).
 #! A module that needs a package declares `inputs.pkgs.path = "/pkgs"` and reads `results.pkgs.pkgs.<name>`.
 #! A module never imports repkgs and never reads a set it did not declare. `target` is not configuration data: the TOML loader refuses a `/pkgs` table.
 #! docs/design/modules.md, "How packages enter the tree".
@@ -24,11 +24,7 @@ in
   options = {
     target = {
       type = repkgsSet;
-      description = "The repkgs set of the platform (nix/packages.nix), passed by nix/default.nix as options.\"/pkgs\".target; not configuration data.";
-    };
-    build = {
-      type = repkgsSet;
-      description = "The repkgs set of the build host, for tools that run on the builder. Default: the `buildPkgs` of the target set (the target itself when not cross); not configuration data.";
+      description = "The repkgs set of the platform (nix/packages.nix), bound by mkSystem (lib/system.nix) as options.\"/pkgs\".target; not configuration data.";
     };
   };
 
@@ -39,7 +35,6 @@ in
     else
       {
         inherit (options) target;
-        build = options.build or { pkgs = options.target.buildPkgs; };
         inherit (options.target) pkgs;
       };
 }

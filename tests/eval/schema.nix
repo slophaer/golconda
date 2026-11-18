@@ -221,7 +221,7 @@ in
     && !(schema.properties."/services/sshd".properties ? package)
     && !(schema.properties ? "/pkgs")
     && modules."/pkgs".properties.target."x-golconda" == "set"
-    && modules."/pkgs".properties.build."x-golconda" == "set"
+    && !(modules."/pkgs".properties ? build)
     && hasInfix "| `target` | set | none |" docs.pages."/pkgs"
     && hasInfix "not configuration data" docs.pages."/pkgs"
   ))

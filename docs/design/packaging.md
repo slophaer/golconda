@@ -65,11 +65,10 @@ what Golconda builds.
 The build host evaluates a set for the target platform; nothing in the module tree depends on the
 build host. `nix/packages.nix` takes `system` (the build host) and `platform` (the target, default:
 the build host). When they differ, repkgs cross-compiles packages that run on the target using the
-build host's toolchain; `/pkgs.build` is the host's set for tools that run on the builder. The
-`/usr` tree, os-release and every package output belong to the target; the derivation's `system` is
-the build host where the build runs. The wiring exists, but Golconda exposes OS outputs only where
-its kernel is supported, which today is x86_64: no aarch64 `/usr` tree or image is built
-([Scope](scope.md#later)). aarch64 is *(later)*.
+build host's toolchain. The `/usr` tree, os-release and every package output belong to the target;
+the derivation's `system` is the build host where the build runs. The wiring exists, but Golconda
+exposes OS outputs only where its kernel is supported, which today is x86_64: no aarch64 `/usr` tree
+or image is built ([Scope](scope.md#later)). aarch64 is *(later)*.
 
 ## Set-wide features
 
