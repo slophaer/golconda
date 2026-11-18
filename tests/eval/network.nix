@@ -45,6 +45,14 @@ in
     && hasInfix "Type=ether" result.files."/usr/lib/systemd/network/99-default-dhcp.network".text
     && hasInfix "DHCP=yes" result.files."/usr/lib/systemd/network/99-default-dhcp.network".text
   ))
+  (check "network: no DHCP lease of the default network sets the host name" (
+    let
+      t =
+        (composeWith { "/network" = { }; }).files."/usr/lib/systemd/network/99-default-dhcp.network".text;
+    in
+    hasInfix "[DHCPv4]\nUseDNS=yes\nUseDomains=yes\nUseHostname=no\n" t
+    && hasInfix "[DHCPv6]\nUseHostname=no\n" t
+  ))
   (check "network: defaultDhcp=false disables default network" (
     let
       result = composeWith {

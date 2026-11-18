@@ -74,6 +74,8 @@ let
     network = "Network";
     link = "Link";
     dhcpv4 = "DHCPv4";
+    # the default network's only: the type of a network has no dhcpv6
+    dhcpv6 = "DHCPv6";
     address = "Address";
   };
   renderNetwork =
@@ -123,11 +125,14 @@ in
             DHCP = "yes";
             IPv6AcceptRA = "yes";
           };
+          # the host name comes from /etc/hostname or the system.hostname credential, never from
+          # a lease (docs/design/boot.md, "Bootstrap credentials")
           dhcpv4 = {
             UseDNS = "yes";
-            UseHostname = "yes";
+            UseHostname = "no";
             UseDomains = "yes";
           };
+          dhcpv6.UseHostname = "no";
         };
       };
 

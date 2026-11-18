@@ -139,11 +139,11 @@ in
       && configLib.optionError "/imds" { import = [ "hostname" ]; } != null
     )
   )
-  (check "imds: without /imds, DHCP may still set the host name (no drop-in)" (
+  (check "imds: without /imds, no drop-in (the default network sets UseHostname=no itself)" (
     let
       r = composeWith lan;
     in
-    !(anyDhcpDropIn r) && hasInfix "UseHostname=yes" r.files."${netDir}/99-default-dhcp.network".text
+    !(anyDhcpDropIn r) && hasInfix "UseHostname=no" r.files."${netDir}/99-default-dhcp.network".text
   ))
   (check "imds: with /imds, no DHCP lease sets the host name" (
     let

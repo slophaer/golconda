@@ -329,13 +329,12 @@ start_qemu() {
   fi
   # --imds: Hetzner by DMI, and nothing else: the guest takes the endpoint from hwdb and the image.
   # Its address, 169.254.169.254, must be on the guest's link (imdsd's route has Scope=link), so
-  # QEMU's user network is GUEST_NET in every mode. QEMU's DHCP server offers a host name, which
-  # networkd must not apply.
+  # QEMU's user network is GUEST_NET in every mode.
   SMBIOS_IMDS=""
   NET_IMDS=""
   if [ "$IMDS" = 1 ]; then
     SMBIOS_IMDS="-smbios type=0,vendor=Hetzner"
-    NET_IMDS=",hostname=dhcp-test,guestfwd=tcp:$IMDS_ADDR:80-cmd:$WORKDIR/serve-imds"
+    NET_IMDS=",guestfwd=tcp:$IMDS_ADDR:80-cmd:$WORKDIR/serve-imds"
   fi
 
   # --next: the guest's connections to the image's update source, $UPDATE_ADDR:$HTTP_PORT, go to
@@ -350,6 +349,10 @@ start_qemu() {
   if [ "$SSH_TEST" = 1 ]; then
     NET_TLS=",guestfwd=tcp:$TLS_ADDR_ANCHOR:443-cmd:$WORKDIR/serve-tls-anchor,guestfwd=tcp:$TLS_ADDR_DISTRUSTED:443-cmd:$WORKDIR/serve-tls-distrusted"
   fi
+
+  # QEMU's DHCP server offers the host name dhcp-test in every mode: networkd must not apply it
+  # (the hostname checks)
+  NET_HOSTNAME=",hostname=dhcp-test"
 
   ACCEL=kvm
   if [ "$ALLOW_TCG" = 1 ]; then
@@ -368,7 +371,7 @@ start_qemu() {
     $SMBIOS_HOSTNAME \
     $SMBIOS_BOOTSTRAP \
     $SMBIOS_IMDS \
-    -netdev user,id=net0,net=$GUEST_NET,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22$NET_UPDATE$NET_IMDS$NET_TLS \
+    -netdev user,id=net0,net=$GUEST_NET,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22$NET_HOSTNAME$NET_UPDATE$NET_IMDS$NET_TLS \
     -device virtio-net-pci,netdev=net0 \
     -device i6300esb"
   

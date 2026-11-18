@@ -31,7 +31,7 @@ test_ssh() {
       EXPECT_HN=esp-test
     fi
     RC=0; [ "$HN" = "$EXPECT_HN" ] || RC=1
-    verdict "hostname (system.hostname credential applied)" $RC
+    verdict "hostname (system.hostname credential applied; the lease's dhcp-test is not)" $RC
     check_imds_off
     check_imds_lock_endpoints
   fi

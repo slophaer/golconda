@@ -37,7 +37,7 @@
 #   - no-firstboot-prompt: systemd-firstboot.service finished, and no prompt appeared
 #
 # With --ssh-test: logs in with tests/fixtures/snakeoil-ssh and checks
-#   ssh-login, hostname (must be "boot-test", the SMBIOS credential),
+#   ssh-login, hostname (must be "boot-test", the SMBIOS credential, not the lease's dhcp-test),
 #   systemctl --failed (no failed units), varlinkctl list-interfaces, the loader, hwdb,
 #   ipe-denies-copy (a copy of /usr/bin/sh in /var/tmp is refused, and IPE logs it), index-keyring,
 #   units-composed-only (no link in /etc/systemd/system; each enabled unit has a static link in
