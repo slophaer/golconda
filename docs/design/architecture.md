@@ -22,8 +22,8 @@ flowchart LR
 
 ## How the parts fit
 
-- **repkgs** builds every package so that the output never names its own store path: libraries are
-  found by `$ORIGIN`, the dynamic loader by a stub relative to the binary, scripts by `launch`
+- **repkgs** builds every package so that the output never names its own store path. Libraries are
+  found by `$ORIGIN`, the dynamic loader by a stub relative to the binary, and scripts by `launch`
   records. That is what lets the store live at `/usr/nix/store` inside a read-only image with no Nix
   on the machine, and what makes the initrd a second, smaller `/usr` tree from the same store.
 - **adios** types every module with korora and composes them by explicit function application: a
