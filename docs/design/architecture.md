@@ -54,8 +54,8 @@ flowchart LR
 ## What every image contains
 
 The `/base` module is a built-in component: every system has it, composed first, and a configuration
-cannot leave it out. It brings systemd, dbus-broker, dash (as `/usr/bin/sh`), uutils coreutils, GNU
-grep, e2fsprogs and the kernel; the units for networkd, resolved, timesyncd and the D-Bus socket;
+cannot leave it out. It brings systemd, dbus-broker, dash (as `/usr/bin/sh`), uutils coreutils,
+e2fsprogs and the kernel; the units for networkd, resolved, timesyncd and the D-Bus socket;
 `C.UTF-8` as the only locale; the timesyncd pool and the journal size (the full list is in
 [Modules](../reference/modules/README.md#base-network-and-security)). The other built-in components
 are in [Modules: Which modules a system has](modules.md#which-modules-a-system-has). Everything else

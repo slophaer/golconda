@@ -2,6 +2,7 @@
 # A function of the harness (./harness.nix); it returns a list of checks.
 {
   check,
+  compose,
   hasInfix,
   system,
   throws,
@@ -25,6 +26,13 @@ in
     && system.files ? "/usr/lib/golconda/vars.d/sshd-hostkey.sh"
   ))
   (check "vars: runner installed once" (system.files ? "/usr/lib/golconda/golconda-var-run"))
+  (check "vars: GNU grep, for the runner's whole-line match, comes from /vars" (
+    let
+      c = compose [ ];
+    in
+    builtins.any (p: p.name == "grep-3.12" && p.bin == [ "grep" ]) c.packages
+    && c.origins.packages."grep-3.12" == [ "/vars" ]
+  ))
   (check "vars: runner is executable" (
     system.files."/usr/lib/golconda/golconda-var-run".mode == "0755"
   ))

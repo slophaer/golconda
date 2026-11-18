@@ -168,7 +168,6 @@ in
           p.dbus-broker
           p.dash
           p.uutils-coreutils
-          p.grep # grep -Fx: the var runner's whole-line match (modules/vars/golconda-var-run)
           p.e2fsprogs # mkfs.ext4 and fsck.ext4: repart makes the root partition at first boot
           p.tzdata # the zone database: /usr/share/zoneinfo
           p.hwdb # the compiled hardware database: /usr/lib/udev/hwdb.bin

@@ -6,10 +6,16 @@
 _: {
   name = "vars";
 
-  impl = _: {
-    files."/usr/lib/golconda/golconda-var-run" = {
-      text = builtins.readFile ./golconda-var-run;
-      mode = "0755";
+  inputs.pkgs.path = "/pkgs";
+
+  impl =
+    { results, ... }:
+    {
+      # grep -Fx: the runner's whole-line match
+      packages = [ results.pkgs.pkgs.grep ];
+      files."/usr/lib/golconda/golconda-var-run" = {
+        text = builtins.readFile ./golconda-var-run;
+        mode = "0755";
+      };
     };
-  };
 }

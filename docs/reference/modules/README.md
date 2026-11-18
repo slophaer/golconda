@@ -7,19 +7,19 @@ this shape: [design/modules](../../design/modules.md).
 
 ## Modules
 
-| path             | role                                                                                                                                                                                           |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/system`        | the composer: `name`, `version`, `updateSource`, `updateReboot`, and `components` from `mkSystem` → the output below                                                                           |
-| `/pkgs`          | the repkgs set, passed once as `target`; returns `{ target; pkgs }` to the modules that declare the input                                                                                      |
-| `/golconda-lib`  | the libraries of `modules/lib/` for downstream modules: returns `{ service; var; merge; fragment; }` to the modules that declare the input; no options                                         |
-| `/base`          | built in, composed first: systemd, dbus-broker, dash, uutils coreutils, GNU grep, e2fsprogs, tzdata, hwdb, lvm2, the kernel, the base units, `C.UTF-8`, `ntp`, `journalMaxUse` (details below) |
-| `/network`       | built in: networkd `.network` files (DHCP on every wired link by default) and resolved's fallback `dns`                                                                                        |
-| `/security`      | built in: `/usr/lib/sysctl.d/50-golconda.conf`, the kernel hardening settings                                                                                                                  |
-| `/trust`         | built in: the CA store, `/usr/share/ca-certificates/ca-bundle.crt` (Mozilla's roots plus `anchors`, minus `distrust`) and the `/etc/ssl` links to it                                           |
-| `/factory`       | built in: the `/etc` seed under `/usr/share/factory/etc` and the `L` lines that link it                                                                                                        |
-| `/vars`          | installs `/usr/lib/golconda/golconda-var-run` (mode `0755`), the POSIX sh runner for var units (`modules/vars/golconda-var-run`); built in                                                     |
-| `/services/sshd` | OpenSSH as a service with its configuration under `/usr/lib/sshd/` and an ed25519 host key var; keys and certificates only                                                                     |
-| `/imds`          | optional, no options: systemd's IMDS stack and its own import (host name, root's ssh key, user data credentials) where hwdb finds a cloud                                                      |
+| path             | role                                                                                                                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/system`        | the composer: `name`, `version`, `updateSource`, `updateReboot`, and `components` from `mkSystem` → the output below                                                                 |
+| `/pkgs`          | the repkgs set, passed once as `target`; returns `{ target; pkgs }` to the modules that declare the input                                                                            |
+| `/golconda-lib`  | the libraries of `modules/lib/` for downstream modules: returns `{ service; var; merge; fragment; }` to the modules that declare the input; no options                               |
+| `/base`          | built in, composed first: systemd, dbus-broker, dash, uutils coreutils, e2fsprogs, tzdata, hwdb, lvm2, the kernel, the base units, `C.UTF-8`, `ntp`, `journalMaxUse` (details below) |
+| `/network`       | built in: networkd `.network` files (DHCP on every wired link by default) and resolved's fallback `dns`                                                                              |
+| `/security`      | built in: `/usr/lib/sysctl.d/50-golconda.conf`, the kernel hardening settings                                                                                                        |
+| `/trust`         | built in: the CA store, `/usr/share/ca-certificates/ca-bundle.crt` (Mozilla's roots plus `anchors`, minus `distrust`) and the `/etc/ssl` links to it                                 |
+| `/factory`       | built in: the `/etc` seed under `/usr/share/factory/etc` and the `L` lines that link it                                                                                              |
+| `/vars`          | installs `/usr/lib/golconda/golconda-var-run` (mode `0755`), the POSIX sh runner for var units (`modules/vars/golconda-var-run`), and GNU grep for it; built in                      |
+| `/services/sshd` | OpenSSH as a service with its configuration under `/usr/lib/sshd/` and an ed25519 host key var; keys and certificates only                                                           |
+| `/imds`          | optional, no options: systemd's IMDS stack and its own import (host name, root's ssh key, user data credentials) where hwdb finds a cloud                                            |
 
 ## The composer output
 
@@ -228,9 +228,8 @@ them first, and a configuration never lists them.
 
 `/base` returns:
 
-- **packages**: systemd, dbus-broker, dash, uutils-coreutils, grep (`grep -Fx` in the var runner),
-  e2fsprogs (`mkfs.ext4` for the root partition), tzdata, hwdb, lvm2 (`dmsetup` and the
-  device-mapper udev rules) and linux-kernel.
+- **packages**: systemd, dbus-broker, dash, uutils-coreutils, e2fsprogs (`mkfs.ext4` for the root
+  partition), tzdata, hwdb, lvm2 (`dmsetup` and the device-mapper udev rules) and linux-kernel.
 - **units**: `golconda-console.service` (the journal on tty1), `golconda-health-network.service` and
   `golconda-loader-update.service`; `dbus.socket` is a link to the dbus-broker package, which
   installs it (upstream does not ship it).
