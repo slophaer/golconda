@@ -1,10 +1,10 @@
 # Updates
 
-An update is a new version of four artifacts, written to the inactive slot by systemd-sysupdate, and
-a reboot, which systemd's reboot timer starts in a nightly window ([Activation](#activation)). The
-fallback is the previous slot, chosen by boot counting or by hand. The transfer definitions are
-rendered (`/system.updateSource`); the artifacts come from the image builder
-([Image artifacts](../reference/image.md)).
+An update is a new version of four artifacts and a reboot. systemd-sysupdate writes the artifacts to
+the inactive slot, and systemd's reboot timer starts the reboot in a nightly window
+([Activation](#activation)). The fallback is the previous slot, chosen by boot counting or by hand.
+The transfer definitions are rendered (`/system.updateSource`); the artifacts come from the image
+builder ([Image artifacts](../reference/image.md)).
 
 ```mermaid
 flowchart TD
@@ -47,14 +47,15 @@ runs. With `updateReboot = null` the image installs updates and waits for the op
 
 After a fallback the release that failed its three tries is still installed, and it is newer, so
 `systemd-sysupdate reboot` alone would reboot into it every night. The service therefore has an
-`ExecCondition=`, `/usr/lib/golconda/golconda-update-pending`, which passes only when systemd-boot
-would start another entry than the running one: `bootctl list` marks the entry systemd-boot picks as
+`ExecCondition=`, `/usr/lib/golconda/golconda-update-pending`. It passes only when systemd-boot
+would start another entry than the running one. `bootctl list` marks the entry systemd-boot picks as
 `(default)` (an entry with no try left sorts last) and the running one as `(selected)`. After a
-fallback both are the old release, and nothing reboots. After an install the new entry, `+3-0`, is
-the default, and the machine reboots into its first try, a [trial boot](boot.md#trial-boot). An
-operator who wants another window writes a drop-in for the timer in `/etc`; the boot test does so to
-activate within seconds. An operator who runs `bootctl set-oneshot` or `set-default` changes what
-systemd-boot picks, and the condition follows it.
+fallback both are the old release, and the machine does not reboot. After an install the new entry,
+`+3-0`, is the default, and the machine reboots into its first try, a
+[trial boot](boot.md#trial-boot). An operator who wants another window writes a drop-in for the
+timer in `/etc`; the boot test does so to activate within seconds. An operator who runs
+`bootctl set-oneshot` or `set-default` changes what systemd-boot picks, and the condition follows
+it.
 
 `--next` and `--next --fail-health` prove both cases in QEMU, with the window moved to every 10 s
 ([What is proven](../proven.md)).
@@ -88,21 +89,21 @@ transfer of the same name in `/usr`, also with `Verify=no`. The image ships neit
 | the `/usr` root hash signature                                                        | the `db` certificate built into the kernel (`CONFIG_SYSTEM_TRUSTED_KEYS`), never the firmware `db`                | every boot, when `/usr` is activated    | the same            |
 | each block of `/usr`                                                                  | the root hash (dm-verity); IPE runs programs only from a volume whose signature the kernel verified               | every read, every exec                  | the same            |
 
-So without Secure Boot an update is not unauthenticated: the signed index stops a payload that the
-release key did not sign, and a `/usr` that the `db` key did not sign does not run (IPE stops the
-boot at switch-root). What is lost is the boot-time check of the UKI. After an install, whoever can
-write the ESP can replace the UKI, and with it the kernel that holds the trusted key
+So without Secure Boot an update is authenticated. The signed index stops a payload that the release
+key did not sign, and a `/usr` that the `db` key did not sign does not run (IPE stops the boot at
+switch-root). What is lost is the boot-time check of the UKI. After an install, whoever can write
+the ESP can replace the UKI, and with it the kernel that holds the trusted key
 ([Trust: Verity key](trust.md#2-verity-key)). With Secure Boot, firmware also refuses such a UKI.
 
 The clock must be after the creation of the release key: `gpg` refuses a key from the future.
 timesyncd sets the clock from the network. Without it, PID 1 moves a clock that is behind the
 release's date forward to that date (the mtime of the empty `/usr/lib/clock-epoch`) *(being built)*.
-`scripts/make-keys` makes the release key at 00:00 UTC of the day before it runs, so the key is
+`scripts/make-keys` makes the release key at 00:00 UTC of the day before it runs. So the key is
 older than 00:00 UTC of every release dated on or after the day it ran. A release dated earlier is
 still ahead of that clock.
 
 Proven: `index-signed` and `sysupdate-installed` (`--next`), and `sysupdate-refused` with
-`boots-old` for a changed index (`--next --tamper-index`); the no-Secure-Boot image passed
+`boots-old` for a changed index (`--next --tamper-index`). The no-Secure-Boot image passed
 `--ssh-test --next`, and its update on Hetzner Cloud logged `Good signature`
 ([What is proven](../proven.md)).
 
@@ -112,14 +113,14 @@ A version is `YYYYMMDD.N`: the date and a counter within the day (`20261031.1`, 
 `/system.version` type enforces the format; sysupdate orders versions with `strverscmp`, which this
 format sorts correctly. The machine refuses to go backwards: sysupdate installs only a version newer
 than the ones it has. The composer cannot check that (evaluation does not know the previous
-release); `golconda release build` and `publish` refuse a version that does not increase on the
+release). `golconda release build` and `publish` refuse a version that does not increase on the
 builder, and a version published again with other files
 ([Making a release](../reference/release.md)).
 
 The version also sets the mtime of every file in the image (`mkfs.erofs -T`, the epoch of the date
-plus `N`). systemd's `ConditionNeedsUpdate=` compares `/usr`'s mtime with `/etc/.updated`, so
-sysusers, tmpfiles and the other first-boot units run exactly once per new image while the image
-itself stays reproducible. Other downgrades than the boot-counting fall-back are unsupported.
+plus `N`). systemd's `ConditionNeedsUpdate=` compares `/usr`'s mtime with `/etc/.updated`. So
+sysusers, tmpfiles and the other first-boot units run exactly once per new image, while the image
+itself stays reproducible. Downgrades other than the boot-counting fall-back are unsupported.
 
 ## State across releases
 
@@ -137,8 +138,8 @@ release must not change the state in a way that the release before it cannot rea
 ## Factory reset
 
 The state partition is defined with `FactoryReset=yes`. `systemctl start factory-reset.target` asks
-for a reset: it sets the `FactoryResetRequest` EFI variable and reboots, and the next boot has
-systemd-repart delete the partitions marked `FactoryReset=` and create them again empty
+for a reset. It sets the `FactoryResetRequest` EFI variable and reboots. On the next boot
+systemd-repart deletes the partitions marked `FactoryReset=` and creates them again empty
 (systemd-factory-reset(8)). First boot then runs again. The state is gone; the ESP and the `/usr`
 slots stay. Do not run `systemd-repart --factory-reset=yes` for this: it deletes the partition at
 once, on the running machine.
