@@ -1,9 +1,10 @@
 # Build host
 
-A build host is the machine whose Nix daemon builds Golconda's packages and images. The servers run
-no Nix. This page says what that daemon needs and how iets reaches it. Each fact names its source: a
-file in this repo, or a file in the repkgs or iets pin (`pins/`). Anything no test in this repo has
-shown is marked **unverified**.
+A build host is the machine whose Nix daemon builds Golconda's packages and images. It is an
+`x86_64-linux` machine, the one system in `systems` of `default.nix`. The servers run no Nix. This
+page says what that daemon needs and how iets reaches it. Each fact names its source: a file in this
+repo, or a file in the repkgs or iets pin (`pins/`). Anything no test in this repo has shown is
+marked **unverified**.
 
 ## Why the daemon needs more than stock settings
 

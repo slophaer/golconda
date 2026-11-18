@@ -30,9 +30,8 @@ schema is the flake one, produced by flake-incompat.
 | `lib.mkImage`                                           | no          | a TOML document and a key set's public halves → the unsigned image chain and its signer ([`lib.mkImage`](#libmkimage))                            |
 | `lib.readPins`                                          | no          | a directory of pins in uptrack's format → `{ <name> = the unpacked tree; }`, the reader of `pins/` ([Pinning](pinning.md#your-other-inputs))      |
 
-OS outputs require the local x86_64 kernel. Golconda exposes no aarch64 images or cross-compiled OS
-trees until the kernel supports that architecture ([Scope](../design/scope.md)). Package tests, Nix
-and developer tools still have per-system outputs.
+`systems` in `default.nix` lists `x86_64-linux` only, so `<system>` is `x86_64-linux`. aarch64 is
+*(later)* ([Scope](../design/scope.md#later)).
 
 ## Inputs
 

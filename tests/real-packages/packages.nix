@@ -4,25 +4,14 @@
 {
   check,
   f,
-  hasPrefix,
   pkgs,
   sources,
   ...
 }:
 let
-  inherit (builtins)
-    all
-    attrNames
-    elem
-    ;
+  inherit (builtins) attrNames;
 in
 [
-  (check "outputs: aarch64 exposes no unsupported kernel, image or OS tree" (
-    let
-      names = attrNames f.packages.aarch64-linux;
-    in
-    !(elem "kernel" names) && all (n: !(hasPrefix "image-smoke" n) && !(hasPrefix "usr-tree" n)) names
-  ))
   (check "outputs: x86_64 keeps the native kernel and the test image" (
     f.packages.x86_64-linux ? kernel && f.packages.x86_64-linux ? image-smoke-test
   ))

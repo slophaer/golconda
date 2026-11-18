@@ -14,10 +14,7 @@ flake-incompat.mkFlake {
     self = ./.;
   };
   expr = ./nix;
-  systems = [
-    "x86_64-linux"
-    "aarch64-linux"
-  ];
+  systems = [ "x86_64-linux" ];
   # Per-system arguments, from the repkgs set for the platform (nix/packages.nix): `pkgs`,
   # `platform` (repkgs' record, nix/platforms.nix), and `set` (the full repkgs set, for
   # options."/pkgs".target). No nixpkgs here.
