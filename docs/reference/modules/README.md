@@ -36,9 +36,9 @@ this shape: [design/modules](../../design/modules.md).
 | `links`    | `{ path = { target; kind; }; }`                                                            | the fragments' symlinks of `/usr`: expanded directories, dlopen sonames, `.wants`               |
 | `programs` | `[ name ]`                                                                                 | nowhere: the image builder fails when `/usr/bin/<name>` does not exist                          |
 
-Units, files and links are installed into one `/usr` tree, so a path that two of them claim is an
-error that names both claims and both origins (a module path, or a build fragment's `name`). Each
-kind installs to one place:
+Units, files and links are installed into one `/usr` tree. A path that two of them claim is an error
+that names both claims and both origins (a module path, or a build fragment's `name`). Each kind
+installs to one place:
 
 - a unit at `/usr/lib/systemd/system/<name>`;
 - a file or link at its path;
@@ -56,7 +56,7 @@ The system and the image builder write some paths themselves, and a fragment can
   `/usr/lib/sysusers.d/golconda.conf` and `/usr/lib/tmpfiles.d/golconda.conf`.
 
 Every file and link path must be canonical: under `/usr/`, with no empty, `.` or `..` component, no
-repeated separator, and no control character, so `/usr/lib/../x` and `/usr/x` cannot be two claims
+repeated separator, and no control character. So `/usr/lib/../x` and `/usr/x` cannot be two claims
 on one path. `merge.duplicateError` gives the message as a value.
 
 ## Shared types (`modules/lib/`)
@@ -111,7 +111,7 @@ store keeps the executable bit and nothing else. The composer's output always ha
 An `app`'s files are text only.
 
 A `unitName` is a stem of letters, digits, `: _ . @ -` and one of `.service`, `.target`, `.socket`,
-`.timer`, `.path`, `.mount`, `.slice` (`unitSuffixes`); a `unitText` is a string with at least one
+`.timer`, `.path`, `.mount`, `.slice` (`unitSuffixes`). A `unitText` is a string with at least one
 section header line (`[Unit]`, `[Service]`, ...). An empty text, a text without a header, or a name
 with another suffix is a type error that names the unit.
 
@@ -129,9 +129,9 @@ What a program needs to run, with nothing systemd-specific. Embedded in `service
 
 An argument with a newline is a type error (it would end the `ExecStart=` line). A file text that
 contains `%d/`, `$CREDENTIALS_DIRECTORY`, `/etc/credstore`, `-----BEGIN` or `PRIVATE KEY` is a type
-error that names the file: an app file holds no per-machine value (`perMachineMarkers` in
-`app.nix`); a secret is a credential, referenced from `argv`. This scan catches some common
-mistakes; it cannot prove that text contains no secret. An unknown field is a type error.
+error that names the file. An app file holds no per-machine value (`perMachineMarkers` in
+`app.nix`), and a secret is a credential, referenced from `argv`. This scan catches some common
+mistakes. It cannot prove that text contains no secret. An unknown field is a type error.
 
 ### `service`
 
@@ -160,9 +160,9 @@ Arguments are escaped (`%` → `%%`, `$` → `$$`; a literal `%u` for sshd is `%
 for programs that take a path as `-o Option=<path>`. A prefix is one word of letters, digits and
 `_ = : / . , + -`. A ref that names a credential the service does not declare throws. An unknown
 field is a type error. A credential fallback is for a public value that the service needs before its
-sealed credential arrives (sshd's revocation list before the first push): PID 1 gives the text when
+sealed credential arrives (sshd's revocation list before the first push). PID 1 gives the text when
 the credstore has no file of that id, and the sealed file once it has one (`systemd.exec(5)`,
-`SetCredential=`). The text is in the unit file in `/usr`, so it is never a secret; a fallback that
+`SetCredential=`). The text is in the unit file in `/usr`, so it is never a secret. A fallback that
 names no declared credential, an empty one, or one with a control character other than a line break
 is a type error.
 
@@ -190,10 +190,10 @@ cosmetic change.
 ### `merge`
 
 `merge [ fragmentA fragmentB ]` unions `units`, `files` and `links`, normalises every file to
-`{ text; mode; }`, concatenates `sysusers` and `tmpfiles` (each line once; two different lines for
-one tmpfiles path or one sysusers user or group throw, except one line of each adjusting tmpfiles
-type, `z Z t T h H a A`, beside the line that creates the path), returns `packages` with each
-package once, and records in `origins.packages` which fragments (by `name`) brought each.
+`{ text; mode; }`, and concatenates `sysusers` and `tmpfiles`. Each line stays once. Two different
+lines for one tmpfiles path or one sysusers user or group throw, except one line of each adjusting
+tmpfiles type, `z Z t T h H a A`, beside the line that creates the path. It returns `packages` with
+each package once, and records in `origins.packages` which fragments (by `name`) brought each.
 
 One duplicate check covers what evaluation knows of the `/usr` tree. Each fragment claims paths: a
 unit `/usr/lib/systemd/system/<name>`, a file its path, a link its path. A path claimed twice
@@ -263,7 +263,7 @@ them first, and a configuration never lists them.
 
 The two health and loader units explain themselves in the design pages:
 `golconda-health-network.service` fails unless
-`systemd-networkd-wait-online --any --operational-state=routable` succeeds; it is pulled in by a
+`systemd-networkd-wait-online --any --operational-state=routable` succeeds. It is pulled in by a
 `boot-complete.target.requires/` link and is `Before=boot-complete.target`, so a candidate without a
 routable link is not blessed ([design/boot](../../design/boot.md#boot-health)).
 
@@ -355,8 +355,8 @@ Only credentials go on the command line; every fixed path is a line in `sshd_con
 `LogLevel VERBOSE`, `PidFile none` and `Subsystem sftp internal-sftp`; no option changes them
 ([design/trust](../../design/trust.md#identity)). `/etc/pam.d/sshd` comes from `/factory`. The
 fragment also brings the boot health unit `golconda-health-sshd.service`:
-`systemctl is-active sshd.service`, pulled in by a `boot-complete.target.requires/` link and
-`Before=boot-complete.target`, so a candidate without a running sshd is not blessed
+`systemctl is-active sshd.service`. It is pulled in by a `boot-complete.target.requires/` link and
+is `Before=boot-complete.target`, so a candidate without a running sshd is not blessed
 ([design/boot](../../design/boot.md#boot-health)). OpenSSH is `pkgs.openssh` from `/pkgs`; a
 downstream package that `[golconda] replaces` lists takes its place.
 
@@ -370,7 +370,7 @@ downstream package that `[golconda] replaces` lists takes its place.
 | `hostCertificate`   | bool, default `false`                      | admin var `sshd-host-cert`; `LoadCredentialEncrypted=sshd-host-cert.cert`, `-o HostCertificate=%d/sshd-host-cert.cert`    |
 
 `sshd_config` holds `AuthorizedKeysFile .ssh/authorized_keys /usr/lib/sshd/authorized_keys/%u`.
-`revokedKeys` and `hostCertificate` declare admin vars (a KRL and the signed host certificate); they
+`revokedKeys` and `hostCertificate` declare admin vars (a KRL and the signed host certificate). They
 reach sshd on the command line because `sshd_config` cannot refer to the credentials directory, and
 an app file may not ([`app`](#app)). With `revokedKeys`, the KRL credential has a fallback
 (`SetCredential=`) that names the user CAs, so certificates are refused until the KRL is pushed.
