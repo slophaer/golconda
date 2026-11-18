@@ -4,8 +4,8 @@ v0.1 is the first release this checklist describes.
 
 A release is done when every item under [Prove](#prove) and [Build](#build) is checked. Each item
 names the test that checks it. [Scope](design/scope.md) says which features the release has;
-[What is proven](proven.md) lists the boot-test markers that pass today. This page is the gap
-between them.
+[What is proven](proven.md) lists the boot-test markers that pass. This page is the gap between
+them.
 
 ## What a release means
 
@@ -18,10 +18,8 @@ An image of the release can run a real server unattended:
 
 ## Prove
 
-These exist in the code and the docs, but no test checks them.
-
 - [x] **Unseal after an update.** The next release unseals the sshd host key without re-sealing it,
-  and so does the previous release after a fallback. Test: new markers in
+  and so does the previous release after a fallback. Test: `hostkey-unchanged` in
   `scripts/boot-test --secure-boot --tpm --ssh-test --next`, and with `--fail-health`.
   ([Measured boot](features/measured-boot.md#status))
 - [x] **Certificate login.** A user certificate signed by the CA in `TrustedUserCAKeys` logs in with
@@ -29,21 +27,20 @@ These exist in the code and the docs, but no test checks them.
   host presents its host certificate. Test: boot-test markers.
   ([SSH login](features/ssh-login.md#status))
 - [x] **An admin var end to end.** The host certificate and the KRL are pushed, sealed on the
-  machine, read by sshd, and survive a reboot. Test: a boot-test marker; needs the
-  [deploy tool](#build). ([Vars](features/vars.md#status))
+  machine, read by sshd, and survive a reboot. Test: boot-test markers.
+  ([Vars](features/vars.md#status))
 - [x] **IPE denies a copy.** A binary copied to `/var` gets `Permission denied`, with the IPE audit
   record. Test: a boot-test marker. ([Execution policy](features/execution-policy.md))
 - [x] **hwdb from `/base`.** The images pass the `hwdb` marker in every `--ssh-test` run, with and
   without Secure Boot.
 - [x] **One run outside QEMU**, on Hetzner Cloud. Write the disk, provision it, boot, log in with a
   certificate, install the next release over HTTPS, roll back once. Test: the
-  [Hetzner guide](reference/hetzner-cloud.md) run step by step, its *(planned)* removed, the results
-  recorded in [What is proven](proven.md#not-proven). The run covered the ESP route, a certificate
-  login, two updates over HTTPS, and one fallback from a third release to the second.
+  [Hetzner guide](reference/hetzner-cloud.md), run step by step by hand
+  ([What is proven: Not proven](proven.md#not-proven)).
 
 ## Build
 
-- [x] **The vars deploy tool** (`golconda-vars`): keeps admin vars age-encrypted on the deploy host,
+- [x] **The vars deploy tool**, `golconda vars`: keeps admin vars age-encrypted on the deploy host,
   pushes them over ssh, and has the machine seal them; rotation is "push again".
   ([Trust: Secrets and vars](design/trust.md#secrets-and-vars))
 - [x] **A release tool**, `golconda release` (build, check, publish and list through rclone). It
@@ -54,66 +51,10 @@ These exist in the code and the docs, but no test checks them.
 
 ## How to test it
 
-Image builds cost more than boots. A test image takes 2 to 4 minutes to build (the image without
-Secure Boot about 11, because it has its own kernel), and a boot about 30 seconds. So the tests
-above follow three rules:
-
-- **Runtime checks first.** The unseal checks run `--tpm` together with `--next` and
-  `--fail-health`, and the IPE check runs in the ssh battery. Neither changes an image.
-- **One configuration change.** Every change to the test configuration rebuilds all five test
-  images. The test CA and principals, and the host certificate and KRL in the next release, go in
-  together, after the deploy tool exists. With `--next` the first release logs in with a plain key.
-  The harness pushes the host certificate and the KRL with the deploy tool, and the next release
-  turns them on. With `--certify` the next release's image boots alone and the push happens in its
-  first boot, as [Trust: Host certificate](design/trust.md#host-certificate) describes.
-- **No new harness logic.** The harness calls the deploy tool rather than copying it, and each check
-  is one function that every mode calls.
-
-The boot test runs on QEMU with KVM, cold. The boot test uses no snapshots and no deterministic VMs:
-a boot is short, the costly part is the build, and no deterministic VM boots UEFI with a TPM.
-Running the modes in parallel is the cheaper gain, and the harness does it. Runs on one host with
-one image share nothing (each has its own work directory, ssh port, update server and metadata
-server; see [the update test](reference/boot-test.md#the-update-test)). So
-`scripts/verify --boot-set ARGS …` boots a list of flag sets at the same time, each with its own log
-and a summary line with the names of the checks that passed. The default boot, `--next`,
-`--next --fail-health`, `--imds` and the tamper run took 6 minutes together on one host, against 16
-minutes for the sum of their times. The VMs need about 2 GiB of memory each. A set can name the next
-release's image with `--next @next`: `scripts/verify` builds `<image>-next` (and the deploy tool and
-`age` that `--next` needs) and puts the paths in. A set that starts with `@image=ATTR` boots that
-image instead, and its `@next` is that image's next release. verify builds each image once and names
-the image on each summary line. So one run boots the Secure Boot sets and the sets of
-`image-smoke-test-nosb`:
-
-```sh
-SB="--secure-boot --ssh-test --tpm --timeout 400"
-NOSB="@image=image-smoke-test-nosb --ssh-test --timeout 400"
-scripts/verify --boot-set "$SB" --boot-set "$SB --next @next" \
-  --boot-set "$SB --next @next --fail-health" --boot-set "$SB --next @next --tamper-index" \
-  --boot-set "$SB --imds" --boot-set "$SB --imds --next @next" \
-  --boot-set "$NOSB --esp-creds" --boot-set "$NOSB --next @next" \
-  --boot-set "@image=image-smoke-test-next $SB --certify" --boot-set "$SB --secure-boot-off" \
-  --boot-set "@image=image-smoke-test-next $SB --certify --factory-reset"
-```
-
-Every mode runs on QEMU's user network `169.254.169.0/24`, so `--imds` and `--next` also run
-together: the endpoint `169.254.169.254` stays locked, the update source `169.254.169.2` is
-reachable. Each boot checks the clock (`clock-not-reset`): the first boot, and each later one under
-its own name (after the reboot, the update, the fallback and the refused update).
+`scripts/verify` with no boot set boots every set of `tests/boot/matrix`.
+[Boot test](reference/boot-test.md) explains the flags and the modes.
 
 ## Later
 
-Wanted, but not needed for v0.1:
-
-- `golconda diff` between two built images, by their `config.json`: no diff tool exists; the
-  console's diff of a document against git left with the console
-  ([Scope: Later](design/scope.md#later));
-- the release key on a token: the `db` and PCR keys can be on a PKCS#11 token, the release key is a
-  file ([Signing: Keys on a token](design/signing.md#keys-on-a-token));
-- a read-only `/etc` (a confext built from the image). It would also drop enable links for units a
-  release no longer ships;
-- loader recovery by hand and a boot without the `db` enrolled
-  ([Boot loader: Recovery](design/bootloader.md#recovery)): documented, no marker;
-- everything [Scope](design/scope.md#later) lists under Later.
-
-Internal work that does not change what the release is: a build daemon run as a service, and
-splitting `scripts/boot-test`.
+Everything that [Scope](design/scope.md#later) lists under Later is not in v0.1. Loader recovery by
+hand has no marker ([What is proven: Not proven](proven.md#not-proven)).

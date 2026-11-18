@@ -1,6 +1,6 @@
 # shellcheck shell=sh
 # Part of scripts/boot-test, sourced by it (no processes start when sourced).
-# The checks: each is one function that every mode that needs it calls (docs/release-checklist.md).
+# The checks: each is one function that every mode that needs it calls.
 
 # vars CMD...: `golconda vars` against this guest, as an operator runs it: an ssh
 # config names the guest boot-test, the store is $WORKDIR/vars, encrypted to a fresh age key
