@@ -106,7 +106,16 @@ export def sign-index [release: string, key: string, epoch: int, keyring: string
     with-env {GNUPGHOME: $home} {
       ^gpg --batch --pinentry-mode loopback --passphrase '' --import $key e> /dev/null
       let at = ([$epoch ($created + 1)] | math max)
-      ^gpg --batch --yes --pinentry-mode loopback --passphrase '' --faked-system-time $"($at)!" --detach-sign --output $"($release)/SHA256SUMS.gpg" $"($release)/SHA256SUMS" e> /dev/null
+      # gpg holds its clock at AT, but not when the clock reads AT as gpg starts: the signature
+      # then has the time at which gpg makes it. Then the clock is past AT, and a second
+      # signature has AT
+      let sign = {||
+        let status = (^gpg --batch --yes --pinentry-mode loopback --passphrase '' --status-fd 1 --faked-system-time $"($at)!" --detach-sign --output $"($release)/SHA256SUMS.gpg" $"($release)/SHA256SUMS" e> /dev/null)
+        $status | lines | parse "[GNUPG:] SIG_CREATED {type} {algo} {hash} {class} {time} {fpr}" | get time.0 | into int
+      }
+      if (do $sign) != $at and (do $sign) != $at {
+        error make {msg: $"gpg did not date SHA256SUMS.gpg at ($at)"}
+      }
     }
   } catch {|e|
     do $clean

@@ -153,6 +153,24 @@ if (open --raw $"($rel)/SHA256SUMS.gpg" | hash sha256) != $first {
   error make {msg: "a second SHA256SUMS.gpg differs: not deterministic"}
 }
 ok "the index signature is deterministic"
+# gpg's clock reads the signature time as gpg starts and moves on before gpg signs: SHA256SUMS
+# is a FIFO that gives its data 1.2 seconds into that second, and then a plain file
+let clock = {|| (date now | into int) // 1_000_000_000 }
+let start = (do $clock)
+while (do $clock) == $start { sleep 10ms }
+let now = (do $clock)
+let slow = $"($tmp)/slow"
+mkdir $slow
+"0000  some_20261031.1.efi\n" | save -f $"($slow)/data"
+^mkfifo $"($slow)/SHA256SUMS"
+^sh -c $"cd '($slow)' && \(sleep 1.2; cat data > SHA256SUMS; mv data SHA256SUMS\) </dev/null >/dev/null 2>&1 &"
+sign-index $slow $priv_a.indexKey $now $"($a)/release/index.pgp"
+let early = (open --raw $"($slow)/SHA256SUMS.gpg" | hash sha256)
+sign-index $slow $priv_a.indexKey $now $"($a)/release/index.pgp"
+if (open --raw $"($slow)/SHA256SUMS.gpg" | hash sha256) != $early {
+  error make {msg: "an index signature made in the second of its time differs from one made later"}
+}
+ok "an index signature made in the second of its time is the same as one made later"
 fails "the index signature does not verify against another keyring" "does not verify" {||
   verify-index $rel $"($b)/release/index.pgp"
 }
