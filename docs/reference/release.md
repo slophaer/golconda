@@ -161,14 +161,14 @@ nix-build -o unsigned -E '((import ./default.nix).lib.mkImage {
 unsigned/sign unsigned --keys /srv/golconda-keys --out release-dir
 ```
 
-`config` is a TOML path or an option set. `publicKeys` is a string or a path; either way only
-`secureboot/db.crt`, `pcr/pcr.pub` and `release/index.pgp` are copied. A repository can also commit
-the three public files and name them as a path, which a flake needs: pure evaluation reads no
-absolute path outside the store. `system` (default: `builtins.currentSystem`) is the build host;
-`golconda release build` passes its `--system` (default: this host's CPU and `-linux`, such as
-`x86_64-linux`). `nix-build` prints the output path. iets 0.2 builds the content-addressed output
-but finds no path for it ("built, but the builder has no output path"). For that reason
-`golconda release build` uses `nix-build`.
+`config` is the path to the TOML document; an attribute set is an error. `publicKeys` is a string or
+a path; either way only `secureboot/db.crt`, `pcr/pcr.pub` and `release/index.pgp` are copied. A
+repository can also commit the three public files and name them as a path, which a flake needs: pure
+evaluation reads no absolute path outside the store. `system` (default: `builtins.currentSystem`) is
+the build host; `golconda release build` passes its `--system` (default: this host's CPU and
+`-linux`, such as `x86_64-linux`). `nix-build` prints the output path. iets 0.2 builds the
+content-addressed output but finds no path for it ("built, but the builder has no output path"). For
+that reason `golconda release build` uses `nix-build`.
 
 Verification: `golconda release build` built and signed two releases with a fresh key set. Both
 booted with `--secure-boot --tpm --ssh-test`, the second as an update over HTTP (`--next`). None of
