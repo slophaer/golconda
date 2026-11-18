@@ -42,22 +42,28 @@
 - **fallback**: the boot of the other slot after failed boots, by boot counting or by the
   failed-boot count ([Boot: Failed boots](../design/boot.md#failed-boots)). Not a downgrade.
 - **farm** (symlink farm): `/usr/bin`, `/usr/lib` and `/usr/share` as symlinks into
-  `/usr/nix/store`, made by the `/usr` tree builder from the composer's `links` map. The word means
-  only the tree; the link kind `farm` names a directory expanded file by file into it.
+  `/usr/nix/store`, made by the `/usr` tree builder from the composer's `links` map. The unit
+  directories hold copies, not links ([Layout: Unit files](../design/layout.md#unit-files)). The
+  word means only the tree; the link kind `farm` names a directory expanded file by file into it.
 - **fragment**: the typed value a module returns:
   `{ name; units; files; sysusers; tmpfiles; packages; links }`, every field optional
   (`modules/lib/fragment.nix`).
 - **health unit**: a unit that must pass before `boot-complete.target`:
   `golconda-health-network.service` (a routable link) and `golconda-health-sshd.service` (sshd
   active) ([Boot: Boot health](../design/boot.md#boot-health)).
+- **host certificate**: an OpenSSH certificate of a machine's host key, signed with the host CA key.
+  `golconda vars certify` makes it and pushes it. With `/services/sshd.hostCertificate` on, sshd
+  presents it and refuses every plain key
+  ([Trust: Host certificate](../design/trust.md#host-certificate)).
 - **iets**: the evaluator. Evaluates the Nix expressions, lints them strictly (`iets.toml`), and
   talks to the Nix daemon that builds.
 - **image id**: `/system.name`, the `ID` and `IMAGE_ID` of the image's `os-release`. Each release
   file name starts with it: `<id>_<version>`.
 - **IPE**: Integrity Policy Enforcement, the kernel LSM that lets a program run only from a
   dm-verity volume whose signature the kernel verified ([Kernel](../design/kernel.md)).
-- **key set**: the directory that `scripts/make-keys` writes: `secureboot/`, `pcr/` and `release/`,
-  each private key with its public half ([Making a release](release.md)).
+- **key set**: the directory `DIR` that `scripts/make-keys` writes: `secureboot/`, `pcr/` and
+  `release/`, with the `db`, PCR and release keys, their public halves, and the PK and KEK
+  certificates. The PK and KEK keys go to `DIR.private/` beside it ([Making a release](release.md)).
 - **korora**: the type library adios uses; every option and every shared type (`modules/lib/`) is a
   korora type, and `lib/schema.nix` exports them as JSON Schema.
 - **launcher**: a repkgs `launch` record, a small program that runs another with fixed arguments and
@@ -75,7 +81,7 @@
 - **release host**: the machine that holds the key set and runs `golconda release build`. The signer
   runs there, outside Nix ([Signing outside Nix](../design/signing.md)).
 - **release key**: the OpenPGP key (`release/index.key`) that signs a release's `SHA256SUMS`; its
-  public half is the image's keyring for `Verify=yes`
+  public half is the image's keyring for `Verify=yes`. It cannot change yet
   ([Releases: The signed index](../design/releases.md#the-signed-index)).
 - **relocatable**: an output that refers to other store paths only relative to itself.
 - **repkgs**: the package set and build system Golconda pins (a fork, branch `golconda`). Every
