@@ -268,8 +268,8 @@ so that the PIN is typed once into a file that lives only in memory, as
 Verification: the test image's `db` and PCR keys on a SoftHSM token (a token in software, used for
 tests only) sign a release that is the release signed from the same keys in files, byte for byte,
 and `golconda release check` passes on it (`packages.<system>.pkcs11-signed-same`); that image boots
-with `--secure-boot --ssh-test --tpm` (`@image=image-smoke-test-pkcs11`, by hand;
-[What is proven: Not proven](../proven.md#not-proven)). `checks.image-signer` covers the key checks.
+with `--secure-boot --ssh-test --tpm` (`@image=image-smoke-test-pkcs11` in `tests/boot/matrix`).
+`checks.image-signer` covers the key checks.
 
 ### A YubiKey *(being built)*
 

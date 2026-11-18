@@ -18,6 +18,7 @@
 --secure-boot --ssh-test --tpm --timeout 600 --auto-enrol
 --secure-boot --ssh-test --tpm --timeout 600 --auto-enrol --next @next
 @image=image-smoke-test-own-keys --secure-boot --ssh-test --tpm --timeout 600 --auto-enrol --no-microsoft-keys
+@image=image-smoke-test-pkcs11 --secure-boot --ssh-test --tpm --timeout 600
 --secure-boot --ssh-test --tpm --timeout 600 --imds
 --secure-boot --ssh-test --tpm --timeout 600 --imds --next @next
 --secure-boot --ssh-test --factory-reset --timeout 480
