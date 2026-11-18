@@ -37,7 +37,7 @@ the credential, then the fallback `golconda`. Nothing writes `/etc/hostname` fro
 so an SMBIOS credential wins at every boot. systemd-firstboot writes it from `firstboot.hostname`,
 which `scripts/provision-esp --hostname` adds.
 
-An ESP credential holds for one boot: `golconda-esp-credentials.service` removes it from the ESP
+An ESP credential holds for one boot. `golconda-esp-credentials.service` removes it from the ESP
 once the first boot applied it, so a factory reset or a later boot does not apply it again
 ([Boot: Bootstrap credentials](../design/boot.md#bootstrap-credentials)).
 
@@ -49,7 +49,7 @@ key.
 
 With a `["/imds"]` table, the image also reads the cloud's instance metadata service (IMDS) through
 systemd-imds, and systemd's own `systemd-imds-import.service` runs. systemd-imds-generator finds the
-cloud by hwdb (Hetzner, AWS, GCP, Azure and others); on any other machine no import runs. The import
+cloud by hwdb (Hetzner, AWS, GCP, Azure and others). On any other machine no import runs. The import
 runs in the host, once the network is online and before `sysinit.target` and
 `systemd-tmpfiles-setup.service`. It writes credentials to `/run/credstore`, and the usual readers
 take them:
@@ -96,15 +96,15 @@ systemd 262's `40-imds.hwdb` asks Hetzner for paths that answer 404, so the impo
 `packages/hwdb` compiles it into every image's `hwdb.bin`. Hetzner lists the server's ssh keys only
 as one JSON array (`/metadata/public-keys`). Two more patches (`imds-ssh-key-json.patch`,
 `hwdb-imds-hetzner-ssh-keys.patch`) add the well-known key `ssh-key-json` and name the array for it.
-The import writes the keys as one line each to `ssh.authorized_keys.root`; it skips an entry that is
+The import writes the keys as one line each to `ssh.authorized_keys.root`. It skips an entry that is
 not a string or that has a control character. The import writes this credential before the user
 data's credentials, so where the metadata has a key, a user data `ssh.authorized_keys.root` is
 skipped. The patches go when systemd ships the fixes.
 
 The metadata endpoint is plain HTTP without authentication. Whoever can answer on its address sets
 the host name, root's ssh key and any credential, such as `tmpfiles.extra`. Opt in only where the
-network to the endpoint is trusted, as it is when the hypervisor serves it, and put no secret in
-user data. systemd is built with `imds-network=locked`: a prohibit route keeps every process but
+network to the endpoint is trusted, as it is when the hypervisor serves it. Put no secret in user
+data. systemd is built with `imds-network=locked`. A prohibit route keeps every process but
 `systemd-imdsd` from the endpoint, and imdsd answers root only. Without `/imds` the IMDS units stay
 off, also on a cloud, and the command line keeps the generator from pulling the import
 (`systemd.imds.import=0`).
