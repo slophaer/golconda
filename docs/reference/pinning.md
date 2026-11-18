@@ -118,9 +118,9 @@ nix flake update golconda       # move to Golconda's newest commit
 
 `tests/flake-template/run.sh` locks the template's input, updates it and evaluates the flake
 ([How this is tested](#how-this-is-tested)). The `image` output is the unsigned output.
-`golconda release build` does not read `flake.lock`: it takes Golconda from
-`pins/golconda/sources.toml` beside the document, so a flake repository that makes releases with it
-also keeps that pin ([uptrack](#uptrack-recommended)).
+`golconda release build` reads the `flake.lock` beside the document when there is no
+`pins/golconda/sources.toml`: it builds from the locked revision of the input `golconda`, fetched by
+its `narHash`.
 
 The client needs `flakes` beside the features above. The template passes `system` and has a
 commented `lib.mkImage` call with `publicKeys` as a path. After the first release, pin a tag:
@@ -137,6 +137,10 @@ It is the uptrack template's `fetchTarball` without the TOML file. The snippet i
 ```nix
 {{#include ../../examples/fetch-tarball.nix}}
 ```
+
+`golconda release build` does not read a Nix file. With this recipe, build and sign by hand
+([Making a release: Build and sign](release.md#2-build-and-sign)), or keep the uptrack pin beside
+the document for `golconda release build`.
 
 To update, put in the new rev and print its hash:
 
@@ -158,9 +162,11 @@ nix-prefetch-url --unpack https://github.com/slophaer/golconda/archive/<rev>.tar
   this tree in place of the pin; `tests/eval/config.nix` reads `examples/pins/` with `lib/pins.nix`.
   `checks.uptrack-sources` lists `examples/pins/` with uptrack.
 - `tests/real-packages/release-build.nix` evaluates `cli/build.nix`, the expression of
-  `golconda release build`, on this tree and on `examples/pins/` (its tarball answered with this
-  tree). The CLI test `release_build_in_a_repository_that_pins_golconda` runs
-  `golconda release build` in a copy of `examples/`, with a stand-in `nix-build`.
+  `golconda release build`, on this tree, on `examples/pins/` (its tarball answered with this tree)
+  and on `tests/fixtures/flake-lock/flake.lock` (its `fetchTree` answered with this tree). The CLI
+  tests `release_build_in_a_repository_that_pins_golconda` and `release_build_in_a_flake_repository`
+  run `golconda release build` in a copy of `examples/` and of the flake template with a
+  `flake.lock`, with a stand-in `nix-build`.
 - `tests/real-packages/pins.nix` checks `lib.readPins` against `pins/default.nix`.
   `tests/eval/pins.nix` checks the reader on `tests/fixtures/pins`, and calls the flake template's
   outputs on this tree with the stand-in packages.

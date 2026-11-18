@@ -149,7 +149,8 @@ golconda release list --to hetzner:updates/web
 ```
 
 - `build` needs a clean working tree. It takes Golconda from the pin `pins/golconda/sources.toml`
-  beside the document ([Pinning: uptrack](pinning.md#uptrack-recommended)), or else from the
+  beside the document ([Pinning: uptrack](pinning.md#uptrack-recommended)), else from the input
+  `golconda` of the `flake.lock` beside it ([Pinning: A flake](pinning.md#a-flake)), else from the
   Golconda checkout that holds the document. It picks the version, builds `lib.mkImage`'s unsigned
   outputs with `nix-build` from a copy of the document with that version, runs their signer with the
   key set on this host, runs `check`, then writes the version line into the document and commits it

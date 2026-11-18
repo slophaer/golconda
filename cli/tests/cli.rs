@@ -736,21 +736,36 @@ fn copy_dir(from: &Path, to: &Path) {
     }
 }
 
-/// `release build` in a repository that pins Golconda, a copy of `examples/` (docs/reference/
-/// pinning.md): Nix gets the pin beside the document, and the release commit lands there. A
-/// stand-in nix-build links unsigned outputs whose signer copies a prepared release.
-#[test]
-fn release_build_in_a_repository_that_pins_golconda() {
-    let (tmp, gpgv) = release_fixture(true);
+/// Golconda's `templates/default`: GOLCONDA_TEST_TEMPLATE in the package build, else the
+/// checkout's.
+fn template() -> PathBuf {
+    env::var_os("GOLCONDA_TEST_TEMPLATE").map_or_else(
+        || Path::new(env!("CARGO_MANIFEST_DIR")).join("../templates/default"),
+        PathBuf::from,
+    )
+}
+
+/// `release build` in `my-servers`, a copy of `from` with `files` added and committed, with
+/// the gpgv `gpgv`: a stand-in nix-build links unsigned outputs whose signer copies a prepared
+/// release. The repository's path and the arguments nix-build got.
+fn release_build_in_a_copy(
+    tmp: &TempDir,
+    gpgv: &Path,
+    from: &Path,
+    files: &[(&str, &str)],
+) -> (PathBuf, String) {
     let t = tmp.path();
     let repo = t.join("my-servers");
-    copy_dir(&examples(), &repo);
+    copy_dir(from, &repo);
+    for (name, text) in files {
+        fs::write(repo.join(name), text).unwrap();
+    }
     git_in(&repo, &["init", "-q", "-b", "main"]);
     git_in(&repo, &["config", "user.name", "t"]);
     git_in(&repo, &["config", "user.email", "t@t"]);
     git_in(&repo, &["add", "."]);
     git_in(&repo, &["commit", "-q", "-m", "servers"]);
-    write_release(&t.join("built"), "server_20261106.1");
+    write_release(&t.join("built"), "server_20261111.1");
     fs::create_dir_all(t.join("unsigned")).unwrap();
     exe(
         &t.join("unsigned"),
@@ -773,7 +788,7 @@ fn release_build_in_a_repository_that_pins_golconda() {
     let o = Command::new(env!("CARGO_BIN_EXE_golconda"))
         .current_dir(&repo)
         .env("PATH", path)
-        .env("GOLCONDA_GPGV", &gpgv)
+        .env("GOLCONDA_GPGV", gpgv)
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .args([
             "release",
@@ -781,24 +796,48 @@ fn release_build_in_a_repository_that_pins_golconda() {
             "--keys",
             "../keys",
             "--version",
-            "20261106.1",
+            "20261111.1",
         ])
         .output()
         .unwrap();
     let out = stdout(&o);
-    assert!(out.starts_with("server 20261106.1 built: "), "{out}");
+    assert!(out.starts_with("server 20261111.1 built: "), "{out}");
     let repo = fs::canonicalize(&repo).unwrap();
+    let head = Command::new("git")
+        .current_dir(&repo)
+        .args(["log", "-1", "--format=%s"])
+        .output()
+        .unwrap();
+    assert_eq!(stdout(&head), "release: server 20261111.1\n");
     let log = fs::read_to_string(t.join("nix-build.log")).unwrap();
+    (repo, log)
+}
+
+/// `release build` in a repository that pins Golconda, a copy of `examples/` (docs/reference/
+/// pinning.md): Nix gets the pin beside the document, and the release commit lands there.
+#[test]
+fn release_build_in_a_repository_that_pins_golconda() {
+    let (tmp, gpgv) = release_fixture(true);
+    let (repo, log) = release_build_in_a_copy(&tmp, &gpgv, &examples(), &[]);
     let pin = repo.join("pins/golconda/sources.toml");
     assert!(
         log.contains(&format!("--arg\npin\n{}\n", pin.display())),
         "{log}"
     );
     assert!(!log.contains("--arg\ngolconda\n"), "{log}");
-    let head = Command::new("git")
-        .current_dir(&repo)
-        .args(["log", "-1", "--format=%s"])
-        .output()
-        .unwrap();
-    assert_eq!(stdout(&head), "release: server 20261106.1\n");
+}
+
+/// `release build` in a flake repository, a copy of `templates/default` with a flake.lock: Nix
+/// gets the lock beside the document, and the release commit lands there.
+#[test]
+fn release_build_in_a_flake_repository() {
+    let (tmp, gpgv) = release_fixture(true);
+    let lock = r#"{"nodes":{"golconda":{"locked":{"type":"github","owner":"slophaer","repo":"golconda","rev":"ee07323eaac9c379e45f418fed017934436c3d62","narHash":"sha256-kBCMcO38to1mZMWYx+vj16sr4P3fkR4Pr5Oowpn58Xc="}},"root":{"inputs":{"golconda":"golconda"}}},"root":"root","version":7}"#;
+    let (repo, log) = release_build_in_a_copy(&tmp, &gpgv, &template(), &[("flake.lock", lock)]);
+    let lock = repo.join("flake.lock");
+    assert!(
+        log.contains(&format!("--arg\nlock\n{}\n", lock.display())),
+        "{log}"
+    );
+    assert!(!log.contains("--arg\ngolconda\n"), "{log}");
 }

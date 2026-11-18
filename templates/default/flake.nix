@@ -24,8 +24,8 @@
         # outside this repository. Commit only their public halves here (keys/secureboot/db.crt,
         # keys/pcr/pcr.pub, keys/release/index.pgp): mkImage reads nothing else. Its `sign` signs
         # the image outside Nix with the private keys (Golconda's docs/reference/release.md).
-        # `golconda release build` reads Golconda from pins/golconda/sources.toml, not from
-        # flake.lock (Golconda's docs/reference/pinning.md).
+        # `golconda release build` builds from the revision of this input in flake.lock
+        # (Golconda's docs/reference/pinning.md).
         # image =
         #   (golconda.lib.mkImage {
         #     config = ./server.toml;

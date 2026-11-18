@@ -28,8 +28,9 @@ package {
   uses = [ "cargo" ];
   bin = [ "golconda" ];
   # the tests run git on scratch repositories and publish with rclone; the release tests sign
-  # and verify with gpg, and build a release in a copy of examples/; `vars certify`'s test signs
-  # host keys with ssh-keygen, from a key file and from a SoftHSM token (TEST-ONLY)
+  # and verify with gpg, and build a release in a copy of examples/ and of the flake template;
+  # `vars certify`'s test signs host keys with ssh-keygen, from a key file and from a SoftHSM
+  # token (TEST-ONLY)
   buildDependencies = [
     buildPkgs.git
     buildPkgs.gnupg
@@ -37,9 +38,15 @@ package {
     buildPkgs.openssh
     buildPkgs.softhsm
   ];
-  env.GOLCONDA_TEST_PKCS11_MODULE = "${buildPkgs.softhsm}/lib/softhsm/libsofthsm2.so";
-  env.GOLCONDA_TEST_EXAMPLES = builtins.path {
-    path = ../examples;
-    name = "golconda-examples";
+  env = {
+    GOLCONDA_TEST_PKCS11_MODULE = "${buildPkgs.softhsm}/lib/softhsm/libsofthsm2.so";
+    GOLCONDA_TEST_EXAMPLES = builtins.path {
+      path = ../examples;
+      name = "golconda-examples";
+    };
+    GOLCONDA_TEST_TEMPLATE = builtins.path {
+      path = ../templates/default;
+      name = "golconda-template";
+    };
   };
 }

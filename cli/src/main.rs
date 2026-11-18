@@ -40,8 +40,8 @@ Build, sign and check a release from a clean tree, and commit its version
 
 1. Pick the version: --version, or auto (today's date, after the document's version and DEST's).
 2. Build mkImage's unsigned outputs with nix-build, from a copy of the document with that
-   version. Golconda comes from pins/golconda/sources.toml beside the document, or else from the
-   Golconda checkout that holds it.
+   version. Golconda comes from pins/golconda/sources.toml beside the document, else from the
+   input golconda of the flake.lock beside it, else from the Golconda checkout that holds it.
 3. Sign them outside Nix with the key set here, into --out.
 4. Check the release, as release check does.
 5. Write the version line into the document and commit it with the release trailers.
@@ -96,8 +96,8 @@ enum Releases {
     /// Build, sign and check a release from a clean tree, and commit its version
     #[command(long_about = BUILD_STEPS)]
     Build {
-        /// The system's document: beside the pin pins/golconda/sources.toml, or inside a Golconda
-        /// checkout
+        /// The system's document: beside the pin pins/golconda/sources.toml or a flake.lock, or
+        /// inside a Golconda checkout
         #[command(flatten)]
         doc: Doc,
         /// The key set (scripts/make-keys): Nix copies its public halves, the signer reads its

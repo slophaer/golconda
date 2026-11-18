@@ -744,7 +744,7 @@ pub fn publish(
 /// What `golconda release build` is asked for.
 pub struct BuildRequest<'a> {
     /// the system's document (server.toml), in a git repository, beside the pin
-    /// `pins/golconda/sources.toml` or inside a Golconda checkout
+    /// `pins/golconda/sources.toml` or a flake.lock, or inside a Golconda checkout
     pub document: &'a Path,
     /// the build host's Nix system double: pure evaluation has no `builtins.currentSystem`
     pub system: &'a str,
@@ -788,19 +788,32 @@ pub struct Built {
 const BUILD_EXPR: &str = include_str!("../build.nix");
 
 /// Where the build takes Golconda from (docs/reference/pinning.md).
+#[derive(Debug, PartialEq, Eq)]
 enum Golconda {
     /// the uptrack pin beside the document, `pins/golconda/sources.toml`: Nix fetches its tree
     Pin(PathBuf),
+    /// the flake.lock beside the document with the input `golconda`: Nix fetches it as locked
+    Lock(PathBuf),
     /// the Golconda checkout the document is in
     Checkout(PathBuf),
 }
 
 impl Golconda {
-    /// The pin beside `document`, or else the checkout above it.
+    /// The pin beside `document`, or else the flake.lock beside it, or else the checkout above
+    /// it.
     fn of(document: &Path) -> Option<Golconda> {
-        let pin = document.parent()?.join("pins/golconda/sources.toml");
+        let dir = document.parent()?;
+        let pin = dir.join("pins/golconda/sources.toml");
         if pin.is_file() {
             return Some(Golconda::Pin(pin));
+        }
+        let lock = dir.join("flake.lock");
+        let locked = fs::read(&lock)
+            .ok()
+            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+            .is_some_and(|l| l["nodes"]["root"]["inputs"]["golconda"].is_string());
+        if locked {
+            return Some(Golconda::Lock(lock));
         }
         find_root(document).map(Golconda::Checkout)
     }
@@ -808,7 +821,7 @@ impl Golconda {
     fn checkout(&self) -> Option<&Path> {
         match self {
             Golconda::Checkout(root) => Some(root),
-            Golconda::Pin(_) => None,
+            Golconda::Pin(_) | Golconda::Lock(_) => None,
         }
     }
 }
@@ -860,7 +873,8 @@ pub fn build(req: &BuildRequest<'_>, tools: &Tools<'_>) -> Result<Built> {
     let repo = PathBuf::from(git_out(tools.git, dir, &["rev-parse", "--show-toplevel"])?);
     let golconda = Golconda::of(&document).ok_or_else(|| {
         Error(format!(
-            "{}: no pins/golconda/sources.toml beside it, and not inside a Golconda checkout",
+            "{}: no pins/golconda/sources.toml beside it, no flake.lock with the input \
+             golconda, and not inside a Golconda checkout",
             document.display()
         ))
     })?;
@@ -1069,6 +1083,7 @@ fn sign_release(
     let unsigned = out.join("unsigned");
     let (name, tree) = match golconda {
         Golconda::Pin(pin) => ("pin", pin),
+        Golconda::Lock(lock) => ("lock", lock),
         Golconda::Checkout(root) => ("golconda", root),
     };
     let args: Vec<&OsStr> = vec![
@@ -1240,6 +1255,37 @@ mod tests {
         assert_eq!(find_root(&root.join("server.toml")), Some(root.into()));
         assert_eq!(find_root(&root.join("a/b/server.toml")), Some(root.into()));
         assert_eq!(find_root(Path::new("/server.toml")), None);
+    }
+
+    #[test]
+    fn golconda_comes_from_the_pin_then_flake_lock_then_the_checkout() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        let doc = root.join("servers/server.toml");
+        fs::create_dir_all(root.join("lib")).unwrap();
+        fs::create_dir_all(root.join("servers/pins/golconda")).unwrap();
+        fs::write(root.join("lib/system.nix"), "").unwrap();
+        let checkout = Golconda::Checkout(root.into());
+        assert_eq!(Golconda::of(&doc), Some(checkout));
+        // a lock without the input golconda is not Golconda's
+        let lock = root.join("servers/flake.lock");
+        fs::write(
+            &lock,
+            r#"{"nodes":{"root":{"inputs":{"nixpkgs":"nixpkgs"}}}}"#,
+        )
+        .unwrap();
+        assert_eq!(Golconda::of(&doc), Some(Golconda::Checkout(root.into())));
+        fs::write(&lock, "{").unwrap();
+        assert_eq!(Golconda::of(&doc), Some(Golconda::Checkout(root.into())));
+        fs::write(
+            &lock,
+            r#"{"nodes":{"root":{"inputs":{"golconda":"golconda_2"}}}}"#,
+        )
+        .unwrap();
+        assert_eq!(Golconda::of(&doc), Some(Golconda::Lock(lock)));
+        let pin = root.join("servers/pins/golconda/sources.toml");
+        fs::write(&pin, "").unwrap();
+        assert_eq!(Golconda::of(&doc), Some(Golconda::Pin(pin)));
     }
 
     #[test]
