@@ -57,7 +57,7 @@ in
     in
     trusted sys == fixed
     && (extraOf sys.pkgs.linux-kernel.spec.env).SYSTEM_TRUSTED_KEYS == fixed
-    && filesOf (kernelOf sys).spec.env == { ${fixed} = cert; }
+    && (filesOf (kernelOf sys).spec.env).${fixed} == cert
   ))
   (check "secureBoot: false puts the db certificate into the kernel's built-in keyring" (
     let
@@ -65,7 +65,7 @@ in
     in
     trusted sys == fixed
     && (extraOf sys.pkgs.linux-kernel.spec.env).SYSTEM_TRUSTED_KEYS == fixed
-    && filesOf (kernelOf sys).spec.env == { ${fixed} = cert; }
+    && (filesOf (kernelOf sys).spec.env).${fixed} == cert
   ))
   # one kernel per key set, Secure Boot or not: the config is the same for both, the file differs
   (check "secureBoot: on and off give the same kernel config" (
@@ -75,7 +75,7 @@ in
     let
       env = (kernelOf (sysWith { secureBoot = false; } storeCert)).spec.env;
     in
-    filesOf env == { ${fixed} = storeCert; } && builtins.hasContext env.GOLCONDA_KERNEL_FILES
+    (filesOf env).${fixed} == storeCert && builtins.hasContext env.GOLCONDA_KERNEL_FILES
   ))
   # the jig compile cache keys each object on its inputs: a config with the certificate's store
   # path made every object of the nosb kernel miss whenever the certificate changed
@@ -159,6 +159,6 @@ in
   (check "secureBoot: a system without the image's keys has a kernel with no built-in key" (
     trusted (sysWith { } null) == null
     && trusted mkSystemFixture == null
-    && filesOf (kernelOf (sysWith { } null)).spec.env == { }
+    && !(filesOf (kernelOf (sysWith { } null)).spec.env ? ${fixed})
   ))
 ]

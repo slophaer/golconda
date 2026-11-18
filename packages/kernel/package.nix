@@ -1,5 +1,5 @@
-# Golconda's x86_64 kernel, built by this directory's package-local kbuild module.
-# nix/packages.nix appends the policy fragment and substitutes the IPE boot policy path.
+# Golconda's x86_64 kernel, built by this directory's package-local kbuild module, with the
+# policy fragment golconda.config and the IPE boot policy (files.nix).
 # Kernel code compiles through jig in passthrough (cached, no jig policy flags); host tools
 # use jig's normal policy, which they need for the sysroot.
 {
@@ -18,15 +18,19 @@ package {
     "kbuild.install"
   ];
   # The local kbuild.nu reads these JSON fields (structured attrs, not generated source).
-  # An override replaces a whole field: nix/packages.nix sets only the extra config, fragments
-  # and files.
+  # An override replaces a whole field: nix/packages.nix sets only the extra config and files.
   env = {
     GOLCONDA_KERNEL_CONFIG = builtins.toJSON baseConfig;
     # what the system requires on top (nix/packages.nix): verified even where a fragment names it
     GOLCONDA_KERNEL_EXTRA_CONFIG = "{}";
-    GOLCONDA_KERNEL_FRAGMENTS = "[]";
+    GOLCONDA_KERNEL_FRAGMENTS = builtins.toJSON [
+      "${builtins.path {
+        path = ./golconda.config;
+        name = "golconda.config";
+      }}"
+    ];
     # files copied into the tree before configure, { "<path in the tree>" = "<file>"; }
-    GOLCONDA_KERNEL_FILES = "{}";
+    GOLCONDA_KERNEL_FILES = builtins.toJSON (import ./files.nix);
     GOLCONDA_KERNEL_MAKE = builtins.toJSON [
       # Kernel code through jig in passthrough, set per command as jig documents it: the compile
       # cache applies, the policy flags (hardening, sysroot, RUNPATH, interpreter, prefix map)

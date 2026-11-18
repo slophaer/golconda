@@ -78,32 +78,17 @@ let
   # every use of the downstream packages, or the record of them, sees the refusal
   checked = v: if replacementError != null then throw replacementError else v;
 
-  # Kernel config: the base config plus IPE boot policy path substitution.
-  # builtins.toFile embeds the policy's store path so the kernel build can read it.
-  # Use builtins.path for explicit store copy (satisfies iets path-copy lint).
-  ipePolicyFile = builtins.path {
-    path = ../packages/kernel/ipe-boot-policy;
-    name = "ipe-boot-policy";
-  };
-  baseKernelConfig = builtins.readFile ../packages/kernel/golconda.config;
-  fullKernelConfig = baseKernelConfig + ''
-    # --- IPE boot policy (path substituted at eval time) ---
-    CONFIG_IPE_BOOT_POLICY="${ipePolicyFile}"
-  '';
-  kernelConfigFragment = builtins.toFile "golconda.config" fullKernelConfig;
-
   set = import (sources.repkgs + "/nix/set.nix") {
     inherit system platform;
     # a package with the name of a repkgs alias (pkgs/aliases.toml: cpython -> cpython314) would
     # be hidden by it: repkgs refuses the set
     packages = checked (golcondaPackages // downstreamPackages);
     overrides = {
-      # The system's required options and the policy fragment, read by packages/kernel/kbuild.nu.
-      # The package owns its base config and make flags; this replaces only these three fields.
+      # The system's required options and files, read by packages/kernel/kbuild.nu. The package
+      # owns its base config, fragment, files and make flags; this replaces only these two fields.
       linux-kernel.env.merge = {
         GOLCONDA_KERNEL_EXTRA_CONFIG = builtins.toJSON kernelConfig;
-        GOLCONDA_KERNEL_FRAGMENTS = builtins.toJSON [ kernelConfigFragment ];
-        GOLCONDA_KERNEL_FILES = builtins.toJSON kernelFiles;
+        GOLCONDA_KERNEL_FILES = builtins.toJSON (import ../packages/kernel/files.nix // kernelFiles);
       };
       # /trust's options: the lists the bundle is made from, as JSON
       ca-bundle.env.merge = {

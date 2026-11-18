@@ -213,7 +213,7 @@ in
     // import ../tests/packages { inherit sources set; }
     // (on pkgs.linux-kernel.supported {
       # OS outputs need the local kernel. Do not advertise unsupported image or /usr trees.
-      # nix/packages.nix applies the policy fragment to every `pkgs.linux-kernel`.
+      # The kernel package carries the policy fragment (packages/kernel/).
       kernel = pkgs.linux-kernel;
 
       # The image chain (lib/image) over the /base system, signed in the store with throwaway

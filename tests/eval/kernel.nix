@@ -158,15 +158,24 @@ in
       && elem "HOSTCXX=c++" make
     )
   )
-  # the override nix/packages.nix gives the set (env.merge); checks.real-packages has repkgs' merge
-  (check "kernel: nix/packages.nix passes the policy fragment to the kernel's env" (
+  # the package's own env, as package.nix writes it: its fragment, and the IPE boot policy at the
+  # fixed path the fragment names. No store path is in the config: a change of the policy
+  # recompiles the policy alone, not every object (packages/kernel/kbuild.nu copy-files)
+  (check "kernel: the package carries its fragment and the IPE boot policy at a fixed path" (
     let
-      fragments = builtins.fromJSON (
-        builtins.unsafeDiscardStringContext pkgs.linux-kernel.spec.env.GOLCONDA_KERNEL_FRAGMENTS
-      );
+      env = pkgs.linux-kernel.args.env;
+      json = v: builtins.fromJSON (builtins.unsafeDiscardStringContext v);
+      fragments = json env.GOLCONDA_KERNEL_FRAGMENTS;
+      files = json env.GOLCONDA_KERNEL_FILES;
+      fixed = "security/ipe/golconda-boot-policy";
+      conf = readFile ../../packages/kernel/golconda.config;
     in
-    # builtins.toFile creates /nix/store/xxx-golconda.config (dash, not slash)
-    length fragments == 1 && match ".*golconda\\.config" (toString (elemAt fragments 0)) != null
+    length fragments == 1
+    && match ".*-golconda\\.config" (elemAt fragments 0) != null
+    && attrNames files == [ fixed ]
+    && match ".*-ipe-boot-policy" files.${fixed} != null
+    && builtins.hasContext env.GOLCONDA_KERNEL_FILES
+    && hasInfix "\nCONFIG_IPE_BOOT_POLICY=\"${fixed}\"\n" conf
   ))
   # security module: kernel hardening sysctl
   (check "security: sysctl.d file exists with Yama and hardening" (
