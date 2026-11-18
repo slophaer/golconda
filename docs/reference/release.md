@@ -86,9 +86,9 @@ do not match therefore fail the release and not the boot. Keep the set: a rotati
 `pcr/` key and the old release key (step 5). The release key is made at 00:00 UTC of the day before,
 so a machine whose clock is at its release's date takes it
 ([Updates: What an update authenticates](../design/updates.md#what-an-update-authenticates)).
-`SOURCE_DATE_EPOCH`, when it is set, is the day of the set in place of today. The test images' set
-(`throwawayKeys` in `lib/image/default.nix`) is made by the same script in the store, dated to the
-first test release.
+`GOLCONDA_KEYS_DATE`, a time in seconds since 1970, is the day of the set in place of today when it
+is set. The script ignores `SOURCE_DATE_EPOCH`. The test images' set (`throwawayKeys` in
+`lib/image/default.nix`) is made by the same script in the store, dated to the first test release.
 
 **A set without the enrolment files** is refused for a Secure Boot image; the error names the
 command for that set. `scripts/make-keys --auth-only DIR` writes `secureboot/auth` into the existing

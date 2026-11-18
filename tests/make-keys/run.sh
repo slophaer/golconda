@@ -5,8 +5,8 @@
 # the key pairs matching and the OpenPGP files; a relative DIR; the refusals (non-empty directory,
 # git work tree, unknown option). Needs nix on PATH and a Nix daemon; scripts/lint runs it.
 set -u
-# make-keys dates the set by SOURCE_DATE_EPOCH when it is set; the checks below want now
-unset SOURCE_DATE_EPOCH
+# make-keys dates the set by GOLCONDA_KEYS_DATE when it is set; the checks below want now
+unset GOLCONDA_KEYS_DATE
 repo=$(dirname "$(dirname "$(dirname "$(realpath "$0")")")")
 . "$repo/scripts/tools.sh"
 # the same openssl and gpg make-keys runs, to look at what it made
@@ -32,7 +32,8 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 keys=$tmp/keys
 
-out=$("$repo/scripts/make-keys" "$keys" 2>"$tmp/stderr") || {
+# make-keys ignores SOURCE_DATE_EPOCH: the set is dated today (checked below)
+out=$(SOURCE_DATE_EPOCH=1700000000 "$repo/scripts/make-keys" "$keys" 2>"$tmp/stderr") || {
   cat "$tmp/stderr" >&2
   fail "make-keys exits 0"
   exit 1
@@ -159,12 +160,12 @@ GNUPGHOME=$home2 gpg --batch --faked-system-time "$today!" --no-default-keyring 
   --verify "$tmp/floor.gpg" "$tmp/SHA256SUMS" 2>/dev/null || fail "a release of today verifies at the clock floor"
 GNUPGHOME=$home gpgconf --kill gpg-agent 2>/dev/null
 GNUPGHOME=$home2 gpgconf --kill gpg-agent 2>/dev/null
-# SOURCE_DATE_EPOCH dates the set: the certificates' names and the release key's creation
-SOURCE_DATE_EPOCH=1700000000 "$repo/scripts/make-keys" "$tmp/keys-dated" >/dev/null 2>&1 || fail "SOURCE_DATE_EPOCH: make-keys exits 0"
+# GOLCONDA_KEYS_DATE dates the set: the certificates' names and the release key's creation
+GOLCONDA_KEYS_DATE=1700000000 "$repo/scripts/make-keys" "$tmp/keys-dated" >/dev/null 2>&1 || fail "GOLCONDA_KEYS_DATE: make-keys exits 0"
 openssl x509 -in "$tmp/keys-dated/secureboot/db.crt" -noout -subject | grep -qF "golconda deployment db 20231114" ||
-  fail "SOURCE_DATE_EPOCH: db.crt names the set's day"
+  fail "GOLCONDA_KEYS_DATE: db.crt names the set's day"
 created=$(gpg --batch --with-colons --show-keys "$tmp/keys-dated/release/index.pgp" | awk -F: '$1 == "pub" { print $6; exit }')
-[ "$created" = 1699833600 ] || fail "SOURCE_DATE_EPOCH: the release key is made at 00:00 UTC the day before (is $created)"
+[ "$created" = 1699833600 ] || fail "GOLCONDA_KEYS_DATE: the release key is made at 00:00 UTC the day before (is $created)"
 
 # the report names the fingerprints, and never key material
 printf '%s\n' "$out" | grep -q '^db.crt sha256 (DER): [0-9a-f]\{64\}$' || fail "report: db.crt fingerprint"

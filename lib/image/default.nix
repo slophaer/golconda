@@ -27,7 +27,7 @@ in
   # (docs/design/bootloader.md): `reusePkKek`, another set, makes it with make-keys
   # --reuse-pk-kek. The builder sees make-keys and golconda-enrol-auth only, so an edit of another
   # step keeps the keys and every unsigned output. `version`, the first test release's, dates the
-  # set: SOURCE_DATE_EPOCH is its timestamp (lib/version.nix).
+  # set: GOLCONDA_KEYS_DATE is its timestamp (lib/version.nix).
   throwawayKeys =
     {
       buildSystem,
@@ -62,7 +62,7 @@ in
         "public"
       ];
       PATH = "${seed}/bin";
-      SOURCE_DATE_EPOCH = toString ((import ../version.nix { }).toEpoch version);
+      GOLCONDA_KEYS_DATE = toString ((import ../version.nix { }).toEpoch version);
       args = [
         "-eu"
         "-c"

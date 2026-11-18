@@ -10,7 +10,8 @@
 #                       deployment, so a rotation names the old set.
 # DIR and DIR.private must be new or empty and outside any git work tree. The script makes them
 # 0700 and each file 0600, and prints the paths and fingerprints, never key material. The layout
-# is in docs/reference/release.md. SOURCE_DATE_EPOCH, when set, is the set's date (default: now).
+# is in docs/reference/release.md. GOLCONDA_KEYS_DATE (seconds since 1970), when set, is the set's
+# date (default: now).
 set -eu
 
 usage() { sed -n '2,/^set -eu$/{/^set -eu$/d;s/^# \{0,1\}//p}' "$0"; }
@@ -86,7 +87,7 @@ PATH="$TOOLS:$PATH"
 # would add its v3_ca ones)
 export OPENSSL_CONF=/dev/null
 # the set's date: in the certificates' names and the release key's creation time
-now=${SOURCE_DATE_EPOCH:-$(date -u +%s)}
+now=${GOLCONDA_KEYS_DATE:-$(date -u +%s)}
 day=$(date -u -d "@$now" +%Y%m%d)
 
 # run_openssl ARGS...: openssl prints key-generation progress on stderr; keep it in $work, and

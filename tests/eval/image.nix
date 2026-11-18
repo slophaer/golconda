@@ -126,7 +126,7 @@ in
       pkgs = fixturePkgs;
       inherit sources;
       version = "20261101.1";
-    }).drvAttrs.SOURCE_DATE_EPOCH == toString (toEpoch "20261101.1")
+    }).drvAttrs.GOLCONDA_KEYS_DATE == toString (toEpoch "20261101.1")
   ))
   (check "version: toEpoch throws on a bad format" (
     let
