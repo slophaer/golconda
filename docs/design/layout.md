@@ -21,7 +21,8 @@ identity; stock Nix would see the tree as the chroot store `--store /usr`. Aroun
 what systemd, PAM, sshd and `dlopen` address by absolute path:
 
 - `/usr/bin`, `/usr/lib`, `/usr/share`: symlinks into the store (the **symlink farm**); `/usr/sbin`
-  is a symlink to `bin`.
+  is a symlink to `bin`. The unit directories are the exception: they hold copies
+  ([Unit files](#unit-files)).
 - `/usr/lib/systemd/system`, `sysusers.d`, `tmpfiles.d`, `systemd/network`, `sysupdate.d`,
   `/usr/lib/<service>/`: the system's configuration, from the composer's `units` and `files`.
 - `/usr/lib/os-release`: the image identity and version.
@@ -32,7 +33,8 @@ what systemd, PAM, sshd and `dlopen` address by absolute path:
 The composer outputs the symlinks of `/usr` as one map, path → `{ target; kind; }`, and the `/usr`
 tree builder makes them:
 
-- **`farm`**: a directory expanded file by file, for a package compiled with `prefix = "/usr"`
+- **`farm`**: a directory expanded file by file (as copies in a unit directory,
+  [Unit files](#unit-files)), for a package compiled with `prefix = "/usr"`
   ([Packaging](packaging.md#prefixed-packages)):
   `"/usr/lib/udev/rules.d" = { target = "${systemd}/lib/udev/rules.d"; kind = "farm"; }`.
 - **`dlopen`**: `/usr/lib/<soname>` for a library glibc opens by name: the NSS modules
@@ -81,9 +83,16 @@ Two units that systemd's preset enabled are needed, so `/base` links them:
 The other units that `systemctl enable systemd-networkd.service` would add are not linked: networkd
 and resolved open their varlink sockets themselves, and they own their D-Bus names while they run.
 
-Do not use `systemctl enable` on the machine: it writes a link that names a store path, which an
-update can leave dangling. [Updates](updates.md#enable-links-and-systemds-store-path) says how to
-enable a unit by hand.
+### Unit files
+
+`/usr/lib/systemd/system`, `/usr/lib/systemd/user` and `/usr/lib/systemd/network` hold no link into
+the store. The `/usr` tree builder copies a package's entry there: a unit file as a regular file, an
+alias or a `.wants` link as the same relative link. `systemctl enable` writes the path of the unit
+file it finds into `/etc`, also for `Alias=`, so its links name `/usr/lib/systemd/system/<unit>`.
+The next release has that path too, and the link keeps working while the release ships the unit. The
+builder fails on a link in these directories that does not resolve to a file of the tree outside the
+store. The copies are files of the signed `/usr`. IPE checks only what runs, so a unit file needs no
+rule ([Kernel: IPE](kernel.md#ipe-integrity-policy-enforcement)).
 
 ## State
 

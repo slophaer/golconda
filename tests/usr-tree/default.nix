@@ -12,6 +12,14 @@ let
     printf sentinel > $out/a/lib/systemd/system/demo.service
     printf other > $out/b/lib/systemd/system/demo.service
     ln -s ../demo.service $out/a/lib/systemd/system/multi-user.target.wants/demo.service
+    ln -s demo.service $out/a/lib/systemd/system/alias.service
+    mkdir -p $out/a/lib/systemd/user $out/a/lib/systemd/network
+    printf user > $out/a/lib/systemd/user/demo.service
+    printf network > $out/a/lib/systemd/network/demo.network
+    printf helper > $out/a/lib/systemd/demo-helper
+    # a unit link that leaves the unit directory
+    mkdir -p $out/c/lib/systemd/system
+    ln -s ../../../share/zoneinfo/UTC $out/c/lib/systemd/system/escape.service
     printf pam > $out/a/lib/security/pam.so
     printf utc > $out/a/share/zoneinfo/UTC
     printf tool > $out/a/bin/tool

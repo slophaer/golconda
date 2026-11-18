@@ -149,12 +149,9 @@ The image enables its units with static links in `/usr`, and its first boot writ
 `/etc/systemd/system` (`00-golconda.preset`, [Layout](layout.md#unit-enablement)). So an update
 finds no enable link of the image's own in `/etc`, and nothing rewrites links there.
 
-`systemctl enable` on the machine writes a link with an absolute target,
-`/usr/nix/store/<hash>-systemd/lib/systemd/system/<unit>`: the unit files in `/usr` are links into
-the store. A release that changes that package's store path leaves the link dangling, and the unit
-does not start. To enable a unit by hand so that it survives updates, link the stable path:
-`mkdir -p /etc/systemd/system/<target>.wants`, then
-`ln -s /usr/lib/systemd/system/<unit> /etc/systemd/system/<target>.wants/<unit>`.
+`systemctl enable` on the machine writes a link to `/usr/lib/systemd/system/<unit>`: the unit files
+in `/usr` are copies, not links into the store ([Layout: Unit files](layout.md#unit-files)). The
+link works in every later release that ships the unit.
 
 ## Downgrade protection *(later)*
 

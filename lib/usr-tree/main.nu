@@ -53,6 +53,15 @@ export def make-relative [link_path: string, target: string]: nothing -> string 
   }
 }
 
+# The unit directories hold copies of a package's entries, not links into the store:
+# `systemctl enable` writes the path of the unit file it finds into /etc, and a store path is
+# gone after the next release (docs/design/layout.md, "Unit files"). Each entry is copied as it
+# is: a file as a file, an alias or a .wants link as the same relative link.
+const UNIT_DIRS = ["lib/systemd/system/" "lib/systemd/user/" "lib/systemd/network/"]
+def in-unit-dir [rel: string]: nothing -> bool {
+  $UNIT_DIRS | any {|d| $rel | str starts-with $d }
+}
+
 # Inspect each parent before mkdir or a write can follow a symlink. Shared real
 # directories are valid; even a dangling symlink is an existing claim.
 def conflict [rel: string, source: string, dest: string] {
@@ -153,6 +162,11 @@ export def build [] {
 
     guard-write $out $dest_rel $"($link.kind) link from ($target)"
 
+    if (in-unit-dir $dest_rel) and ($target | str starts-with "/nix/store/") { # store-path-ok
+      ^cp -RP $target $dest
+      continue
+    }
+
     let rel_target = (make-relative $path $target)
 
     ^ln -s $rel_target $dest
@@ -230,7 +244,7 @@ export def build [] {
         conflict $claim $"farm file from ($file)" $dest_file
       }
 
-      ^ln -s $rel_target $dest_file
+      if (in-unit-dir $claim) { ^cp -RP $file $dest_file } else { ^ln -s $rel_target $dest_file }
       $farm_sources = ($farm_sources | upsert $claim $file)
     }
   }
@@ -314,6 +328,23 @@ export def build [] {
   let abs_links = ($found_abs.stdout | lines | where { $in != "" })
   if ($abs_links | length) > 0 {
     error make {msg: $"absolute symlink targets found: ($abs_links | str join ', '); the nix/store/<hash>-NAME in each names the package that ships it, so give the link a relative target there"}
+  }
+
+  # a link in a unit directory resolves, and not into the store: systemctl would write the
+  # store path into /etc
+  let store = $"(^readlink -m $out | str trim)/nix/"
+  for dir in ($UNIT_DIRS | where {|d| $"($out)/($d)" | path exists }) {
+    let found = (^find $"($out)/($dir)" -type l -print | complete)
+    if $found.exit_code != 0 {
+      error make {msg: $"find failed while checking the links of /usr/($dir): ($found.stderr)"}
+    }
+    for l in ($found.stdout | lines | where { $in != "" }) {
+      let resolved = (^readlink -m $l | str trim)
+      if not ($resolved | path exists) or ($resolved | str starts-with $store) {
+        let rel = ($l | path relative-to $out)
+        error make {msg: $"link /usr/($rel) -> (^readlink $l | str trim) does not resolve to a file of the /usr tree outside the store"}
+      }
+    }
   }
 
   # dlopen links resolve

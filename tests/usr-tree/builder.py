@@ -139,21 +139,18 @@ class BuilderTests(unittest.TestCase):
         self.farm()
         self.attrs["files"] = {"/usr/lib/systemd/system/demo.service": file()}
         self.rejects("/usr/lib/systemd/system/demo.service")
-        self.assertTrue((self.out / "lib/systemd/system/demo.service").is_symlink())
         self.assertEqual((self.out / "lib/systemd/system/demo.service").read_bytes(), b"sentinel")
 
     def test_unit_cannot_replace_farm_file(self):
         self.farm()
         self.attrs["units"] = {"demo.service": "[Unit]\n"}
         self.rejects("/usr/lib/systemd/system/demo.service")
-        self.assertTrue((self.out / "lib/systemd/system/demo.service").is_symlink())
         self.assertEqual((self.out / "lib/systemd/system/demo.service").read_bytes(), b"sentinel")
 
     def test_different_farm_sources_collide(self):
         self.farm()
         self.farm("/usr/lib/systemd/system", "b/lib/systemd/system")
         self.rejects("/usr/lib/systemd/system/demo.service")
-        self.assertIn("/a/", os.readlink(self.out / "lib/systemd/system/demo.service"))
         self.assertEqual((self.out / "lib/systemd/system/demo.service").read_bytes(), b"sentinel")
 
     def test_farm_cannot_follow_parent_link(self):
@@ -198,6 +195,29 @@ class BuilderTests(unittest.TestCase):
         self.assertEqual((self.out / "lib/systemd/system/demo.service").read_bytes(), b"sentinel")
         wants = self.out / "lib/systemd/system/multi-user.target.wants/demo.service"
         self.assertEqual(wants.read_bytes(), b"sentinel")
+
+    def test_units_of_a_package_are_copies(self):
+        # systemctl enable writes the path of the unit file it finds into /etc: a link into the
+        # store would name a path the next release does not have (docs/design/layout.md)
+        self.farm()
+        self.attrs["links"].append(
+            link("/usr/lib/systemd/system/b.service", FIXTURES / "b/lib/systemd/system/demo.service"))
+        self.succeeds()
+        lib = self.out / "lib/systemd"
+        for path, text in [("system/demo.service", b"sentinel"), ("system/b.service", b"other"),
+                           ("user/demo.service", b"user"), ("network/demo.network", b"network")]:
+            self.assertFalse((lib / path).is_symlink(), path)
+            self.assertEqual((lib / path).read_bytes(), text, path)
+        # an alias and a .wants link stay links to the copy, as the package has them
+        self.assertEqual(os.readlink(lib / "system/alias.service"), "demo.service")
+        self.assertEqual(os.readlink(lib / "system/multi-user.target.wants/demo.service"),
+                         "../demo.service")
+        # outside the unit directories the farm links
+        self.assertTrue((lib / "demo-helper").is_symlink())
+
+    def test_a_unit_link_that_leaves_the_tree_fails(self):
+        self.farm("/usr/lib/systemd/system", "c/lib/systemd/system")
+        self.fails("/usr/lib/systemd/system/escape.service", "does not resolve")
 
     def test_shared_directories_and_normal_links_succeed(self):
         self.attrs["files"] = {"/usr/lib/shared/a": file("a"), "/usr/lib/shared/b": file("b")}

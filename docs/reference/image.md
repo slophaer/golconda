@@ -609,6 +609,7 @@ With `--next DIR` ([The update test](#the-update-test)):
 | `update-activated`                                                        | with the timer's window moved to every 10 s, the guest reboots into the new release by itself (with `--fail-health`, into its first try)                                                                                                                                                           |
 | `update-reboot-skipped`, `update-reboot-skipped-after-fallback`           | the timer fires on the new release, or after `--fail-health`'s fallback on the old one, `golconda-update-pending` finds nothing to activate, and no reboot                                                                                                                                         |
 | `boots-next`                                                              | after the reboot `IMAGE_VERSION` is the new version                                                                                                                                                                                                                                                |
+| `enable-kept-after-update`                                                | `systemctl enable remote-fs.target` before the update linked `/usr/lib/systemd/system/remote-fs.target`; after it the link resolves and the unit is enabled                                                                                                                                        |
 | `units-composed-only-after-update`, `no-sysext-after-update`              | `units-composed-only` and `no-sysext` on the updated release; with `--fail-health`, `-after-fallback` on the old release                                                                                                                                                                           |
 | `no-failed-units-after-update`                                            | the updated system has no failed unit                                                                                                                                                                                                                                                              |
 | `clock-not-reset-after-update`                                            | `clock-not-reset` on the updated release's first boot                                                                                                                                                                                                                                              |
@@ -727,7 +728,9 @@ be held. `DIR` is a built release (`DIR/disk/release`, `DIR/keys`). The harness:
    by itself (`update-activated`), and there the timer fires and reboots nothing
    (`update-reboot-skipped`); the drop-in goes again, and while the recovery paths below boot the
    slots by hand the timer is masked;
-1. checks `boots-next`, `units-composed-only-after-update`, `no-failed-units-after-update`,
+1. checks `boots-next`, `enable-kept-after-update` (`systemctl enable remote-fs.target` before the
+   update linked `/usr/lib/systemd/system/remote-fs.target`, and the unit is enabled after it; the
+   harness then disables it), `units-composed-only-after-update`, `no-failed-units-after-update`,
    `clock-not-reset-after-update`, `hwdb-after-update`, `dm-usr-device-after-update` and the loader
    markers (the new release installed its loader on its first good boot and kept the previous one as
    `systemd-boot-fallbackx64.efi`);

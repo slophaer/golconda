@@ -519,6 +519,24 @@ print(d["rootHash"], d["signature"])' 2>&1) || true
 }
 
 # --- --next: install the next release, boot it, check its loader, then recovery ---
+# check_enable_kept: `systemctl enable` before the update linked the unit's path in /usr, not a
+# store path, so the link resolves in the next release and the unit is enabled. The harness then
+# disables it: units-composed-only-after-update checks an /etc without links
+ENABLE_UNIT=remote-fs.target
+ENABLE_LINK=/etc/systemd/system/multi-user.target.wants/$ENABLE_UNIT
+check_enable_kept() {
+  echo ""
+  echo "=== an enable link across the update ==="
+  RC=0
+  T=$(guest readlink "$ENABLE_LINK" 2>&1) || RC=1
+  E=$(guest systemctl is-enabled "$ENABLE_UNIT" 2>&1) || RC=1
+  guest test -f "$ENABLE_LINK" || RC=1
+  echo "$ENABLE_LINK -> ${T:-none}; is-enabled: ${E:-none}"
+  [ "$T" = "/usr/lib/systemd/system/$ENABLE_UNIT" ] && [ "$E" = enabled ] || RC=1
+  verdict "enable-kept-after-update ($ENABLE_UNIT, enabled before the update: the link names /usr, resolves, and the unit is enabled)" $RC
+  guest systemctl disable "$ENABLE_UNIT" || true
+}
+
 test_next() {
   echo ""
   echo "=== update to the next release ==="
@@ -593,6 +611,8 @@ test_next() {
     check_no_failed no-failed-units-after-update
     return 0
   fi
+  # an operator's enable link, made before the update, for check_enable_kept
+  guest systemctl enable "$ENABLE_UNIT" || true
   echo "Waiting for the reboot timer to activate $NEXT_VERSION..."
   activate_soon || true
   if ! wait_for_ssh "$BOOT_ID"; then
@@ -611,6 +631,7 @@ test_next() {
     return
   fi
   check_unsealed "after the update to $V"
+  check_enable_kept
   check_units_composed -after-update
   check_no_failed no-failed-units-after-update
   check_clock clock-not-reset-after-update

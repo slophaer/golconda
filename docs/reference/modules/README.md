@@ -92,7 +92,8 @@ The return type of every module.
 A `link` is `{ target; kind; }`; its path is the key. `kind` is one of:
 
 - `farm`: the target is a directory the builder links file by file, such as `lib/udev/rules.d` of a
-  prefixed package;
+  prefixed package; in a unit directory it copies them
+  ([Layout: Unit files](../../design/layout.md#unit-files));
 - `dlopen`: a soname the builder checks resolves;
 - `explicit`: anything else; a `.wants` link has a relative target.
 

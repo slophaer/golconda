@@ -2,12 +2,12 @@
 #
 # usrTree { composerOutput; platform; version; buildSystem?; sbomDrv?; sources; } → derivation
 # whose output is the /usr tree: the runtime closure under nix/store, the links (a `farm` link
-# expanded file by file), bin/<name> for each executable a package exports, the units, sysusers
-# and tmpfiles lines, os-release, packages.json and attribution.json, and the files. A bin/ name
-# from two sources stops the build, and so does a program a unit runs that is not in the tree.
-# The paths and the build-time checks are in docs/reference/image.md; the layout's reasons in
-# docs/design/layout.md. The tree has no mtimes: mkfs.erofs -T applies the version's timestamp
-# (lib/version.nix).
+# expanded file by file, copied in the unit directories), bin/<name> for each executable a
+# package exports, the units, sysusers and tmpfiles lines, os-release, packages.json and
+# attribution.json, and the files. A bin/ name from two sources stops the build, and so does a
+# program a unit runs that is not in the tree. The paths and the build-time checks are in
+# docs/reference/image.md; the layout's reasons in docs/design/layout.md. The tree has no mtimes:
+# mkfs.erofs -T applies the version's timestamp (lib/version.nix).
 _:
 let
   inherit (builtins)
