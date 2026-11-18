@@ -2,7 +2,7 @@
 
 Golconda keeps one implementation of each job: one libc, one toolchain, one TLS stack, one CA store,
 one init, one logger, one network stack. Fewer parts mean less to patch, less to audit and fewer
-ways for two copies to disagree. The rule has one honest exception, and this page names it.
+ways for two copies to disagree. The rule has one exception, and this page names it.
 
 ## How it works
 
@@ -35,10 +35,9 @@ Code enforces what it can:
 ## Against NixOS
 
 NixOS lets one system hold several libcs and several versions of the same package side by side: each
-program finds its own dependencies by store path. That flexibility is one of its strengths.
-Golconda's base system does not use it. A second libc or a second OpenSSL in the base is a second
-thing to patch and audit, and a second way for two programs to disagree about the same file,
-certificate or protocol.
+program finds its own dependencies by store path. Golconda's base system does not use that
+flexibility. A second libc or a second OpenSSL in the base is a second thing to patch and audit, and
+a second way for two programs to disagree about the same file, certificate or protocol.
 
 A service that needs another version can still have one, inside its own boundary:
 
