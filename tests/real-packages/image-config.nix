@@ -187,6 +187,11 @@ in
       system = "x86_64-linux";
     }
     && refused {
+      inherit config publicKeys;
+      indexPublicKeys = publicKeys;
+      system = "x86_64-linux";
+    }
+    && refused {
       inherit config;
       publicKeys = "keys";
       system = "x86_64-linux";
@@ -196,7 +201,6 @@ in
       inherit config;
       publicKeys = ../fixtures/public-keys-private;
       pcrPublicKeys = publicKeys;
-      indexPublicKeys = publicKeys;
       system = "x86_64-linux";
     }
     && refused {

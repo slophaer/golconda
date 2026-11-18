@@ -53,7 +53,6 @@ let
     config = ./server.toml;                   # the path to the document, as for lib.mkSystem
     publicKeys = "/srv/golconda-keys";        # the key set: only its public halves are read
     # pcrPublicKeys = "/srv/golconda-old";    # pcr/pcr.pub from another set; default: publicKeys
-    # indexPublicKeys = "/srv/golconda-old";  # release/index.pgp from another set; default: publicKeys
     # system = "x86_64-linux";                # the build host; default: builtins.currentSystem
   };
 in

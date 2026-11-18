@@ -6,18 +6,13 @@
 # signedWithTestKeys { unsigned; name; keys; pcrKeys ? keys; buildSystem; }
 #   -> the release of `unsigned` signed in the store with throwaway keys, for the test images only:
 #   never give it a deployment's keys. Its builder is the production signer. The release key is
-#   `keys`': it cannot change yet, so an `indexKeys` other than `keys` is refused.
+#   the one in `keys` (docs/design/releases.md).
 # signedWithTestToken { ...; pkgs; } -> the same release, signed with the db and PCR keys on a
 #   SoftHSM token (TEST-ONLY) through pkcs11-provider. RSA PKCS#1 v1.5 draws no random numbers, so
 #   it equals signedWithTestKeys' release (checks pkcs11-signed-same).
 _:
 let
   common = import ./common.nix { };
-  # the release key is the one in `keys` (docs/design/releases.md, the signed index)
-  sameReleaseKey =
-    keys: indexKeys:
-    indexKeys == keys
-    || throw "golconda: a test image signs with the release key of `keys`; it cannot change yet";
 in
 {
   signer =
@@ -78,10 +73,8 @@ in
       name,
       keys,
       pcrKeys ? keys,
-      indexKeys ? keys,
       buildSystem,
     }:
-    assert sameReleaseKey keys indexKeys;
     import ../ca-derivation.nix {
       inherit name;
       system = buildSystem;
@@ -103,12 +96,10 @@ in
       name,
       keys,
       pcrKeys ? keys,
-      indexKeys ? keys,
       buildSystem,
       pkgs,
       sources,
     }:
-    assert sameReleaseKey keys indexKeys;
     common.nuDerivation {
       inherit name buildSystem sources;
       module = "token";

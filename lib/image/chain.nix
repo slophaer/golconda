@@ -3,13 +3,13 @@
 # assembles the release outside the store (docs/design/trust.md, "Signing outside Nix").
 #
 # `import ./chain.nix { inherit sources mkSystem imageLib; }` is the function of
-# { config; publicKeys; pcrPublicKeys ? publicKeys; indexPublicKeys ? publicKeys; system ? ...; }.
+# { config; publicKeys; pcrPublicKeys ? publicKeys; system ? ...; }.
 # It returns `unsigned` (what the signer takes), usrTree, initrd, signer, pkgs, imageId, version
 # and signWithTestKeys and signWithTestToken (the release signed in the store with throwaway
 # keys, for tests and examples only). It reads three public files of a key set, in
 # scripts/make-keys' layout: secureboot/db.crt (the signer signs with its key; the kernel carries
-# it, lib/system.nix verityCert), pcr/pcr.pub and release/index.pgp. `pcrPublicKeys` and
-# `indexPublicKeys` name other directories, so a db rotation keeps the PCR key and the release key.
+# it, lib/system.nix verityCert), pcr/pcr.pub and release/index.pgp. `pcrPublicKeys` names another
+# directory, so a db rotation keeps the PCR key. The release key cannot change yet.
 {
   sources,
   mkSystem,
@@ -35,13 +35,12 @@ let
       "config"
       "publicKeys"
       "pcrPublicKeys"
-      "indexPublicKeys"
       "system"
     ]
   );
   checked =
     if unknown != [ ] then
-      throw "golconda: mkImage: unknown argument ${concatStringsSep ", " unknown}; it takes config, publicKeys, pcrPublicKeys, indexPublicKeys and system (docs/reference/outputs.md)"
+      throw "golconda: mkImage: unknown argument ${concatStringsSep ", " unknown}; it takes config, publicKeys, pcrPublicKeys and system (docs/reference/outputs.md)"
     else
       args;
   inherit (checked) config;
@@ -50,7 +49,6 @@ let
     args.publicKeys
       or (throw "golconda: mkImage needs publicKeys, the directory of the key set's public halves (docs/reference/outputs.md)");
   pcrPublicKeys = args.pcrPublicKeys or publicKeys;
-  indexPublicKeys = args.indexPublicKeys or publicKeys;
 
   # one public file of a key set: a path or an absolute string is copied alone; a derivation is named
   publicFile =
@@ -79,7 +77,7 @@ let
       };
   dbCert = publicFile publicKeys "secureboot/db.crt";
   pcrPublicKey = publicFile pcrPublicKeys "pcr/pcr.pub";
-  indexPublicKey = publicFile indexPublicKeys "release/index.pgp";
+  indexPublicKey = publicFile publicKeys "release/index.pgp";
 
   # the configuration's downstream directories ([golconda]): its packages replace for the
   # signer, the keyring and the initrd as for the system
@@ -170,7 +168,6 @@ in
     {
       keys,
       pcrKeys ? keys,
-      indexKeys ? keys,
     }:
     imageLib.signedWithTestKeys {
       name = "${sys.name}_${sys.version}.test-signed";
@@ -178,7 +175,6 @@ in
         unsigned
         keys
         pcrKeys
-        indexKeys
         ;
       buildSystem = system;
     };
@@ -186,7 +182,6 @@ in
     {
       keys,
       pcrKeys ? keys,
-      indexKeys ? keys,
     }:
     imageLib.signedWithTestToken {
       name = "${sys.name}_${sys.version}.token-signed";
@@ -194,7 +189,6 @@ in
         unsigned
         keys
         pcrKeys
-        indexKeys
         pkgs
         sources
         ;

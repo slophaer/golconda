@@ -45,8 +45,7 @@ let
   # The image chain over one system, unsigned, as a release builds it (lib/image/chain.nix).
   imageChain = import ../lib/image/chain.nix { inherit sources mkSystem imageLib; };
 
-  # lib.mkImage { config; publicKeys; pcrPublicKeys ? publicKeys; indexPublicKeys ? publicKeys;
-  #   system ? builtins.currentSystem; } →
+  # lib.mkImage { config; publicKeys; pcrPublicKeys ? publicKeys; system ? builtins.currentSystem; } →
   #   { unsigned; usrTree; initrd; signer; pkgs; signWithTestKeys; }
   # `config` is the path to the TOML document, as for lib.mkSystem; the test images give
   # imageChain an attrset. `publicKeys` is the key set's directory, of which the chain reads the
