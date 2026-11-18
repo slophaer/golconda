@@ -92,7 +92,7 @@ QEMU runs the q35 machine with:
   SMM, and `-machine smm=on`); else the plain build (`edk2-x86_64-code.fd`), which has no Secure
   Boot. Both use a copy of the empty variable store `edk2-i386-vars.fd`. `--secure-boot` enrols the
   key set's `PK.crt`, `KEK.crt` and `db.crt` as PK, KEK and `db` with `virt-fw-vars` (one fixed
-  owner GUID), and the checks read PK and KEK back from efivarfs (`pk-kek-enrolled`);
+  owner GUID). The checks read PK and KEK back from efivarfs (`pk-kek-enrolled`);
 - the SMBIOS credential `system.hostname=boot-test` (not with `--esp-creds` or `--imds`);
 - the user network `169.254.169.0/24` in every mode, not QEMU's `10.0.2.0/24`. `--imds` needs
   Hetzner's metadata address, `169.254.169.254`, on the guest's link. The gateway, `169.254.169.2`,
@@ -128,9 +128,9 @@ other slot, the harness activates that slot with its signature through `systemd-
 `--rotate` the signer is the new `db` key, which `db` holds but the running kernel does not, and the
 kernel must refuse it with `-ENOKEY`.
 
-`--tpm` checks the header of the sealed host key, reboots in the same QEMU (swtpm keeps its state)
-and checks that the second boot has a new boot id and the same host key, unsealed and not made
-again.
+`--tpm` checks the header of the sealed host key and reboots in the same QEMU (swtpm keeps its
+state). It then checks that the second boot has a new boot id and the same host key, unsealed and
+not made again.
 
 ## Provisioning
 
@@ -157,7 +157,7 @@ key, which the import skips) and `network.network.60-imds-ipv6`: the static addr
 `2001:db8:5eed::1/64`, `IPv6AcceptRA=no`, `UseHostname=no`, and no IMDS lock. QEMU's router
 advertisements name only `fec0::/64`, so no other route gives that address. systemd's IMDS lock is a
 `prohibit` route for `169.254.169.254` alone, so the update server on the same network stays
-reachable: `--imds --next` checks both in one run.
+reachable. `--imds --next` checks both in one run.
 
 `--certify` runs on `image-smoke-test-next`, which has `hostCertificate` and `revokedKeys` on from
 its first boot ([Trust: Host certificate](../design/trust.md#host-certificate)). The harness passes
@@ -175,8 +175,8 @@ disk with an unsigned loader on the ESP.
 
 `--auto-enrol` starts OVMF with its empty variable store, in Setup Mode. systemd-boot must enrol the
 ESP's `loader/keys/auto` and reset ([Boot loader: Enrolment](../design/bootloader.md#enrolment)).
-The checks read the variables from efivarfs over ssh: `PK` is the key set's `PK.crt`, `KEK` and `db`
-hold the key set's certificates and Microsoft's KEK and UEFI CAs (never a Windows CA), and `dbx` is
+The checks read the variables from efivarfs over ssh. `PK` is the key set's `PK.crt`. `KEK` and `db`
+hold the key set's certificates and Microsoft's KEK and UEFI CAs (never a Windows CA). `dbx` is
 Microsoft's list (`packages/secureboot-objects`). With `--no-microsoft-keys`, `KEK` and `db` hold
 the key set's certificates alone and `dbx` is empty. Last, the harness puts the enrolment files back
 on the ESP, empties the variable store and boots: systemd-boot must enrol nothing. The run ends
@@ -205,7 +205,7 @@ harness:
    requests go to `$WORKDIR/http.log`;
 1. checks that the guest's own `10-usr.transfer` names that address, and starts
    `systemd-sysupdate-update.service`. sysupdate fetches `SHA256SUMS`, its signature and the
-   artifacts, and writes the other slots and a UKI with 3 tries;
+   artifacts. It writes the other slots and a UKI with 3 tries;
 1. moves the window of `systemd-sysupdate-reboot.timer` to every 10 s with a drop-in in `/etc`. The
    guest must reboot into the release by itself, and then the timer must reboot nothing;
 1. checks the new release: the host certificate, the KRL and a second KRL, an enable link made
@@ -257,8 +257,9 @@ keys). The update modes change this flow:
 The failure modes skip the loader and recovery checks: no boot of the new release is blessed, or the
 run ends on a halted machine. The drop-ins are on the state partition, so they hold for every slot.
 
-The update test does not prove the production transfer: plain HTTP from the host, not HTTPS, a real
-update server with redirects or authentication, or a network that is not QEMU's.
+The update test does not prove the production transfer. It uses plain HTTP from the host, not HTTPS.
+It does not use a real update server with redirects or authentication, or a network that is not
+QEMU's.
 
 ## The factory reset test
 
@@ -266,7 +267,7 @@ update server with redirects or authentication, or a network that is not QEMU's.
 `--timeout` for two boots, such as 480. The harness writes a marker in `/etc`, reads the machine id,
 `IMAGE_VERSION` and `bootctl list`, and runs `systemctl start factory-reset.target`
 ([Updates: Factory reset](../design/updates.md#factory-reset)). On the reset boot the marker must be
-gone, the machine id new, firstboot run again, and the boot entries and the version the same: the
+gone, the machine id new, firstboot run again, and the boot entries and the version the same. The
 reset writes the state partition only. The console names a new host key, and sshd presents it. A
 user certificate logs in. With `--certify` the certificate is refused, because the KRL went with the
 state; then `golconda vars certify` refuses the old fingerprint and certifies the new one. With
@@ -282,8 +283,8 @@ evidence. The output prints the last 100 lines of the first boot's serial log, a
 `=== ALL TESTS PASSED ===` or `=== SOME TESTS FAILED ===`. Search it for `FAIL:`.
 
 Each run has a work directory `run.XXXXXX` in `$BOOT_TEST_CACHE`, not in `/tmp`, which a queue task
-or a reboot can drop. A run that passes removes it. A run that fails keeps it and prints its path:
-it has the serial log of each QEMU process (`serial*.log`), QEMU's output (`qemu.out`) and the logs
+or a reboot can drop. A run that passes removes it. A run that fails keeps it and prints its path.
+It has the serial log of each QEMU process (`serial*.log`), QEMU's output (`qemu.out`) and the logs
 of the servers (`http.log`, `imds.log`, `tls-*.log`). Start with the serial log of the boot that
 failed.
 
