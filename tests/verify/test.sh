@@ -265,11 +265,13 @@ run scripts/verify --jobs 1 --boot-set '--rendezvous a' --boot-set '--rendezvous
 [ $rc != 0 ] || fail "--jobs 1 ran the sets at the same time: $out"
 echo "$out" | grep -qE '^FAIL\(5\) boot\[1\] ' || fail "set 1 did not wait in vain: $out"
 echo "$out" | grep -qE '^PASS boot\[2\] ' || fail "set 2 did not pass after set 1: $out"
-want=$(awk '/^MemAvailable:/ { n = int($2 / 2621440); print (n < 1 ? 1 : n) }' /proc/meminfo)
-run scripts/verify --boot-set '--timeout 1'
-# MemAvailable moves between the two reads: one off is the same limit
-got=$(echo "$out" | sed -n 's/^== boots: 1 sets, at most \([0-9]*\) at a time$/\1/p')
-[ -n "$got" ] && [ "$got" -ge $((want - 1)) ] && [ "$got" -le $((want + 1)) ] || fail "default job limit is not $want: $out"
+# a fixed reading in place of the host's /proc/meminfo: 10 GiB is 4 boots, 1 GiB still 1
+for m in 10485760:4 1048576:1; do
+  echo "MemAvailable:   ${m%:*} kB" >"$WORK/meminfo"
+  run env VERIFY_MEMINFO="$WORK/meminfo" scripts/verify --boot-set '--timeout 1'
+  echo "$out" | grep -qxF "== boots: 1 sets, at most ${m#*:} at a time" ||
+    fail "default job limit for ${m%:*} kB is not ${m#*:}: $out"
+done
 for j in 0 00 x ''; do
   run scripts/verify --jobs "$j"
   [ $rc = 2 ] || fail "--jobs '$j' accepted: $out"

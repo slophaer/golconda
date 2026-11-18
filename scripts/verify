@@ -309,9 +309,10 @@ done <<EOF
 $boot_sets
 EOF
 # at most $jobs boots at a time: each takes a line from the FIFO on descriptor 3 before it starts,
-# and puts it back when it ends
+# and puts it back when it ends. VERIFY_MEMINFO is a test's fixed reading (tests/verify/test.sh).
 [ -n "$jobs" ] ||
-  jobs=$(awk '/^MemAvailable:/ { n = int($2 / (2.5 * 1024 * 1024)); print (n < 1 ? 1 : n) }' /proc/meminfo)
+  jobs=$(awk '/^MemAvailable:/ { n = int($2 / (2.5 * 1024 * 1024)); print (n < 1 ? 1 : n) }' \
+    "${VERIFY_MEMINFO:-/proc/meminfo}")
 echo "== boots: $n sets, at most $jobs at a time"
 mkfifo "$logs/jobs" || finish 1
 exec 3<>"$logs/jobs"
