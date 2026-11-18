@@ -235,21 +235,38 @@ time_reboots() {
   return 1
 }
 
+# reboot_trace MARK DOWN: one letter for each event in the serial log after byte MARK, from the
+# first DOWN on: D the failure DOWN, S systemd-shutdown's reboot, R the kernel's "reboot: Restarting
+# system" (a reboot(2) call), K a new kernel
+reboot_trace() {
+  tail -c +"$(($1 + 1))" "$SERIAL_LOG" | tr -d '\033\r' \
+    | grep -aoF -e "$2" -e "systemd-shutdown[1]: Rebooting" -e "reboot: Restarting system" -e "Linux version" \
+    | sed 's/^reboot: .*/R/;t;s/^systemd-shutdown.*/S/;t;s/^Linux version/K/;t;s/.*/D/' \
+    | tr -d '\n' | sed 's/^[^D]*//'
+}
+
 # test_fail_tries KIND: the panic or PID 1 crash (pid1) row of the trial boot policy
 # (docs/design/boot.md, "Trial boot"). The candidate's boot-test-panic.service (sysrq c) or
 # boot-test-crash.service (kill -SEGV 1) fails each of three tries: panic=10 or CrashAction=reboot
 # must reboot after 10 s, not the hardware watchdog after 30 s, and the fourth boot must run the old
-# release. The kernel's "Rebooting in 10 seconds.." can stay in its buffer when another CPU had the
-# console, so the time from the failure to the next kernel tells the two apart
+# release. The serial console shows the path of each try: after a PID 1 crash, PID 1's reboot(2)
+# prints "reboot: Restarting system" (the watchdog resets the machine without a line). The
+# kernel's "Rebooting in 10 seconds.." after a panic can stay in its buffer, so a panic's try must
+# only reach a new kernel without a reboot(2). The i6300esb records a reset by its timeout in
+# bootstatus (WDIOF_CARDRESET), which the fourth boot reads for the third try
 test_fail_tries() {
   case $1 in
     panic)
       ARM=panic
       DOWN="Kernel panic - not syncing: sysrq triggered crash"
+      TRACE=DKDKDK
+      BY=panic=10
       ;;
     *)
       ARM=crash
       DOWN="boot-test: crash PID 1 ($NEXT_VERSION)"
+      TRACE=DRKDRKDRK
+      BY=CrashAction=reboot
       ;;
   esac
   echo ""
@@ -279,14 +296,20 @@ test_fail_tries() {
     echo "$T" | grep -qxF "golconda-trial-boot: ${IMAGE_ID}_$NEXT_VERSION+$c.efi is on trial" || RC=1
   done
   [ "$(echo "$T" | grep -cxF "$DOWN")" = 3 ] || RC=1
-  # 10 s and a firmware start: more than 8 s, less than the watchdog's 30 s
+  R=$(reboot_trace "$MARK" "$DOWN")
+  B=$(guest cat /sys/class/watchdog/watchdog0/bootstatus 2>&1) || true
+  echo "the failures and reboots on the serial console: $R; the watchdog's bootstatus: $B"
+  [ "$R" = "$TRACE" ] || RC=1
+  [ "$B" = 0 ] || RC=1
+  # the 10 s wait: at least 8 s from each failure to the next kernel. A slow firmware start on a
+  # loaded host can add 20 s, so the time sets no upper bound; a missing reboot gives fewer delays
   N=0
   for d in $DELAYS; do
     N=$((N + 1))
-    { [ "$d" -ge 8 ] && [ "$d" -le 25 ]; } || RC=1
+    [ "$d" -ge 8 ] || RC=1
   done
   [ "$N" = 3 ] || RC=1
-  verdict "fail-$1-rebooted (three tries, each counted and rebooted 10 s after its failure:$DELAYS s)" $RC
+  verdict "fail-$1-rebooted (three tries, each counted and rebooted by $BY, not the watchdog, at least 8 s after its failure:$DELAYS s)" $RC
   fallback_after "$1"
   check_reboot_skipped "update-reboot-skipped-after-$1-fallback"
   activate_never

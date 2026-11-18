@@ -245,7 +245,13 @@ keys). The update modes change this flow:
   boot must run the old release.
 - `--fail-panic` and `--fail-pid1` arm the test image's `boot-test-panic.service` (a sysrq crash) or
   `boot-test-crash.service` (`kill -SEGV 1`) for the new release. `panic=10` or `CrashAction=reboot`
-  must reboot each try 8 to 25 s after the failure, and the fourth boot must run the old release.
+  must reboot each try at least 8 s after the failure, and the fourth boot must run the old release.
+  The serial console shows the path. After each PID 1 crash the kernel prints
+  `reboot: Restarting system`, because PID 1 calls `reboot(2)`. A reset by the watchdog prints no
+  line. After each panic the next kernel starts with no such line. The kernel's
+  `Rebooting in 10 seconds..` is not required, because it can stay in the kernel's buffer. The
+  fourth boot reads the i6300esb's `bootstatus`: it must be 0, so the watchdog did not reset the
+  third try.
 - `--fail-blessed --later DIR` tests the [failed-boot counter](../design/boot.md#failed-boots). The
   activated release is blessed, then crashes PID 1 on each boot. After 3 boots the old release runs
   once, resets the count and marks the new release bad (`+0-3`). Then `DIR`
