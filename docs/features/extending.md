@@ -18,17 +18,14 @@ name collision.
   Golconda's own. Each package is a directory with a `package.nix` and a `sources.toml`, the layout
   of Golconda's `packages/`. `[golconda] packages = "…"` names another directory.
 - **Replacing is opt-in.** A downstream package that takes the name of a Golconda or repkgs package
-  replaces it only when `[golconda] replaces` lists the name. Without the entry, evaluation fails
-  and names the package. An entry that no package uses is also an error, so the list says exactly
-  what you replace.
+  replaces it only when `[golconda] replaces` lists the name
+  ([Reference: your own packages](../reference/config.md#your-own-packages)).
 - **A replacement reaches everything.** It applies to the image, the initrd, the loader and the
   keyring, so a replaced kernel, systemd or signing tool is trusted code. Golconda does not check
   what it does. Whoever lists it owns the review.
-- **The record.** `mkSystem` returns your module's role and why it is included (`inventory`). It
-  also returns each downstream package (`packages`): `{ "openssh": { "replaces": "golconda" } }`
-  (`"repkgs"` for one of the fork's, `null` for a new name). The SBOM marks the component
-  `golconda:origin = downstream`. A replacement names the package it replaced in
-  `pedigree.ancestors`.
+- **The record.** `mkSystem` returns your module's role and why it is included (`inventory`), and
+  each downstream package with the set it replaces (`packages`). The SBOM marks each downstream
+  component and names the package that a replacement replaced.
 
 ## Using it
 

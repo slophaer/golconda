@@ -123,10 +123,12 @@ Run this in the configuration repository on the release host, with a clean worki
 golconda release build -f server.toml --keys /srv/golconda-keys
 ```
 
-`golconda release build` ([Commands](cli.md#golconda-release)) picks the version (`--version auto`:
-today's date and the revision after the document's `/system.version`, and after what `--to DEST`
-serves). Then it builds and signs in two steps, from a copy of `server.toml` with that version
-beside it:
+`golconda release build` ([Commands](cli.md#golconda-release)) takes Golconda from the pin
+`pins/golconda/sources.toml` beside the document, else from the input `golconda` of the `flake.lock`
+beside it, else from the Golconda checkout that holds the document ([Pinning](pinning.md)). It picks
+the version (`--version auto`: today's date and the revision after the document's `/system.version`,
+and after what `--to DEST` serves). Then it builds and signs in two steps, from a copy of
+`server.toml` with that version beside it:
 
 1. `nix-build` builds `lib.mkImage`'s `unsigned` output: the `/usr` tree, the initrd, the kernel and
    a manifest, all unsigned. Nix gets the key directory as a string and copies its three public
@@ -142,8 +144,10 @@ directory (step 3), writes the version line into `server.toml` and commits it as
 `release: <id> <version>`. The commit's trailers record the document's digest, the four files'
 digests and the unsigned outputs' store path, so `git log` finds the source of each release. A
 failed build, signature, check or commit removes the directory and the copy, leaves `server.toml` as
-it was, and commits nothing. The command refuses an existing `--out`, and a version that is not
-newer than the last one, because sysupdate would install nothing and say nothing.
+it was, and commits nothing. A run that is stopped (Ctrl-C) leaves the document as it was and the
+copy (`.server.toml.golconda-release-*`) beside it; the next run refuses that untracked file. The
+command refuses an existing `--out`, and a version that is not newer than the last one, because
+sysupdate would install nothing and say nothing.
 
 Before it builds anything, it also refuses a file that no commit holds, because Nix reads the
 checkout's files where they lie. This covers an uncommitted change or an untracked file in the

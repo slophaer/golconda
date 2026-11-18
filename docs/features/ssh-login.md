@@ -71,18 +71,10 @@ Is this the fingerprint on web1's console or journal (golconda: ssh host key …
 ```
 
 Compare the fingerprint with the line `golconda: ssh host key …` that the first boot wrote on the
-console; `--fingerprint SHA256:…` compares without the question. The command then does six steps. It
-reads the host key (`golconda vars pub web1 sshd-hostkey key.pub`) and checks its fingerprint
-(`ssh-keygen -lf`). It signs the key as a host certificate
-(`ssh-keygen -s host_ca -h -I web1 -n web1`), stores the certificate and the KRL
-(`golconda vars set web1 sshd-host-cert cert`, `golconda vars set web1 sshd-revoked-keys krl`), and
-pushes both, the KRL first (`golconda vars push web1`). `--principal` names what clients reach the
-machine by (default: the name given). `--validity` sets how long the certificate holds (default a
-year). A CA key on a PKCS#11 token, such as the YubiKey that holds the `db` and PCR keys, is
-`--ca-key host_ca.pub --pkcs11-module "$(ykcs11-module)"`. ssh-keygen then signs with the token's
-key that matches the public key file
-([Commands: golconda vars certify](../reference/cli.md#golconda-vars-certify)). It refuses with no
-KRL at all, and stops before anything is signed when the fingerprint is not confirmed.
+console; `--fingerprint SHA256:…` compares without the question. The command then signs the host key
+with the CA, stores the certificate and the KRL, and pushes both.
+[Commands: golconda vars certify](../reference/cli.md#golconda-vars-certify) has the steps and the
+options.
 
 The push restarts sshd, which then presents the host certificate, checks the KRL and refuses every
 plain key: the image's `authorizedKeys`, `ssh.authorized_keys.root` and a cloud's keys. From then on

@@ -100,8 +100,7 @@ golconda vars certify -i ~/.config/age/key.txt web1 --ca-key host_ca.pub \
   --pkcs11-module "$(ykcs11-module)" --principal web1.example.com --fingerprint SHA256:…
 ```
 
-It runs the six steps of [Certificate login](../features/ssh-login.md#using-it) in one command, in
-this order, and stops at the first failure:
+It runs these five steps in this order, and stops at the first failure:
 
 1. Checks the request before it touches anything: each principal is one name, a KRL is given with
    `--krl` or already stored for HOST, and HOST declares both admin vars, `sshd-host-cert` and
@@ -150,23 +149,12 @@ golconda release publish result-release/release --to hetzner:updates/web --keys 
 golconda release list --to hetzner:updates/web
 ```
 
-- `build` needs a clean working tree. It takes Golconda from the pin `pins/golconda/sources.toml`
-  beside the document ([Pinning: uptrack](pinning.md#uptrack-recommended)), else from the input
-  `golconda` of the `flake.lock` beside it ([Pinning: A flake](pinning.md#a-flake)), else from the
-  Golconda checkout that holds the document. It picks the version, builds `lib.mkImage`'s unsigned
-  outputs with `nix-build` from a copy of the document with that version, runs their signer with the
-  key set on this host, and runs `check`. Then it writes the version line into the document and
-  commits it as `release: <id> <version>`, with the digests as trailers. A run that is stopped
-  (Ctrl-C) leaves the document as it was and the copy (`.server.toml.golconda-release-*`) beside it,
-  and the next run refuses that untracked file. Nix copies only the key set's three public halves;
-  the private keys stay where they are ([Signing outside Nix](../design/signing.md)). `--out` names
-  a new directory for the release (default `result-release`): `disk.raw`, `release/`, and
-  `unsigned`, the link to the unsigned outputs. The command refuses an existing one, and a failed
-  build removes it. `--pcr-keys` names the key set of the PCR key when a `db` rotation keeps it. The
-  release key is always `--keys`' ([Making a release: Rotate a key](release.md#5-rotate-a-key)).
-  `--system` is the Nix system to evaluate for (default: this host's). `--pkcs11-module FILE` names
-  the PKCS#11 module of the token that holds the `db` or PCR key, when the key set names it by URI
-  ([Making a release: Keys on a token](release.md#6-keys-on-a-token)).
+- `build` builds and signs a release from the document, checks it, and commits the new version
+  ([Making a release: Build and sign](release.md#2-build-and-sign)). `--version` is `auto` by
+  default. `--out` names a new directory (default `result-release`). `--pcr-keys` names the key set
+  of the PCR key in a `db` rotation ([Rotate a key](release.md#5-rotate-a-key)). `--system` is the
+  Nix system to evaluate for (default: this host's). `--pkcs11-module FILE` names the module of the
+  token that holds the `db` or PCR key ([Keys on a token](release.md#6-keys-on-a-token)).
 - `check` verifies the index (the four lines in their fixed order), every digest, the shared image
   id and version in the names, the UUIDs against the root hash, and the signature against the key
   set's `release/index.pgp`.

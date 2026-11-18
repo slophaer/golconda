@@ -69,16 +69,9 @@ pin would fix it: `mkStruct' { } // { inherit members; }` in `struct`, and
 
 ## Image artifacts
 
-Every image carries `/usr/lib/golconda/`:
-
-| file               | content                                                                                    |
-| ------------------ | ------------------------------------------------------------------------------------------ |
-| `config.json`      | the resolved options of every included component, after type-checking                      |
-| `schema.json`      | the JSON Schema the image was built against                                                |
-| `sbom.json`        | CycloneDX SBOM: purl and cpe per component, its origin, pedigree (replacement, patches)    |
-| `packages.json`    | every package with its version, store path and the fragments that brought it               |
-| `attribution.json` | each file, link, unit, sysusers and tmpfiles line → the module or fragment that emitted it |
-| `vars.d/*.json`    | one manifest per var: class, files, credential ids                                         |
+Every image carries its configuration, its schema, its SBOM and its package list in
+`/usr/lib/golconda/`. [Configuration as data](../features/config-as-data.md#how-it-works) lists the
+files, and [Image: `/usr` tree](../reference/image.md#usr-tree-libusr-treenix) has their fields.
 
 The sysupdate transfers from `/system.updateSource` are beside them in `/usr/lib/sysupdate.d/`.
 There is no `etc.manifest`: `/etc` is symlinks into the factory and `find /etc -type f` lists the
