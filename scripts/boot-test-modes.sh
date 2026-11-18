@@ -58,6 +58,7 @@ test_ssh() {
   check_units_composed
   check_sshd_sockets
   check_hang_panic
+  check_console
 
   echo ""
   echo "=== varlinkctl list-interfaces ==="

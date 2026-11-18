@@ -301,6 +301,7 @@ in
   # the units of the fixture: a new unit must change this list
   (check "sshd: the fixture composes exactly these units" (
     attrNames system.units == [
+      "golconda-console.service"
       "golconda-emergency-reboot.service"
       "golconda-esp-credentials.service"
       "golconda-failed-boots-complete.service"

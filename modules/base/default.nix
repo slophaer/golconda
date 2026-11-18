@@ -68,6 +68,7 @@ in
       # The rest of the fragment is in parts/, one concern each; this file merges them.
       # Each part returns the fragment fields it fills.
       boot = import ./parts/boot.nix; # the health gate, the loader update
+      console = import ./parts/console.nix; # the journal on tty1, the screen
       dbus = import ./parts/dbus.nix { inherit p; }; # the system bus on dbus-broker
       dropIns = import ./parts/drop-ins.nix; # conditions for units the systemd farm ships
       imds = import ./parts/imds.nix; # systemd's IMDS units: off without /imds
@@ -86,12 +87,6 @@ in
         + ini.render {
           Journal = {
             SystemMaxUse = options.journalMaxUse;
-            # the screen (tty1) shows the journal as the serial console shows the boot. journald
-            # writes to it synchronously, so only notice and higher: info messages would slow
-            # every service that logs (journald.conf(5))
-            ForwardToConsole = true;
-            TTYPath = "/dev/tty1";
-            MaxLevelConsole = "notice";
           };
         };
 
@@ -159,6 +154,7 @@ in
     # the union of the parts and the rest: a path that two of them claim throws (modules/lib/merge.nix)
     merge [
       boot
+      console
       dbus
       dropIns
       imds

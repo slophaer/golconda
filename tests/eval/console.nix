@@ -1,4 +1,4 @@
-# Checks of the console: journald forwards to the screen.
+# Checks of the console: a journalctl unit shows the journal on tty1, the screen.
 # A function of the harness (./harness.nix); it returns a list of checks.
 {
   check,
@@ -6,16 +6,31 @@
   hasInfix,
   ...
 }:
-# The screen mirrors the serial console: the kernel draws its console on the firmware
-# framebuffer, and journald forwards notice and higher to tty1: journald writes to the console
-# synchronously, so info messages stay off it (journald.conf(5)).
+# The kernel draws its console on the firmware framebuffer (tty0 is tty1). journald does not
+# write to a console: a journalctl process does, so a slow screen never slows journald.
 let
-  journald = (compose [ ]).files."/usr/lib/systemd/journald.conf.d/golconda.conf".text;
+  base = compose [ ];
+  journald = base.files."/usr/lib/systemd/journald.conf.d/golconda.conf".text;
+  unit = base.units."golconda-console.service" or "";
 in
 [
-  (check "console: journald forwards notice and higher to tty1, the screen" (
-    hasInfix "\nForwardToConsole=yes\n" journald
-    && hasInfix "\nTTYPath=/dev/tty1\n" journald
-    && hasInfix "\nMaxLevelConsole=notice\n" journald
+  (check "console: journald forwards nothing to a console" (
+    !(hasInfix "ForwardToConsole" journald)
+    && !(hasInfix "TTYPath" journald)
+    && !(hasInfix "MaxLevelConsole" journald)
+  ))
+  (check "console: golconda-console.service follows this boot's journal on tty1" (
+    hasInfix "\nExecStart=/usr/bin/journalctl --follow --no-tail --boot " unit
+    && hasInfix "\nStandardOutput=tty\n" unit
+    && hasInfix "\nTTYPath=/dev/tty1\n" unit
+    && hasInfix "\nRestart=always\n" unit
+  ))
+  (check "console: golconda-console.service starts at sysinit.target, not in the initrd" (
+    base.links."/usr/lib/systemd/system/sysinit.target.wants/golconda-console.service".target or null
+    == "../golconda-console.service"
+    && hasInfix "\nDefaultDependencies=no\n" unit
+    && hasInfix "\nConditionPathExists=!/etc/initrd-release\n" unit
+    # a journalctl started before the flush misses the persistent journal of the first boot
+    && hasInfix "\nAfter=systemd-journal-flush.service\n" unit
   ))
 ]

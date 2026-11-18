@@ -228,8 +228,9 @@ them first, and a configuration never lists them.
 
 - **packages**: systemd, dbus-broker, dash, uutils-coreutils, e2fsprogs (`mkfs.ext4` for the root
   partition), tzdata, hwdb, lvm2 (`dmsetup` and the device-mapper udev rules) and linux-kernel.
-- **units**: `golconda-health-network.service` and `golconda-loader-update.service`; `dbus.socket`
-  is a link to the dbus-broker package, which installs it (upstream does not ship it).
+- **units**: `golconda-console.service` (the journal on tty1), `golconda-health-network.service` and
+  `golconda-loader-update.service`; `dbus.socket` is a link to the dbus-broker package, which
+  installs it (upstream does not ship it).
 - **links**:
   - `.wants` links for `dbus.socket`, `systemd-networkd` (service and socket), `systemd-resolved`,
     `systemd-timesyncd`, `systemd-network-generator` and `systemd-networkd-wait-online`, with the

@@ -321,6 +321,25 @@ check_sshd_sockets() {
   verdict "sshd-golconda-only (sshd.service is the one ssh unit; no ssh socket, no ssh generator, no vsock)" $RC
 }
 
+# check_console: a new journal line reaches the text of tty1, the screen (/dev/vcs1), through
+# golconda-console.service (modules/base/parts/console.nix)
+console_shows() {
+  guest cat /dev/vcs1 2>/dev/null | grep -aqF "$1"
+}
+check_console() {
+  echo ""
+  echo "=== the journal on tty1 ==="
+  CM="golconda-console-check-$BOOT_ID"
+  guest "echo $CM | systemd-cat -t boot-test" || true
+  RC=0
+  wait_for 10 console_shows "$CM" || RC=1
+  guest systemctl status golconda-console.service --no-pager 2>&1 | head -5 || true
+  if [ "$RC" != 0 ]; then
+    echo "the end of tty1's text: $(guest cat /dev/vcs1 2>&1 | tr -s ' ' | tail -c 600)"
+  fi
+  verdict "console-journal (golconda-console.service shows a new journal line on tty1)" $RC
+}
+
 # check_no_failed NAME: no unit has failed in the running boot
 check_no_failed() {
   echo ""
