@@ -207,8 +207,8 @@ battery checks that the `loader.conf` in effect says `off` (`enrol-disarmed`) an
 `loader/keys/auto` is gone (`enrol-keys-removed`). Last, the test puts the files back on the ESP,
 empties the variable store again and boots. systemd-boot enrols nothing and starts the UKI with
 Secure Boot off (`no-reenrol`), whose initrd then halts
-([Boot: Secure Boot off](boot.md#secure-boot-off)). Hardware is *(being built)*: no run has shown
-the 15-second warning on a real console, a real firmware accepting the files, or option ROMs running
+([Boot: Secure Boot off](boot.md#secure-boot-off)). **Unverified** on hardware: no run has shown the
+15-second warning on a real console, a real firmware accepting the files, or option ROMs running
 after the enrolment.
 
 ## Key rotation

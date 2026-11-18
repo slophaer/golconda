@@ -10,7 +10,7 @@ copy of a root:
    (`secure-boot-enabled`) and refuses a loader whose key is in `dbx` (`old-loader-refused`). A
    machine in Setup Mode enrols the deployment's PK, KEK, `db` and `dbx` from the ESP on its first
    boot, with Microsoft's keys or without (`auto-enrolled`, `db-enrolled`, `dbx-enrolled`). A
-   virtual machine proves this; hardware is *(being built)*
+   virtual machine proves this; on hardware it is **Unverified**
    ([Boot loader: Enrolment](bootloader.md#enrolment)).
 1. **The verity signing key** decides *what is read*: it signs the root hash of every `/usr` image.
    It is the Secure Boot `db` key. At every boot the kernel checks the signature against the `db`

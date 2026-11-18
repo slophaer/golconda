@@ -111,7 +111,7 @@ RSA PKCS#1 v1.5, the scheme of both keys, draws no random numbers, so a release 
 token is the release signed from the same keys in files, byte for byte. The check
 `pkcs11-signed-same` compares the two for the test image, whose keys are on a SoftHSM token
 (test-only, `packages/softhsm`), and the boot test boots that image
-([What is proven](../proven.md)). A run on a real YubiKey has not been done *(being built)*
+([What is proven](../proven.md)). **Unverified:** a run on a real YubiKey
 ([Making a release: A YubiKey](../reference/release.md#a-yubikey)).
 
 **The release key** stays a file: gpg signs `SHA256SUMS`, and gpg reaches a token only as an OpenPGP

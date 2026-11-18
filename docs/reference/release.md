@@ -231,10 +231,10 @@ boots from the empty store and lets systemd-boot enrol, with and without Microso
 (`auto-enrolled`, `db-enrolled`, `dbx-enrolled`). It then checks that a second Setup Mode enrols
 nothing (`no-reenrol`; `scripts/boot-test`).
 
-**Unverified:** enrolment on a machine's own firmware *(being built)*. Not run: clearing the keys in
-a real firmware's setup, the 15-second warning on its console, that firmware accepting the four
-files, option ROMs running after the enrolment with Microsoft's keys, and adding `db.crt` beside a
-vendor's keys.
+**Unverified:** enrolment on a machine's own firmware. Not run: clearing the keys in a real
+firmware's setup, the 15-second warning on its console, that firmware accepting the four files,
+option ROMs running after the enrolment with Microsoft's keys, and adding `db.crt` beside a vendor's
+keys.
 
 ## 5. Rotate a key
 
@@ -297,5 +297,5 @@ the PIN source, so that the PIN is typed once into a file that lives only in mem
 
 `libykcs11.so` makes a YubiKey's PIV applet a PKCS#11 token. `packages.<system>.yubikey-tools` holds
 `pcscd`, `yubico-piv-tool` and `ykcs11-module`, which prints the path of that module for
-`--pkcs11-module`. The `db` and PCR keys on a SoftHSM token run in the boot matrix (above). No run
-on a real YubiKey has been done *(being built)*.
+`--pkcs11-module`. The `db` and PCR keys on a SoftHSM token run in the boot matrix
+([What is proven](../proven.md)). **Unverified:** a run on a real YubiKey.

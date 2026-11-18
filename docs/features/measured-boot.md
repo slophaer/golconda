@@ -76,7 +76,7 @@ Proven: the rows of [What is proven](../proven.md) that name `secure-boot-enable
 ## Limits
 
 - No marker boots an unsigned loader.
-- Automatic enrolment has run in a virtual machine only; on hardware it is *(being built)*. With
+- Automatic enrolment has run in a virtual machine only; on hardware it is **Unverified**. With
   `secureBootMicrosoftKeys = false` hardware may refuse option ROMs
   ([Boot loader: Enrolment](../design/bootloader.md#enrolment)). Hetzner Cloud ran without Secure
   Boot and without a TPM ([What is proven](../proven.md#not-proven)).
