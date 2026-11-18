@@ -5,12 +5,12 @@
 Golconda is a server operating system built with Nix, but without nixpkgs or NixOS. You describe a
 machine in one TOML file. A build host turns that file into one signed disk image. The server boots
 the image, checks every block it reads, and updates itself by swapping in the next image. systemd
-does the work on the machine: boot, logging, networking and updates, with no second tool for any of
+does the work on the machine: boot, logging, networking and updates. No second tool does any of
 these jobs. Nix builds the image but is not installed on the machine.
 
-Golconda suits Linux servers and appliances that should all run the same reproducible image. A
-machine cannot drift from that image. A failed update reboots itself until boot counting starts the
-previous release again.
+Golconda suits Linux servers and appliances that should all run the same reproducible image, with no
+drift between machines. A failed update reboots itself until boot counting starts the previous
+release again.
 
 Terms used on this page: a **UKI** (unified kernel image) is one signed file that holds the kernel,
 the initrd and the kernel command line. **erofs** is a read-only file system, and **dm-verity**
@@ -54,11 +54,11 @@ limits.
   keeps the slots. The other slot, the boot menu and a reflash are the other ways back.
 - **[One of each](docs/features/one-of-each.md).** The base system has one libc, one toolchain
   (LLVM), one TLS stack, one CA store, one init, one logger, one network stack and one shell, each
-  in one version. This is a deliberate break with NixOS, where one system can hold several libcs and
+  in one version. Here Golconda differs from NixOS, where one system can hold several libcs and
   several versions of the same package side by side. Golconda gives that up so that there is one
-  thing to patch, audit and reason about. A service that needs another version brings it inside its
-  own boundary: a relocatable repkgs closure, or a container. Package features and lints enforce the
-  rule where they can; the one exception is listed.
+  thing to patch and audit. A service that needs another version brings it inside its own boundary:
+  a relocatable repkgs closure, or a container. Package features and lints enforce the rule where
+  they can; the one exception is listed.
 - **[Typed modules, duplicates are errors](docs/features/typed-modules.md).** A module returns a
   typed fragment and the composer unions them. Two sources for one file are an error that names
   both: no priorities, no overrides.
