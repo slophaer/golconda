@@ -59,7 +59,7 @@ renderers produce the text and the tests read it.
 ## How packages enter the tree
 
 The repkgs set enters the tree once, as the option `target` of `/pkgs`: the set of the platform the
-image runs on (`mkSystem`, `lib/system.nix`, binds it from `nix/packages.nix`; a document cannot).
+image runs on. `mkSystem` (`lib/system.nix`) binds it from `nix/packages.nix`; a document cannot.
 
 `/pkgs` returns `{ target; pkgs; }`. A module that needs a package declares
 `inputs.pkgs.path = "/pkgs"` and reads `results.pkgs.pkgs.openssh`. No option takes a package: a
@@ -80,8 +80,8 @@ credential references and the app files with no per-machine value
 ([Your own modules and packages](../features/extending.md#a-service-of-your-own)).
 
 The composer records which fragment brought each package (`origins.packages`: a component's module
-path such as `/base` or `/services/sshd`, or another fragment's own `name`), and the `/usr` tree
-writes it as `/usr/lib/golconda/packages.json`, so "why is this here" has an answer without a second
+path such as `/base` or `/services/sshd`, or another fragment's own `name`). The `/usr` tree writes
+it as `/usr/lib/golconda/packages.json`, so "why is this here" has an answer without a second
 declaration.
 
 ## Which modules a system has
@@ -109,12 +109,12 @@ There is no `enable` option and no second list: removing the table removes the c
 An input (`inputs.pkgs.path = "/pkgs"`) is a different edge. It says whose result a module reads,
 and it never selects anything: reading `/pkgs` installs nothing, and `/system` reads no module at
 all. `mkSystem` evaluates each selected component once and passes the fragments to `/system` as
-`components`, each named by its module path, so the attribution names the module and never an index.
-`mkSystem` returns the result (`inventory` and `fragments`): every module's role and inputs, for a
-component whether it is included and why (`builtin` or `config`), and the names of the build's own
-fragments (the loader and the update index of a signed image). The image is those components plus
-those fragments, nothing else: `/system` has no other list, and a downstream repository adds a
-module under `/local`, never a bare fragment.
+`components`. Each is named by its module path, so the attribution names the module and never an
+index. `mkSystem` returns the result (`inventory` and `fragments`): every module's role and inputs;
+for a component, whether it is included and why (`builtin` or `config`); and the names of the
+build's own fragments (the loader and the update index of a signed image). The image is those
+components plus those fragments, nothing else. `/system` has no other list, and a downstream
+repository adds a module under `/local`, never a bare fragment.
 
 ## The base system
 
@@ -138,7 +138,7 @@ there is nothing to turn off.
 
 ## `app` and `service`
 
-A `service` is a typed value: an `app` (package, program, argv, env, files: the part that has
+A `service` is a typed value. It holds an `app` (package, program, argv, env, files: the part with
 nothing to do with systemd) plus what only a unit has (credentials, state directories, sandbox tier,
 user, ordering). There is one renderer, `render service`, and one place for a service's
 configuration:
@@ -154,16 +154,16 @@ configuration:
 - `systemctl cat <name>` therefore shows the whole command; nothing is baked into a binary and
   nothing is interpolated at run time.
 
-Why not wrap the program into a launcher that carries its configuration? It buys nothing the plain
-`ExecStart=` does not, and it costs a second renderer, a `/wrap` module, an exception to the
-duplicate rule and a unit that hides its arguments. repkgs keeps `wrap` for developer shells and
-tools shipped to other hosts, not for services.
+A launcher that wraps the program and carries its configuration buys nothing the plain `ExecStart=`
+does not. It costs a second renderer, a `/wrap` module, an exception to the duplicate rule and a
+unit that hides its arguments. repkgs keeps `wrap` for developer shells and tools shipped to other
+hosts, not for services.
 
-An `app` file must not carry a per-machine value: one image serves every machine, so a credential
+An `app` file must not carry a per-machine value. One image serves every machine, so a credential
 path or a key marker in its text is a type error that names the file.
 
 The `service` type grows a field when two services would need it and it has one meaning (`killMode`,
-`runtimeDirectory`); everything else a program needs is its own configuration, which the module
+`runtimeDirectory`). Everything else a program needs is its own configuration, which the module
 writes into the app's files (sshd's `Subsystem sftp internal-sftp` is `sshd_config` content, not a
 unit field). There is no generic escape hatch into the unit text: a module that needs a directive
 the type lacks adds the field, with its type, or does without.
@@ -178,8 +178,8 @@ A service names one of three tiers, `strict`, `default` or `trusted`, each a fix
 - `trusted` adds no directive and needs its reason in the module's doc comment (sshd: it spawns user
   sessions that must see the real system).
 
-The tiers are not a free-form `systemd.exec` surface on purpose: a hardening line that is right for
-one service and wrong for another is a new tier, not an option.
+The tiers are not a free-form `systemd.exec` surface. A hardening line that is right for one service
+and wrong for another is a new tier, not an option.
 
 ### Vars
 
@@ -191,16 +191,16 @@ var names its credential id in `credentials` and orders itself after the var's u
 ## The composer
 
 `/system` takes `name`, `version`, `updateSource`, `updateReboot`, `secureBoot` and
-`secureBootMicrosoftKeys`, and from `mkSystem` the selected components' fragments and the build's
-own as `components`, each named ([Which modules a system has](#which-modules-a-system-has)). It
-merges them, then the sysupdate definitions it renders from `updateSource` and the reboot timer from
-`updateReboot`. The merge follows four rules:
+`secureBootMicrosoftKeys`. From `mkSystem` it takes the selected components' fragments and the
+build's own as `components`, each named ([Which modules a system has](#which-modules-a-system-has)).
+It merges them, then the sysupdate definitions it renders from `updateSource` and the reboot timer
+from `updateReboot`. The merge follows four rules:
 
 - Attribute-set fields are unioned, and a key that appears twice throws with the key's name.
 - List fields are concatenated, and an identical line is kept once. A tmpfiles line claims its path
   and a sysusers `u` or `g` line its user or group: two different lines for one key throw. One path
-  can also take one line of each type that adjusts a path (`z`, `Z`, `t`, `T`, `h`, `H`, `a`, `A`),
-  as tmpfiles.d(5) applies them on top of the line that creates it. A line with a control character
+  can also take one line of each type that adjusts a path (`z`, `Z`, `t`, `T`, `h`, `H`, `a`, `A`).
+  tmpfiles.d(5) applies them on top of the line that creates it. A line with a control character
   throws.
 - `packages` is one list with each package once, and `origins.packages` says which fragments brought
   it.
@@ -218,13 +218,13 @@ becomes an image is in [Configuration](config.md#from-document-to-image).
 `/factory` and `/trust` are the modules that write under `/etc`, with tmpfiles `L` lines. `/factory`
 writes the seed in `/usr/share/factory/etc` plus the lines that link it
 ([Layout: State](layout.md#state)); `/trust` links `/etc/ssl` to the CA bundle. `/factory` knows no
-service: a module that needs a file under `/etc` (sshd's `pam.d/sshd`) has it in the factory because
-`/etc` content lives there, while the module's own user and directories are in the module's
+service. A module that needs a file under `/etc` (sshd's `pam.d/sshd`) has it in the factory,
+because `/etc` content lives there. The module's own user and directories are in the module's
 fragment.
 
 ## Why not the NixOS module system
 
-NixOS merges every module into one global configuration through a fixpoint, which is why `mkForce`
+NixOS merges every module into one global configuration through a fixpoint. That is why `mkForce`
 exists and why evaluation is heavy. adios modules declare their inputs, are checked lazily, and
 compose by explicit function application. A module that wants to change another's output calls it
-and transforms the result; nothing acts at a distance.
+and transforms the result. No module acts at a distance.
