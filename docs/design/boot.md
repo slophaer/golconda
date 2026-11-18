@@ -241,6 +241,14 @@ credentials at first boot. This is Golconda's provisioning path; there is no clo
 | `firstboot.hostname`       | systemd-firstboot      | `/etc/hostname`, on the first boot (`scripts/provision-esp --hostname` writes it, and `/imds` imports it)                      |
 | `ssh.authorized_keys.root` | systemd-tmpfiles-setup | `/root/.ssh/authorized_keys`, written by systemd's `tmpfiles.d/provision.conf`; sshd reads it through its `AuthorizedKeysFile` |
 
+Root's first key has two routes, and both apply. The image key (`/services/sshd.authorizedKeys`,
+`/usr/lib/sshd/authorized_keys/root`) is the fixed bootstrap key of a fleet: every machine of the
+image has it. The credential `ssh.authorized_keys.root` (on the ESP, or from IMDS) is a key for one
+machine, given when it is provisioned. sshd's `AuthorizedKeysFile` names both files, so a key from
+either file logs in; neither replaces the other. The `f^` line writes the credential's file only
+when it does not exist, so a later credential does not change it. With `hostCertificate` on, sshd
+reads neither file once the host certificate is sealed ([Trust: Identity](trust.md#identity)).
+
 The host name comes from the first source in this list that has one:
 
 | order | source                                         | what sets it                                                                                                                                         |
