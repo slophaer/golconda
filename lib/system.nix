@@ -36,49 +36,42 @@ let
   unloaded = tree { };
   treeLib = import ./tree.nix { };
 
-  # Load the repkgs set for this platform. The kernel config depends on /system.secureBoot,
-  # read from the options before the tree checks them: the tree needs the set, and the
-  # option's type still checks the value when /system is evaluated.
-  secureBoot = (loadedOptions."/system" or { }).secureBoot or true;
+  # The repkgs set for this platform, one for the image: the signer and the keyring take it too
+  # (lib/image/chain.nix).
   setFull = import ../nix/packages.nix {
     inherit sources system platform;
     downstream = project.packages;
     inherit (project) replaces;
-    inherit kernelConfig kernelFiles;
-    inherit (trustOptions) caAnchors caDistrust;
-  };
-
-  # /trust's lists, read from the options before the tree checks them (as secureBoot is): the CA
-  # bundle package is built from them, and the option types still check every entry when /trust is
-  # evaluated. A document that gives anything but lists fails there, not here.
-  trustOptions = {
-    caAnchors = (loadedOptions."/trust" or { }).anchors or [ ];
-    # one form for the build (the option's type has checked the entries; a bad one throws there)
-    caDistrust = map (
-      x: if builtins.isString x then (import ../modules/lib/fingerprint.nix).normalise x else x
-    ) ((loadedOptions."/trust" or { }).distrust or [ ]);
   };
   # The kernel's built-in keyring holds the verity certificate, the one key dm-verity and IPE
   # trust (packages/kernel/golconda.config). With Secure Boot too: the firmware's db, the
   # platform keyring, holds Microsoft's UEFI CAs by default, and a signature that chains to one
-  # must not pass (docs/design/trust.md). So each key set has its own kernel. The config names a
-  # fixed path in the kernel tree, and the build copies the certificate there
-  # (packages/kernel/kbuild.nu): a store path in the config would change autoconf.h, which every
-  # object includes, so each certificate would recompile the whole kernel past jig's cache.
+  # must not pass (docs/design/trust.md). So each key set has its own kernel, a variant of the
+  # set's. The config names a fixed path in the kernel tree, and the build copies the certificate
+  # there (packages/kernel/kbuild.nu): a store path in the config would change autoconf.h, which
+  # every object includes, so each certificate would recompile the whole kernel past jig's cache.
   # The certificate stays an input of the kernel through GOLCONDA_KERNEL_FILES.
   # A system that no image signs (no verityCert: lib.mkSystem alone, for a /usr tree or the
-  # SBOM) gets a kernel with no built-in key, which verifies no /usr signature; without Secure
-  # Boot that is an error, as nothing else could check one.
+  # SBOM) gets the set's kernel, with no built-in key, which verifies no /usr signature; without
+  # Secure Boot that is an error (`composed`), as nothing else could check one.
   trustedKeysFile = "certs/golconda-verity.pem";
-  builtinKey = verityCert != null || secureBoot == false;
-  on = import ../modules/lib/on.nix;
-  kernelConfig = on builtinKey { SYSTEM_TRUSTED_KEYS = trustedKeysFile; };
-  kernelFiles = on builtinKey {
-    ${trustedKeysFile} =
-      if verityCert == null then
-        throw "golconda: /system.secureBoot = false needs the image's keys: the kernel carries the db certificate, so build it with lib.mkImage"
-      else
-        "${verityCert}";
+  kernel =
+    if verityCert == null then
+      setFull.pkgs.linux-kernel
+    else
+      setFull.set.variant "linux-kernel" {
+        env.merge = {
+          GOLCONDA_KERNEL_EXTRA_CONFIG = builtins.toJSON { SYSTEM_TRUSTED_KEYS = trustedKeysFile; };
+          GOLCONDA_KERNEL_FILES = builtins.toJSON (
+            import ../packages/kernel/files.nix // { ${trustedKeysFile} = "${verityCert}"; }
+          );
+        };
+      };
+  # the set the modules read (/pkgs.target), with the image's kernel
+  target = setFull.set // {
+    pkgs = setFull.pkgs // {
+      linux-kernel = kernel;
+    };
   };
 
   # The TOML loader: a document in, checked options out (lib/config.nix).
@@ -101,7 +94,7 @@ let
   # mkSystem is the one place that binds /pkgs.target: it is always the platform's set,
   # never from the document.
   mergedOptions = documentOptions // {
-    "/pkgs".target = setFull.set;
+    "/pkgs".target = target;
   };
 
   # Which modules enter the system, and why: the built-in components, then each optional
@@ -123,7 +116,11 @@ let
   };
 
   # Reading the name forces the option types, including the image-id and transfer-path rules.
-  composed = builtins.seq composedRaw.name composedRaw;
+  composed =
+    if verityCert == null && composedRaw.secureBoot == false then
+      throw "golconda: /system.secureBoot = false needs the image's keys: the kernel carries the db certificate, so build it with lib.mkImage"
+    else
+      builtins.seq composedRaw.name composedRaw;
 
   schemaLib = import ./schema.nix { };
   # Golconda's module files, and the downstream repository's under /local, each relative to
@@ -228,11 +225,7 @@ let
 
   # The set without the downstream packages: where a replaced package comes from. Evaluated
   # only for a replacement's ancestor.
-  baseSet = import ../nix/packages.nix {
-    inherit sources system platform;
-    inherit kernelConfig kernelFiles;
-    inherit (trustOptions) caAnchors caDistrust;
-  };
+  baseSet = import ../nix/packages.nix { inherit sources system platform; };
 
   # Where a package comes from: a downstream package, one of Golconda's packages/ (by its
   # directory), or repkgs (everything else, the libc stand-in and the toolchain included).
@@ -342,6 +335,7 @@ in
   packages = setFull.downstream;
   usrTree = usrTreeDrv;
   config = normalizedConfig;
-  inherit (setFull) platform pkgs;
+  inherit (setFull) platform;
+  inherit (target) pkgs;
   inherit (composed) version name;
 }

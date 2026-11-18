@@ -6,7 +6,7 @@
 # distrusted fingerprints; p11-kit's trust module does the arithmetic, and the build checks the
 # result as sets, because `trust` skips a file it cannot parse in silence (docs/design/ca-store.md).
 # The lists arrive as JSON in GOLCONDA_CA_ANCHORS (PEM certificates) and GOLCONDA_CA_DISTRUST
-# (fingerprints); nix/packages.nix sets them from /trust's options. The trust module reads its
+# (fingerprints); /trust sets them from its options in a variant of this package. The trust module reads its
 # directory from a module config in the build directory (`x-init-reserved: paths=`), no ambient
 # path. No sources.toml: the source is cacert's directory (sourceOf).
 {

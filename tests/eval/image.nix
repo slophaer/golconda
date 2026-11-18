@@ -23,6 +23,39 @@ let
     tryEval
     ;
   inherit (import ../../lib/version.nix { }) toEpoch;
+
+  # the image chain over the stand-in set, as nix/default.nix calls it for the test images. The
+  # signer and the keyring are records of the set they get: their builds need the real repkgs
+  chain = import ../../lib/image/chain.nix {
+    inherit sources;
+    imageLib = imageLib // {
+      indexKeyring = a: {
+        type = "derivation";
+        name = "golconda-index-keyring";
+        outPath = "/nix/store/00000000000000000000000000000000-golconda-index-keyring";
+        inherit (a) pkgs;
+      };
+      signer = a: { inherit (a) pkgs; };
+    };
+    mkSystem = args: import ../../lib/system.nix (args // { inherit sources; });
+  };
+  image = chain {
+    config = {
+      "/system" = {
+        name = "t";
+        version = "20261031.1";
+      };
+      "/services/sshd" = { };
+    };
+    publicKeys = ../fixtures/public-keys;
+    system = "x86_64-linux";
+  };
+  # the stand-in sets that made these packages, each once (tests/fixtures/repkgs: fixtureSet)
+  setsOf =
+    packages:
+    builtins.foldl' (acc: s: if builtins.elem s acc then acc else acc ++ [ s ]) [ ] (
+      map (p: p.fixtureSet) (filter (p: p ? fixtureSet) packages)
+    );
 in
 [
   # lvm2's device-mapper rules exec dmsetup by its compiled-in path, so lvm2 is a farm package
@@ -54,6 +87,25 @@ in
         && (sys.origins.packages.lvm2 or [ ]) == [ "/base" ];
     in
     fixturePkgs.lvm2.args.prefix == "/usr" && hasRules host && hasRules initrd
+  ))
+  # One image evaluates one repkgs set: the /usr tree with its kernel and CA bundle (variants of
+  # the set), the signer and the index keyring (the chain's pkgs) take the same one
+  (check "image: the system, the signer and the keyring take one repkgs set" (
+    let
+      roots = image.usrTree.drvAttrs.roots;
+      keyring = builtins.head (filter (p: p.name == "golconda-index-keyring") roots);
+    in
+    builtins.length (
+      setsOf (
+        roots
+        ++ [
+          keyring.pkgs.gnupg
+          image.signer.pkgs.gnupg
+        ]
+      )
+    ) == 1
+    && builtins.any (p: (p.pname or "") == "linux-kernel") roots
+    && builtins.any (p: (p.pname or "") == "ca-bundle") roots
   ))
   # 8. usr-tree library: pure helpers
   (check "usr-tree: stripUsrPrefix strips /usr/ prefix" (

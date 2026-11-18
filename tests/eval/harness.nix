@@ -109,6 +109,8 @@ let
   # the repkgs set as /pkgs sees it: the stand-ins above
   stubSet = {
     buildPkgs = stubSet.pkgs;
+    # a variant is the stand-in itself: these stand-ins have no build to change
+    variant = name: _: stubSet.pkgs.${name};
     pkgs = {
       inherit openssh;
       jq = standIn;

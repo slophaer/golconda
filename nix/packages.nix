@@ -8,21 +8,12 @@
 # (docs/design/config.md, "From document to image").
 # `sources.repkgs` is the pin or the eval tests' stand-in tests/fixtures/repkgs; its files are
 # named with `+`, so a local tree is read in place. `system` is the build host, `platform` the
-# target (default: the build host).
+# target (default: the build host). One image takes one set: its kernel with the verity key
+# (lib/system.nix) and its CA bundle (/trust) are variants of it (`set.variant`).
 {
   sources,
   system,
   platform ? system,
-  # kconfig options the system requires (lib/system.nix: the built-in verity key for
-  # /system.secureBoot = false); kbuild.nu fails if the policy fragment contradicts one
-  kernelConfig ? { },
-  # files the kernel build copies into its tree before configure, by path relative to the tree
-  # (lib/system.nix: the verity certificate at the fixed path SYSTEM_TRUSTED_KEYS names)
-  kernelFiles ? { },
-  # the certificates /trust's options name, PEM text each (lib/system.nix): the CA bundle is built
-  # from cacert's roots, plus caAnchors, minus caDistrust (packages/ca-bundle)
-  caAnchors ? [ ],
-  caDistrust ? [ ],
   downstream ? null,
   replaces ? [ ],
 }:
@@ -83,19 +74,6 @@ let
     # a package with the name of a repkgs alias (pkgs/aliases.toml: cpython -> cpython314) would
     # be hidden by it: repkgs refuses the set
     packages = checked (golcondaPackages // downstreamPackages);
-    overrides = {
-      # The system's required options and files, read by packages/kernel/kbuild.nu. The package
-      # owns its base config, fragment, files and make flags; this replaces only these two fields.
-      linux-kernel.env.merge = {
-        GOLCONDA_KERNEL_EXTRA_CONFIG = builtins.toJSON kernelConfig;
-        GOLCONDA_KERNEL_FILES = builtins.toJSON (import ../packages/kernel/files.nix // kernelFiles);
-      };
-      # /trust's options: the lists the bundle is made from, as JSON
-      ca-bundle.env.merge = {
-        GOLCONDA_CA_ANCHORS = builtins.toJSON caAnchors;
-        GOLCONDA_CA_DISTRUST = builtins.toJSON caDistrust;
-      };
-    };
     # Set-wide choices: one TLS stack, one of each (docs/design/principles.md).
     features.tls = "openssl";
   };

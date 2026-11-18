@@ -79,19 +79,11 @@ let
   pcrPublicKey = publicFile pcrPublicKeys "pcr/pcr.pub";
   indexPublicKey = publicFile publicKeys "release/index.pgp";
 
-  # the configuration's downstream directories ([golconda]): its packages replace for the
-  # signer, the keyring and the initrd as for the system
+  # the configuration's downstream directories ([golconda]): the initrd takes them as the system
   project = (import ../config.nix { tree = null; }).readProject config;
-  inherit
-    (import ../../nix/packages.nix {
-      inherit sources system;
-      platform = system;
-      downstream = project.packages;
-      inherit (project) replaces;
-    })
-    pkgs
-    platform
-    ;
+  # the system's package set, with its kernel: the signer and the keyring take it, so they and
+  # the system evaluate one set and a downstream package replaces for all of them
+  inherit (composed) pkgs;
   indexKeyring = imageLib.indexKeyring {
     inherit pkgs sources;
     buildSystem = system;

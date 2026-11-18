@@ -30,6 +30,13 @@ sys() {
 expect "unknown option" \
   "golconda: /services/sshd has no option 'package'" \
   "$(sys '{ "/system" = { name = "t"; version = "20261031.1"; }; "/services/sshd".package = "openssh"; }')"
+# the kernel and the CA bundle are made from options only after their type check
+expect "wrong type for /system.secureBoot" \
+  "in option 'secureBoot': Expected type 'bool'" \
+  "$(sys '{ "/system" = { name = "t"; version = "20261031.1"; secureBoot = "no"; }; }')"
+expect "wrong type for /trust.distrust" \
+  "in option 'distrust': Expected type 'listOf<sha256Fingerprint>'" \
+  "$(sys '{ "/system" = { name = "t"; version = "20261031.1"; }; "/trust".distrust = "abc"; }')"
 expect "downstream package with a repkgs alias name" \
   "packages: cpython is an alias (pkgs/aliases.toml: cpython -> cpython314)" \
   "$(sys ./tests/fixtures/downstream-alias/server.toml)"

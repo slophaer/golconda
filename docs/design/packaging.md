@@ -75,6 +75,16 @@ lists x86_64 only: no aarch64 `/usr` tree or image is built ([Scope](scope.md#la
 `nix/packages.nix` fixes `tls = "openssl"` for every package that declares the feature. A new
 one-of-each decision is a feature value there, and a package that cannot honour it is not packaged.
 
+## One set for each image
+
+An image evaluates one repkgs set for its system. The `/usr` tree, the signer and the release
+keyring take it; the initrd's own system evaluates one more. Two packages depend on the
+configuration: the kernel carries the image's verity key (`lib/system.nix`), and the CA bundle is
+made from `/trust`'s options (`modules/trust`). Each is a variant of the set's package
+(`set.variant`): only that derivation changes, and the options are read after their type check. The
+SBOM evaluates a second set, without the downstream packages, only for the ancestor of a package
+that a downstream package replaces.
+
 ## Prefixed packages
 
 Some packages compile absolute paths into their binaries: systemd looks for generators in
@@ -107,10 +117,10 @@ x86_64 support because its ORC unwinder config is architecture-specific.
 `golconda.config` adds dm-verity with signed root hashes, erofs, TPM drivers, EFI, LSMs, nftables,
 WireGuard and systemd requirements. A comment above each option says why. The package owns its typed
 base, the fragment, the IPE boot policy and make flags. The build copies the policy into the kernel
-tree at a fixed path, which the fragment names, so the config holds no store path.
-`nix/packages.nix` passes only the options and files the system requires, such as the built-in
-verity key, as JSON fields in the build environment. Store references stay intact. A fragment may
-change a base option. A fragment that contradicts a required option fails the build.
+tree at a fixed path, which the fragment names, so the config holds no store path. The image's
+kernel is a variant of the set's (`set.variant`, `lib/system.nix`): it adds the built-in verity key,
+as an option and a file in the JSON fields of the build environment. Store references stay intact. A
+fragment may change a base option. A fragment that contradicts a required option fails the build.
 
 The local `kbuild.nu` uses repkgs' existing package-local phase interface. It merges the fragment
 with `merge_config.sh` and verifies that the requested settings survive `olddefconfig`. A wrong

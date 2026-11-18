@@ -3,7 +3,7 @@
 use core.nu *
 
 # Keep build data in structured attributes, not generated Nushell source.
-# config: the package's typed base. extra: typed options the system requires (nix/packages.nix),
+# config: the package's typed base. extra: typed options the system requires (lib/system.nix),
 # merged over the base and never overridden by a fragment
 def kernel-options []: nothing -> record {
   let values = (ctx).spec.env

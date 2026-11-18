@@ -15,24 +15,37 @@ in
   (check "outputs: x86_64 keeps the native kernel and the test image" (
     f.packages.x86_64-linux ? kernel && f.packages.x86_64-linux ? image-smoke-test
   ))
-  (check
-    "kernel: the package owns the base and fragment; env.merge adds the extra config and files only"
-    (
-      let
-        own = pkgs.linux-kernel.args.env;
-        final = pkgs.linux-kernel.drvAttrs.spec.env;
-      in
-      attrNames final == attrNames own
-      && final.GOLCONDA_KERNEL_CONFIG == own.GOLCONDA_KERNEL_CONFIG
-      && final.GOLCONDA_KERNEL_EXTRA_CONFIG == "{}"
-      && final.GOLCONDA_KERNEL_FRAGMENTS == own.GOLCONDA_KERNEL_FRAGMENTS
-    )
-  )
-  (check "kernel: GOLCONDA_KERNEL_MAKE survives env.merge" (
+  # the set builds the package as package.nix writes it; an image's kernel is repkgs' variant of
+  # it, with the verity key's extra config and file (lib/system.nix)
+  (check "kernel: the set keeps the package's env; the image's variant adds the verity key only" (
     let
-      make = pkgs.linux-kernel.drvAttrs.spec.env.GOLCONDA_KERNEL_MAKE;
+      own = pkgs.linux-kernel.args.env;
+      final = pkgs.linux-kernel.drvAttrs.spec.env;
+      image =
+        (import ../../lib/system.nix {
+          inherit sources;
+          system = "x86_64-linux";
+          config."/system" = {
+            name = "t";
+            version = "20261031.1";
+          };
+          verityCert = builtins.toFile "db.crt" "test certificate";
+        }).pkgs.linux-kernel.drvAttrs.spec.env;
+      same = env: names: builtins.all (n: env.${n} == own.${n}) names;
     in
-    make == pkgs.linux-kernel.args.env.GOLCONDA_KERNEL_MAKE
+    attrNames final == attrNames own
+    && same final (attrNames own)
+    && attrNames image == attrNames own
+    && same image [
+      "GOLCONDA_KERNEL_CONFIG"
+      "GOLCONDA_KERNEL_FRAGMENTS"
+      "GOLCONDA_KERNEL_MAKE"
+    ]
+    &&
+      image.GOLCONDA_KERNEL_EXTRA_CONFIG == builtins.toJSON {
+        SYSTEM_TRUSTED_KEYS = "certs/golconda-verity.pem";
+      }
+    && image.GOLCONDA_KERNEL_FILES != own.GOLCONDA_KERNEL_FILES
   ))
   (check "checks: native package tests are required outputs" (
     builtins.all

@@ -80,20 +80,26 @@ in
   impl =
     { options, results }:
     let
-      p = results.pkgs.pkgs;
       bundle = "/usr/share/ca-certificates/ca-bundle.crt";
-      dup = duplicates options.anchors ++ duplicates (map normalise options.distrust);
+      distrust = map normalise options.distrust;
+      dup = duplicates options.anchors ++ duplicates distrust;
+      # the bundle package made from these options, as JSON, one form for each fingerprint: a
+      # variant of the set's (packages/ca-bundle), data only, the one CA file of the image
+      caBundle = results.pkgs.target.variant "ca-bundle" {
+        env.merge = {
+          GOLCONDA_CA_ANCHORS = builtins.toJSON options.anchors;
+          GOLCONDA_CA_DISTRUST = builtins.toJSON distrust;
+        };
+      };
     in
     if dup != [ ] then
       throw "golconda: /trust lists the same certificate twice, in `anchors` or in `distrust`; remove the duplicate"
     else
       {
-        # the bundle package is built from these options (lib/system.nix -> nix/packages.nix),
-        # data only: the file is the one CA file of the image
-        packages = [ p.ca-bundle ];
+        packages = [ caBundle ];
 
         links.${bundle} = {
-          target = "${p.ca-bundle}/share/ca-certificates/ca-bundle.crt";
+          target = "${caBundle}/share/ca-certificates/ca-bundle.crt";
           kind = "explicit";
         };
 

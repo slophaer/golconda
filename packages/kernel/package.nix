@@ -18,10 +18,11 @@ package {
     "kbuild.install"
   ];
   # The local kbuild.nu reads these JSON fields (structured attrs, not generated source).
-  # An override replaces a whole field: nix/packages.nix sets only the extra config and files.
+  # An override replaces a whole field: the image's variant (lib/system.nix) sets only the extra
+  # config and the files.
   env = {
     GOLCONDA_KERNEL_CONFIG = builtins.toJSON baseConfig;
-    # what the system requires on top (nix/packages.nix): verified even where a fragment names it
+    # what the system requires on top (lib/system.nix): verified even where a fragment names it
     GOLCONDA_KERNEL_EXTRA_CONFIG = "{}";
     GOLCONDA_KERNEL_FRAGMENTS = builtins.toJSON [
       "${builtins.path {

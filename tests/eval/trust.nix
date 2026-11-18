@@ -56,7 +56,11 @@ let
   throws = x: !(tryEval (deepSeq x x)).success;
   # the options are checked when the composer reads them
   accepts = trust: (tryEval (deepSeq (sysWith trust).composed.links true)).success;
-  envOf = sys: sys.pkgs.ca-bundle.spec.env;
+  # the image's bundle: /trust's variant of the set's ca-bundle
+  envOf =
+    sys:
+    (builtins.head (builtins.filter (p: (p.pname or "") == "ca-bundle") sys.composed.packages))
+    .spec.env;
 
   # the pattern as the schema exports it, read as builtins.match reads it
   pemSchema = schemaLib.typeRegistry.pemCertificate;

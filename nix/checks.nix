@@ -268,22 +268,22 @@ in
   ca-store =
     let
       fixture = n: builtins.readFile (../tests/fixtures/ca-store + "/${n}");
-      built = import ./packages.nix {
-        inherit sources;
-        system = double;
-        platform = double;
-        caAnchors = [
-          (fixture "anchor-ca.crt")
-          (fixture "distrusted-ca.crt")
-        ];
-        caDistrust =
-          let
-            fp = builtins.fromJSON (fixture "fingerprints.json");
-          in
-          [
-            fp.distrusted-ca
-            fp.mozilla-root
+      # a variant of the set's ca-bundle, as /trust makes it (modules/trust)
+      caBundle = set.variant "ca-bundle" {
+        env.merge = {
+          GOLCONDA_CA_ANCHORS = builtins.toJSON [
+            (fixture "anchor-ca.crt")
+            (fixture "distrusted-ca.crt")
           ];
+          GOLCONDA_CA_DISTRUST =
+            let
+              fp = builtins.fromJSON (fixture "fingerprints.json");
+            in
+            builtins.toJSON [
+              fp.distrusted-ca
+              fp.mozilla-root
+            ];
+        };
       };
     in
     run "ca-store"
@@ -294,7 +294,7 @@ in
       ''
         python3 ${src}/tests/ca-store/check.py ${src}/tests/fixtures/ca-store \
           ${rp.cacert}/etc/ssl/certs/ca-bundle.crt \
-          ${built.pkgs.ca-bundle}/share/ca-certificates/ca-bundle.crt ${rp.openssl}/bin/openssl
+          ${caBundle}/share/ca-certificates/ca-bundle.crt ${rp.openssl}/bin/openssl
         touch $out
       '';
 

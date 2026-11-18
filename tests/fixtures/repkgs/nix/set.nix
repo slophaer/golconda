@@ -72,13 +72,21 @@ let
     dir:
     if pathExists (dir + "/sources.toml") then fromTOML (readFile (dir + "/sources.toml")) else { };
 
+  # Every package carries `fixtureSet`, one value for each import of this file: two packages come
+  # from one set only when their `fixtureSet` values are equal. Nix compares two attribute sets
+  # that hold a function by identity, so equal values mean one import, not two alike.
+  fixtureSet = {
+    set = _: null;
+  };
+
+  # `tree`: a variant's override tree, merged after the set's own
   record =
-    n: dir: args:
+    tree: n: dir: args:
     let
       toml = tomlOf dir;
       name = args.name or n;
       version = args.version or (toml.pin.version or "0");
-      merge = (overrides.${name} or { }).env.merge or { };
+      merge = ((overrides.${name} or { }).env.merge or { }) // (tree.env.merge or { });
       supported =
         (!(args ? platforms.cpu) || elem platformRecord.cpu args.platforms.cpu)
         && (!(args ? platforms.os) || elem platformRecord.os args.platforms.os);
@@ -92,6 +100,7 @@ let
           version
           args
           supported
+          fixtureSet
           ;
         platform = platformRecord.name;
         # the programs it declares, or null, as repkgs exposes them
@@ -111,13 +120,14 @@ let
     self // { out = self; };
 
   load =
-    n: dir:
+    tree: n: dir:
     let
       fn = import (dir + "/package.nix");
       toml = tomlOf dir;
       given = {
-        package = record n dir;
-        variant = base: over: record n dir (removeAttrs base.args [ "version" ] // over // { name = n; });
+        package = record tree n dir;
+        variant =
+          base: over: record tree n dir (removeAttrs base.args [ "version" ] // over // { name = n; });
         inherit pkgs;
         buildPkgs = pkgs;
         sources = {
@@ -135,7 +145,8 @@ let
   # an alias's name; this stand-in has no aliases otherwise
   aliases = fromTOML (readFile ../pkgs/aliases.toml);
   aliasTaken = filter (n: aliases ? ${n}) (attrNames packages);
-  pkgs = mapAttrs load (own // packages);
+  dirs = own // packages;
+  pkgs = mapAttrs (load { }) dirs;
 in
 {
   pkgs =
@@ -144,6 +155,8 @@ in
     else
       pkgs;
   inherit features;
+  # one package made again with the tree's env merge over its env, as repkgs' variant does
+  variant = name: tree: load tree name dirs.${name};
   buildPkgs = pkgs;
   platform = platformRecord;
   sbom =
