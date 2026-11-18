@@ -22,12 +22,12 @@ The fork's branch is meant to hold only what upstream should take. A package goe
 ## Why repkgs
 
 Golconda pins a fork of repkgs (branch `golconda`; see
-[the repkgs fork](../../CONTRIBUTING.md#the-repkgs-fork) for its commits and how to change it) with
-relocation fixes: PT_INTERP via libc with relative sysroot links, and glibc `$ORIGIN` expansion from
-`AT_EXECFN` instead of `/proc`.
+[the repkgs fork](../../CONTRIBUTING.md#the-repkgs-fork) for its commits and how to change it). The
+fork adds relocation fixes: PT_INTERP via libc with relative sysroot links, and glibc `$ORIGIN`
+expansion from `AT_EXECFN` instead of `/proc`.
 
 - Outputs are relocatable, so the store can live in `/usr` and no machine needs Nix.
-- One LLVM toolchain; cross-compilation is an argument, which the platform record supplies.
+- One LLVM toolchain. Cross-compilation is an argument, which the platform record supplies.
 - Evaluation is cheap and typed, so iets lints the whole set on every change.
 - Debug info is split by build-id into `debug` outputs where `systemd-coredump` looks.
 
@@ -36,7 +36,7 @@ relocation fixes: PT_INTERP via libc with relative sysroot links, and glibc `$OR
 repkgs turns its hardening flags on for every package (`builder/hardening.nu`: `_FORTIFY_SOURCE=3`,
 the stack protector, stack-clash protection, zeroed call-used registers, `-fwrapv`, `-fno-plt`,
 RELRO, `BIND_NOW`, a non-executable stack and more). A package turns off only the flag it cannot
-take, by name (`cc.hardening.<name> = false`), never the whole set. systemd turns off `relr` alone:
+take, by name (`cc.hardening.<name> = false`), never the whole set. systemd turns off `relr` alone.
 jig puts a package's link flags after the build system's, so `-z pack-relative-relocs` would
 override the `-z nopack-relative-relocs` of systemd's EFI binaries, and `elf2efi` refuses RELR
 relocations. The EFI code turns off the compile flags it cannot take itself. `tests-systemd` checks
@@ -54,11 +54,11 @@ the image still holds the same paths under `/usr/nix/store`.
 ## The platform
 
 The platform is repkgs' record (`nix/platforms.nix` in repkgs), which `nix/packages.nix` returns
-next to `pkgs`. It holds `cpu`, `os`, `name` (`x86_64-linux`), `march` and `names`, one spelling per
-consumer: `names.kernel` (the kernel `ARCH`), `names.systemd` (`systemd-repart --architecture`, the
-partition type names) and `names.uefi` (`BOOTX64.EFI`; null where there is no UEFI port). Golconda
-keeps no table of its own; a new spelling goes into repkgs. Only `systems` in `default.nix` lists
-what Golconda builds: `x86_64-linux`.
+next to `pkgs`. It holds `cpu`, `os`, `name` (`x86_64-linux`), `march` and `names`. `names` has one
+spelling per consumer: `names.kernel` (the kernel `ARCH`), `names.systemd`
+(`systemd-repart --architecture`, the partition type names) and `names.uefi` (`BOOTX64.EFI`; null
+where there is no UEFI port). Golconda keeps no table of its own; a new spelling goes into repkgs.
+Only `systems` in `default.nix` lists what Golconda builds: `x86_64-linux`.
 
 ## Cross-compilation
 
@@ -104,8 +104,9 @@ cannot take a prefix is not packaged.
 | build   | clang/lld, nushell, cpython, perl, rust         |
 
 Dash is the only shell in the image; systemd units run dash scripts. At build time, clang and lld
-are the toolchain, nushell drives the repkgs builders, Python is needed for meson, systemd's jinja2
-templates and ukify, Perl for OpenSSL's Configure and some autotools, Rust for iets and dbus-broker.
+are the toolchain, and nushell drives the repkgs builders. Python is needed for meson, systemd's
+jinja2 templates and ukify. Perl is needed for OpenSSL's Configure and some autotools, and Rust for
+iets and dbus-broker.
 
 ## The kernel belongs to Golconda
 
@@ -117,7 +118,7 @@ x86_64 support because its ORC unwinder config is architecture-specific.
 WireGuard and systemd requirements. A comment above each option says why. The package owns its typed
 base, the fragment, the IPE boot policy and make flags. The build copies the policy into the kernel
 tree at a fixed path, which the fragment names, so the config holds no store path. The image's
-kernel is a variant of the set's (`set.variant`, `lib/system.nix`): it adds the built-in verity key,
+kernel is a variant of the set's (`set.variant`, `lib/system.nix`). It adds the built-in verity key,
 as an option and a file in the JSON fields of the build environment. Store references stay intact. A
 fragment may change a base option. A fragment that contradicts a required option fails the build.
 
