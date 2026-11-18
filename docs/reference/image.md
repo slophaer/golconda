@@ -1,8 +1,8 @@
 # Image artifacts
 
-The `/usr` tree builder exists (`lib/usr-tree.nix`) and the image chain exists (`lib/image/`):
-erofs, verity, initrd, UKI and disk, one derivation each. The `image/` directory holds the
-tool-independent definitions they render. [Boot test](boot-test.md) boots the test images in QEMU.
+The `/usr` tree builder is `lib/usr-tree.nix`. The image chain (`lib/image/`) is erofs, verity,
+initrd, UKI and disk, one derivation each. The `image/` directory holds the tool-independent
+definitions they render. [Boot test](boot-test.md) boots the test images in QEMU.
 
 ## A release
 
@@ -10,8 +10,8 @@ Names carry the image id and the version; the version sorts with `strverscmp`
 ([Updates: Versions](../design/updates.md#versions)). The version is a real calendar date and a
 revision inside the day (0-86399); the whole contract is in [Releases](../design/releases.md). The
 data and hash files also carry the partition UUID systemd derives from the verity root hash (usr:
-its first 128 bits, usr-verity: its last); the source pattern reads it with `@u`, and sysupdate
-gives the slot it writes that UUID, so the new UKI's `usrhash=` finds the new slot. The signer
+its first 128 bits, usr-verity: its last). The source pattern reads it with `@u`, and sysupdate
+gives the slot it writes that UUID. So the new UKI's `usrhash=` finds the new slot. The signer
 writes the release under these names (`release/`, `releaseNames` in `lib/image/disk.nix`).
 
 | artifact         | file name                                                     | sysupdate transfer                                                   |
@@ -26,10 +26,10 @@ writes the release under these names (`release/`, `releaseNames` in `lib/image/d
 Each partition transfer finds its slots by GPT label (`image/sysupdate.nix` `slots`, the target
 `MatchPattern=`): an installed slot is `usr_<version>`, `usr-verity_<version>` or
 `usr-verity-sig_<version>`, a free slot is `_empty`. The signer labels slot A from the same patterns
-(`slotLabel`, `lib/image/disk.nix`) and the B slots `_empty` (`image/repart.nix`); sysupdate writes
-the formatted pattern as the label of the slot it fills, and keeps the slot's flags: the free usr
+(`slotLabel`, `lib/image/disk.nix`) and the B slots `_empty` (`image/repart.nix`). sysupdate writes
+the formatted pattern as the label of the slot it fills, and keeps the slot's flags. The free usr
 slot is read-only without growfs, as slot A is (systemd 262.1 ignores the target's `ReadOnly=` for
-partitions). The partition type tells the three transfers apart, so the label carries no image id:
+partitions). The partition type tells the three transfers apart, so the label carries no image id.
 GPT allows 36 characters, the longest prefix (`usr-verity-sig_`) leaves 21 for the version, and a
 longer label fails the build.
 
@@ -39,16 +39,16 @@ counter (`+3-0`: three tries left, none done); `systemd-bless-boot` removes the 
 
 With `/system.updateSource` set, the composer writes the definitions as
 `/usr/lib/sysupdate.d/<n>.transfer` (the suffix systemd wants since 257; `.conf` still loads with a
-warning) and enables the update timer with a static link,
-`timers.target.wants/systemd-sysupdate-update.timer`, and, unless `/system.updateReboot` is null,
-the reboot timer, `timers.target.wants/systemd-sysupdate-reboot.timer`, with an `OnCalendar=`
-drop-in and `ExecCondition=/usr/lib/golconda/golconda-update-pending` for its service
+warning). It enables the update timer with a static link,
+`timers.target.wants/systemd-sysupdate-update.timer`. Unless `/system.updateReboot` is null, it also
+enables the reboot timer, `timers.target.wants/systemd-sysupdate-reboot.timer`, with an
+`OnCalendar=` drop-in and `ExecCondition=/usr/lib/golconda/golconda-update-pending` for its service
 ([Updates: Activation](../design/updates.md#activation)). systemd 262 renamed
 `systemd-sysupdate.timer`/`.service` to `systemd-sysupdate-update.timer`/`.service` and keeps the
 old names as aliases. The timer starts `systemd-sysupdate-update.service`, which runs
 `systemd-sysupdate update --component-all --cleanup=yes`. The image ships its definitions in
 `/usr/lib/sysupdate.d` only. sysupdate.d(5) also reads `/etc/sysupdate.d` and `/run/sysupdate.d`,
-and a file there hides the one of the same name in `/usr/lib/sysupdate.d`; the boot test runs the
+and a file there hides the one of the same name in `/usr/lib/sysupdate.d`. The boot test runs the
 image's definitions unchanged and serves the release over HTTP
 ([Boot test: the update test](boot-test.md#the-update-test)).
 
@@ -89,7 +89,7 @@ the artifacts added ([Configuration](config.md#the-entry-point)):
 
 Build-time verification: no absolute symlink target; every `dlopen` link resolves and every `farm`
 link names a directory; no top-level directory other than `bin`, `lib`, `share`, `nix`, `libexec`
-and the `sbin` link. No file has a setuid or setgid bit: the Nix sandbox refuses a `chmod` that sets
+and the `sbin` link. No file has a setuid or setgid bit. The Nix sandbox refuses a `chmod` that sets
 one, and the store keeps only the modes `0444` and `0555`.
 
 A Nix store path carries no mtimes (Nix sets them to 1), so the tree itself has none. The erofs step
@@ -99,10 +99,10 @@ applies the timestamp derived from the version (`YYYYMMDD.N` → epoch seconds, 
 ### Software bill of materials
 
 `lib/golconda/sbom.json` is a CycloneDX 1.5 document for the runtime package closure. It follows
-standard identifiers, as the NixOS security tracker does (it links CVEs to packages by name and by
-nixpkgs' `meta.identifiers` CPE): a `purl` from each package's `sources.toml`, a `cpe` where the
-package declares one, and CycloneDX `pedigree` for a replacement and for a patched package. One
-custom property says where a component comes from.
+standard identifiers, as the NixOS security tracker does. The tracker links CVEs to packages by name
+and by nixpkgs' `meta.identifiers` CPE. The SBOM has a `purl` from each package's `sources.toml`, a
+`cpe` where the package declares one, and CycloneDX `pedigree` for a replacement and for a patched
+package. One custom property says where a component comes from.
 
 ```json
 {
@@ -138,9 +138,9 @@ custom property says where a component comes from.
   writes it. An unpatched package with no replacement has no `pedigree`.
 
 `checks.sbom-schema` validates the test image's SBOM against the CycloneDX 1.5 JSON schema (pinned
-in `pins/cyclonedx` and fetched at evaluation, so the check runs offline and builds no image), and
-checks that the validator refuses a patch of an unknown type and a missing `bomFormat`. The schema
-does not constrain `specVersion`.
+in `pins/cyclonedx` and fetched at evaluation, so the check runs offline and builds no image). It
+also checks that the validator refuses a patch of an unknown type and a missing `bomFormat`. The
+schema does not constrain `specVersion`.
 
 A patch, here the third of systemd's:
 
@@ -164,14 +164,14 @@ A patch, here the third of systemd's:
   `Origin: upstream` takes the commit from `git format-patch`'s `From <sha>` line). dosfstools' and
   libtpms' patches are backports. Every other patch is `unofficial`: Golconda's or repkgs' own
   change.
-- `diff.url` is, for a backport, the upstream commit (on the package's github or gitlab project);
-  else the file, relative to the package's directory (`packages/<name>/` in Golconda,
-  `pkgs/<xx>/<name>/` in repkgs; `golconda:origin` says which). `diff.text` is the whole file, so
-  the SBOM alone shows what changed; CycloneDX's patch has no hash field.
-- `resolves` comes from the patch's own header, when it has one: `name` is the `Subject:` of
+- `diff.url` is the upstream commit for a backport (on the package's github or gitlab project). For
+  any other patch it is the file, relative to the package's directory (`packages/<name>/` in
+  Golconda, `pkgs/<xx>/<name>/` in repkgs; `golconda:origin` says which). `diff.text` is the whole
+  file, so the SBOM alone shows what changed; CycloneDX's patch has no hash field.
+- `resolves` comes from the patch's own header, when it has one. `name` is the `Subject:` of
   `git format-patch` (without `[PATCH]`) or a DEP-3 `Description:`, else the first paragraph of the
-  text before the diff; `references` are the URLs in that text (an `Upstream:` or `Link:` line, for
-  example), not those of the backport markers; `type` is `defect` when the subject's summary starts
+  text before the diff. `references` are the URLs in that text (an `Upstream:` or `Link:` line, for
+  example), not those of the backport markers. `type` is `defect` when the subject's summary starts
   with "fix", else `enhancement`. A bare diff has no `resolves`. To say why a patch exists, write it
   at the top of the file: `patch` skips that text.
 
@@ -191,7 +191,7 @@ Nix builds the parts that need no key, each a content-addressed derivation with 
 (`common.nix`) and repkgs packages only. The signer (`golconda-sign`, `lib/image/sign.nu`) signs and
 assembles the rest outside Nix, with the deployment's keys where they lie
 ([Signing outside Nix](../design/signing.md)). A test image runs the same signer in a derivation
-with throwaway keys; `packages.<system>.image-smoke` does so for the system of
+with throwaway keys. `packages.<system>.image-smoke` does so for the system of
 `examples/server.toml`, and links `unsigned`, `disk` and `keys`, which `scripts/boot-test` reads.
 
 | step     | where                                          | output                                                                                                                                                                             |
@@ -204,14 +204,17 @@ with throwaway keys; `packages.<system>.image-smoke` does so for the system of
 | uki      | signer: `lib/image/uki.nu`                     | `<id>_<version>+3-0.efi` (`ukiName`, `ukiParams`)                                                                                                                                  |
 | disk     | signer: `lib/image/disk.nu`                    | `disk.raw` (sparse, fully allotted: ESP with the signed loader and `loader.conf`, A and B slots, no room for `root`), `disk.json`, `release/` with `SHA256SUMS.gpg` (`diskParams`) |
 
-The verity step: `veritysetup format` with a salt and superblock UUID from the version; the
+The verity step runs `veritysetup format` with a salt and superblock UUID from the version. The
 signature is `openssl smime -sign -nocerts -noattr -binary` over the hex root hash, as
-systemd-veritysetup documents; the `-sig.raw` file is systemd's partition content, the JSON
-`{ rootHash, certificateFingerprint, signature }` NUL-padded to 4096 bytes. The UKI step runs
-`ukify build` (`packages/ukify`, systemd's `ukify.py` as a build-time package) with `--linux` from
-the kernel package, `--os-release` from the tree, `--uname`, `--phases` from `image/uki.nix`, Secure
-Boot signing of the UKI by `systemd-sbsign` (`--no-sign-kernel`; the step fails when the `.linux`
-section has a certificate table) and the PCR 11 policy by `systemd-measure`. The disk step runs
+systemd-veritysetup documents. The `-sig.raw` file is systemd's partition content, the JSON
+`{ rootHash, certificateFingerprint, signature }` NUL-padded to 4096 bytes.
+
+The UKI step runs `ukify build` (`packages/ukify`, systemd's `ukify.py` as a build-time package)
+with `--linux` from the kernel package, `--os-release` from the tree, `--uname`, `--phases` from
+`image/uki.nix`, Secure Boot signing of the UKI by `systemd-sbsign` (`--no-sign-kernel`; the step
+fails when the `.linux` section has a certificate table) and the PCR 11 policy by `systemd-measure`.
+
+The disk step runs
 `systemd-repart --empty=create --size=auto --offline=yes --seed=<from the version>` over
 `image/repart.nix` rendered to `.conf` files (`repartDefinitions`, `modules/lib/ini.nix`) with the
 builder's fields added: the ESP's `CopyFiles=` (systemd-boot as `EFI/systemd/systemd-boot<arch>.efi`
@@ -219,11 +222,11 @@ and `EFI/BOOT/BOOT<ARCH>.EFI`, the UKI in `EFI/Linux/`), slot A's labels (`slotL
 `CopyBlocks=` and the two UUIDs systemd derives from the root hash (usr: its first 128 bits, verity:
 its last). The loader on the ESP is the file the signer put into `/usr`. `loader/loader.conf` is
 written from `image/loader.nix` (`timeout 0`, `editor no`), the text `/base` installs as
-`/usr/lib/golconda/loader.conf`; the signer fails unless the tree's copy is the same. The B slots
-are empty, root is made on the machine (`/usr/lib/repart.d/30-root.conf`, written by `/base`).
+`/usr/lib/golconda/loader.conf`. The signer fails unless the tree's copy is the same. The B slots
+are empty, and root is made on the machine (`/usr/lib/repart.d/30-root.conf`, written by `/base`).
 `release/` holds the four files under their release names (the UKI as `<id>_<version>.efi`) and
-`SHA256SUMS`: a directory an HTTP server can publish as the update source. `SHA256SUMS` has four
-lines in a fixed order (usr, verity, signature, UKI) and names the release files exactly; it does
+`SHA256SUMS`. An HTTP server can publish this directory as the update source. `SHA256SUMS` has four
+lines in a fixed order (usr, verity, signature, UKI) and names the release files exactly. It does
 not list itself. A file mtime is not the release date: the version epoch lives in the `/usr` erofs
 image (and in `disk.raw`'s internal files), not in the release directory's metadata. The ESP is
 filled offline with mtools (`packages/mtools`).
@@ -236,22 +239,22 @@ mtime 1. The tool numbers the inodes itself (from 721) and writes fixed devices 
 the bytes depend only on the names, modes, link targets and contents, not on the build directory.
 Each file is one entry with its own data; the initrd has no hard links. A symlink's data is its
 target with a NUL at the end, as in the kernel's built-in initramfs. A name or target with
-whitespace or `$`, or a file that is not a regular file, directory or symlink, fails the build: the
-list format cannot hold it. `packages.<system>.initrd-reproducible` builds the test image's initrd a
-second time and compares the bytes; when they differ, `tests/initrd/newc-diff.py` names the header
-fields that differ. `scripts/verify` builds it beside the image.
+whitespace or `$`, or a file that is not a regular file, directory or symlink, fails the build,
+because the list format cannot hold it. `packages.<system>.initrd-reproducible` builds the test
+image's initrd a second time and compares the bytes; when they differ, `tests/initrd/newc-diff.py`
+names the header fields that differ. `scripts/verify` builds it beside the image.
 
-The signer is deterministic for the same unsigned output and keys: times, salts, UUIDs and seeds
-come from the version, `systemd-sbsign` takes its signing time from `SOURCE_DATE_EPOCH`, and the
-signatures (RSA PKCS#1 v1.5, Ed25519) draw no random numbers. `disk.raw` too: systemd-repart passes
-`SOURCE_DATE_EPOCH` on to `mkfs.fat`, which writes it as the time of the ESP's volume label entry,
-and gives it the volume ID it derives from the ESP's partition UUID (`-i`). dosfstools 4.2 reads no
-`SOURCE_DATE_EPOCH`; Golconda carries the upstream commit that adds it
-(`packages/dosfstools/source-date-epoch.patch`, dosfstools PR #106, merged after 4.2).
+The signer is deterministic for the same unsigned output and keys. Times, salts, UUIDs and seeds
+come from the version. `systemd-sbsign` takes its signing time from `SOURCE_DATE_EPOCH`, and the
+signatures (RSA PKCS#1 v1.5, Ed25519) draw no random numbers. `disk.raw` is deterministic too.
+systemd-repart passes `SOURCE_DATE_EPOCH` on to `mkfs.fat`, which writes it as the time of the ESP's
+volume label entry. It also gives `mkfs.fat` the volume ID it derives from the ESP's partition UUID
+(`-i`). dosfstools 4.2 reads no `SOURCE_DATE_EPOCH`, so Golconda carries the upstream commit that
+adds it (`packages/dosfstools/source-date-epoch.patch`, dosfstools PR #106, merged after 4.2).
 `packages.<system>.disk-reproducible` signs the test image a second time and compares the release
 and `disk.raw` byte for byte; `scripts/verify` builds it beside the image.
 `packages.<system>.release-without-pk-kek` checks that the key set the test image is signed with has
-no `PK.key` and `KEK.key`: `scripts/make-keys` keeps them in `DIR.private`, and the signer copies
+no `PK.key` and `KEK.key`. `scripts/make-keys` keeps them in `DIR.private`, and the signer copies
 the enrolment files that `make-keys` signed. The boot test covers the verity certificate in the
 kernel keyring and TPM sealing ([What is proven](../proven.md)).
 
@@ -265,9 +268,9 @@ The smoke, the test image and the production image boot the same command line
 - The UKI cmdline carries `usrhash=<root hash>`, which the generators use to find the `/usr`
   partition; the partition UUIDs of `usr-a` and `usr-a-verity` are the two halves of that hash.
 - repart needs no root and no loop device with `--offline=yes`; outside the sandbox it runs the same
-  way. The disk file is written straight into the output: it is sparse (two 10 GiB slots; the test
+  way. The disk file is written straight into the output. It is sparse (two 10 GiB slots; the test
   images of `nix/default.nix` have two 1 GiB slots), and it has no free space for the `root`
-  partition: boot it through a larger overlay, which `scripts/boot-test` does
+  partition. Boot it through a larger overlay, which `scripts/boot-test` does
   ([the walkthrough](walkthrough.md#6-first-boot)), or `truncate` a copy.
 
 ## The kernel command line
