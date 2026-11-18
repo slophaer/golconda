@@ -94,8 +94,8 @@ packages the image needs are not in the fork: they are in `packages/`.
 
 To change the fork, commit to its `golconda` branch, in the topic the change belongs to, and push it
 to the forge and to its public GitHub mirror, `slophaer/repkgs`. The pin follows the mirror: its
-archive is byte for byte the forge's, and it needs no sign-in, neither for Nix nor for iets. Then
-move the pin and run the full check:
+archive is byte for byte the forge's, and it needs no sign-in for Nix or iets. Then move the pin and
+run the full check:
 
 ```console
 $ scripts/pins check repkgs
