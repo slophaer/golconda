@@ -21,7 +21,7 @@ policy with keys you make, so a swapped kernel opens nothing.
   `systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11 --tpm2-pcrs=7`. sshd loads the
   result with `LoadCredentialEncrypted=`. The key is sealed to the PCR key, not to one PCR 11 value,
   so a new signed image unseals it with no re-sealing. It is also sealed to PCR 7's value, so it
-  does not unseal with Secure Boot off or with other Secure Boot keys; a `db` rotation seals it
+  does not unseal with Secure Boot off or with other Secure Boot keys. A `db` rotation seals it
   again ([Trust: PCR 7](../design/trust.md#pcr-7)).
 - **Deployment keys.** `scripts/make-keys` writes `secureboot/db.{key,crt}`, a `PK` and a `KEK`,
   `pcr/pcr.{key,pub}`, the release key, and the Secure Boot variables, signed once by the PK and KEK
@@ -32,7 +32,7 @@ policy with keys you make, so a swapped kernel opens nothing.
   them. Only a new disk enrols: its first good boot puts a `loader.conf` that enrols nothing on the
   ESP and removes the files once Secure Boot is on.
 - **Secure Boot off.** On firmware that does not enforce Secure Boot, a Secure Boot image halts in
-  the initrd and says why on the console; a boot that skips that check unseals nothing, because the
+  the initrd and says why on the console. A boot that skips that check unseals nothing, because the
   vars are sealed to PCR 7 ([Boot: Secure Boot off](../design/boot.md#secure-boot-off)).
 - **The verity key in the kernel.** The kernel carries the `db` certificate itself
   (`CONFIG_SYSTEM_TRUSTED_KEYS`, a fixed path the build fills) and checks the `/usr` signature
