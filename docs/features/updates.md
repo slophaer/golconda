@@ -42,7 +42,7 @@ A boot is good only if it reaches `boot-complete.target`. Two health units gate 
 - `golconda-health-sshd.service` needs `sshd.service` active.
 
 When both pass, `systemd-bless-boot` removes the suffix. When one fails, or the target is not
-reached within 15 minutes, the machine reboots by itself and the next try starts; a kernel panic, a
+reached within 15 minutes, the machine reboots by itself and the next try starts. A kernel panic, a
 PID 1 crash and an initrd failure reboot it too ([Boot: Trial boot](../design/boot.md#trial-boot)).
 After a good boot, `golconda-loader-update.service` copies this release's signed systemd-boot to the
 ESP. A release that fails its health units never touches the loader.
@@ -61,8 +61,8 @@ updateSource = "https://updates.example.com/web/"
 Serve the `release/` directory of the build at that URL. The image enables
 `systemd-sysupdate-update.timer`, which installs, and `systemd-sysupdate-reboot.timer`, which
 reboots into an installed release at 04:10 (plus up to 30 random minutes). systemd's install timer
-runs 15 minutes after boot, then 2 hours after each run and on each Saturday, each time with up to 4
-hours of random delay (`OnBootSec=15min`, `OnUnitActiveSec=2h`, `OnCalendar=Sat`,
+runs 15 minutes after boot. It runs again 2 hours after each run and on each Saturday, each time
+with up to 4 hours of random delay (`OnBootSec=15min`, `OnUnitActiveSec=2h`, `OnCalendar=Sat`,
 `RandomizedDelaySec=4h`). To install at once, run
 `systemctl start --wait systemd-sysupdate-update.service` on the machine. Set another window, or
 `null` to reboot by hand:
@@ -72,7 +72,7 @@ hours of random delay (`OnBootSec=15min`, `OnUnitActiveSec=2h`, `OnCalendar=Sat`
 updateReboot = "Sat 03:00"
 ```
 
-The reboot happens only when the boot loader would start the new release: after a fallback, the
+The reboot happens only when the boot loader would start the new release. After a fallback, the
 failed release stays installed and the machine stays on the old one
 ([Updates: Activation](../design/updates.md#activation)). With `updateSource` unset, the image has
 no transfers and no update runs. Read the counters with `bootctl list`.
