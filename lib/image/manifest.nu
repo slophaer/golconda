@@ -14,7 +14,7 @@ export def build [] {
   let p = $a.manifest.publicKeys
 
   # copies: the manifest names them, so the output's closure holds no other file of the key set
-  for f in [[name from]; [db.crt $p.dbCert] [pcr.pub $p.pcrPublicKey] [index.pgp $p.indexKeyring]] {
+  for f in [[name from]; [db.crt $p.dbCert] [pcr.pub $p.pcrPublicKey] [index.pgp $p.releaseKey]] {
     let raw = (open --raw $f.from | into binary)
     # PEM and armored OpenPGP secrets alike ("-----BEGIN PGP PRIVATE KEY BLOCK"); the keyring
     # step (index.nu), which the /usr tree needs, refuses a binary secret key
@@ -27,7 +27,7 @@ export def build [] {
   ^openssl pkey -pubin -in $"($out)/keys/pcr.pub" -noout
 
   $a.manifest
-    | upsert publicKeys {dbCert: $"($out)/keys/db.crt" pcrPublicKey: $"($out)/keys/pcr.pub" indexKeyring: $"($out)/keys/index.pgp"}
+    | upsert publicKeys {dbCert: $"($out)/keys/db.crt" pcrPublicKey: $"($out)/keys/pcr.pub" releaseKey: $"($out)/keys/index.pgp"}
     | to json
     | save -f $"($out)/manifest.json"
   ^ln -s $"($a.signer)/bin/golconda-sign" $"($out)/sign"

@@ -124,7 +124,7 @@ export def check-keys [priv: record, pub: record] {
   if $pcr_pub != $pcr_key {
     error make {msg: $"($priv.pcrKey) is not the key of the PCR public key this image carries"}
   }
-  let want = (pgp-keys $pub.indexKeyring pub).fpr
+  let want = (pgp-keys $pub.releaseKey pub).fpr
   let have = (pgp-keys $priv.indexKey sec).fpr
   if $want != $have {
     error make {msg: $"($priv.indexKey) is the OpenPGP key ($have), but this image trusts ($want)"}
@@ -247,7 +247,7 @@ def release [m: record, priv: record, sets: record, out: string] {
     [$m.release.sig $sig]
     [$m.release.uki $uki]
   ]
-  disk sign-index $release $priv.indexKey $m.disk.epoch $pub.indexKeyring
+  disk sign-index $release $priv.indexKey $m.disk.epoch $pub.releaseKey
   $cmdline | save -f $"($out)/cmdline"
   rm -rf $work
   log $"release: (ls $release | get name | path basename | str join ' ')"

@@ -35,7 +35,7 @@ def key-set [dir: string, name: string] {
 
 # what the manifest names: the public halves
 def public-of [dir: string]: nothing -> record {
-  {dbCert: $"($dir)/secureboot/db.crt" pcrPublicKey: $"($dir)/pcr/pcr.pub" indexKeyring: $"($dir)/release/index.pgp"}
+  {dbCert: $"($dir)/secureboot/db.crt" pcrPublicKey: $"($dir)/pcr/pcr.pub" releaseKey: $"($dir)/release/index.pgp"}
 }
 
 def ok [name: string] { print $"ok: ($name)" }
@@ -66,7 +66,7 @@ fails "another PCR key is refused" "is not the key of the PCR public key" {||
   check-keys (private-keys $a $b) (public-of $a)
 }
 fails "another release key is refused" "but this image trusts" {||
-  check-keys (private-keys $a $a) ((public-of $a) | merge {indexKeyring: $"($b)/release/index.pgp"})
+  check-keys (private-keys $a $a) ((public-of $a) | merge {releaseKey: $"($b)/release/index.pgp"})
 }
 # a db rotation: the new set's db and release keys with the PCR key of the first set
 check-keys (private-keys $b $a) ((public-of $b) | merge {pcrPublicKey: $"($a)/pcr/pcr.pub"})
@@ -168,7 +168,7 @@ fails "a key file with two secret keys is refused" "expected one sec OpenPGP key
   sign-index $rel $"($tmp)/two.key" 1793404801 $"($a)/release/index.pgp"
 }
 fails "a keyring with a secret key is refused" "expected one pub OpenPGP key and no other, found 0 pub and 1 sec" {||
-  check-keys $priv_a (public-of $a | upsert indexKeyring $"($a)/release/index.key")
+  check-keys $priv_a (public-of $a | upsert releaseKey $"($a)/release/index.key")
 }
 # gpg fails after the import: no SHA256SUMS to sign
 fails "an index signature that gpg cannot make fails" "non-zero exit code" {||

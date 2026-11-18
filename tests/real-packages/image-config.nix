@@ -194,7 +194,7 @@ in
     # each public half is copied alone, by its own name
     && inStore m.publicKeys.dbCert
     && inStore m.publicKeys.pcrPublicKey
-    && inStore m.publicKeys.indexKeyring
+    && inStore m.publicKeys.releaseKey
     # the signer of this image's set, and the parameters from the version
     && i.unsigned.signer == "${i.signer}"
     && m.release.uki == "fragment-test_20261031.1.efi"

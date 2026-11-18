@@ -77,17 +77,17 @@ let
       };
   dbCert = publicFile publicKeys "secureboot/db.crt";
   pcrPublicKey = publicFile pcrPublicKeys "pcr/pcr.pub";
-  indexPublicKey = publicFile publicKeys "release/index.pgp";
+  releaseKey = publicFile publicKeys "release/index.pgp";
 
   # the system's package set, with its kernel: the signer, the keyring and the initrd take it, so
   # the image evaluates one set and a downstream package replaces for all of them
-  inherit (composed) pkgs;
+  inherit (sysRaw) pkgs;
   indexKeyring = imageLib.indexKeyring {
     inherit pkgs sources;
     buildSystem = system;
-    publicKey = indexPublicKey;
+    publicKey = releaseKey;
   };
-  composed = mkSystem {
+  sysRaw = mkSystem {
     inherit system config;
     platform = system;
     verityCert = dbCert;
@@ -101,8 +101,8 @@ let
   # sshd is the only login, and the health checks pass without it: an image without it would
   # bless itself and stay unreachable
   sys =
-    if composed.inventory."/services/sshd".included or false then
-      composed
+    if sysRaw.inventory."/services/sshd".included or false then
+      sysRaw
     else
       throw "golconda: mkImage: the document has no [\"/services/sshd\"] table, so the image has no login; add the table (docs/features/ssh-login.md)";
   stepArgs = {
@@ -127,8 +127,7 @@ let
       microsoftKeys = sys.composed.secureBootMicrosoftKeys;
       inherit initrd signer;
       publicKeys = {
-        inherit dbCert pcrPublicKey;
-        indexKeyring = indexPublicKey;
+        inherit dbCert pcrPublicKey releaseKey;
       };
       # No cmdlineExtra: every image boots the production cmdline (image/uki.nix). To watch a boot,
       # pass cmdlineExtra = "systemd.log_level=debug systemd.log_target=console".

@@ -66,7 +66,7 @@ in
           publicKeys = {
             dbCert = "${publicKeys.dbCert}";
             pcrPublicKey = "${publicKeys.pcrPublicKey}";
-            indexKeyring = "${publicKeys.indexKeyring}";
+            releaseKey = "${publicKeys.releaseKey}";
           };
         };
       };
