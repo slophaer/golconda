@@ -10,9 +10,9 @@ marked **unverified**.
 
 Every output Golconda builds is a content-addressed derivation (`__contentAddressed = true`): every
 repkgs package (repkgs `nix/package.nix`), the `/usr` tree (`lib/usr-tree.nix`) and every image step
-(`lib/image/common.nix`). Classic Nix cannot even instantiate them without `ca-derivations`
+(`lib/image/common.nix`). Classic Nix cannot instantiate them without `ca-derivations`
 (`nix/tests.nix`: "repkgs needs ca-derivations to instantiate"). repkgs' lock-file fetchers (cargo,
-Go, npm and the rest) are dynamic derivations: a producer writes a `.drv` at build time, and the
+Go, npm and the rest) are dynamic derivations. A producer writes a `.drv` at build time, and the
 caller takes `builtins.outputOf` it. The producers require the system feature `builder-rpc-v0` and
 need `dynamic-derivations ca-derivations` on the daemon (repkgs `nix/fetch.nix`).
 
@@ -36,8 +36,8 @@ system-features = builder-rpc-v0 big-parallel kvm nixos-test benchmark
 - `system-features` replaces Nix's default list, so keep every name a builder needs on it.
 
 The settings must sit in the daemon's file. iets's own commands (`iets build`, `eval`, `eval-jobs`)
-send the daemon no settings at all (iets `docs/reference/settings.md`), so a client `--option` does
-not turn them on.
+send the daemon no settings (iets `docs/reference/settings.md`). So a client `--option` does not
+turn them on.
 
 A classic `nix-build` evaluates on the client, so the client's `nix.conf` needs the same
 `experimental-features` line, and `flakes` as well for `nix fmt` and the lint's flake-template test
@@ -51,7 +51,7 @@ patch (repkgs `pkgs/ni/nix`), and repkgs builds it. So building it already needs
 features above.
 
 The first daemon comes from outside the set. repkgs `nix/nix/default.nix` builds Nix master from
-branch `repkgs` of `github.com/Mic92/nix-1`, with nixpkgs and not with repkgs, so any stock Nix can
+branch `repkgs` of `github.com/Mic92/nix-1`, with nixpkgs and not with repkgs. So any stock Nix can
 build it. The repkgs README says the daemon needs Nix master with
 [NixOS/nix#16459](https://github.com/NixOS/nix/pull/16459) (dynamic derivations rebuild after a
 garbage collection) and recommends #16465 and #16477 (CA rebuilds); that branch carries them.
@@ -95,9 +95,9 @@ in this order:
 1. `builder` in your own `~/.config/iets/iets.toml`, or in `$IETS_CONFIG`.
 1. `store` from `nix.conf`. Its default, `auto`, is the local daemon.
 
-The repo's `iets.toml` cannot choose a builder: a project file may hold only the `[lint]` table, and
-iets refuses any other key (iets `docs/reference/settings.md`). iets refuses a daemon older than
-worker protocol 1.35.
+The repo's `iets.toml` cannot choose a builder. A project file may hold only the `[lint]` table, and
+iets refuses any other key (iets `docs/reference/settings.md`). iets also refuses a daemon older
+than worker protocol 1.35.
 
 `scripts/lint` and the commands in [Commands](cli.md) use the default, so they build on the local
 daemon. To build on another host, set `builder` in your user file or pass `--builder`:
