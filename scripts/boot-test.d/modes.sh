@@ -60,6 +60,24 @@ test_ssh() {
   check_hang_panic
   check_console
 
+  # the downstream workload's unit is service.render's, with the tier strict
+  # (tests/fixtures/image-workload/modules/test-workload)
+  echo ""
+  echo "=== sandbox tier: custom-workload.service ==="
+  RC=0
+  T=$(guest systemctl show -p Result -p ProtectSystem -p NoNewPrivileges -p RestrictAddressFamilies \
+    custom-workload.service 2>&1) || true
+  echo "$T"
+  echo "$T" | grep -qxF "Result=success" || RC=1
+  echo "$T" | grep -qxF "ProtectSystem=strict" || RC=1
+  echo "$T" | grep -qxF "NoNewPrivileges=yes" || RC=1
+  AF=$(echo "$T" | sed -n 's/^RestrictAddressFamilies=//p')
+  for f in AF_UNIX AF_INET AF_INET6; do
+    case " $AF " in *" $f "*) ;; *) RC=1 ;; esac
+  done
+  [ "$(echo "$AF" | wc -w)" = 3 ] || RC=1
+  verdict "sandbox-tier (custom-workload.service ran with the strict tier's ProtectSystem=, NoNewPrivileges= and RestrictAddressFamilies=)" $RC
+
   echo ""
   echo "=== varlinkctl list-interfaces ==="
   RC=0
