@@ -1,8 +1,7 @@
 # run SET NAME TOOLS SCRIPT: a content-addressed derivation NAME whose builder is the repkgs seed's
 # shell, as repkgs' own tests are. TOOLS' bin/ come before the seed's on PATH; SCRIPT must create
 # $out. nix/checks.nix makes its checks with it, nix/dev its scripts and the treefmt config, so
-# that they need no nixpkgs. (The retired chroot-store daemon also refused an input-addressed
-# derivation that names a repkgs, content-addressed, output; the system daemon takes one.)
+# that they need no nixpkgs.
 #
 # (run SET).sameRelease A B: the shell lines that fail unless the signed releases A and B have the
 # same files with the same bytes: disk.raw, cmdline, release/, and disk.json without the

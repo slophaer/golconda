@@ -6,7 +6,7 @@
 #   unitName, credentialId, stateDir   "golconda-var-<name>.service", "<name>.<file>" (both
 #                   classes), "/var/lib/golconda/vars/<name>"
 # A consumer names the credential, never a path: `credentials.key = v.credentialId "foo-key" "key"`.
-# The runner modules/vars/golconda-var-run serves all vars; it needs /bin/sh, coreutils and
+# The runner modules/vars/golconda-var-run serves all vars; it needs /bin/sh, coreutils, grep and
 # systemd-creds in the image.
 { types }:
 let

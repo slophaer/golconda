@@ -6,7 +6,7 @@ let
   dev = import ./dev { inherit sources; };
   adios = import sources.adios;
   # The adios module tree (modules/); `tree { options = {...}; }` evaluates it.
-  # Nothing per-system: a configuration passes its repkgs set as options."/pkgs".target.
+  # Nothing per-system: mkSystem binds its own repkgs set as options."/pkgs".target.
   tree = import ../modules { inherit (adios) adios; };
 
   # mkSystem: the entry point for a complete Golconda system, with every argument of

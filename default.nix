@@ -17,7 +17,7 @@ flake-incompat.mkFlake {
   systems = [ "x86_64-linux" ];
   # Per-system arguments, from the repkgs set for the platform (nix/packages.nix): `pkgs`,
   # `platform` (repkgs' record, nix/platforms.nix), and `set` (the full repkgs set, for
-  # options."/pkgs".target). No nixpkgs here.
+  # nix/run.nix, the checks and the dev shell). No nixpkgs here.
   #
   # The build host (`system`) is the flake system; the target (`platform`) is the same.
   argsFun =

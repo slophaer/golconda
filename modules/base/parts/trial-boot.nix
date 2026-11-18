@@ -28,9 +28,10 @@ let
     "RebootWatchdogSec=10min"
   ];
 
-  # Both failure units write their line to the kernel log: it reaches the serial console, where an
-  # operator of a machine that reboots sees it, and the journal. journal+console would not: the
-  # journal forwards to tty1 (/base's journald drop-in).
+  # Both failure units write their line to the kernel log: the kernel prints it on the serial
+  # console and the screen, where an operator of a machine that reboots sees it, and the journal
+  # keeps it. journal+console would reach the serial console only: /dev/console is ttyS0, and the
+  # initrd shows no journal on the screen (parts/console.nix).
   #
   # The initrd's units fail into emergency.target (OnFailure= of initrd.target and the rest), and
   # so do the host's local-fs.target and systemd-fsck-root.service. emergency.service has no

@@ -64,7 +64,7 @@ in
   (check "pkgs: without the set, sshd and /pkgs throw" (
     throws (noSet.modules.services.modules.sshd { }) && !(tryEval (noSet.modules.pkgs { })).success
   ))
-  (check "pkgs: the set must have pkgs" (
+  (check "pkgs: the set must have pkgs and variant" (
     let
       setThrows =
         set:
@@ -74,6 +74,11 @@ in
     in
     setThrows { pkgs = [ ]; }
     && setThrows { wrap = _: null; }
+    && setThrows { pkgs = { }; }
+    && setThrows {
+      pkgs = { };
+      variant = { };
+    }
     && setThrows "repkgs"
     && !setThrows stubSet
   ))

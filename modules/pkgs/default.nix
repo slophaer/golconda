@@ -4,16 +4,18 @@
 #! docs/design/modules.md, "How packages enter the tree".
 { types, ... }:
 let
-  inherit (builtins) isAttrs typeOf;
+  inherit (builtins) isAttrs isFunction typeOf;
 
-  # The set nix/packages.nix returns: at least `pkgs`. The tests pass a stub
-  # with the same shape.
+  # The set nix/packages.nix returns: at least `pkgs` and `variant` (/trust and lib/system.nix make
+  # variants). The tests pass a stub with the same shape.
   repkgsSet = types.typedef' "repkgsSet" (
     v:
     if !isAttrs v then
       "Expected the repkgs set (nix/packages.nix), got ${typeOf v}"
     else if !(v ? pkgs && isAttrs v.pkgs) then
       "the repkgs set has `pkgs`, an attribute set of packages"
+    else if !(v ? variant && isFunction v.variant) then
+      "the repkgs set has `variant`, a function of a package name and an override"
     else
       null
   );
