@@ -454,8 +454,50 @@ refusal_evidence() {
   ! printf '%s\n' "$1" | grep -q 'Successfully installed'
 }
 
+# test_artifact_refused: the true index and its signature, and one byte of the usr artifact
+# changed, as a mirror could serve it. The download must fail its checksum, nothing must install,
+# and the old release must run after a reboot.
+test_artifact_refused() {
+  echo ""
+  echo "=== the true index, one byte of the usr artifact changed: nothing must install ==="
+  serve_release "$NEXT_RELEASE" || return 1
+  U=$(ls "$HTTP_ROOT"/*.usr.*.raw)
+  chmod u+w "$U"
+  python3 - "$U" <<'EOF'
+import os, sys
+with open(sys.argv[1], "r+b") as f:
+    f.seek(os.path.getsize(sys.argv[1]) // 2)
+    b = f.read(1)
+    f.seek(-1, 1)
+    f.write(bytes([b[0] ^ 0xFF]))
+EOF
+  echo "served $(basename "$U") with its middle byte changed"
+  : > "$HTTP_LOG"
+  R=0
+  ! guest systemctl start --wait systemd-sysupdate-update.service || R=1
+  J=$(guest journalctl -b -u systemd-sysupdate-update.service -o cat --no-pager 2>&1) || true
+  echo "$J" | grep -i "checksum\|installed" | tail -5 || true
+  grep -q "\"GET /$(basename "$U") HTTP/1.[01]\" 200" "$HTTP_LOG" || R=1
+  echo "$J" | grep -q "does not match expected checksum" || R=1
+  ! echo "$J" | grep -q "Successfully installed" || R=1
+  # sysupdate labels a slot before it fills it, so the slot of the failed download keeps the
+  # version's label; no UKI and no loader entry name the version
+  PARTS=$(guest ls /dev/disk/by-partlabel 2>&1) || true
+  ENTRIES=$(guest "ls /boot/EFI/Linux; bootctl list --no-pager" 2>&1) || true
+  echo "partitions: $(echo "$PARTS" | tr '\n' ' ')"
+  echo "$ENTRIES" | grep -E "\.efi|id:" || true
+  [ -n "$ENTRIES" ] || R=1
+  ! echo "$ENTRIES" | grep -q "_$NEXT_VERSION" || R=1
+  verdict "artifact-refused (the guest fetched the changed artifact, its checksum failed, the service failed; no transfer installed, no UKI or entry for $NEXT_VERSION)" $R
+  reboot_guest || return 1
+  V=$(guest_version)
+  R=0; [ "$V" = "$OLD_VERSION" ] || R=1
+  verdict "boots-old-after-changed-artifact ($OLD_VERSION -> $V)" $R
+}
+
 # test_update_refused RC JOURNAL: --tamper-index. The update must fail on the index, install nothing
-# and leave the old release running after a reboot. RC is the service's result.
+# and leave the old release running after a reboot; then a changed artifact under the true index
+# (test_artifact_refused). RC is the service's result.
 test_update_refused() {
   echo ""
   echo "=== the tampered index: the update must be refused ==="
@@ -480,6 +522,7 @@ test_update_refused() {
   check_unsealed "after the refused update"
   check_no_failed no-failed-units-after-refused-update
   check_clock clock-not-reset-after-refused-update
+  test_artifact_refused
 }
 
 # test_verity_keyring: dm-verity checks the signed root hash of the slot sysupdate just filled

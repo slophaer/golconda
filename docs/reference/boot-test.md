@@ -72,7 +72,7 @@ PATH=$(nix-build -A packages.x86_64-linux.age --no-out-link)/bin:$PATH \
 | `--factory-reset`             | reset the state partition and check the reset boot                                                                             | `--ssh-test`                           | `--next`                                                                                |
 | `--next DIR`                  | install the release of the image output `DIR` over HTTP and boot it; turns on `--ssh-test`                                     |                                        | `--certify`, `--factory-reset`                                                          |
 | `--rotate`                    | `DIR` is signed with a new `db` key: rotate `db` and `dbx`                                                                     | `--next`, `--secure-boot`              | `--auto-enrol`, the other update modes but `--fail-health`                              |
-| `--tamper-index`              | serve a changed `SHA256SUMS`: the update must be refused                                                                       | `--next`                               | the other update modes                                                                  |
+| `--tamper-index`              | serve a changed `SHA256SUMS`, then a changed artifact under the true index: nothing must install                               | `--next`                               | the other update modes                                                                  |
 | `--fail-health`               | each try of the new release fails a health unit                                                                                | `--next`                               | the other update modes but `--rotate`                                                   |
 | `--fail-initrd`               | each try of the new release fails in the initrd                                                                                | `--next`                               | the other update modes                                                                  |
 | `--fail-panic`, `--fail-pid1` | each try of the new release panics, or PID 1 crashes                                                                           | `--next`                               | the other update modes                                                                  |
@@ -224,8 +224,12 @@ harness:
 keys). The update modes change this flow:
 
 - `--tamper-index`: the server adds one byte to `SHA256SUMS`, so its signature does not match. The
-  run passes when the update is refused, nothing is installed, and after a reboot the old release
-  runs. It skips every check that needs the new release.
+  update must be refused, nothing installed, and after a reboot the old release must run. Then the
+  server serves the true `SHA256SUMS` and its signature, and the usr artifact with its middle byte
+  changed. The guest must fetch it, the download must fail its checksum, and no transfer, UKI or
+  loader entry of the new release may be installed. The slot that sysupdate began keeps the new
+  release's label. After a reboot the old release must run. The run skips every check that needs the
+  new release.
 - `--rotate` takes `image-smoke-test-rotated` (signed with a second `db` key). The harness enrols
   that certificate beside the old one before the first boot. After the update it stops QEMU, sets
   `db` to the new certificate alone and adds the old one to `dbx`, and boots again. The kernel must
