@@ -38,8 +38,8 @@ iets eval --json -E '(import ./default.nix).schema' > schema.json
 ## 2. Evaluation
 
 `examples/golconda.nix` (the template to copy into your own repository) calls
-`mkSystem { config = ./server.toml; }` on the Golconda tree it gets: in your repository the pinned
-one, here this repository. iets evaluates it:
+`mkSystem { config = ./server.toml; }` on the Golconda tree it gets. In your repository that tree is
+the pinned one; here it is this repository. iets evaluates it:
 
 ```sh
 iets eval --json -E '(import ./examples/golconda.nix { golconda = import ./default.nix; }).config'
@@ -51,7 +51,7 @@ lists the valid paths.
 
 ## 3. The composer
 
-`mkSystem` binds the platform's package set to `/pkgs.target`, selects the components
+`mkSystem` binds the platform's package set to `/pkgs.target`. It selects the components
 (`lib/components.nix`: the built-ins `/base`, `/network`, `/security`, `/trust`, `/factory` and
 `/vars`, then `/services/sshd` because the document has its table), calls each for its fragment, and
 hands the list to `/system`, which unions them. The result is one attribute set:
@@ -99,8 +99,8 @@ one line in `/usr/lib/sshd/authorized_keys/root`.
 nix-build -E '(import ./examples/golconda.nix { golconda = import ./default.nix; }).usrTree'     # or: iets build … (a patched Nix daemon builds it)
 ```
 
-`lib/usr-tree.nix` copies the closure of the packages into `nix/store/`, makes the symlinks
-(relative, `farm` links expanded file by file), writes the units, `sysusers.d/golconda.conf`,
+`lib/usr-tree.nix` copies the closure of the packages into `nix/store/` and makes the symlinks
+(relative, `farm` links expanded file by file). It writes the units, `sysusers.d/golconda.conf`,
 `tmpfiles.d/golconda.conf`, `os-release`, every file of `files`, and the artifacts
 `lib/golconda/{config,schema,sbom,packages}.json`. Then it checks the tree: no absolute symlink,
 every dlopen link resolves, only the allowed top-level directories. The output is named
@@ -136,11 +136,11 @@ the public halves of the throwaway keys. A release signs the same way, outside N
 ## 6. First boot
 
 Do not start the disk with a bare `qemu-system-x86_64` and a plain OVMF. A plain OVMF has no Secure
-Boot, so nothing checks the loader or the UKI; the kernel still checks `/usr` against the `db`
-certificate built into it, and IPE enforces ([Boot test](boot-test.md)). The harness does what is
-needed: it enrols the throwaway db key into the variable store of OVMF's Secure Boot build
-(`qemu-system`'s `share/qemu`), starts QEMU with SMM and a 40 GiB overlay (room for `root`), and
-passes the host name `boot-test` as an SMBIOS credential.
+Boot, so nothing checks the loader or the UKI. The kernel still checks `/usr` against the `db`
+certificate built into it, and IPE enforces ([Boot test](boot-test.md)). The harness enrols the
+throwaway db key into the variable store of OVMF's Secure Boot build (`qemu-system`'s `share/qemu`),
+starts QEMU with SMM and a 40 GiB overlay (room for `root`), and passes the host name `boot-test` as
+an SMBIOS credential.
 
 ```sh
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --timeout 120
@@ -177,14 +177,14 @@ What happens, in order, and which marker or file shows it:
 1. systemd-tmpfiles runs `tmpfiles.d/golconda.conf`: `/etc/pam.d/sshd`, `/etc/shells` and the other
    factory files become symlinks into `/usr/share/factory/etc`; `/etc/localtime`, `/etc/os-release`,
    `/var/empty` exists.
-1. `golconda-var-sshd-hostkey.service` runs `golconda-var-run sshd-hostkey "key" "key.pub"`:
-   `ssh-keygen -q -t ed25519 -N '' -f key` in a runtime directory, then
+1. `golconda-var-sshd-hostkey.service` runs `golconda-var-run sshd-hostkey "key" "key.pub"`. That
+   runs `ssh-keygen -q -t ed25519 -N '' -f key` in a runtime directory, then
    `systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11 --name=sshd-hostkey.key` of the
-   key into `/etc/credstore.encrypted/sshd-hostkey.key`, and `--tpm2-pcrs=7` on a Secure Boot image
-   (`/usr/lib/golconda/vars.d/tpm2-pcrs`). The public half goes to
+   key into `/etc/credstore.encrypted/sshd-hostkey.key`. On a Secure Boot image it adds
+   `--tpm2-pcrs=7` (`/usr/lib/golconda/vars.d/tpm2-pcrs`). The public half goes to
    `/var/lib/golconda/vars/sshd-hostkey/pub/key.pub`, and a `done` file ends the unit's future runs.
    Marker: `var-sshd-hostkey`. `--with-key=auto` seals to the host key plus the TPM2 when a TPM2
-   exists, and to the host key alone when it does not; the plain run above has no TPM.
+   exists, and to the host key alone when it does not. The plain run above has no TPM.
 1. `sshd.service` starts with the host key unsealed into its credentials directory. networkd brings
    up DHCP on the wired link. `golconda-health-network.service` and `golconda-health-sshd.service`
    must pass before `boot-complete.target`, which blesses the entry (`+3-0` becomes
@@ -211,7 +211,7 @@ scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-te
 ```
 
 The harness forwards a host port (`BOOT_TEST_SSH_PORT`, or the first free one from 10022 up) to the
-guest's port 22 and logs in as root with
+guest's port 22. It logs in as root with
 `ssh -i tests/fixtures/snakeoil-ssh -p 10022 root@localhost`. `--ssh-test` checks, among others,
 `ssh-login`, `no-failed-units` and `varlinkctl-list-interfaces`.
 
@@ -227,12 +227,12 @@ AuthorizedPrincipalsFile /usr/lib/sshd/principals/%u
 The host key's public half is in `/var/lib/golconda/vars/sshd-hostkey/pub/key.pub` for the host CA.
 The options `hostCertificate` and `revokedKeys` add an admin-supplied host certificate and
 revocation list as further vars. The boot test runs all of this with its own test CA, not with this
-document: `--ssh-test` logs in with a user certificate and refuses another principal (`cert-login`,
-`cert-wrong-principal-refused`), and `--next` certifies the host and pushes the KRL with
-`golconda vars certify`, then checks that the next release presents the host certificate and refuses
-a revoked certificate (`host-cert-presented`, `cert-revoked-refused`, `krl-rotated`); `--certify`
-does the push in the first boot of a release that has both options on (`certify-one-release`). See
-[What is proven](../proven.md).
+document. `--ssh-test` logs in with a user certificate and refuses another principal (`cert-login`,
+`cert-wrong-principal-refused`). `--next` certifies the host and pushes the KRL with
+`golconda vars certify`. It then checks that the next release presents the host certificate and
+refuses a revoked certificate (`host-cert-presented`, `cert-revoked-refused`, `krl-rotated`).
+`--certify` does the push in the first boot of a release that has both options on
+(`certify-one-release`). See [What is proven](../proven.md).
 
 ## 8. The next version
 
@@ -240,14 +240,14 @@ Set `updateSource = "https://updates.example.com/server/"` in `"/system"` and th
 `/usr/lib/sysupdate.d/{10-usr,20-usr-verity,30-usr-verity-sig,40-uki}.transfer` and the update timer
 *(eval)*. To release a new version, run `golconda release build` again: it picks the next version,
 writes it into the document and commits it. Then publish the `release/` directory
-([Releases](../design/releases.md)); `systemd-sysupdate-update.service` on the machine writes the B
+([Releases](../design/releases.md)). On the machine, `systemd-sysupdate-update.service` writes the B
 slots and the new UKI to the ESP, and `systemd-sysupdate-reboot.timer` reboots into them at 04:10
 (`/system.updateReboot`). Three failed boots make systemd-boot choose the other slot
 ([Updates](../design/updates.md)).
 
 The harness runs this whole update. `scripts/boot-test … --next DIR` serves the next release over
-HTTP at the image's `updateSource`, lets the guest install it, moves the reboot window to every 10
-s, waits for the guest to reboot itself, and checks the result: `release-index`,
+HTTP at the image's `updateSource`, lets the guest install it and moves the reboot window to every
+10 s. It waits for the guest to reboot itself and checks the result: `release-index`,
 `sysupdate-installed`, `boots-next`, `units-composed-only-after-update` and
 `no-failed-units-after-update`.
 
