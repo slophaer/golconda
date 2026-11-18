@@ -21,8 +21,8 @@ half of the public key the image carries, then:
 1. builds the UKI with `ukify`: the cmdline with `usrhash=` and that signature, the Secure Boot
    signature (`db` key) and `.pcrsig` (PCR key);
 1. for an image with Secure Boot, copies the key set's enrolment files to `loader/keys/auto/`
-   (`secureboot/auth/microsoft` or `golconda`, by `/system.secureBootMicrosoftKeys`) after it checks
-   them against `PK.crt`, `KEK.crt` and the image's `db` certificate (`lib/image/enrol.nu`); it
+   (`secureboot/auth/microsoft` or `golconda`, by `/system.secureBootMicrosoftKeys`). It checks them
+   first against `PK.crt`, `KEK.crt` and the image's `db` certificate (`lib/image/enrol.nu`), and it
    reads no PK or KEK key;
 1. writes the ESP and `disk.raw` with `systemd-repart --offline`;
 1. writes `release/` with `SHA256SUMS` and signs the index with the release key.
@@ -44,7 +44,7 @@ The unsigned outputs depend on the public halves only: the release keyring is in
 holds the `db` certificate, and the manifest carries copies of all three. A new private key with the
 same public half is impossible, so the proof is the other way round. A new PCR key changes only the
 manifest. A new `db` key changes the manifest and the kernel, and with the kernel the `/usr` tree
-that holds it; the initrd and the signer keep their store paths.
+that holds it. The initrd and the signer keep their store paths.
 
 No private key enters the image or the machine either; only the certificates are enrolled in
 firmware, and the ESP holds them only inside the signed `.auth` files. The test outputs
@@ -55,9 +55,9 @@ Nothing private in a checkout enters the store either. Nix reads a checkout's fi
 and a store path is world-readable, so a key or a token beside the source would leak with it. The
 checks' source is the files git tracks, with their working-tree contents (`nix/source.nix`): an
 untracked or ignored file stays out. `scripts/make-keys` refuses a key directory inside a git work
-tree. An image reads modules and packages where they lie, so `golconda release build` and
-`scripts/verify` refuse a file no commit holds there: an untracked file, and an ignored one in the
-directories of modules and packages
+tree. An image reads modules and packages where they lie. So `golconda release build` and
+`scripts/verify` refuse a file that no commit holds there: an untracked file, and an ignored one in
+the directories of modules and packages
 ([Making a release: 2](../reference/release.md#2-build-and-sign)).
 
 Rotation and recovery:
@@ -70,10 +70,10 @@ Rotation and recovery:
   `scripts/boot-test` checks all of this (`loader-update-ran`, `loader-matches-usr`,
   `loader-replaced`, `loader-reinstall`). The steps are in
   [Boot loader: Key rotation](bootloader.md#key-rotation) and [Recovery](bootloader.md#recovery).
-- **An installed machine** with a rotated key: its next UKI and root hash signatures must come from
-  the new key, and firmware must hold the new certificate, or Secure Boot and the verity check fail
-  ([Trust: Execution policy](trust.md#execution-policy)). With no local console path, that enrolment
-  is offline work on the variable store or a reinstall
+- **An installed machine** with a rotated key needs its next UKI and root hash signatures from the
+  new key, and its firmware must hold the new certificate. Otherwise Secure Boot and the verity
+  check fail ([Trust: Execution policy](trust.md#execution-policy)). With no local console path,
+  that enrolment is offline work on the variable store or a reinstall
   ([Factory reset and recovery](../features/factory-reset.md)).
 
 ## Keys on a token
@@ -91,18 +91,19 @@ stays a file for now.
 | release index | `SHA256SUMS.gpg` (OpenPGP)              | gpg; no PKCS#11 path *(later)*                                                         |
 
 The OpenSSL side is [pkcs11-provider](https://github.com/latchset/pkcs11-provider), an OpenSSL 3
-provider, packaged as a tool of the release host (`packages/pkcs11-provider`); it is not in the
+provider, packaged as a tool of the release host (`packages/pkcs11-provider`). It is not in the
 image. systemd 262's tools load it by name (`provider:pkcs11`), and so does `openssl`. The signer
 writes an OpenSSL configuration that gives the provider the token's PKCS#11 module and keeps digests
-off the token: they stay with OpenSSL's default provider, and a module that hashes with OpenSSL
-itself (SoftHSM) would otherwise call back into itself and hang. OpenSSL engines are deprecated in
-OpenSSL 3, and systemd's `engine:` source is the older path; the provider is the one in use.
+off the token. The digests stay with OpenSSL's default provider, because a module that hashes with
+OpenSSL itself (SoftHSM) would otherwise call back into itself and hang. OpenSSL engines are
+deprecated in OpenSSL 3, and systemd's `engine:` source is the older path. The provider is the one
+in use.
 
-A key set names a key on a token in place of the key file: `secureboot/db.pkcs11` and
+A key set names a key on a token in place of the key file. `secureboot/db.pkcs11` and
 `pcr/pcr.pkcs11` hold one line each, the key's URI (RFC 7512). The set stays a directory, because
 `lib.mkImage` reads the three public halves from it. The signer checks a token's key against the
-public half the image carries, as it checks a file, by reading the public half through the provider.
-systemd-measure needs a certificate for a key that comes through a provider; the PCR key has only a
+public half the image carries, as it checks a file. It reads the public half through the provider.
+systemd-measure needs a certificate for a key that comes through a provider. The PCR key has only a
 public half, so the signer makes a self-signed certificate with the PCR key for that call.
 `--pcrpkey` still embeds the image's `pcr.pub`.
 
