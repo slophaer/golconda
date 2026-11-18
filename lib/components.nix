@@ -4,7 +4,8 @@
 #   component  returns a fragment for the image. A built-in component is in every system; its
 #              table only configures it. An optional one is in a system when the configuration
 #              has its table; an empty table selects it with its defaults.
-#   provider   gives data to the modules that declare it as an input; no fragment (/pkgs)
+#   provider   gives data to the modules that declare it as an input; no fragment (/pkgs,
+#              /golconda-lib)
 #   composer   /system: unions the fragments of the selected components
 #   group      holds child modules and has no impl (/services)
 # An input (`inputs.<x>.path`) never selects a component: reading /pkgs installs nothing. A
@@ -31,7 +32,10 @@ let
     "/factory"
     "/vars"
   ];
-  providers = [ "/pkgs" ];
+  providers = [
+    "/pkgs"
+    "/golconda-lib"
+  ];
   composer = "/system";
   internalOptions.${composer} = [ "components" ];
 

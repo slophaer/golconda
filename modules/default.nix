@@ -3,7 +3,8 @@
 #
 # `local` is a downstream repository's module directory, or null: its modules are
 # mounted under /local (/local/<name>), so they can never take a Golconda module's path.
-# mkSystem passes it from the configuration (lib/config.nix, `golconda.modules`).
+# mkSystem passes it from the configuration (lib/config.nix, `golconda.modules`). A /local module
+# reads the libraries of modules/lib from the provider /golconda-lib (docs/features/extending.md).
 {
   adios,
   local ? null,

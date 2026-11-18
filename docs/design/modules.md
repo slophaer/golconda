@@ -72,6 +72,13 @@ set is a second module path, never a second argument. No option takes a function
 stays platform-independent. `/pkgs.target` is the one option that is not configuration data, and the
 TOML loader refuses it.
 
+The libraries of `modules/lib/` enter a downstream module the same way. Golconda's own modules
+import them by a relative path; a module under `/local` declares
+`inputs.golconda.path = "/golconda-lib"` and reads `results.golconda.service`, `var`, `merge` and
+`fragment`. So a downstream service has the one renderer and its checks: the sandbox tier, the
+credential references and the app files with no per-machine value
+([Your own modules and packages](../features/extending.md#a-service-of-your-own)).
+
 The composer records which fragment brought each package (`origins.packages`: a component's module
 path such as `/base` or `/services/sshd`, or another fragment's own `name`), and the `/usr` tree
 writes it as `/usr/lib/golconda/packages.json`, so "why is this here" has an answer without a second
@@ -82,12 +89,12 @@ declaration.
 Every module has one role, and one function decides which modules enter a system
 (`lib/components.nix`):
 
-| role      | what it is                                        | in the system                    |
-| --------- | ------------------------------------------------- | -------------------------------- |
-| component | returns a fragment for the image                  | built in, or when it has a table |
-| provider  | gives data to the modules that read it (`/pkgs`)  | never: it has no fragment        |
-| composer  | `/system`, which unions the components' fragments | always                           |
-| group     | holds children and has no `impl` (`/services`)    | never: its children may be       |
+| role      | what it is                                                        | in the system                    |
+| --------- | ----------------------------------------------------------------- | -------------------------------- |
+| component | returns a fragment for the image                                  | built in, or when it has a table |
+| provider  | gives data to the modules that read it (`/pkgs`, `/golconda-lib`) | never: it has no fragment        |
+| composer  | `/system`, which unions the components' fragments                 | always                           |
+| group     | holds children and has no `impl` (`/services`)                    | never: its children may be       |
 
 A built-in component (`/base`, `/network`, `/security`, `/trust`, `/factory`, `/vars`) is in every
 system; its table only configures it. The optional components are `/services/sshd` and `/imds`: one

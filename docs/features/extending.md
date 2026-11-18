@@ -10,6 +10,10 @@ name collision.
 - **Modules.** A `modules/` directory beside the document mounts under `/local`. A module in
   `modules/motd/default.nix` is `/local/motd`. A table `["/local/motd"]` selects it, as it selects
   `/services/sshd`. The optional `[golconda] modules = "site"` names another directory.
+- **Golconda's library.** A module that declares the input `/golconda-lib` gets the libraries of
+  Golconda's own modules: `service`, `var`, `merge` and `fragment`. A service that `service.render`
+  makes has a sandbox tier, checked credential references and app files with no per-machine value,
+  as `/services/sshd` has.
 - **Packages.** A `packages/` directory beside the document adds packages to the target set after
   Golconda's own. Each package is a directory with a `package.nix` and a `sources.toml`, the layout
   of Golconda's `packages/`. `[golconda] packages = "…"` names another directory.
@@ -53,6 +57,52 @@ replaces = ["openssh"]
 A module looks like the one on [Typed modules](typed-modules.md#using-it). The full example is in
 [Reference: your own modules](../reference/config.md#your-own-modules).
 
+### A service of your own
+
+This module runs `myapp`, a package in `packages/` beside the document, as a service. It reads the
+package from `/pkgs` and the renderer from `/golconda-lib`:
+
+```nix
+# modules/myapp/default.nix: /local/myapp
+{ types, ... }:
+{
+  name = "myapp";
+  inputs = {
+    golconda.path = "/golconda-lib";
+    pkgs.path = "/pkgs";
+  };
+  options.port = {
+    type = types.int;
+    default = 8080;
+    description = "The port that myapp listens on.";
+  };
+  impl =
+    { options, results, ... }:
+    let
+      inherit (results.golconda) service;
+    in
+    service.render {
+      name = "myapp";
+      app = {
+        package = results.pkgs.pkgs.myapp;
+        argv = [
+          "--config"
+          "${service.filesDir "myapp"}/myapp.toml"
+        ];
+        files."myapp.toml" = "port = ${toString options.port}\n";
+      };
+      user = "root";
+      sandbox = "strict";
+    };
+}
+```
+
+The result is `myapp.service` with `ExecStart=/usr/bin/myapp --config /usr/lib/myapp/myapp.toml`,
+the directives of the `strict` tier and a link from `multi-user.target`. A secret is a credential
+reference in `argv` (`service.credential "key"`). The service declares it in `credentials`, and a
+var seals it (`var.render`, `var.admin`). The fields of `service` are in
+[Modules: `app` and `service`](../design/modules.md#app-and-service).
+
 ## Status
 
 Proven: the rows of [What is proven](../proven.md) that name `tests/eval/components.nix` and
@@ -60,8 +110,8 @@ Proven: the rows of [What is proven](../proven.md) that name `tests/eval/compone
 
 ## Limits
 
-- No boot test has a downstream package. The boot-test image carries one downstream module,
-  `/local/test-workload` (`tests/fixtures/image-workload/modules`).
+- No boot test has a downstream package. The boot-test image carries one downstream service,
+  `/local/test-workload` (`tests/fixtures/image-workload/modules`), which `service.render` makes.
 - A module takes its packages from the target set. To use another build of one of them, such as
   OpenSSH, a downstream package replaces it (`[golconda] replaces`).
 - repkgs refuses a package that takes the name of one of its aliases: it applies aliases last, so

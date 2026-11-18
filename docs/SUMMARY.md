@@ -59,6 +59,7 @@
 - [Modules](reference/modules/README.md)
   - [`/base`](reference/modules/generated/base.md)
   - [`/factory`](reference/modules/generated/factory.md)
+  - [`/golconda-lib`](reference/modules/generated/golconda-lib.md)
   - [`/imds`](reference/modules/generated/imds.md)
   - [`/network`](reference/modules/generated/network.md)
   - [`/pkgs`](reference/modules/generated/pkgs.md)

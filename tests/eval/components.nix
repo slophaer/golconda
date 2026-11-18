@@ -5,8 +5,10 @@
   composeWith,
   configLib,
   f,
+  hasInfix,
   mkSystemFixture,
   platform,
+  s,
   schemaLib,
   sources,
   sshd,
@@ -42,6 +44,14 @@ let
       version = "20261031.1";
     };
   };
+  # a document with the downstream modules of the boot tests (tests/fixtures/image-workload)
+  workload =
+    tables:
+    head
+    // {
+      golconda.modules = ../fixtures/image-workload/modules;
+    }
+    // tables;
   # the included components, and the module paths that emitted anything, sorted
   includedOf = inv: filter (p: inv.${p}.included or false) (attrNames inv);
   emittersOf =
@@ -331,6 +341,59 @@ in
   ))
   (check "downstream: Golconda has no module named local (the downstream mount would hide it)" (
     !((builtins.readDir ../../modules) ? local)
+  ))
+  (check "downstream: a /local module that declares /golconda-lib renders its service with it" (
+    let
+      sys = mkSystem (workload {
+        "/local/test-workload" = { };
+      });
+      unit = sys.composed.units."custom-workload.service";
+    in
+    (sys.inventory."/golconda-lib".role or null) == "provider"
+    &&
+      sys.inventory."/local/test-workload".inputs == [
+        "/golconda-lib"
+        "/pkgs"
+      ]
+    && all (l: hasInfix "\n${l}\n" unit) s.sandboxLines.strict
+    && hasInfix "\nLoadCredentialEncrypted=custom-workload.token\n" unit
+    && hasInfix " %d/custom-workload.token\n" unit
+    && sys.composed.files."/usr/lib/custom-workload/expected".text == "configured-workload\n"
+    && sys.composed.links
+      ? "/usr/lib/systemd/system/boot-complete.target.requires/custom-workload.service"
+    && sys.composed.links ? "/usr/lib/systemd/system/multi-user.target.wants/custom-workload.service"
+  ))
+  (check
+    "downstream: the service type of /golconda-lib refuses a per-machine value in a /local app file"
+    (
+      let
+        units =
+          text:
+          (mkSystem (workload {
+            "/local/library-service".text = text;
+          })).composed.units;
+      in
+      units "ok\n" ? "library-service.service"
+      && throws (units "key: /etc/credstore/library-service.key\n")
+      && throws (units "-----BEGIN OPENSSH PRIVATE KEY-----\n")
+    )
+  )
+  (check "downstream: /golconda-lib is a provider: no table, no schema entry, no config.json row" (
+    let
+      sys = mkSystem (workload {
+        "/local/test-workload" = { };
+      });
+    in
+    sys.inventory ? "/golconda-lib"
+    && !(sys.inventory."/golconda-lib" ? included)
+    && !(sys.schema.properties ? "/golconda-lib")
+    && !(sys.config ? "/golconda-lib")
+    && !(elem "/golconda-lib" configLib.validPaths)
+    &&
+      throws
+        (mkSystem (workload {
+          "/golconda-lib" = { };
+        })).composed.units
   ))
   (check "downstream: a package named after a repkgs alias is refused (the alias would win)" (
     throws (mkSystem ../fixtures/downstream-alias/server.toml).composed.units

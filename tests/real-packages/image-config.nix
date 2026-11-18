@@ -75,7 +75,7 @@ in
         let
           tree = f.packages.x86_64-linux.${name}.unsigned.manifest.usrTree;
         in
-        tree.files."/usr/lib/golconda/test-workload".text == "configured-workload\n"
+        tree.files."/usr/lib/custom-workload/expected".text == "configured-workload\n"
         && tree.units ? "custom-workload.service"
         && builtins.any (
           link:
@@ -87,7 +87,9 @@ in
           link.path == "/usr/lib/systemd/system/multi-user.target.wants/custom-workload.service"
           && link.target == "../custom-workload.service"
         ) tree.links
-        && hasInfix "\nBefore=boot-complete.target multi-user.target\n" tree.units."custom-workload.service"
+        # the library's renderer (/golconda-lib): the strict tier and the credential
+        && hasInfix "\nProtectSystem=strict\n" tree.units."custom-workload.service"
+        && hasInfix "\nLoadCredentialEncrypted=custom-workload.token\n" tree.units."custom-workload.service"
       )
       [
         "image-smoke-test"
