@@ -86,8 +86,9 @@
 - **relocatable**: an output that refers to other store paths only relative to itself.
 - **repkgs**: the package set and build system Golconda pins (a fork, branch `golconda`). Every
   output is relocatable; builders are nushell; packages declare `bin` and `features`.
-- **SBOM**: Software Bill of Materials, `/usr/lib/golconda/sbom.json` in CycloneDX, with a purl and
-  a cpe per component ([Image artifacts](image.md#software-bill-of-materials)).
+- **SBOM**: Software Bill of Materials, `/usr/lib/golconda/sbom.json` in CycloneDX, with a purl per
+  component, and a cpe where the package declares one
+  ([Image artifacts](image.md#software-bill-of-materials)).
 - **service**: a typed value (`modules/lib/service.nix`) that embeds an `app` and adds credentials,
   state, user, sandbox tier and ordering. `render service` returns a fragment.
 - **signer**: the program that signs and assembles a release from the unsigned outputs, outside the
