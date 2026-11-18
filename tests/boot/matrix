@@ -21,8 +21,8 @@
 --secure-boot --ssh-test --tpm --timeout 600 --imds
 --secure-boot --ssh-test --tpm --timeout 600 --imds --next @next
 --secure-boot --ssh-test --factory-reset --timeout 480
-@image=image-smoke-test-next --secure-boot --ssh-test --tpm --timeout 600 --enrol
-@image=image-smoke-test-next --secure-boot --ssh-test --tpm --timeout 600 --enrol --factory-reset
+@image=image-smoke-test-next --secure-boot --ssh-test --tpm --timeout 600 --certify
+@image=image-smoke-test-next --secure-boot --ssh-test --tpm --timeout 600 --certify --factory-reset
 @image=image-smoke-test-nosb --ssh-test --timeout 400 --esp-creds
 @image=image-smoke-test-nosb --ssh-test --timeout 400 --next @next
 @image=image-smoke-test-nosb --ssh-test --timeout 400 --esp-creds --factory-reset

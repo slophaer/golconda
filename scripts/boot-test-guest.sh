@@ -13,7 +13,7 @@ init_ssh_opts() {
 }
 
 # GUEST_EXTRA_ID: more ssh identities after the test key; push_admin_vars sets it to the
-# certificate cert-admin, because a release with an enrolled host certificate refuses plain keys
+# certificate cert-admin, because a release with a sealed host certificate refuses plain keys
 GUEST_EXTRA_ID=""
 guest() {
   # shellcheck disable=SC2086

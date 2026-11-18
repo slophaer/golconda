@@ -48,7 +48,7 @@ Build, sign and check a release from a clean tree, and commit its version
 
 A failure leaves the document as it was and removes --out.";
 
-const ENROL_STEPS: &str = "\
+const CERTIFY_STEPS: &str = "\
 Sign HOST's host key as a host certificate, and push it with the KRL
 
 1. Read HOST's host key over ssh and print its fingerprint.
@@ -182,8 +182,8 @@ enum Vars {
         file: String,
     },
     /// Sign HOST's host key as a host certificate, and push it with the KRL
-    #[command(long_about = ENROL_STEPS)]
-    Enrol {
+    #[command(long_about = CERTIFY_STEPS)]
+    Certify {
         #[command(flatten)]
         store: VarStore,
         /// The age identity that decrypts the stored vars (or GOLCONDA_AGE_IDENTITY)
@@ -210,7 +210,7 @@ enum Vars {
             allow_hyphen_values = true
         )]
         validity: String,
-        /// The current KRL; without it, the one stored for HOST (enrol refuses when there is none)
+        /// The current KRL; without it, the one stored for HOST (refused when there is none)
         #[arg(long, value_name = "FILE")]
         krl: Option<PathBuf>,
         /// The fingerprint on HOST's console (SHA256:…): compare with it instead of asking
@@ -469,7 +469,7 @@ fn run_vars(command: Vars) -> Result<String, Box<dyn error::Error>> {
                 &only,
             )?)
         }
-        Vars::Enrol {
+        Vars::Certify {
             store: s,
             identity: id,
             host,
@@ -480,7 +480,7 @@ fn run_vars(command: Vars) -> Result<String, Box<dyn error::Error>> {
             krl,
             fingerprint,
         } => {
-            let id = age_identity(id, "enrol");
+            let id = age_identity(id, "certify");
             if ca_key.to_string_lossy().starts_with("pkcs11:") {
                 return Err(
                     "ssh-keygen finds a token's key by its public half, not by a URI: \
@@ -497,14 +497,14 @@ fn run_vars(command: Vars) -> Result<String, Box<dyn error::Error>> {
                 ca: ca_key,
                 module: pkcs11_module,
             };
-            let req = vars::Enrol {
+            let req = vars::Certify {
                 host: &host,
                 principals: &principals,
                 validity: &validity,
                 krl: krl.as_deref(),
                 fingerprint: fingerprint.as_deref(),
             };
-            let e = vars::enrol(
+            let e = vars::certify(
                 &store(s),
                 &id,
                 &remote(&host)?,

@@ -62,7 +62,7 @@ The machine reboots and comes back with new state. The ESP holds no credentials 
 fallback host name and no plain root key. Log in with a certificate, or provision it again (SMBIOS,
 `/imds`, or `scripts/provision-esp` on the disk).
 
-## Enrol again after a reset
+## Certify again after a reset
 
 To its deploy host, a reset machine is a new machine. The reset boot made a new host key and wrote
 its fingerprint on the console, as a first boot does:
@@ -73,18 +73,19 @@ image's `/services/sshd`:
 - `revokedKeys` off: a user certificate of a CA in `trustedUserCAKeys` logs in. The CA is in the
   image, so no state is needed.
 - `revokedKeys` on: until a KRL is pushed, the image's fallback list refuses every certificate of
-  those CAs ([Trust: Enrolment](../design/trust.md#enrolment)). A plain key logs in: the image's
-  `authorizedKeys`, or a bootstrap key provisioned again (SMBIOS, `/imds`, `scripts/provision-esp`).
-  An image with neither has no login after a reset, and the way back is a reflash with provisioning.
+  those CAs ([Trust: Host certificate](../design/trust.md#host-certificate)). A plain key logs in:
+  the image's `authorizedKeys`, or a bootstrap key provisioned again (SMBIOS, `/imds`,
+  `scripts/provision-esp`). An image with neither has no login after a reset, and the way back is a
+  reflash with provisioning.
 
-Then enrol as for a new machine:
+Then certify it as a new machine:
 
 1. `ssh root@HOST systemctl start factory-reset.target`, and wait for the reset boot.
 1. Read the new fingerprint on the console (serial or the cloud's console).
-1. `golconda vars enrol HOST --ca-key … --krl … --fingerprint SHA256:…` with that fingerprint. It
+1. `golconda vars certify HOST --ca-key … --krl … --fingerprint SHA256:…` with that fingerprint. It
    refuses a fingerprint that is not the key's, such as the old one. It signs the new key with the
    host CA, pushes the KRL and the certificate, and restarts sshd; with `hostCertificate` on, plain
-   keys stop again ([Commands: golconda vars enrol](../reference/cli.md#golconda-vars-enrol)).
+   keys stop again ([Commands: golconda vars certify](../reference/cli.md#golconda-vars-certify)).
 1. Push the other admin vars again: `golconda vars push HOST`.
 
 A client that trusts the host CA (`@cert-authority`) needs nothing. A client that kept the old plain
@@ -93,8 +94,8 @@ host key in `known_hosts` must remove it.
 ## Status
 
 Proven: the rows of [What is proven](../proven.md) that name `state-gone`, `cert-login-after-reset`,
-`reenrol-after-reset`, `set-oneshot-other-slot`, `fallback-to-old-slot`, `failed-boots-fallback` and
-`failed-boots-halt`. The limits are below.
+`recertify-after-reset`, `set-oneshot-other-slot`, `fallback-to-old-slot`, `failed-boots-fallback`
+and `failed-boots-halt`. The limits are below.
 
 ## Limits
 

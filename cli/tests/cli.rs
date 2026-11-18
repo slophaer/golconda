@@ -59,7 +59,7 @@ fn help_names_each_argument_and_step() {
         ("push", &["HOST", "VARS"]),
         ("list", &["HOST"]),
         ("pub", &["HOST", "VAR", "FILE"]),
-        ("enrol", &["HOST"]),
+        ("certify", &["HOST"]),
     ] {
         let help = stdout(&golconda(&["vars", cmd, "-h"]));
         for a in args {
@@ -77,7 +77,7 @@ fn help_names_each_argument_and_step() {
         publish.contains("the same version with other files"),
         "{publish}"
     );
-    for cmd in [&["release", "build"][..], &["vars", "enrol"]] {
+    for cmd in [&["release", "build"][..], &["vars", "certify"]] {
         let short = stdout(&golconda(&[cmd[0], cmd[1], "-h"]));
         let long = stdout(&golconda(&[cmd[0], cmd[1], "--help"]));
         assert!(
@@ -136,11 +136,11 @@ fn vars_set_push_list() {
     assert!(stdout(&o).contains("vars/web1/c/cert.age"));
     let o = run(&["vars", "list", "web1"], "");
     assert_eq!(stdout(&o), "c cert stored not-sealed\n");
-    // push needs the host key that enrol stores
+    // push needs the host key that certify stores
     let o = run(&["vars", "push", "-i", "id.txt", "web1"], "");
     assert_eq!(o.status.code(), Some(1));
     let err = String::from_utf8_lossy(&o.stderr);
-    assert!(err.contains("golconda vars enrol web1"), "{err}");
+    assert!(err.contains("golconda vars certify web1"), "{err}");
     assert!(!log.exists(), "something was sealed");
     fs::write(dir.join("vars/web1/.hostkey"), "ssh-ed25519 AAAA\n").unwrap();
     let o = run(&["vars", "push", "-i", "id.txt", "web1"], "");
@@ -184,10 +184,10 @@ fn exe(dir: &Path, name: &str, body: &str) -> PathBuf {
     p
 }
 
-/// A deploy host and a machine for `vars enrol`: a store with recipients, an identity, an age
+/// A deploy host and a machine for `vars certify`: a store with recipients, an identity, an age
 /// that copies, and an ssh that serves the two admin vars' manifests and `host.pub` as the host
 /// key, seals into `sealed/` and logs every command to ssh.log.
-fn enrol_fixture() -> (TempDir, Vec<(&'static str, PathBuf)>) {
+fn certify_fixture() -> (TempDir, Vec<(&'static str, PathBuf)>) {
     let tmp = TempDir::new().unwrap();
     let dir = tmp.path();
     fs::create_dir_all(dir.join("vars")).unwrap();
@@ -241,11 +241,11 @@ fn run_in(dir: &Path, env: &[(&str, PathBuf)], args: &[&str], stdin: &str) -> Ou
     c.wait_with_output().unwrap()
 }
 
-/// `golconda vars enrol` with stand-ins for ssh, age and ssh-keygen: the question, the answer,
+/// `golconda vars certify` with stand-ins for ssh, age and ssh-keygen: the question, the answer,
 /// and the token's arguments. The logic is tested in src/vars.rs.
 #[test]
-fn vars_enrol_asks() {
-    let (tmp, mut env) = enrol_fixture();
+fn vars_certify_asks() {
+    let (tmp, mut env) = certify_fixture();
     let dir = tmp.path();
     fs::write(dir.join("host.pub"), "ssh-ed25519 AAAA root@web1\n").unwrap();
     let keygen = script(
@@ -259,12 +259,12 @@ fn vars_enrol_asks() {
         ),
     );
     env.push(("GOLCONDA_SSH_KEYGEN", keygen));
-    let enrol = [
-        "vars", "enrol", "-i", "id.txt", "web1", "--ca-key", "ca", "--krl", "krl",
+    let certify = [
+        "vars", "certify", "-i", "id.txt", "web1", "--ca-key", "ca", "--krl", "krl",
     ];
 
     // no: nothing signed, nothing sealed
-    let o = run_in(dir, &env, &enrol, "no\n");
+    let o = run_in(dir, &env, &certify, "no\n");
     assert_eq!(o.status.code(), Some(1));
     let err = String::from_utf8_lossy(&o.stderr);
     assert!(
@@ -275,12 +275,12 @@ fn vars_enrol_asks() {
     assert!(err.contains("not confirmed"), "{err}");
     assert_eq!(fs::read_dir(dir.join("sealed")).unwrap().count(), 0);
     // no answer at all is a no
-    let o = run_in(dir, &env, &enrol, "");
+    let o = run_in(dir, &env, &certify, "");
     assert_eq!(o.status.code(), Some(1));
     assert_eq!(fs::read_dir(dir.join("sealed")).unwrap().count(), 0);
 
     // yes: signed, stored, sealed, the KRL first
-    let o = run_in(dir, &env, &enrol, "yes\n");
+    let o = run_in(dir, &env, &certify, "yes\n");
     let out = stdout(&o);
     assert!(
         out.ends_with(
@@ -298,7 +298,7 @@ fn vars_enrol_asks() {
     );
 
     // a token: -D MODULE, and the CA named by its public key file
-    let mut token = enrol.to_vec();
+    let mut token = certify.to_vec();
     token.extend([
         "--pkcs11-module",
         "/lib/libykcs11.so",
@@ -323,10 +323,10 @@ fn vars_enrol_asks() {
     let o = run_in(dir, &env, &token, "");
     assert_eq!(o.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&o.stderr).contains("public half"));
-    // enrol needs an identity and a CA key
+    // certify needs an identity and a CA key
     for args in [
-        &["vars", "enrol", "web1", "--ca-key", "ca"][..],
-        &["vars", "enrol", "-i", "id.txt", "web1"],
+        &["vars", "certify", "web1", "--ca-key", "ca"][..],
+        &["vars", "certify", "-i", "id.txt", "web1"],
     ] {
         let o = run_in(dir, &[], args, "");
         assert_eq!(o.status.code(), Some(2), "{args:?}");
@@ -348,9 +348,9 @@ fn keygen(dir: &Path, args: &[&str]) -> String {
     String::from_utf8(o.stdout).unwrap()
 }
 
-/// The enrol fixture with a real host key, `host.pub`, and its fingerprint.
+/// The certify fixture with a real host key, `host.pub`, and its fingerprint.
 fn real_host_key() -> (TempDir, Vec<(&'static str, PathBuf)>, String) {
-    let (tmp, env) = enrol_fixture();
+    let (tmp, env) = certify_fixture();
     let dir = tmp.path();
     keygen(
         dir,
@@ -371,11 +371,11 @@ fn real_host_key() -> (TempDir, Vec<(&'static str, PathBuf)>, String) {
     (tmp, env, fp)
 }
 
-/// `vars enrol` of web1 as web1 and web1.example.com, with the CA `ca` and `extra` arguments.
-fn enrol_real(dir: &Path, env: &[(&str, PathBuf)], fp: &str, ca: &str, extra: &[&str]) -> Output {
+/// `vars certify` of web1 as web1 and web1.example.com, with the CA `ca` and `extra` arguments.
+fn certify_real(dir: &Path, env: &[(&str, PathBuf)], fp: &str, ca: &str, extra: &[&str]) -> Output {
     let mut args = vec![
         "vars",
-        "enrol",
+        "certify",
         "-i",
         "id.txt",
         "web1",
@@ -420,22 +420,22 @@ fn check_host_cert(dir: &Path, fp: &str, ca_pub: &str) {
     assert!(signer.contains(&format!(" {ca} ")), "{l}");
 }
 
-/// ssh-keygen as it is: `vars enrol` signs a real host key with a CA key file, and `ssh-keygen -L`
-/// reads a host certificate with the machine's names and key id, signed by that CA.
+/// ssh-keygen as it is: `vars certify` signs a real host key with a CA key file, and
+/// `ssh-keygen -L` reads a host certificate with the machine's names and key id, signed by that CA.
 #[test]
-fn vars_enrol_signs_with_a_ca_key_file() {
+fn vars_certify_signs_with_a_ca_key_file() {
     let (tmp, env, fp) = real_host_key();
     let dir = tmp.path();
     keygen(dir, &["-q", "-t", "ed25519", "-N", "", "-f", "file-ca"]);
-    stdout(&enrol_real(dir, &env, &fp, "file-ca", &[]));
+    stdout(&certify_real(dir, &env, &fp, "file-ca", &[]));
     check_host_cert(dir, &fp, "file-ca.pub");
 }
 
 /// ssh-keygen and SoftHSM as they are (GOLCONDA_TEST_PKCS11_MODULE names SoftHSM's module): the
-/// CA key is only on the token, its file deleted; `vars enrol --pkcs11-module` signs with it, and
+/// CA key is only on the token, its file deleted; `vars certify --pkcs11-module` signs with it, and
 /// with a wrong PIN signs and seals nothing.
 #[test]
-fn vars_enrol_signs_with_a_ca_key_on_a_token() {
+fn vars_certify_signs_with_a_ca_key_on_a_token() {
     let module = env::var("GOLCONDA_TEST_PKCS11_MODULE")
         .expect("GOLCONDA_TEST_PKCS11_MODULE names SoftHSM's libsofthsm2.so");
     let (tmp, mut env, fp) = real_host_key();
@@ -504,7 +504,7 @@ fn vars_enrol_signs_with_a_ca_key_on_a_token() {
     // a wrong PIN: the token does not sign, nothing is sealed
     let mut wrong = env.clone();
     wrong.push(("SSH_ASKPASS", exe(dir, "askpass-wrong", "echo 0000\n")));
-    let o = enrol_real(dir, &wrong, &fp, "token-ca.pub", &token);
+    let o = certify_real(dir, &wrong, &fp, "token-ca.pub", &token);
     assert_eq!(
         o.status.code(),
         Some(1),
@@ -514,7 +514,7 @@ fn vars_enrol_signs_with_a_ca_key_on_a_token() {
     assert_eq!(fs::read_dir(dir.join("sealed")).unwrap().count(), 0);
 
     env.push(("SSH_ASKPASS", exe(dir, "askpass", "echo 1234\n")));
-    stdout(&enrol_real(dir, &env, &fp, "token-ca.pub", &token));
+    stdout(&certify_real(dir, &env, &fp, "token-ca.pub", &token));
     check_host_cert(dir, &fp, "token-ca.pub");
 }
 

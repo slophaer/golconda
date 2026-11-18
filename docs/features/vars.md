@@ -42,8 +42,8 @@ and removes the plaintext from the runtime directory.
 
 **Rotation.** To rotate an admin var, push a new value. The consumer restarts and reads the new
 sealed credential. To rotate a local var, remove its `done` marker and reboot. After a new
-`sshd-hostkey`, run `golconda vars enrol HOST` again
-([CLI](../reference/cli.md#golconda-vars-enrol)). Until then, clients see a plain host key, and
+`sshd-hostkey`, run `golconda vars certify HOST` again
+([CLI](../reference/cli.md#golconda-vars-certify)). Until then, clients see a plain host key, and
 `golconda vars push` refuses the machine: its host key is not the one in `vars/HOST/.hostkey`.
 
 ## Using it
@@ -72,12 +72,12 @@ For an admin var, write one call:
 restarts the `consumers`.
 
 Admin vars are pushed with `golconda vars set`, `push`, `list` and `pub`. `push` needs the host key
-that `golconda vars enrol` stored first ([Commands](../reference/cli.md#golconda-vars)).
+that `golconda vars certify` stored first ([Commands](../reference/cli.md#golconda-vars)).
 
 ## Status
 
 Proven: the rows of [What is proven](../proven.md) that name `var-sshd-hostkey`,
-`hostkey-sealed-with-tpm2`, `hostkey-unchanged`, `admin-vars-sealed` and `enrol-one-release`. The
+`hostkey-sealed-with-tpm2`, `hostkey-unchanged`, `admin-vars-sealed` and `certify-one-release`. The
 limits are below.
 
 ## Limits

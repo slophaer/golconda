@@ -272,19 +272,19 @@ Later: operators as `/usr/lib/userdb/*.user` records with `run0` gated by polkit
 (a root-less image), and one CA for SSH and X.509 with TPM device attestation (workload identity).
 Both are designed, not built *(later)*.
 
-### Enrolment
+### Host certificate
 
 A new machine goes from its first boot to certificate login in one release, with `hostCertificate`
 and `revokedKeys` on from the start. At first boot the machine makes and seals its host key and
 writes the fingerprint to the journal and the console. Until the push, sshd presents the plain host
 key, and PID 1 gives it a fallback revocation list under the same credential id (`SetCredential=`)
 that names the user CAs of `trustedUserCAKeys`: sshd refuses every certificate of those CAs, and
-plain keys log in. `golconda vars enrol HOST` then checks the fingerprint against the console line,
-signs the host key with the host CA key and pushes the KRL and the host certificate
-([Commands: golconda vars enrol](../reference/cli.md#golconda-vars-enrol)). The machine seals both,
-and the push restarts sshd (`KillMode=process` keeps the push's own session). sshd then presents the
-certificate, checks the KRL and refuses every plain key. After a new `sshd-hostkey`, run
-`golconda vars enrol HOST` again: until then clients see a plain host key
+plain keys log in. `golconda vars certify HOST` then checks the fingerprint against the console
+line, signs the host key with the host CA key and pushes the KRL and the host certificate
+([Commands: golconda vars certify](../reference/cli.md#golconda-vars-certify)). The machine seals
+both, and the push restarts sshd (`KillMode=process` keeps the push's own session). sshd then
+presents the certificate, checks the KRL and refuses every plain key. After a new `sshd-hostkey`,
+run `golconda vars certify HOST` again: until then clients see a plain host key
 ([Vars](../features/vars.md#how-it-works)).
 
 ```mermaid
@@ -294,7 +294,7 @@ sequenceDiagram
   participant C as host CA key (file or token)
   M->>M: make and seal the host key, fingerprint on the console
   M->>M: start sshd with the fallback list and the plain host key
-  O->>M: golconda vars enrol: ssh with the bootstrap key, read the host key
+  O->>M: golconda vars certify: ssh with the bootstrap key, read the host key
   O->>O: compare the fingerprint with the console line
   O->>C: ssh-keygen -s: sign the host key
   C-->>O: host certificate
@@ -306,9 +306,9 @@ sequenceDiagram
 
 **Plain keys stop with the host certificate.** With `hostCertificate` on, `sshd_config` begins with
 `Include /run/golconda-sshd/*.conf`, before its `AuthorizedKeysFile` line; sshd takes the first
-value it reads. `golconda-sshd-enrolled.service` runs before sshd, only when the sealed certificate
+value it reads. `golconda-sshd-certified.service` runs before sshd, only when the sealed certificate
 `/etc/credstore.encrypted/sshd-host-cert.cert` exists (`ConditionPathExists=`), and links
-`/usr/lib/sshd/enrolled.conf`, which says `AuthorizedKeysFile none`, into its runtime directory. So
+`/usr/lib/sshd/certified.conf`, which says `AuthorizedKeysFile none`, into its runtime directory. So
 sshd reads no authorized-keys file at all: neither the image's `authorizedKeys` nor
 `/root/.ssh/authorized_keys`, where `ssh.authorized_keys.root` and the cloud's keys go. The unit is
 `PartOf=` sshd and sshd wants it, so the restart that the push makes runs it again: a start when the
@@ -344,7 +344,7 @@ sshd declares both admin vars whether or not the options are on, so a release wi
 accepts the push and a later release that turns them on reads it: a machine that runs without
 certificates moves to them by a push and an update, in either order.
 
-Proven by boot with `--enrol` ([What is proven](../proven.md)).
+Proven by boot with `--certify` ([What is proven](../proven.md)).
 
 The signer is `ssh-keygen`, with the host CA key in a file or on a token: a host certificate is
 signed once per machine and per renewal, offline like the release keys, and needs no CA service. The

@@ -45,7 +45,7 @@ SERIAL_LOG=$WORK/coloured.log
 expect_status 0 "coloured target names" check_markers
 
 # sshd-active is sshd.service's own start line, not another unit whose name starts with sshd
-sed 's/Started sshd\.$/Started sshd: plain keys stop once the host certificate is enrolled./' \
+sed 's/Started sshd\.$/Started sshd: plain keys stop once the host certificate is sealed./' \
   "$FIXTURES/success-human.log" > "$WORK/other-sshd.log"
 SERIAL_LOG=$WORK/other-sshd.log
 expect_status 1 "another sshd unit is not sshd-active" check_markers

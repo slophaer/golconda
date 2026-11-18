@@ -296,9 +296,9 @@ setup_certs() {
     ssh-keygen -q -t ed25519 -N '' -C "boot-test-$1" -f "$SSH_DIR/cert-$1"
     ssh-keygen -q -s "$SSH_DIR/user-ca" -I "boot-test-$1" -n "$2" -z "$3" "$SSH_DIR/cert-$1.pub"
   done
-  # --enrol: a plain bootstrap key that only the SMBIOS credential ssh.authorized_keys.root
+  # --certify: a plain bootstrap key that only the SMBIOS credential ssh.authorized_keys.root
   # carries (start_qemu); the pushed KRL does not name it
-  if [ "$ENROL" = 1 ]; then
+  if [ "$CERTIFY" = 1 ]; then
     ssh-keygen -q -t ed25519 -N '' -C boot-test-bootstrap -f "$SSH_DIR/bootstrap"
   fi
 }
@@ -321,10 +321,10 @@ start_qemu() {
   if [ "$ESP_CREDS" = 1 ] || [ "$IMDS" = 1 ]; then
     SMBIOS_HOSTNAME=""
   fi
-  # --enrol: the bootstrap key as a provisioning credential (docs/design/boot.md); base64, because
+  # --certify: the bootstrap key as a provisioning credential (docs/design/boot.md); base64, because
   # the key line has spaces
   SMBIOS_BOOTSTRAP=""
-  if [ "$ENROL" = 1 ]; then
+  if [ "$CERTIFY" = 1 ]; then
     SMBIOS_BOOTSTRAP="-smbios type=11,value=io.systemd.credential.binary:ssh.authorized_keys.root=$(base64 -w0 "$SSH_DIR/bootstrap.pub")"
   fi
   # --imds: Hetzner by DMI, and nothing else: the guest takes the endpoint from hwdb and the image.

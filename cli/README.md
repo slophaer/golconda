@@ -9,11 +9,11 @@ How to use it is in [docs/reference/cli.md](../docs/reference/cli.md). This file
 
 ## The two commands
 
-- `golconda vars set|push|list|pub|enrol` (`src/vars.rs`): admin vars from the deploy host. It keeps
-  each value age-encrypted in the configuration repository (`vars/<host>/<var>/<file>.age`), reads
-  the machine's manifests over ssh, and pushes the values; the machine seals them. `enrol` signs the
-  machine's host key with `ssh-keygen` and pushes the certificate and the KRL through `push`. See
-  [Trust: Secrets and vars](../docs/design/trust.md#secrets-and-vars).
+- `golconda vars set|push|list|pub|certify` (`src/vars.rs`): admin vars from the deploy host. It
+  keeps each value age-encrypted in the configuration repository (`vars/<host>/<var>/<file>.age`),
+  reads the machine's manifests over ssh, and pushes the values; the machine seals them. `certify`
+  signs the machine's host key with `ssh-keygen` and pushes the certificate and the KRL through
+  `push`. See [Trust: Secrets and vars](../docs/design/trust.md#secrets-and-vars).
 - `golconda release check|publish|build|list` (`src/release.rs`): release directories. It checks the
   index and its signature, publishes with rclone, and builds a release from a clean git tree with
   `nix-build`, committing the version line. See [Releases](../docs/design/releases.md) and
@@ -27,13 +27,13 @@ The crate has no library for age, ssh, ssh-keygen, git, gpgv, nix-build or rclon
 Each is found on `PATH`. A variable names age, ssh, ssh-keygen or gpgv instead, with arguments split
 at spaces (`GOLCONDA_SSH="ssh -p 2222"`):
 
-| variable                | program or value                                                  |
-| ----------------------- | ----------------------------------------------------------------- |
-| `GOLCONDA_AGE`          | `age` (or `rage`)                                                 |
-| `GOLCONDA_SSH`          | `ssh`                                                             |
-| `GOLCONDA_SSH_KEYGEN`   | `ssh-keygen` (`vars enrol`)                                       |
-| `GOLCONDA_AGE_IDENTITY` | the identity file for `vars push` and `vars enrol` (same as `-i`) |
-| `GOLCONDA_GPGV`         | `gpgv`                                                            |
+| variable                | program or value                                                    |
+| ----------------------- | ------------------------------------------------------------------- |
+| `GOLCONDA_AGE`          | `age` (or `rage`)                                                   |
+| `GOLCONDA_SSH`          | `ssh`                                                               |
+| `GOLCONDA_SSH_KEYGEN`   | `ssh-keygen` (`vars certify`)                                       |
+| `GOLCONDA_AGE_IDENTITY` | the identity file for `vars push` and `vars certify` (same as `-i`) |
+| `GOLCONDA_GPGV`         | `gpgv`                                                              |
 
 Variables that start with `GOLCONDA_TEST_` belong to the tests: `GOLCONDA_TEST_PKCS11_MODULE` names
 SoftHSM's `libsofthsm2.so`, for the test that signs with a CA key on a token.

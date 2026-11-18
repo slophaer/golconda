@@ -14,7 +14,7 @@ in `scripts/`; the `golconda` command line has two commands, `vars` and `release
 | `nix-build -A checks.<system>`                                                                            | the sandboxed checks ([Outputs](outputs.md#outputs))                                                                                                                  |
 | `iets eval --expr 'import ./nix/tests.nix { }'`                                                           | the module tests alone                                                                                                                                                |
 | `./scripts/lint`                                                                                          | strict iets lint of the whole evaluation, the module tests, then the checks                                                                                           |
-| `golconda vars set\|push\|list\|pub\|enrol HOST …`                                                        | the admin vars of a machine, from the deploy host ([below](#golconda-vars))                                                                                           |
+| `golconda vars set\|push\|list\|pub\|certify HOST …`                                                      | the admin vars of a machine, from the deploy host ([below](#golconda-vars))                                                                                           |
 | `golconda release check\|publish\|build\|list …`                                                          | the release directory of an image: build, check, publish, list ([below](#golconda-release))                                                                           |
 | `nix fmt`                                                                                                 | treefmt (the formatter output, built by repkgs): format in place and run the linters                                                                                  |
 | `scripts/docs serve`                                                                                      | check the module list in `docs/SUMMARY.md`, generate the module pages, then serve the book                                                                            |
@@ -42,8 +42,8 @@ some of them, with arguments if you like (`GOLCONDA_SSH="ssh -p 2222"`):
 | ----------------------- | ----------------------------------------------- | --------------------------------------------------- |
 | `GOLCONDA_AGE`          | `age` (or `rage`)                               | `vars`                                              |
 | `GOLCONDA_SSH`          | `ssh`                                           | `vars`                                              |
-| `GOLCONDA_SSH_KEYGEN`   | `ssh-keygen`                                    | `vars enrol`                                        |
-| `GOLCONDA_AGE_IDENTITY` | the age identity file that `vars push -i` names | `vars push`, `vars enrol`                           |
+| `GOLCONDA_SSH_KEYGEN`   | `ssh-keygen`                                    | `vars certify`                                      |
+| `GOLCONDA_AGE_IDENTITY` | the age identity file that `vars push -i` names | `vars push`, `vars certify`                         |
 | `GOLCONDA_GPGV`         | `gpgv`                                          | `release check`, `release publish`, `release build` |
 
 Golconda packages age as `packages.<system>.age` (`age` and `age-keygen`). Put it on `PATH` beside
@@ -71,7 +71,7 @@ one word, so `user@host` is refused: give the machine an alias in `~/.ssh/config
 `HostName` and `User root`).
 
 ```sh
-golconda vars enrol -i ~/.config/age/key.txt web1 --ca-key host_ca --krl fleet.krl  # first
+golconda vars certify -i ~/.config/age/key.txt web1 --ca-key host_ca --krl fleet.krl  # first
 golconda vars set web1 sshd-revoked-keys krl < revoked.krl
 golconda vars push -i ~/.config/age/key.txt web1     # every admin var web1 declares
 golconda vars list web1                              # stored here? sealed there?
@@ -80,20 +80,21 @@ golconda vars list web1                              # stored here? sealed there
 - `set HOST VAR FILE` reads the value from standard input and stores it encrypted.
 - `push HOST [VAR…]` reads the manifests from the machine itself, never from an evaluation. It
   checks that every file is stored before it sends any, and restarts each consumer once. It needs
-  the host key that `enrol` stored (`vars/<host>/.hostkey`): without that file it refuses and names
-  the `enrol` command, and it refuses a machine with another host key. `-i` (or
+  the host key that `certify` stored (`vars/<host>/.hostkey`): without that file it refuses and
+  names the `certify` command, and it refuses a machine with another host key. `-i` (or
   `GOLCONDA_AGE_IDENTITY`) names the identity that decrypts.
 - `list HOST` says, for each file, whether it is stored here and sealed there. One more line says
   when the machine seals without PCR 7, from `golconda-var-run --reseal --without-pcr7` until the
   next `--reseal` ([Trust: PCR 7](../design/trust.md#pcr-7)).
 - `pub HOST VAR FILE` prints the public file of a local var, such as the host key that a CA signs.
-- `enrol HOST --ca-key FILE` enrols a machine in one command ([below](#golconda-vars-enrol)).
+- `certify HOST --ca-key FILE` gives a machine its host certificate in one command
+  ([below](#golconda-vars-certify)).
 
-#### `golconda vars enrol`
+#### `golconda vars certify`
 
 ```sh
-golconda vars enrol -i ~/.config/age/key.txt web1 --ca-key host_ca --krl fleet.krl
-golconda vars enrol -i ~/.config/age/key.txt web1 --ca-key host_ca.pub \
+golconda vars certify -i ~/.config/age/key.txt web1 --ca-key host_ca --krl fleet.krl
+golconda vars certify -i ~/.config/age/key.txt web1 --ca-key host_ca.pub \
   --pkcs11-module "$(ykcs11-module)" --principal web1.example.com --fingerprint SHA256:…
 ```
 

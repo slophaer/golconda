@@ -219,7 +219,7 @@ for a in $images; do
   bg "$(label image "$a")" nix-build -A "packages.$system.$a" -o "$(link "$a")"
 done
 case "$boot_args
-$boot_sets" in *--enrol*) enrol=1 ;; *) enrol=0 ;; esac
+$boot_sets" in *--certify*) certify=1 ;; *) certify=0 ;; esac
 if [ $boot = 1 ]; then
   # @next in the boot flags is the next release's image (<image>-next, the one boot-test --next
   # installs, of the set's own image): build it too and put its path there
@@ -227,8 +227,8 @@ if [ $boot = 1 ]; then
     attr=${nx%%:*}; rest=${nx#*:}
     bg "${rest#*:}" nix-build -A "packages.$system.$attr" -o "${rest%%:*}"
   done
-  if [ -n "$nexts" ] || [ $enrol = 1 ]; then
-    # --next and --enrol push admin vars with golconda, age and age-keygen
+  if [ -n "$nexts" ] || [ $certify = 1 ]; then
+    # --next and --certify push admin vars with golconda, age and age-keygen
     bg golconda-cli nix-build -A "packages.$system.golconda-cli" -o result-verify-golconda-cli
     bg age nix-build -A "packages.$system.age" -o result-verify-age
   fi
@@ -249,7 +249,7 @@ done
 checks=$bgs
 join "$need" || finish 1
 [ $boot = 1 ] || finish 0
-if [ -n "$nexts" ] || [ $enrol = 1 ]; then
+if [ -n "$nexts" ] || [ $certify = 1 ]; then
   BOOT_TEST_GOLCONDA=$(realpath result-verify-golconda-cli)/bin/golconda
   PATH=$(realpath result-verify-age)/bin:$PATH
   export BOOT_TEST_GOLCONDA PATH

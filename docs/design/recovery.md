@@ -71,9 +71,9 @@ boot runs again. The request is `systemctl start factory-reset.target`, which se
 `FactoryResetRequest` EFI variable and reboots ([Updates: Factory reset](updates.md#factory-reset)).
 The ESP and the `/usr` slots stay, so this path repairs a broken state partition, not a broken
 image. All state is lost. It needs a working ssh login, because there is no console login; a machine
-without one is reflashed. The machine then has a new host key and no host certificate: it enrols
+without one is reflashed. The machine then has a new host key and no host certificate: certify it
 again
-([Factory reset: Enrol again after a reset](../features/factory-reset.md#enrol-again-after-a-reset)).
+([Factory reset: Certify again after a reset](../features/factory-reset.md#certify-again-after-a-reset)).
 
 `scripts/boot-test … --factory-reset --ssh-test` checks this path on the test image. It writes a
 marker in `/etc` and reads `/etc/machine-id`, requests the reset, and waits for the reset boot. It

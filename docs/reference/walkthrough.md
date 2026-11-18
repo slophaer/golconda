@@ -225,14 +225,14 @@ TrustedUserCAKeys /usr/lib/sshd/ca.pub
 AuthorizedPrincipalsFile /usr/lib/sshd/principals/%u
 ```
 
-The host key's public half is in `/var/lib/golconda/vars/sshd-hostkey/pub/key.pub` for enrolment.
+The host key's public half is in `/var/lib/golconda/vars/sshd-hostkey/pub/key.pub` for the host CA.
 The options `hostCertificate` and `revokedKeys` add an admin-supplied host certificate and
 revocation list as further vars. The boot test runs all of this with its own test CA, not with this
 document: `--ssh-test` logs in with a user certificate and refuses another principal (`cert-login`,
 `cert-wrong-principal-refused`), and `--next` pushes the host certificate and the KRL with
 `golconda vars`, then checks that the next release presents the one and refuses a revoked
-certificate (`host-cert-presented`, `cert-revoked-refused`, `krl-rotated`); `--enrol` does the push
-in the first boot of a release that has both options on (`enrol-one-release`). See
+certificate (`host-cert-presented`, `cert-revoked-refused`, `krl-rotated`); `--certify` does the
+push in the first boot of a release that has both options on (`certify-one-release`). See
 [What is proven](../proven.md).
 
 ## 8. The next version

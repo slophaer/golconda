@@ -55,16 +55,17 @@ root = ["alice@example.com"]
 ```
 
 `authorizedKeys` lists plain public keys for root. Use it to bootstrap: with `hostCertificate` on,
-plain keys work only until the host certificate is enrolled. `revokedKeys` and `hostCertificate`
+plain keys work only until the host certificate is sealed. `revokedKeys` and `hostCertificate`
 default to `false`. `hostCertificate` and `principals` need `trustedUserCAKeys`: without a user CA,
 the build fails.
 
-A new machine enrols in its first release. Turn both options on, boot, and run one command from the
-deploy host. It needs a plain key that logs in (`authorizedKeys`, or the provisioning credential
-`ssh.authorized_keys.root`), the host CA's key, and the deployment's current KRL:
+A new machine gets its host certificate in its first release. Turn both options on, boot, and run
+one command from the deploy host. It needs a plain key that logs in (`authorizedKeys`, or the
+provisioning credential `ssh.authorized_keys.root`), the host CA's key, and the deployment's current
+KRL:
 
 ```console
-$ golconda vars enrol -i ~/.config/age/key.txt web1 --ca-key host_ca --krl fleet.krl
+$ golconda vars certify -i ~/.config/age/key.txt web1 --ca-key host_ca --krl fleet.krl
 web1's host key: 256 SHA256:… root@web1 (ED25519)
 Is this the fingerprint on web1's console or journal (golconda: ssh host key …)? Type yes to sign it: yes
 ```
@@ -80,20 +81,20 @@ name given), `--validity` how long the certificate holds (default a year). A CA 
 token, such as the YubiKey that holds the release keys, is
 `--ca-key host_ca.pub --pkcs11-module "$(ykcs11-module)"`: ssh-keygen signs with the token's key
 that matches the public key file
-([Commands: golconda vars enrol](../reference/cli.md#golconda-vars-enrol)). It refuses with no KRL
-at all, and stops before anything is signed when the fingerprint is not confirmed.
+([Commands: golconda vars certify](../reference/cli.md#golconda-vars-certify)). It refuses with no
+KRL at all, and stops before anything is signed when the fingerprint is not confirmed.
 
 The push restarts sshd, which then presents the host certificate, checks the KRL and refuses every
 plain key: the image's `authorizedKeys`, `ssh.authorized_keys.root` and a cloud's keys. From then on
 only certificates log in, after reboots and updates too
-([Trust: Enrolment](../design/trust.md#enrolment)). The signer is `ssh-keygen`, with the CA key in a
-file or on a token. Signing through step-ca's API is *(later)*, a part of workload identity
-([Scope: Later](../design/scope.md#later)): step-ca signs user certificates.
+([Trust: Host certificate](../design/trust.md#host-certificate)). The signer is `ssh-keygen`, with
+the CA key in a file or on a token. Signing through step-ca's API is *(later)*, a part of workload
+identity ([Scope: Later](../design/scope.md#later)): step-ca signs user certificates.
 
 ## Status
 
 Proven: the rows of [What is proven](../proven.md) that name `ssh-login`, `cert-login`,
-`sshd-golconda-only`, `host-cert-presented` and `enrol-one-release`. The limits are below.
+`sshd-golconda-only`, `host-cert-presented` and `certify-one-release`. The limits are below.
 
 ## Limits
 
@@ -102,11 +103,11 @@ Proven: the rows of [What is proven](../proven.md) that name `ssh-login`, `cert-
 - **After the push** no plain key logs in. When certificate login breaks (the CA is lost, a KRL
   refuses every certificate), recovery is the other slot, if its release has `hostCertificate` off
   and someone chooses it at the console's boot menu, or a reflash, which wipes the sealed vars, so
-  the machine enrols again ([Boot loader: Recovery](../design/bootloader.md#recovery)).
+  the machine is certified again ([Boot loader: Recovery](../design/bootloader.md#recovery)).
 - The host certificate needs the host key first: the machine makes its key, then the CA signs it.
-  Renewal is `golconda vars enrol` again before the certificate expires; nothing on the machine
+  Renewal is `golconda vars certify` again before the certificate expires; nothing on the machine
   renews it.
-- `golconda vars enrol` with a CA key on a token is tested with SoftHSM, not with a YubiKey
+- `golconda vars certify` with a CA key on a token is tested with SoftHSM, not with a YubiKey
   ([Making a release: A YubiKey](../reference/release.md#a-yubikey-being-built)).
 - A password-less root is the only account. Per-operator records with `run0` and polkit are
   *(later)*.

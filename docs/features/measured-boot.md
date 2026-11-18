@@ -20,7 +20,7 @@ policy with keys you make, so a swapped kernel opens nothing.
 - **Sealing.** `golconda-var-sshd-hostkey.service` runs
   `systemd-creds encrypt --with-key=auto --tpm2-public-key-pcrs=11 --tpm2-pcrs=7`. sshd loads the
   result with `LoadCredentialEncrypted=`. The key is sealed to the PCR key, not to one PCR 11 value,
-  so a new signed image unseals it with no re-enrolment. It is also sealed to PCR 7's value, so it
+  so a new signed image unseals it with no re-sealing. It is also sealed to PCR 7's value, so it
   does not unseal with Secure Boot off or with other Secure Boot keys; a `db` rotation seals it
   again ([Trust: PCR 7](../design/trust.md#pcr-7)).
 - **Deployment keys.** `scripts/make-keys` writes `secureboot/db.{key,crt}`, a `PK` and a `KEK`,

@@ -10,8 +10,8 @@ vars() {
 
 # push_admin_vars: sign the guest's host key with the host CA once its fingerprint matches the
 # first boot's console line, store the certificate and a KRL naming cert-revoked with golconda
-# vars, and push them. --next reads the key with `golconda vars pub` first; --enrol checks a
-# wrong fingerprint first. Both then run `golconda vars enrol`. From
+# vars, and push them. --next reads the key with `golconda vars pub` first; --certify checks a
+# wrong fingerprint first. Both then run `golconda vars certify`. From
 # then on a release with hostCertificate on refuses plain keys, so the harness also offers the
 # certificate cert-admin (GUEST_EXTRA_ID)
 push_admin_vars() {
@@ -37,8 +37,8 @@ EOF
   chmod 600 "$WORKDIR/ssh/host-ca"
   echo "serial: 3" > "$WORKDIR/ssh/krl.spec"
   ssh-keygen -q -k -f "$WORKDIR/ssh/krl" -s "$REPO_DIR/tests/fixtures/snakeoil-user-ca.pub" "$WORKDIR/ssh/krl.spec"
-  if [ "$ENROL" = 1 ]; then
-    enrol_admin_vars
+  if [ "$CERTIFY" = 1 ]; then
+    certify_admin_vars
   else
     # the operator's check before signing: the key golconda vars reads over ssh is the key whose
     # fingerprint the machine printed on its serial console at first boot (modules/services/sshd)
@@ -52,7 +52,7 @@ EOF
     RC=0
     (
       cd "$WORKDIR" || exit 1
-      vars enrol -i age.key boot-test --ca-key ssh/host-ca --principal localhost --krl ssh/krl \
+      vars certify -i age.key boot-test --ca-key ssh/host-ca --principal localhost --krl ssh/krl \
         --fingerprint "$FP"
     ) > "$WORKDIR/push.out" 2>&1 || RC=1
   fi
@@ -70,35 +70,35 @@ EOF
   verdict "admin-vars-sealed (golconda vars list: stored here, sealed there)" $RC
 }
 
-# enrol_admin_vars: `golconda vars enrol` as an operator runs it (docs/features/ssh-login.md). A
+# certify_admin_vars: `golconda vars certify` as an operator runs it (docs/features/ssh-login.md). A
 # fingerprint that is not the console's must be refused before anything is signed, stored or
 # sealed. Leaves RC, the command's result, for admin-vars-pushed.
-enrol_admin_vars() {
+certify_admin_vars() {
   CONSOLE_FP=$(grep -a "golconda: ssh host key" "$FIRST_SERIAL_LOG" | tail -1 |
     grep -o 'SHA256:[A-Za-z0-9+/]*') || CONSOLE_FP=""
   echo "console: host key ${CONSOLE_FP:-none}"
   RC=0
-  if (cd "$WORKDIR" && vars enrol -i age.key boot-test --ca-key ssh/host-ca --principal localhost \
+  if (cd "$WORKDIR" && vars certify -i age.key boot-test --ca-key ssh/host-ca --principal localhost \
     --krl ssh/krl --fingerprint SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA) \
-    > "$WORKDIR/enrol-wrong.out" 2>&1; then
+    > "$WORKDIR/certify-wrong.out" 2>&1; then
     RC=1
   fi
-  cat "$WORKDIR/enrol-wrong.out"
-  grep -q "nothing is signed, stored or pushed" "$WORKDIR/enrol-wrong.out" || RC=1
+  cat "$WORKDIR/certify-wrong.out"
+  grep -q "nothing is signed, stored or pushed" "$WORKDIR/certify-wrong.out" || RC=1
   LIST=$(cd "$WORKDIR" && vars list boot-test 2>&1) || RC=1
   echo "$LIST"
   if echo "$LIST" | grep -q -e " stored " -e " sealed$"; then RC=1; fi
-  verdict "enrol-wrong-fingerprint-refused (golconda vars enrol: a fingerprint not the console's stores and seals nothing)" $RC
-  ENROL_RC=0
+  verdict "certify-wrong-fingerprint-refused (golconda vars certify: a fingerprint not the console's stores and seals nothing)" $RC
+  CERTIFY_RC=0
   (
     cd "$WORKDIR" || exit 1
-    vars enrol -i age.key boot-test --ca-key ssh/host-ca --principal localhost --krl ssh/krl \
+    vars certify -i age.key boot-test --ca-key ssh/host-ca --principal localhost --krl ssh/krl \
       --fingerprint "$CONSOLE_FP"
-  ) > "$WORKDIR/push.out" 2>&1 || ENROL_RC=1
+  ) > "$WORKDIR/push.out" 2>&1 || CERTIFY_RC=1
   RC=0
   [ -n "$CONSOLE_FP" ] && grep -q "^host key .* $CONSOLE_FP " "$WORKDIR/push.out" || RC=1
-  verdict "hostkey-fingerprint-on-console (golconda vars enrol read the key the console names)" $RC
-  RC=$ENROL_RC
+  verdict "hostkey-fingerprint-on-console (golconda vars certify read the key the console names)" $RC
+  RC=$CERTIFY_RC
 }
 
 # test_certs LOGIN: the release presents the host certificate, takes a good user certificate (the
@@ -135,16 +135,16 @@ host_cert_login() {
     -i "$WORKDIR/ssh/cert-admin" root@localhost true
 }
 
-# bootstrap_login: the plain bootstrap key of the SMBIOS credential (--enrol)
+# bootstrap_login: the plain bootstrap key of the SMBIOS credential (--certify)
 bootstrap_login() {
   # shellcheck disable=SC2086
   ssh $SSH_OPTS $NO_HOSTKEY_CHECK -o IdentitiesOnly=yes -i "$WORKDIR/ssh/bootstrap" root@localhost true
 }
 
 # check_plain_refused NAME: neither plain key (the SMBIOS credential's, the image's test key) logs
-# in: the KRL names neither, so the refusal is the enrolment's. Each refusal costs the QEMU gateway
-# address 5 s of sshd's PerSourcePenalties, and 15 s block it, so each starts after the last
-# penalty ran out.
+# in: the KRL names neither, so the sealed host certificate refuses them. Each refusal costs the
+# QEMU gateway address 5 s of sshd's PerSourcePenalties, and 15 s block it, so each starts after
+# the last penalty ran out.
 check_plain_refused() {
   RC=0
   sleep 6
@@ -158,24 +158,24 @@ check_plain_refused() {
   verdict "$1 (the bootstrap key and the image's test key are refused; the KRL names neither)" $RC
 }
 
-# test_enrol: one release from first boot to certificates (docs/design/trust.md, "Identity"):
+# test_certify: one release from first boot to certificates (docs/design/trust.md, "Identity"):
 # push the host certificate and a KRL, then the same boot presents the certificate, takes
 # certificates, refuses the revoked one and every plain key, and takes a rotated KRL.
-test_enrol() {
-  ENROL_VERSION=$(guest_version)
+test_certify() {
+  CERTIFY_VERSION=$(guest_version)
   push_admin_vars
-  test_certs cert-login-after-enrol
-  check_plain_refused bootstrap-key-refused-after-enrol
+  test_certs cert-login-after-certify
+  check_plain_refused bootstrap-key-refused-after-certify
   RC=0
   B=$(guest cat /proc/sys/kernel/random/boot_id 2>/dev/null) || B=""
-  [ "$B" = "$FIRST_BOOT_ID" ] && [ -n "$ENROL_VERSION" ] && [ "$(guest_version)" = "$ENROL_VERSION" ] || RC=1
-  verdict "enrol-one-release (all of it in the first boot of ${ENROL_VERSION:-?}: no update, no reboot)" $RC
+  [ "$B" = "$FIRST_BOOT_ID" ] && [ -n "$CERTIFY_VERSION" ] && [ "$(guest_version)" = "$CERTIFY_VERSION" ] || RC=1
+  verdict "certify-one-release (all of it in the first boot of ${CERTIFY_VERSION:-?}: no update, no reboot)" $RC
 }
 
-# test_enrol_after_reboot: the sealed certificate and KRL unseal after a reboot (--enrol --tpm):
+# test_certify_after_reboot: the sealed certificate and KRL unseal after a reboot (--certify --tpm):
 # cert-admin logs in (the image's fallback list would refuse it), the rotated KRL still refuses the
 # good certificate, and plain keys stay refused
-test_enrol_after_reboot() {
+test_certify_after_reboot() {
   echo ""
   echo "=== certificates after the reboot ==="
   RC=0
@@ -185,40 +185,41 @@ test_enrol_after_reboot() {
   check_plain_refused bootstrap-key-refused-after-reboot
 }
 
-# test_reenrol_after_reset: --enrol --factory-reset (docs/features/factory-reset.md). The reset
+# test_recertify_after_reset: --certify --factory-reset (docs/features/factory-reset.md). The reset
 # took the sealed certificate and KRL, and the machine made a new host key, so the harness logs in
-# with a plain key; `golconda vars enrol` refuses the first boot's fingerprint and enrols the new.
-test_reenrol_after_reset() {
+# with a plain key; `golconda vars certify` refuses the first boot's fingerprint and certifies the
+# new one.
+test_recertify_after_reset() {
   echo ""
-  echo "=== after the factory reset: golconda vars enrol again ==="
+  echo "=== after the factory reset: golconda vars certify again ==="
   RC=0
   if cert_login ok 2>/dev/null; then RC=1; fi
   verdict "cert-refused-after-reset (revokedKeys: the KRL went with the state, the fallback list refuses the user CA)" $RC
   sleep 6
   RC=0
-  if (cd "$WORKDIR" && vars enrol -i age.key boot-test --ca-key ssh/host-ca --principal localhost \
-    --krl ssh/krl --fingerprint "$FIRST_FP") > "$WORKDIR/reenrol-old.out" 2>&1; then
+  if (cd "$WORKDIR" && vars certify -i age.key boot-test --ca-key ssh/host-ca --principal localhost \
+    --krl ssh/krl --fingerprint "$FIRST_FP") > "$WORKDIR/recertify-old.out" 2>&1; then
     RC=1
   fi
-  cat "$WORKDIR/reenrol-old.out"
-  grep -q "nothing is signed, stored or pushed" "$WORKDIR/reenrol-old.out" || RC=1
-  verdict "reenrol-old-fingerprint-refused (the first boot's fingerprint ${FIRST_FP:-none} is not the new key's)" $RC
+  cat "$WORKDIR/recertify-old.out"
+  grep -q "nothing is signed, stored or pushed" "$WORKDIR/recertify-old.out" || RC=1
+  verdict "recertify-old-fingerprint-refused (the first boot's fingerprint ${FIRST_FP:-none} is not the new key's)" $RC
   RC=0
   (
     cd "$WORKDIR" || exit 1
-    vars enrol -i age.key boot-test --ca-key ssh/host-ca --principal localhost --krl ssh/krl \
+    vars certify -i age.key boot-test --ca-key ssh/host-ca --principal localhost --krl ssh/krl \
       --fingerprint "$RESET_FP"
-  ) > "$WORKDIR/reenrol.out" 2>&1 || RC=1
-  cat "$WORKDIR/reenrol.out"
-  [ -n "$RESET_FP" ] && grep -q "^host key .* $RESET_FP " "$WORKDIR/reenrol.out" || RC=1
-  grep -qx "sealed sshd-host-cert.cert" "$WORKDIR/reenrol.out" || RC=1
-  grep -qx "sealed sshd-revoked-keys.krl" "$WORKDIR/reenrol.out" || RC=1
-  grep -qx "restarted sshd.service" "$WORKDIR/reenrol.out" || RC=1
-  verdict "reenrol-after-reset (golconda vars enrol with the reset boot's console fingerprint: certificate and KRL sealed, sshd restarted)" $RC
+  ) > "$WORKDIR/recertify.out" 2>&1 || RC=1
+  cat "$WORKDIR/recertify.out"
+  [ -n "$RESET_FP" ] && grep -q "^host key .* $RESET_FP " "$WORKDIR/recertify.out" || RC=1
+  grep -qx "sealed sshd-host-cert.cert" "$WORKDIR/recertify.out" || RC=1
+  grep -qx "sealed sshd-revoked-keys.krl" "$WORKDIR/recertify.out" || RC=1
+  grep -qx "restarted sshd.service" "$WORKDIR/recertify.out" || RC=1
+  verdict "recertify-after-reset (golconda vars certify with the reset boot's console fingerprint: certificate and KRL sealed, sshd restarted)" $RC
   RC=0
   host_cert_login || RC=1
   verdict "host-cert-presented-after-reset (the new host key's certificate; cert-admin logs in)" $RC
-  check_plain_refused bootstrap-key-refused-after-reenrol
+  check_plain_refused bootstrap-key-refused-after-recertify
 }
 
 # check_hwdb NAME: lookups answer from the hardware database compiled into /usr (packages/hwdb):

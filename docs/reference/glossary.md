@@ -15,6 +15,9 @@
   `dynamic-derivations` and `builder-rpc-v0` ([Build host](build-host.md)).
 - **built-in**: a component that every system has: `/base`, `/network`, `/security`, `/trust`,
   `/factory` and `/vars` (`lib/components.nix`). Its table only configures it.
+- **certify**: sign a machine's host key as a host certificate with the host CA, store it and push
+  it with the KRL: `golconda vars certify`
+  ([Trust: Host certificate](../design/trust.md#host-certificate)). Not *enrol*.
 - **component**: a module that returns a fragment for the image (`lib/components.nix`). A built-in
   is in every system; an optional component, such as `/services/sshd` or `/imds`, is in a system
   when the document has its table. In the SBOM, a component is a CycloneDX entry, not a module.
@@ -30,6 +33,8 @@
   Golconda or repkgs package replaces it only when `[golconda] replaces` lists that name
   ([Configuration](config.md#your-own-packages)).
 - **DPS**: Discoverable Partitions Specification, the type GUIDs systemd-gpt-auto-generator reads.
+- **enrol**: put Secure Boot keys (`PK`, `KEK`, `db`, `dbx`) into the firmware
+  ([Boot loader: Enrolment](../design/bootloader.md#enrolment)). Only for Secure Boot.
 - **ESP**: EFI System Partition, the FAT partition the firmware reads; it holds systemd-boot, the
   UKIs and `loader/credentials/`.
 - **factory**: `/usr/share/factory/etc`, the seed for `/etc`, written by the `/factory` module and

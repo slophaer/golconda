@@ -28,7 +28,7 @@ package {
   uses = [ "cargo" ];
   bin = [ "golconda" ];
   # the tests run git on scratch repositories and publish with rclone; the release tests sign
-  # and verify with gpg, and build a release in a copy of examples/; `vars enrol`'s test signs
+  # and verify with gpg, and build a release in a copy of examples/; `vars certify`'s test signs
   # host keys with ssh-keygen, from a key file and from a SoftHSM token (TEST-ONLY)
   buildDependencies = [
     buildPkgs.git

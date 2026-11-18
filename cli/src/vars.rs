@@ -323,7 +323,7 @@ impl Store {
         self.path(host, var, file).is_ok_and(|p| p.is_file())
     }
 
-    /// `<root>/<host>/.hostkey`, in plain text: the host key `enrol` signed, which `push`
+    /// `<root>/<host>/.hostkey`, in plain text: the host key `certify` signed, which `push`
     /// compares with the machine's.
     pub fn hostkey(&self, host: &str) -> Result<PathBuf> {
         Ok(self.root.join(word(host)?).join(".hostkey"))
@@ -392,7 +392,7 @@ pub struct Pushed {
 }
 
 /// Pushes the admin vars `only` (every admin var the machine declares when empty) from the
-/// store to `host`: checks that the machine has the host key `enrol` stored and that every
+/// store to `host`: checks that the machine has the host key `certify` stored and that every
 /// file is stored before it sends any, seals each on the machine, then restarts the union of
 /// their consumers once.
 pub fn push(
@@ -405,7 +405,7 @@ pub fn push(
     let pinned = store.hostkey(host)?;
     let Ok(want) = fs::read(&pinned) else {
         return err(format!(
-            "no host key stored for {host} ({}): run `golconda vars enrol {host}` first; \
+            "no host key stored for {host} ({}): run `golconda vars certify {host}` first; \
              nothing is pushed",
             pinned.display()
         ));
@@ -439,8 +439,8 @@ pub fn push(
     let got = key_of(&remote.public(HOSTKEY.0, HOSTKEY.1)?);
     if key_of(&want) != got {
         return err(format!(
-            "{host} has the host key {got}, not the one enrolled ({}): another machine, or \
-             this one after a factory reset (enrol it again); nothing is pushed",
+            "{host} has the host key {got}, not the one certified ({}): another machine, or \
+             this one after a factory reset (certify it again); nothing is pushed",
             pinned.display()
         ));
     }
@@ -462,10 +462,10 @@ pub fn push(
     Ok(pushed)
 }
 
-/// The admin vars an enrolment pushes, in the order it seals them: the KRL first, the host
+/// The admin vars `certify` pushes, in the order it seals them: the KRL first, the host
 /// certificate last. A sealed certificate is what ends plain-key login on the machine
-/// (`golconda-sshd-enrolled.service`), so it is sealed only once the KRL is.
-pub const ENROL_VARS: [(&str, &str); 2] =
+/// (`golconda-sshd-certified.service`), so it is sealed only once the KRL is.
+pub const CERTIFY_VARS: [(&str, &str); 2] =
     [("sshd-revoked-keys", "krl"), ("sshd-host-cert", "cert")];
 /// The local var whose public file is the host key the CA signs.
 pub const HOSTKEY: (&str, &str) = ("sshd-hostkey", "key.pub");
@@ -480,8 +480,8 @@ pub struct Signer {
     pub module: Option<PathBuf>,
 }
 
-/// What `golconda vars enrol` is asked to do.
-pub struct Enrol<'a> {
+/// What `golconda vars certify` is asked to do.
+pub struct Certify<'a> {
     pub host: &'a str,
     /// The certificate's principals, the names clients reach the machine by (empty: `host`)
     pub principals: &'a [String],
@@ -493,9 +493,9 @@ pub struct Enrol<'a> {
     pub fingerprint: Option<&'a str>,
 }
 
-/// What [`enrol`] did.
+/// What [`certify`] did.
 #[derive(Debug)]
-pub struct Enrolled {
+pub struct Certified {
     /// ssh-keygen's fingerprint line of the host key
     pub fingerprint: String,
     /// the encrypted files written, the KRL (when given) and the certificate
@@ -503,18 +503,18 @@ pub struct Enrolled {
     pub pushed: Pushed,
 }
 
-/// Enrols `req.host`: reads its host key, has the operator confirm the fingerprint (`confirm`
+/// Certifies `req.host`: reads its host key, has the operator confirm the fingerprint (`confirm`
 /// gets ssh-keygen's fingerprint line and says yes or no) or compares it with
 /// `req.fingerprint`, signs it as a host certificate, stores the certificate and the KRL, and
 /// pushes both.
-pub fn enrol(
+pub fn certify(
     store: &Store,
     identity: &Path,
     remote: &Remote,
     signer: &Signer,
-    req: &Enrol,
+    req: &Certify,
     confirm: &mut dyn FnMut(&str) -> bool,
-) -> Result<Enrolled> {
+) -> Result<Certified> {
     let host = word(req.host)?;
     let default = [host.to_owned()];
     let principals = if req.principals.is_empty() {
@@ -522,11 +522,11 @@ pub fn enrol(
     } else {
         req.principals
     };
-    enrol_checks(store, remote, req, host, principals)?;
+    certify_checks(store, remote, req, host, principals)?;
 
     // the host key, in a directory of its own: ssh-keygen writes the certificate beside it
     let scratch = Builder::new()
-        .prefix("golconda-enrol-")
+        .prefix("golconda-certify-")
         .tempdir()
         .map_err(|e| Error(format!("a scratch directory: {e}")))?;
     let key = scratch.path().join("host.pub");
@@ -540,14 +540,14 @@ pub fn enrol(
         .map_err(|e| Error(format!("{e}: nothing is stored or pushed")))?;
     let mut stored = Vec::new();
     if let Some(krl) = req.krl {
-        let (krl_var, krl_file) = ENROL_VARS[0];
+        let (krl_var, krl_file) = CERTIFY_VARS[0];
         stored.push(
             store
                 .set(host, krl_var, krl_file, krl)
                 .map_err(|e| Error(format!("{e}: nothing is pushed")))?,
         );
     }
-    let (cert_var, cert_file) = ENROL_VARS[1];
+    let (cert_var, cert_file) = CERTIFY_VARS[1];
     stored.push(
         store
             .set(host, cert_var, cert_file, &cert)
@@ -558,7 +558,7 @@ pub fn enrol(
         .map_err(|e| Error(format!("{}: {e}: nothing is pushed", pinned.display())))?;
     stored.push(pinned);
     // the KRL first: the certificate is sealed last, and sshd restarts after both
-    let only: Vec<String> = ENROL_VARS.iter().map(|(v, _)| (*v).to_owned()).collect();
+    let only: Vec<String> = CERTIFY_VARS.iter().map(|(v, _)| (*v).to_owned()).collect();
     let pushed = push(store, identity, remote, host, &only).map_err(|e| {
         Error(format!(
             "{e}\nthe certificate and the KRL are stored here. {host} seals the certificate \
@@ -567,19 +567,19 @@ pub fn enrol(
             only.join(" ")
         ))
     })?;
-    Ok(Enrolled {
+    Ok(Certified {
         fingerprint: line.trim().to_owned(),
         stored,
         pushed,
     })
 }
 
-/// What [`enrol`] checks before it reads the host key: the principals are names, a KRL is
+/// What [`certify`] checks before it reads the host key: the principals are names, a KRL is
 /// given or stored, and the machine declares both admin vars.
-fn enrol_checks(
+fn certify_checks(
     store: &Store,
     remote: &Remote,
-    req: &Enrol,
+    req: &Certify,
     host: &str,
     principals: &[String],
 ) -> Result<()> {
@@ -595,7 +595,7 @@ fn enrol_checks(
     }
     // sshd needs a KRL: a certificate sealed without one ends plain-key login while the
     // fallback list still refuses every user certificate, and nobody could log in
-    let (krl_var, krl_file) = ENROL_VARS[0];
+    let (krl_var, krl_file) = CERTIFY_VARS[0];
     if req.krl.is_none() && !store.has(host, krl_var, krl_file) {
         return err(format!(
             "no KRL for {host}: give --krl FILE, the deployment's current revocation list \
@@ -603,7 +603,7 @@ fn enrol_checks(
         ));
     }
     let declared = remote.manifests()?;
-    for (var, _) in ENROL_VARS {
+    for (var, _) in CERTIFY_VARS {
         if !declared
             .iter()
             .any(|m| m.name == var && m.class == Class::Admin)
@@ -817,7 +817,7 @@ esac
         (s, store, remote, id)
     }
 
-    /// What `enrol` stores for web1: the machine's host key, without its comment.
+    /// What `certify` stores for web1: the machine's host key, without its comment.
     fn pin(s: &TempDir) {
         fs::create_dir_all(s.path().join("vars/web1")).unwrap();
         fs::write(s.path().join("vars/web1/.hostkey"), "ssh-ed25519 AAAA\n").unwrap();
@@ -1036,8 +1036,8 @@ esac
         }
     }
 
-    fn request<'a>(krl: Option<&'a [u8]>, fingerprint: Option<&'a str>) -> Enrol<'a> {
-        Enrol {
+    fn request<'a>(krl: Option<&'a [u8]>, fingerprint: Option<&'a str>) -> Certify<'a> {
+        Certify {
             host: "web1",
             principals: &[],
             validity: "-5m:+52w",
@@ -1052,7 +1052,7 @@ esac
 
     /// Nothing is stored and nothing is sealed on the machine.
     fn untouched(s: &TempDir, store: &Store) {
-        for (var, file) in ENROL_VARS {
+        for (var, file) in CERTIFY_VARS {
             assert!(!store.has("web1", var, file), "{var} is stored");
         }
         let ssh = log(s.path(), "ssh.log");
@@ -1061,10 +1061,10 @@ esac
     }
 
     #[test]
-    fn enrol_confirmed() {
-        let (s, store, remote, id) = setup("enrol");
+    fn certify_confirmed() {
+        let (s, store, remote, id) = setup("certify");
         let mut asked = Vec::new();
-        let e = enrol(
+        let e = certify(
             &store,
             &id,
             &remote,
@@ -1118,9 +1118,9 @@ esac
     }
 
     #[test]
-    fn enrol_not_confirmed() {
-        let (s, store, remote, id) = setup("enrolno");
-        let e = enrol(
+    fn certify_not_confirmed() {
+        let (s, store, remote, id) = setup("certifyno");
+        let e = certify(
             &store,
             &id,
             &remote,
@@ -1136,10 +1136,10 @@ esac
     }
 
     #[test]
-    fn enrol_fingerprint_given() {
-        let (s, store, remote, id) = setup("enrolfp");
+    fn certify_fingerprint_given() {
+        let (s, store, remote, id) = setup("certifyfp");
         let mut never = |_: &str| -> bool { panic!("asked though --fingerprint was given") };
-        let e = enrol(
+        let e = certify(
             &store,
             &id,
             &remote,
@@ -1155,7 +1155,7 @@ esac
         assert!(!log(s.path(), "keygen.log").contains("-s "), "signed");
         untouched(&s, &store);
         // the right one goes through without a question
-        let e = enrol(
+        let e = certify(
             &store,
             &id,
             &remote,
@@ -1168,9 +1168,9 @@ esac
     }
 
     #[test]
-    fn enrol_with_a_token() {
-        let (s, store, remote, id) = setup("enroltoken");
-        enrol(
+    fn certify_with_a_token() {
+        let (s, store, remote, id) = setup("certifytoken");
+        certify(
             &store,
             &id,
             &remote,
@@ -1188,15 +1188,15 @@ esac
     }
 
     #[test]
-    fn enrol_principals() {
-        let (s, store, remote, id) = setup("enrolnames");
+    fn certify_principals() {
+        let (s, store, remote, id) = setup("certifynames");
         let names = ["web1.example.com".to_owned(), "10.0.0.1".to_owned()];
-        let req = Enrol {
+        let req = Certify {
             principals: &names,
             ..request(Some(b"KRL"), None)
         };
         let sign = signer(s.path(), false, None);
-        enrol(&store, &id, &remote, &sign, &req, &mut |_| true).unwrap();
+        certify(&store, &id, &remote, &sign, &req, &mut |_| true).unwrap();
         let keygen = log(s.path(), "keygen.log");
         assert!(
             keygen.contains("-I web1 -n web1.example.com,10.0.0.1 "),
@@ -1205,21 +1205,21 @@ esac
         // a principal is one name: ssh-keygen splits -n at commas
         for bad in ["a,b", "a b", ""] {
             let names = [bad.to_owned()];
-            let req = Enrol {
+            let req = Certify {
                 principals: &names,
                 ..request(Some(b"KRL"), None)
             };
             assert!(
-                enrol(&store, &id, &remote, &sign, &req, &mut |_| true).is_err(),
+                certify(&store, &id, &remote, &sign, &req, &mut |_| true).is_err(),
                 "{bad:?}"
             );
         }
     }
 
     #[test]
-    fn enrol_needs_a_krl() {
-        let (s, store, remote, id) = setup("enrolkrl");
-        let e = enrol(
+    fn certify_needs_a_krl() {
+        let (s, store, remote, id) = setup("certifykrl");
+        let e = certify(
             &store,
             &id,
             &remote,
@@ -1235,7 +1235,7 @@ esac
         store
             .set("web1", "sshd-revoked-keys", "krl", b"OLD-KRL")
             .unwrap();
-        let e = enrol(
+        let e = certify(
             &store,
             &id,
             &remote,
@@ -1259,9 +1259,9 @@ esac
     }
 
     #[test]
-    fn enrol_signing_fails() {
-        let (s, store, remote, id) = setup("enrolfail");
-        let e = enrol(
+    fn certify_signing_fails() {
+        let (s, store, remote, id) = setup("certifyfail");
+        let e = certify(
             &store,
             &id,
             &remote,
@@ -1276,14 +1276,14 @@ esac
     }
 
     #[test]
-    fn enrol_needs_the_vars_declared() {
-        let (s, store, remote, id) = setup("enrolundeclared");
+    fn certify_needs_the_vars_declared() {
+        let (s, store, remote, id) = setup("certifyundeclared");
         fs::remove_file(
             s.path()
                 .join(format!("machine{VARS_D}/sshd-host-cert.json")),
         )
         .unwrap();
-        let e = enrol(
+        let e = certify(
             &store,
             &id,
             &remote,
@@ -1323,7 +1323,7 @@ esac
         store
             .set("web1", "sshd-host-cert", "cert", b"CERT")
             .unwrap();
-        // what enrol stores: the host key, without its comment
+        // what certify stores: the host key, without its comment
         fs::write(s.path().join("vars/web1/.hostkey"), "ssh-ed25519 BBBB\n").unwrap();
         let only = ["sshd-host-cert".to_owned()];
         let e = push(&store, &id, &remote, "web1", &only).unwrap_err();
@@ -1342,7 +1342,7 @@ esac
             .unwrap();
         let e = push(&store, &id, &remote, "web1", &[]).unwrap_err();
         assert!(
-            e.0.contains("vars/web1/.hostkey") && e.0.contains("golconda vars enrol web1"),
+            e.0.contains("vars/web1/.hostkey") && e.0.contains("golconda vars certify web1"),
             "{e}"
         );
         // refused before ssh connects

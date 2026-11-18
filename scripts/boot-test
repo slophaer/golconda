@@ -3,7 +3,7 @@
 #
 # Usage: boot-test <disk.raw> --keys DIR [--secure-boot [--auto-enrol [--no-microsoft-keys]]]
 #                  [--tpm [--secure-boot-off]] [--timeout SECONDS]
-#                  [--ssh-test [--esp-creds | --imds | --enrol]]
+#                  [--ssh-test [--esp-creds | --imds | --certify]]
 #                  [--next DIR [--rotate | --fail-health | --fail-initrd | --fail-blessed --later DIR | --fail-panic |
 #                   --fail-pid1 | --tamper-index]]
 #                  [--factory-reset] [--allow-tcg]
@@ -64,26 +64,26 @@
 #   certificate, and take a second revocation list pushed while it runs. Before it signs the host
 #   key, the harness finds the key's fingerprint on the serial console, as an operator would
 #   (hostkey-fingerprint-on-console). After the push it also offers its own user certificate
-#   (cert-admin), because a release with the host certificate enrolled refuses plain keys.
+#   (cert-admin), because a release with the host certificate sealed refuses plain keys.
 #   Once sysupdate has filled the other slot, the running kernel checks that slot's signed root
 #   hash with systemd-veritysetup (verity-sig-builtin-accepted: the signature activates it);
 #   with --rotate the signer is the new db key, in db but not in the running kernel, and the
 #   kernel must refuse it (verity-sig-db-only-refused).
-# With --enrol (needs --ssh-test; not with --next, --esp-creds or --imds): one
+# With --certify (needs --ssh-test; not with --next, --esp-creds or --imds): one
 #   release from first boot to certificates (docs/design/trust.md, "Identity"). Boot an image that
 #   has hostCertificate and revokedKeys on from its first boot (image-smoke-test-next), with a
 #   second plain key, the bootstrap key, as the SMBIOS credential ssh.authorized_keys.root. Before
 #   anything is pushed, the bootstrap key logs in (bootstrap-key-login) and a good certificate is
-#   refused by the image's fallback list, which names the user CA (cert-refused-before-enrol). The
-#   harness then enrols the guest with one command, `golconda vars enrol`, as an operator does: a
-#   fingerprint that is not the console's is refused and nothing is stored or sealed
-#   (enrol-wrong-fingerprint-refused); with the console's fingerprint it signs the host key with
+#   refused by the image's fallback list, which names the user CA (cert-refused-before-certify).
+#   The harness then certifies the guest with one command, `golconda vars certify`, as an operator
+#   does: a fingerprint that is not the console's is refused and nothing is stored or sealed
+#   (certify-wrong-fingerprint-refused); with the console's fingerprint it signs the host key with
 #   tests/fixtures/snakeoil-host-ca and pushes the host certificate and a KRL
 #   (hostkey-fingerprint-on-console, admin-vars-pushed, admin-vars-sealed), and the same release
 #   presents the certificate, takes certificates, refuses the revoked one, refuses both plain keys
-#   though the KRL names neither (bootstrap-key-refused-after-enrol), and takes a second KRL. After
-#   the push the harness logs in with its own certificate (cert-admin). Needs the same tools as
-#   --next. With --tpm, after the reboot the certificate, the pushed KRL and the refusal of plain
+#   though the KRL names neither (bootstrap-key-refused-after-certify), and takes a second KRL.
+#   After the push the harness logs in with its own certificate (cert-admin). Needs the same tools
+#   as --next. With --tpm, after the reboot the certificate, the pushed KRL and the refusal of plain
 #   keys hold (host-cert-presented-after-reboot, cert-revoked-refused-after-reboot,
 #   bootstrap-key-refused-after-reboot). With --factory-reset as well, after the reset (see there).
 # With --tpm: the host key is sealed to TPM2 and the signed PCR 11 policy, and with --secure-boot
@@ -240,7 +240,7 @@
 #   boot with it (vars-resealed-pcr7), and after one more reboot the host key unseals
 #   (hostkey-unchanged).
 # With --secure-boot --tpm --secure-boot-off (needs --ssh-test; not with --next, --auto-enrol,
-#   --factory-reset, --enrol, --esp-creds or --imds): a Secure Boot image on firmware with Secure
+#   --factory-reset, --certify, --esp-creds or --imds): a Secure Boot image on firmware with Secure
 #   Boot off (docs/design/boot.md, "Secure Boot off"). After the first boot and its reboot the
 #   harness keeps PK, KEK and db and sets SecureBootEnable false. On 3 power-ons the initrd must
 #   refuse: the console has its line and "System halted", and nothing reboots or switches root
@@ -259,12 +259,12 @@
 #   (slots-kept). The reset rewrites the root partition only; the ESP and the /usr slots stay.
 #   The reset boot's console names the new host key, the one sshd presents, and it is not the first
 #   boot's (hostkey-new-on-console-after-reset); a user certificate logs in (cert-login-after-reset;
-#   the user CA is in the image). With --enrol (an image with revokedKeys) the certificate is
+#   the user CA is in the image). With --certify (an image with revokedKeys) the certificate is
 #   refused instead: the KRL went with the state (cert-refused-after-reset). Then
-#   `golconda vars enrol` refuses the first boot's fingerprint (reenrol-old-fingerprint-refused)
-#   and enrols the reset boot's (reenrol-after-reset): the host certificate is presented, the
+#   `golconda vars certify` refuses the first boot's fingerprint (recertify-old-fingerprint-refused)
+#   and certifies the reset boot's (recertify-after-reset): the host certificate is presented, the
 #   certificate logs in and plain keys are refused (host-cert-presented-after-reset,
-#   bootstrap-key-refused-after-reenrol). It prints the serial log of the reset boot.
+#   bootstrap-key-refused-after-recertify). It prints the serial log of the reset boot.
 #   The mode is two boots (the first boot and the
 #   reset boot), so give a --timeout large enough, such as 480, and do not combine it with --next.
 # With --next DIR --tamper-index: the signed index's negative control. The server sends SHA256SUMS
@@ -338,7 +338,7 @@ TAMPER_INDEX=0
 FACTORY_RESET=0
 ESP_CREDS=0
 IMDS=0
-ENROL=0
+CERTIFY=0
 SECURE_BOOT_OFF=0
 ALLOW_TCG=0
 STUB_CMDLINE=""
@@ -368,7 +368,7 @@ IMDS_NET_CRED=60-imds-ipv6
 . "$SCRIPT_DIR/boot-test-update.sh"
 
 usage() {
-  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot [--auto-enrol [--no-microsoft-keys]]] [--tpm [--secure-boot-off]] [--timeout SECONDS] [--ssh-test [--esp-creds | --imds | --enrol]] [--next DIR [--rotate | --fail-health | --fail-initrd | --fail-blessed --later DIR | --fail-panic | --fail-pid1 | --tamper-index]] [--factory-reset] [--allow-tcg]"
+  echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot [--auto-enrol [--no-microsoft-keys]]] [--tpm [--secure-boot-off]] [--timeout SECONDS] [--ssh-test [--esp-creds | --imds | --certify]] [--next DIR [--rotate | --fail-health | --fail-initrd | --fail-blessed --later DIR | --fail-panic | --fail-pid1 | --tamper-index]] [--factory-reset] [--allow-tcg]"
   exit "${1:-1}"
 }
 
@@ -393,7 +393,7 @@ while [ $# -gt 0 ]; do
     --factory-reset) FACTORY_RESET=1; shift ;;
     --esp-creds) ESP_CREDS=1; shift ;;
     --imds) IMDS=1; shift ;;
-    --enrol) ENROL=1; shift ;;
+    --certify) CERTIFY=1; shift ;;
     --secure-boot-off) SECURE_BOOT_OFF=1; shift ;;
     --allow-tcg) ALLOW_TCG=1; shift ;;
     --help|-h) usage 0 ;;
@@ -479,14 +479,14 @@ if [ "$FACTORY_RESET" = 1 ] && { [ -n "$NEXT" ] || [ "$ROTATE" = 1 ] || [ "$FAIL
   exit 1
 fi
 
-if [ "$ENROL" = 1 ] && { [ "$SSH_TEST" = 0 ] || [ -n "$NEXT" ] || [ "$ESP_CREDS" = 1 ] || [ "$IMDS" = 1 ]; }; then
-  echo "Error: --enrol needs --ssh-test, and is a first boot of its own: not with --next, --esp-creds or --imds" >&2
+if [ "$CERTIFY" = 1 ] && { [ "$SSH_TEST" = 0 ] || [ -n "$NEXT" ] || [ "$ESP_CREDS" = 1 ] || [ "$IMDS" = 1 ]; }; then
+  echo "Error: --certify needs --ssh-test, and is a first boot of its own: not with --next, --esp-creds or --imds" >&2
   exit 1
 fi
 if [ "$SECURE_BOOT_OFF" = 1 ] && { [ "$SECURE_BOOT" = 0 ] || [ "$TPM" = 0 ] || [ "$SSH_TEST" = 0 ] ||
-  [ -n "$NEXT" ] || [ "$AUTO_ENROL" = 1 ] || [ "$FACTORY_RESET" = 1 ] || [ "$ENROL" = 1 ] ||
+  [ -n "$NEXT" ] || [ "$AUTO_ENROL" = 1 ] || [ "$FACTORY_RESET" = 1 ] || [ "$CERTIFY" = 1 ] ||
   [ "$ESP_CREDS" = 1 ] || [ "$IMDS" = 1 ]; }; then
-  echo "Error: --secure-boot-off needs --secure-boot, --tpm and --ssh-test, and is a run of its own: not with --next, --auto-enrol, --factory-reset, --enrol, --esp-creds or --imds" >&2
+  echo "Error: --secure-boot-off needs --secure-boot, --tpm and --ssh-test, and is a run of its own: not with --next, --auto-enrol, --factory-reset, --certify, --esp-creds or --imds" >&2
   exit 1
 fi
 
@@ -541,13 +541,13 @@ if [ -n "$NEXT" ]; then
     exit 1
   fi
 fi
-if [ -n "$NEXT" ] || [ "$ENROL" = 1 ]; then
-  # --next and --enrol push the host certificate and the revocation list with `golconda vars` and
+if [ -n "$NEXT" ] || [ "$CERTIFY" = 1 ]; then
+  # --next and --certify push the host certificate and the revocation list with `golconda vars` and
   # age, as an operator would (docs/design/trust.md)
   GOLCONDA=${BOOT_TEST_GOLCONDA:-golconda}
   for tool in "$GOLCONDA" age age-keygen ssh-keygen; do
     if ! command -v "$tool" >/dev/null 2>&1; then
-      echo "Error: --next and --enrol push admin vars with $tool, and it is not on PATH (BOOT_TEST_GOLCONDA names the golconda binary)" >&2
+      echo "Error: --next and --certify push admin vars with $tool, and it is not on PATH (BOOT_TEST_GOLCONDA names the golconda binary)" >&2
       exit 1
     fi
   done
@@ -615,7 +615,7 @@ main() {
   echo "Factory reset: $FACTORY_RESET"
   echo "ESP credentials: $ESP_CREDS"
   echo "IMDS: $IMDS"
-  echo "Enrolment: $ENROL"
+  echo "Certify: $CERTIFY"
   echo "Timeout: ${TIMEOUT}s"
   echo "Work directory: $WORKDIR"
   echo ""
@@ -656,13 +656,13 @@ main() {
     if [ "$AUTO_ENROL" = 1 ]; then
       check_auto_enrol || RESULT=1
     fi
-    if [ "$ENROL" = 1 ] && [ "$RESULT" = 0 ]; then
-      test_enrol || RESULT=1
+    if [ "$CERTIFY" = 1 ] && [ "$RESULT" = 0 ]; then
+      test_certify || RESULT=1
     fi
     if [ "$TPM" = 1 ] && [ "$RESULT" = 0 ]; then
       test_reboot || RESULT=1
-      if [ "$ENROL" = 1 ] && [ "$RESULT" = 0 ]; then
-        test_enrol_after_reboot
+      if [ "$CERTIFY" = 1 ] && [ "$RESULT" = 0 ]; then
+        test_certify_after_reboot
       fi
     fi
     if [ "$ESP_CREDS" = 1 ] && [ "$RESULT" = 0 ]; then
@@ -675,8 +675,8 @@ main() {
       if [ "$ESP_CREDS" = 1 ] && [ "$RESULT" = 0 ]; then
         test_esp_after_reset || RESULT=1
       fi
-      if [ "$ENROL" = 1 ] && [ "$RESULT" = 0 ]; then
-        test_reenrol_after_reset || RESULT=1
+      if [ "$CERTIFY" = 1 ] && [ "$RESULT" = 0 ]; then
+        test_recertify_after_reset || RESULT=1
       fi
     elif [ -n "$NEXT" ] && [ "$RESULT" = 0 ]; then
       test_next || RESULT=1

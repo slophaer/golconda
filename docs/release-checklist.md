@@ -64,8 +64,8 @@ follow three rules:
   images. The test CA and principals, and the host certificate and KRL in the next release, go in
   together, after the deploy tool exists. With `--next` the first release logs in with a plain key,
   the harness pushes the host certificate and the KRL with the deploy tool, and the next release
-  turns them on. With `--enrol` the next release's image boots alone and the push happens in its
-  first boot: the enrolment that [Trust: Enrolment](design/trust.md#enrolment) describes.
+  turns them on. With `--certify` the next release's image boots alone and the push happens in its
+  first boot, as [Trust: Host certificate](design/trust.md#host-certificate) describes.
 - **No new harness logic.** The harness calls the deploy tool rather than copying it, and each check
   is one function that every mode calls.
 
@@ -91,8 +91,8 @@ scripts/verify --boot-set "$SB" --boot-set "$SB --next @next" \
   --boot-set "$SB --next @next --fail-health" --boot-set "$SB --next @next --tamper-index" \
   --boot-set "$SB --imds" --boot-set "$SB --imds --next @next" \
   --boot-set "$NOSB --esp-creds" --boot-set "$NOSB --next @next" \
-  --boot-set "@image=image-smoke-test-next $SB --enrol" --boot-set "$SB --secure-boot-off" \
-  --boot-set "@image=image-smoke-test-next $SB --enrol --factory-reset"
+  --boot-set "@image=image-smoke-test-next $SB --certify" --boot-set "$SB --secure-boot-off" \
+  --boot-set "@image=image-smoke-test-next $SB --certify --factory-reset"
 ```
 
 Every mode runs on QEMU's user network `169.254.169.0/24`, so `--imds` and `--next` also run
