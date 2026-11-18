@@ -27,6 +27,7 @@ checks the `/usr` signature, so a changed `/usr` alone does not run
 
 ## 1. Keys and the build host
 
+Get `scripts/` and `golconda` first ([Making a release: Get the tools](release.md#get-the-tools)).
 The keys are the ones of [Making a release](release.md): `scripts/make-keys /srv/golconda-keys`. The
 `secureboot/` pair signs the UKI (which no firmware checks here) and `/usr`; the kernel built for
 this image trusts `secureboot/db.crt`. The build host is the one of [Build host](build-host.md).

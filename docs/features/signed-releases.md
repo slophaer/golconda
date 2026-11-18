@@ -37,6 +37,8 @@ Secure Boot, where nothing else checks a UKI before it runs
 
 `scripts/make-keys` makes a key set once. `golconda release build` signs each release with it: Nix
 builds the image unsigned, and the signer signs it on the release host, outside Nix.
+`scripts/make-keys` and `golconda` come from a Golconda tree
+([Making a release: Get the tools](../reference/release.md#get-the-tools)).
 
 ```sh
 scripts/make-keys /srv/golconda-keys

@@ -56,6 +56,7 @@ not forgotten, it is refused ([Principles](principles.md)).
 | the release key on a token       | through PKCS#7 manifests (systemd v263) or an OpenPGP card ([Signing: Keys on a token](signing.md#keys-on-a-token))                                                                                                           |
 | read-only `/etc`                 | a confext built from the image makes `/etc` read-only                                                                                                                                                                         |
 | image diff                       | `golconda diff A B` compares the `config.json` of two built images                                                                                                                                                            |
+| operator tools                   | `scripts/make-keys`, `scripts/provision-esp` and `golconda` as one prebuilt package; they come from a Golconda tree ([Making a release: Get the tools](../reference/release.md#get-the-tools))                                |
 | management console               | a web daemon with OIDC sign-in, deploy jobs and an audit log, a terminal UI, and commands that edit the document                                                                                                              |
 
 ## Out of scope by design

@@ -44,6 +44,9 @@ policy with keys you make, so a swapped kernel opens nothing.
 
 ## Using it
 
+`scripts/make-keys` and `golconda` come from a Golconda tree
+([Making a release: Get the tools](../reference/release.md#get-the-tools)).
+
 ```sh
 scripts/make-keys /srv/golconda-keys
 ```

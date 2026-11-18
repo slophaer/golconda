@@ -14,6 +14,35 @@ certificate in the firmware. The key layout and the reason for each key are in
 | 5. rotate                | the old key set, and the same firmware access                                                               |
 | 6. keys on a token       | a PKCS#11 token (a YubiKey) and its module, for the `db` and PCR keys                                       |
 
+## Get the tools
+
+`scripts/make-keys`, `scripts/provision-esp` and the `golconda` command come from a Golconda tree,
+not from your repository. Use the tree at the revision that your pin names. Read that revision in
+your repository, from the uptrack pin or from `flake.lock` ([Pinning Golconda](pinning.md)). With
+the plain `fetchTarball` recipe, the revision is in the url of your Nix file.
+
+```sh
+# an uptrack pin
+rev=$(nix-instantiate --eval -E '(builtins.fromTOML (builtins.readFile ./pins/golconda/sources.toml)).pin.rev' | tr -d '"')
+# a flake
+rev=$(nix-instantiate --eval -E 'let l = builtins.fromJSON (builtins.readFile ./flake.lock); in l.nodes.${l.nodes.root.inputs.golconda}.locked.rev' | tr -d '"')
+```
+
+Clone Golconda outside your repository, because `golconda release build` refuses an untracked file
+there. Check out the revision and build `golconda` from it:
+
+```sh
+git clone https://github.com/slophaer/golconda ~/golconda
+git -C ~/golconda checkout "$rev"
+nix-build ~/golconda -A packages.x86_64-linux.golconda-cli -o ~/golconda/result-cli
+export PATH=~/golconda/result-cli/bin:$PATH
+```
+
+On this page and on [Deploying to Hetzner Cloud](hetzner-cloud.md), `scripts/` is the `scripts/`
+directory of that tree, such as `~/golconda/scripts/make-keys`. `nix-build` and the scripts need the
+daemon of [Build host](build-host.md): the scripts build their own tools with it. When the pin
+moves, check out the new revision and build `golconda` again.
+
 ## 1. Make the key set
 
 ```sh

@@ -111,7 +111,8 @@ off, also on a cloud, and the command line keeps the generator from pulling the 
 
 ## Using it
 
-`scripts/provision-esp` writes the credentials onto the ESP of a disk image, in place:
+`scripts/provision-esp` writes the credentials onto the ESP of a disk image, in place. It is in a
+Golconda tree ([Making a release: Get the tools](../reference/release.md#get-the-tools)):
 
 ```sh
 cp --sparse=always <out>/disk.raw web1.raw

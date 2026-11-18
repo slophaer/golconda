@@ -123,7 +123,9 @@ scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --ssh-te
 For your own servers, keep `server.toml` in your own repository and pin Golconda there: with uptrack
 (copy `examples/golconda.nix` and `examples/pins/`), or as a flake input
 (`nix flake init -t github:slophaer/golconda`). [Pinning Golconda](docs/reference/pinning.md) has
-both and a plain `fetchTarball`.
+both and a plain `fetchTarball`. To make keys and build a release, get the tools from the Golconda
+tree at the revision of your pin
+([Making a release: Get the tools](docs/reference/release.md#get-the-tools)).
 
 ## Where to read next
 

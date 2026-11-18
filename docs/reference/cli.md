@@ -32,11 +32,13 @@ With `image-smoke-test-rotated` in place of `image-smoke-test-next`, add `--rota
 
 ## The `golconda` tool
 
-Build it with `nix-build -A packages.x86_64-linux.golconda-cli`; the binary is
-`result/bin/golconda`. It runs where an operator works, not on a machine, and is not part of an
-image. The source is `cli/` (`cli/README.md` is for developers). It calls other programs, found on
-`PATH`: `age`, `ssh`, `ssh-keygen`, `gpgv`, `git`, `rclone` and `nix-build`. A variable replaces
-some of them, with arguments if you like (`GOLCONDA_SSH="ssh -p 2222"`):
+Build it from the Golconda tree at the revision of your pin
+([Making a release: Get the tools](release.md#get-the-tools)). In a Golconda checkout,
+`nix-build -A packages.x86_64-linux.golconda-cli` puts it at `result/bin/golconda`. It runs where an
+operator works, not on a machine, and is not part of an image. The source is `cli/` (`cli/README.md`
+is for developers). It calls other programs, found on `PATH`: `age`, `ssh`, `ssh-keygen`, `gpgv`,
+`git`, `rclone` and `nix-build`. A variable replaces some of them, with arguments if you like
+(`GOLCONDA_SSH="ssh -p 2222"`):
 
 | variable                | program                                         | used by                                             |
 | ----------------------- | ----------------------------------------------- | --------------------------------------------------- |

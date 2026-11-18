@@ -30,6 +30,10 @@ Two arguments matter for every recipe:
 Golconda's own inputs (repkgs, adios and the rest) come with the tree: `pins/` fetches each one by
 its hash. You do not pin them. No recipe needs nixpkgs.
 
+The pin gives the tree to Nix only. The operator tools (`scripts/make-keys`,
+`scripts/provision-esp`, `golconda`) come from a clone at the same revision
+([Making a release: Get the tools](release.md#get-the-tools)).
+
 ## First: the Nix that builds it
 
 Every Golconda output is a content-addressed derivation, and repkgs' fetchers are dynamic
