@@ -234,11 +234,11 @@ so the vars are sealed without it first and with it again at the end.
 
    ```sh
    golconda release build -f server.toml --keys /srv/golconda-keys-2 \
-     --pcr-keys /srv/golconda-keys --index-keys /srv/golconda-keys
+     --pcr-keys /srv/golconda-keys
    ```
 
-   `--keys` is the new `db` key, in a new directory; the old directory keeps the PCR key and the
-   release key, which the running image trusts. The layout is in
+   `--keys` is the new `db` key, in a new directory, with the old set's release key; the old
+   directory keeps the PCR key. The running image trusts both. The layout is in
    [Trust: Deployment keys](trust.md#deployment-keys). The old loader starts the new UKI, because
    both certificates are in `db`. At the first good boot `golconda-loader-update.service` installs
    the new loader: the systemd-boot version is the same and the bytes are not. The old loader stays

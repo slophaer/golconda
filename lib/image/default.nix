@@ -24,8 +24,8 @@ in
   # are made inside the store because they are fixtures: a production key never enters it. `out` is
   # the whole set, `public` the public halves (the chain's publicKeys, the boot test's --keys). A
   # `variant` is a second set for the key rotation test (docs/design/bootloader.md); `reusePkKek`
-  # gives it that set's PK and KEK. The builder sees keys.nu, enrol.nu and common.nu only, so an
-  # edit of another step keeps the keys and every unsigned output.
+  # gives it that set's PK, KEK and release key. The builder sees keys.nu, enrol.nu and common.nu
+  # only, so an edit of another step keeps the keys and every unsigned output.
   throwawayKeys =
     {
       buildSystem,

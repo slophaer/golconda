@@ -108,9 +108,9 @@ they were made; `scripts/make-keys --auth-only` with the PK and KEK keys writes 
 newer one, for machines enrolled after that. A machine already enrolled keeps its `dbx`: nothing on
 it writes a new one, and a `dbx` update there is *(later)*
 ([Making a release: 1](../reference/release.md#1-make-the-key-set)). A `db` rotation keeps the PCR
-key and the release key from the old set (`pcrPublicKeys` and `indexPublicKeys` for `lib.mkImage`,
-`--pcr-keys` and `--index-keys` for the signer;
-[Boot loader: Key rotation](bootloader.md#key-rotation),
+key from the old set (`pcrPublicKeys` for `lib.mkImage`, `--pcr-keys` for the signer), and the new
+set holds the old set's release key, which cannot change yet
+([Boot loader: Key rotation](bootloader.md#key-rotation),
 [Releases: The signed index](releases.md#the-signed-index)).
 
 The `db` key signs both the UKI (`ukify --secureboot-private-key`, `lib/image/uki.nu`) and the

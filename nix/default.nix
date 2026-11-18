@@ -78,13 +78,12 @@ in
 
       # A test image: the chain over `config` with the public halves of throwaway keys, signed
       # in the store by the signer a release host runs (lib/image/signer.nix), with its proofs
-      # (lib/image/smoke.nix). `pcrKeys` and `indexKeys` default to `keys`.
+      # (lib/image/smoke.nix). `pcrKeys` defaults to `keys`.
       testImage =
         {
           config,
           keys ? throwawayKeys,
           pcrKeys ? keys,
-          indexKeys ? keys,
           onToken ? false,
         }:
         let
@@ -92,11 +91,10 @@ in
             inherit system config;
             publicKeys = keys.public;
             pcrPublicKeys = pcrKeys.public;
-            indexPublicKeys = indexKeys.public;
           };
           # onToken: the db and PCR keys on a SoftHSM token (lib/image/token.nu)
           signed = (if onToken then chain.signWithTestToken else chain.signWithTestKeys) {
-            inherit keys pcrKeys indexKeys;
+            inherit keys pcrKeys;
           };
         in
         chain
@@ -149,7 +147,7 @@ in
         inherit pkgs sources;
         buildSystem = system;
         variant = "rotated";
-        # a db rotation keeps the PK and the KEK (scripts/make-keys --reuse-pk-kek)
+        # a db rotation keeps the PK, the KEK and the release key (scripts/make-keys --reuse-pk-kek)
         reusePkKek = throwawayKeys;
       };
     in
@@ -283,7 +281,6 @@ in
           b = smokeTest.signWithTestKeys {
             keys = noPkKek;
             pcrKeys = throwawayKeys;
-            indexKeys = throwawayKeys;
           };
         in
         import ./run.nix set "check-release-without-pk-kek" [ ] (
@@ -354,8 +351,6 @@ in
           };
           keys = rotatedKeys;
           pcrKeys = throwawayKeys;
-          # the running image trusts only its own release key: a db rotation keeps it
-          indexKeys = throwawayKeys;
         }).smoke;
     });
 

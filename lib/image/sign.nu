@@ -16,26 +16,26 @@ use uki.nu
 use disk.nu
 use enrol.nu
 
-# private-keys DB PCR INDEX: the private keys of the three key sets (each a directory; the same
-# one unless a rotation keeps the PCR or the release key, docs/reference/release.md). Each key is
+# private-keys DB PCR: the private keys of the two key sets (each a directory; the same one unless
+# a rotation keeps the PCR key, docs/reference/release.md); the release key is DB's. Each key is
 # a file path, or a `pkcs11:` URI when the set holds the key on a token: secureboot/db.pkcs11 and
 # pcr/pcr.pkcs11 in place of db.key and pcr.key, one line with the URI (RFC 7512). The token
 # signs; the key never leaves it (use-token). The release key is a file: gpg signs the index,
 # and gpg takes no PKCS#11 key (docs/design/trust.md, Keys on a token).
-export def private-keys [db: string, pcr: string, index: string]: nothing -> record {
-  for k in [$db $pcr $index] {
+export def private-keys [db: string, pcr: string]: nothing -> record {
+  for k in [$db $pcr] {
     if ($k | str starts-with "pkcs11:") {
       error make {msg: $"($k) is a pkcs11: URI, but a key set is a directory. Put a key on a token in secureboot/db.pkcs11 or pcr/pcr.pkcs11 \(docs/reference/release.md\)."}
     }
   }
-  let index_uri = ($index | path join release/index.pkcs11 | path expand)
+  let index_uri = ($db | path join release/index.pkcs11 | path expand)
   if ($index_uri | path exists) {
     error make {msg: $"($index_uri): the release key cannot be on a PKCS#11 token, because gpg takes no PKCS#11 key. Keep it as release/index.key \(docs/design/trust.md\)."}
   }
   {
     dbKey: (key-of $db secureboot/db)
     pcrKey: (key-of $pcr pcr/pcr)
-    indexKey: (key-of $index release/index)
+    indexKey: (key-of $db release/index)
   }
 }
 
@@ -155,12 +155,12 @@ def enrol-files [m: record, set: string, db_cert: string]: nothing -> list<strin
 }
 
 # sign UNSIGNED KEYSETS OUT [MODULE]: the release of the unsigned outputs UNSIGNED (a directory
-# with manifest.json), signed with KEYSETS {db pcr index} (key set directories), written to OUT.
+# with manifest.json), signed with KEYSETS {db pcr} (key set directories), written to OUT.
 # OUT may exist, but must not hold a release yet. MODULE is the PKCS#11 module of a token that
 # holds a key (use-token).
 export def main [unsigned: string, sets: record, out: string, pkcs11_module?: string] {
   let m = (open $"($unsigned)/manifest.json")
-  let priv = (private-keys $sets.db $sets.pcr $sets.index)
+  let priv = (private-keys $sets.db $sets.pcr)
   # the OpenSSL configuration for a token: it goes on every exit path
   let token_dir = (mktemp -d -t "golconda-pkcs11-XXXXXX")
   try {

@@ -58,7 +58,8 @@ Proven: the rows of [What is proven](../proven.md) that name `release-index`, `i
 
 - The signature does not stop a replay of an older signed index. sysupdate installs only newer
   versions, and downgrade protection is *(later)*.
-- The image carries one release key. Changing that key takes two releases.
+- The release key cannot change yet. The image trusts only the release key it carries, and a `db`
+  rotation keeps it.
 - Root, and whoever writes the state partition, can change what an update trusts: systemd-pull also
   trusts a key in `/etc/systemd/import-pubring.pgp`, and a transfer file in `/etc/sysupdate.d`
   replaces the one of the same name in `/usr`.

@@ -2,7 +2,8 @@
 # layout of scripts/make-keys (docs/reference/release.md), with the enrolment files of lib/image/enrol.nu.
 #
 # A set with `reusePkKek` (another set's `out`) is a db rotation: it takes that set's PK.crt and
-# KEK.crt, has no PK or KEK key, and its .auth files are signed by that set's keys.
+# KEK.crt, has no PK or KEK key, its .auth files are signed by that set's keys, and it takes that
+# set's release key, which cannot change.
 #
 # Output `public` holds the public halves alone, so the closure of the unsigned chain has no
 # private key (lib/image/chain.nix publicKeys). The boot test reads its PK.crt and KEK.crt
@@ -42,7 +43,12 @@ export def build [] {
   ^openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out $"($out)/pcr/pcr.key" e> /dev/null
   ^openssl pkey -in $"($out)/pcr/pcr.key" -pubout -out $"($out)/pcr/pcr.pub"
   log "pcr/pcr.key, .pub"
-  index-key $"($out)/release" $"Golconda smoke release index($suffix)"
+  if $reuse == null {
+    index-key $"($out)/release" $"Golconda smoke release index($suffix)"
+  } else {
+    ^cp -R $"($reuse)/release" $"($out)/release"
+    log $"release/index.key, .pgp: ($reuse)'s"
+  }
   let public = $a.outputs.public
   for f in [secureboot/db.crt secureboot/PK.crt secureboot/KEK.crt secureboot/auth pcr/pcr.pub release/index.pgp] {
     mkdir ($"($public)/($f)" | path dirname)

@@ -55,27 +55,27 @@ key-set $a "Test A"
 key-set $b "Test B"
 
 # --- the key checks
-let priv_a = (private-keys $a $a $a)
+let priv_a = (private-keys $a $a)
 check-keys $priv_a (public-of $a)
 ok "a key set passes against its own public halves"
 
 fails "another db key is refused" "is not the key of the db certificate" {||
-  check-keys (private-keys $b $a $a) (public-of $a)
+  check-keys (private-keys $b $a) (public-of $a)
 }
 fails "another PCR key is refused" "is not the key of the PCR public key" {||
-  check-keys (private-keys $a $b $a) (public-of $a)
+  check-keys (private-keys $a $b) (public-of $a)
 }
 fails "another release key is refused" "but this image trusts" {||
-  check-keys (private-keys $a $a $b) (public-of $a)
+  check-keys (private-keys $a $a) ((public-of $a) | merge {indexKeyring: $"($b)/release/index.pgp"})
 }
-# a db rotation: the new db key with the PCR and release keys of the first set
-check-keys (private-keys $b $a $a) {dbCert: $"($b)/secureboot/db.crt" pcrPublicKey: $"($a)/pcr/pcr.pub" indexKeyring: $"($a)/release/index.pgp"}
-ok "a rotation takes the db key of one set and the PCR and release keys of another"
+# a db rotation: the new set's db and release keys with the PCR key of the first set
+check-keys (private-keys $b $a) ((public-of $b) | merge {pcrPublicKey: $"($a)/pcr/pcr.pub"})
+ok "a rotation takes the db and release keys of one set and the PCR key of another"
 fails "a PKCS#11 URI as a key set is refused: a key set is a directory" "secureboot/db.pkcs11" {||
-  private-keys "pkcs11:token=golconda" $a $a
+  private-keys "pkcs11:token=golconda" $a
 }
 fails "a key set without its key file is refused" "no such key" {||
-  private-keys $"($tmp)/none" $a $a
+  private-keys $"($tmp)/none" $a
 }
 # the signer's scratch directory for a token goes when a step fails
 let token_dirs = {|| glob $"($env.TMPDIR? | default /tmp)/golconda-pkcs11-*" | sort | length }
@@ -206,7 +206,7 @@ def token-set [dir: string, db: string, pcr: string] {
 }
 let ta = $"($tmp)/token-a"
 token-set $ta db-a pcr-a
-let priv_t = (private-keys $ta $ta $ta)
+let priv_t = (private-keys $ta $ta)
 if $priv_t.dbKey != (uri db-a) or $priv_t.pcrKey != (uri pcr-a) {
   error make {msg: $"private-keys did not read the URIs: ($priv_t)"}
 }
@@ -227,35 +227,35 @@ ok "keys on the token pass against the public halves the image carries"
 let tb = $"($tmp)/token-b"
 token-set $tb db-b pcr-a
 fails "a db key on the token that is not the certificate's is refused" "is not the key of the db certificate" {||
-  check-keys (private-keys $tb $tb $tb) (public-of $a)
+  check-keys (private-keys $tb $tb) (public-of $a)
 }
 let tp = $"($tmp)/token-pcr"
 token-set $tp db-a db-b
 fails "a PCR key on the token that is not the image's is refused" "is not the key of the PCR public key" {||
-  check-keys (private-keys $tp $tp $tp) (public-of $a)
+  check-keys (private-keys $tp $tp) (public-of $a)
 }
 # the db key on the token, the PCR key in a file (a rotation keeps the old set's)
-check-keys (private-keys $ta $a $a) (public-of $a)
+check-keys (private-keys $ta $a) (public-of $a)
 ok "the db key from a token and the PCR key from a file"
 
 let both = $"($tmp)/both"
 token-set $both db-a pcr-a
 ^cp $"($a)/secureboot/db.key" $"($both)/secureboot/"
 fails "a key set with both a key file and a URI for one key is refused" "both" {||
-  private-keys $both $both $both
+  private-keys $both $both
 }
 let bad = $"($tmp)/bad-uri"
 token-set $bad db-a pcr-a
 "/srv/keys/db.key\n" | save -f $"($bad)/secureboot/db.pkcs11"
 fails "a .pkcs11 file that holds no pkcs11: URI is refused" "not a pkcs11: URI" {||
-  private-keys $bad $bad $bad
+  private-keys $bad $bad
 }
 let rel_t = $"($tmp)/release-token"
 token-set $rel_t db-a pcr-a
 rm $"($rel_t)/release/index.key"
 "pkcs11:token=golconda-test;object=index\n" | save -f $"($rel_t)/release/index.pkcs11"
 fails "the release key cannot be a PKCS#11 URI: gpg signs the index" "release key" {||
-  private-keys $rel_t $rel_t $rel_t
+  private-keys $rel_t $rel_t
 }
 
 # the root hash signature from the token: verifies, and is the file key's bytes

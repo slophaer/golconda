@@ -207,17 +207,17 @@ vendor's keys.
 
 A `db` rotation signs the next loader, UKIs and verity root hashes with a new key. The PCR key and
 the release key do not change, and neither do the PK and the KEK, so make a second set that keeps
-the first set's PK and KEK, and keep the first:
+the first set's PK, KEK and release key, and keep the first:
 
 ```sh
 scripts/make-keys --reuse-pk-kek /srv/golconda-keys /srv/golconda-keys-2
-golconda release build -f server.toml --keys /srv/golconda-keys-2 \
-  --pcr-keys /srv/golconda-keys --index-keys /srv/golconda-keys
+golconda release build -f server.toml --keys /srv/golconda-keys-2 --pcr-keys /srv/golconda-keys
 ```
 
-`--keys` gives the new `db` key; `--pcr-keys` and `--index-keys` name the old set, whose PCR key and
-release key stay: the running image trusts only its own release key. Nix copies the public halves
-from the same three places (`publicKeys`, `pcrPublicKeys`, `indexPublicKeys` of `lib.mkImage`).
+`--keys` gives the new `db` key and the release key, a copy of the old set's: the running image
+trusts only its own release key, and the release key cannot change yet. `--pcr-keys` names the old
+set, whose PCR key stays. Nix copies the public halves from the same two places (`publicKeys`,
+`pcrPublicKeys` of `lib.mkImage`).
 
 Both certificates must be in `db` while a slot still holds a release signed with the old key, and
 the old certificate goes to `dbx` only after both slots hold a release signed with the new one. The

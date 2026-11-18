@@ -30,6 +30,8 @@ export def build [] {
   # once: the set has no PK or KEK key, as a deployment's need not
   ^cp -R $"($a.keys)/secureboot/PK.crt" $"($a.keys)/secureboot/KEK.crt" $"($a.keys)/secureboot/auth" $"($set)/secureboot/"
   ^cp $"($a.pcrKeys)/pcr/pcr.pub" $"($set)/pcr/"
+  # the release key stays a file in the set
+  ^cp -R $"($a.keys)/release" $set
   log "token golconda-test: db, pcr"
-  ^$"($a.unsigned)/sign" $a.unsigned --keys $set --pcr-keys $set --index-keys $a.indexKeys --pkcs11-module $module --out $out
+  ^$"($a.unsigned)/sign" $a.unsigned --keys $set --pcr-keys $set --pkcs11-module $module --out $out
 }

@@ -2,9 +2,10 @@
 # make-keys [--auth-only] [--reuse-pk-kek OLD] DIR
 # Make a deployment key set in DIR for `golconda release build`. With --auth-only, write the
 # enrolment files (secureboot/auth) of the set in DIR again: for a newer dbx, or a set without them.
-#   --reuse-pk-kek OLD  a db rotation: copy OLD's PK.crt and KEK.crt, make no PK or KEK key, and
-#                       sign the enrolment files with OLD's keys. The script cannot tell a rotation
-#                       from a new deployment, so a rotation names the old set.
+#   --reuse-pk-kek OLD  a db rotation: copy OLD's PK.crt and KEK.crt, make no PK or KEK key, sign
+#                       the enrolment files with OLD's keys, and copy OLD's release key, which
+#                       cannot change. The script cannot tell a rotation from a new deployment, so
+#                       a rotation names the old set.
 # DIR must be new or empty and outside any git work tree. The script makes it 0700 and each file
 # 0600, and prints the paths and fingerprints, never key material. The layout is in
 # docs/reference/release.md.
@@ -195,7 +196,8 @@ fi
 run_openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$stage/pcr/pcr.key"
 run_openssl pkey -in "$stage/pcr/pcr.key" -pubout -out "$stage/pcr/pcr.pub"
 
-# the release key, in a scratch home that goes with its agent (a short path: the agent's socket)
+# the release key, in a scratch home that goes with its agent (a short path: the agent's socket);
+# a rotation copies the old set's
 mkdir "$stage/release" "$stage/g"
 gpg_run() {
   if ! GNUPGHOME="$stage/g" gpg --batch "$@" 2>"$stage/gpg.log"; then
@@ -204,10 +206,14 @@ gpg_run() {
     exit 1
   fi
 }
-gpg_run --passphrase '' --quick-gen-key "golconda release index $(date -u +%Y%m%d) <index@golconda.invalid>" ed25519 sign never
-gpg_run --export --output "$stage/release/index.pgp"
-gpg_run --pinentry-mode loopback --passphrase '' --armor --export-secret-keys --output "$stage/release/index.key"
-index_fpr=$(GNUPGHOME="$stage/g" gpg --batch --with-colons --list-keys | awk -F: '$1 == "fpr" { print $10; exit }')
+if [ -n "$old" ]; then
+  cp "$old/release/index.key" "$old/release/index.pgp" "$stage/release/"
+else
+  gpg_run --passphrase '' --quick-gen-key "golconda release index $(date -u +%Y%m%d) <index@golconda.invalid>" ed25519 sign never
+  gpg_run --export --output "$stage/release/index.pgp"
+  gpg_run --pinentry-mode loopback --passphrase '' --armor --export-secret-keys --output "$stage/release/index.key"
+fi
+index_fpr=$(GNUPGHOME="$stage/g" gpg --batch --with-colons --show-keys "$stage/release/index.pgp" | awk -F: '$1 == "fpr" { print $10; exit }')
 GNUPGHOME="$stage/g" gpgconf --kill gpg-agent 2>/dev/null || true
 
 mv "$stage/secureboot" "$stage/pcr" "$stage/release" "$dir"

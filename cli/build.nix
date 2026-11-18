@@ -11,7 +11,6 @@
   config,
   keys,
   pcrKeys,
-  indexKeys,
   system,
 }:
 let
@@ -49,5 +48,4 @@ in
   inherit config system;
   publicKeys = keys;
   pcrPublicKeys = pcrKeys;
-  indexPublicKeys = indexKeys;
 }).unsigned

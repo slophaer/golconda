@@ -160,10 +160,10 @@ golconda release list --to hetzner:updates/web
   keys stay where they are ([Trust: Signing outside Nix](../design/trust.md#signing-outside-nix)).
   `--out` names a new directory for the release (default `result-release`): `disk.raw`, `release/`,
   and `unsigned`, the link to the unsigned outputs; an existing one is refused, and a failed build
-  removes it. `--pcr-keys` and `--index-keys` name the key sets of the PCR and release keys when a
-  `db` rotation keeps them ([Making a release: Rotate a key](release.md#5-rotate-a-key)). `--system`
-  is the Nix system to evaluate for (default: this host's). `--pkcs11-module FILE` names the PKCS#11
-  module of the token that holds the `db` or PCR key, when the key set names it by URI
+  removes it. `--pcr-keys` names the key set of the PCR key when a `db` rotation keeps it; the
+  release key is always `--keys`' ([Making a release: Rotate a key](release.md#5-rotate-a-key)).
+  `--system` is the Nix system to evaluate for (default: this host's). `--pkcs11-module FILE` names
+  the PKCS#11 module of the token that holds the `db` or PCR key, when the key set names it by URI
   ([Making a release: Keys on a token](release.md#6-keys-on-a-token)).
 - `check` verifies the index (the four lines in their fixed order), every digest, the shared image
   id and version in the names, the UUIDs against the root hash, and the signature against the key

@@ -138,6 +138,12 @@ holds "$keys2/secureboot/auth/microsoft/db.auth" "$keys2/secureboot/db.crt" || f
 cmp -s "$keys/secureboot/auth/microsoft/KEK.auth" "$keys2/secureboot/auth/microsoft/KEK.auth" ||
   holds "$keys2/secureboot/auth/microsoft/KEK.auth" "$keys/secureboot/KEK.crt" || fail "rotation: KEK.auth enrols the old KEK"
 grep -qF "copies of $keys" "$tmp/out2" || fail "rotation: the report names the old set"
+# the release key cannot change: the new set has the old set's
+for f in index.key index.pgp; do
+  cmp -s "$keys/release/$f" "$keys2/release/$f" || fail "rotation: release/$f is the old set's"
+done
+[ "$(grep '^release key fingerprint:' "$tmp/out2")" = "$(printf '%s\n' "$out" | grep '^release key fingerprint:')" ] ||
+  fail "rotation: the report names the old release key"
 "$repo/scripts/make-keys" --reuse-pk-kek "$keys2" "$tmp/keys3" >/dev/null 2>&1 && fail "--reuse-pk-kek needs a set with PK.key and KEK.key"
 
 # --auth-only: a set without enrolment files gets them, and a PK and a KEK of its own; the command is the one the signer's refusal names (tests/sign/enrol-test.nu)

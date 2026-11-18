@@ -751,10 +751,9 @@ pub struct BuildRequest<'a> {
     /// the key set (scripts/make-keys). Nix reads its three public halves; the signer reads the
     /// private keys where they are, outside Nix
     pub keys: &'a Path,
-    /// the key sets of the PCR key and the release key, when a `db` rotation keeps them
-    /// (default: `keys`)
+    /// the key set of the PCR key, when a `db` rotation keeps it (default: `keys`). The release
+    /// key is always `keys`'
     pub pcr_keys: Option<&'a Path>,
-    pub index_keys: Option<&'a Path>,
     /// the PKCS#11 module of the token a key set names its db or PCR key on
     /// (`secureboot/db.pkcs11`, `pcr/pcr.pkcs11`); the signer loads it
     pub pkcs11_module: Option<&'a Path>,
@@ -1011,7 +1010,6 @@ fn build_and_check(
     let abs = |p: &Path| path::absolute(p).map_err(|e| Error(e.to_string()));
     let keys = abs(req.keys)?;
     let pcr_keys = abs(req.pcr_keys.unwrap_or(req.keys))?;
-    let index_keys = abs(req.index_keys.unwrap_or(req.keys))?;
     let out = abs(&req.out)?;
     if out.symlink_metadata().is_ok() {
         return err(format!(
@@ -1020,25 +1018,18 @@ fn build_and_check(
         ));
     }
     fs::create_dir(&out).map_err(|e| Error(format!("{}: {e}", out.display())))?;
-    let made = sign_release(
-        req,
-        tools,
-        golconda,
-        document,
-        &out,
-        [&keys, &pcr_keys, &index_keys],
-    )
-    .and_then(|()| check(&out.join("release"), &keyring(&index_keys), tools.gpgv))
-    .and_then(|r| {
-        if (r.index.id.as_str(), r.index.version) == (id, version) {
-            Ok(r)
-        } else {
-            err(format!(
-                "the build made {} {}, not {id} {version}",
-                r.index.id, r.index.version
-            ))
-        }
-    });
+    let made = sign_release(req, tools, golconda, document, &out, [&keys, &pcr_keys])
+        .and_then(|()| check(&out.join("release"), &keyring(&keys), tools.gpgv))
+        .and_then(|r| {
+            if (r.index.id.as_str(), r.index.version) == (id, version) {
+                Ok(r)
+            } else {
+                err(format!(
+                    "the build made {} {}, not {id} {version}",
+                    r.index.id, r.index.version
+                ))
+            }
+        });
     let release = match made {
         Ok(r) => r,
         Err(e) => {
@@ -1069,7 +1060,7 @@ fn build_and_check(
 }
 
 /// nix-build of mkImage's unsigned outputs, linked at OUT/unsigned, then their signer with the
-/// key sets [db, pcr, index] into OUT. The private keys are read by the signer only, on this
+/// key sets [db and release, pcr] into OUT. The private keys are read by the signer only, on this
 /// host, or stay on a token it reaches through `req.pkcs11_module`; Nix sees the paths of the
 /// key sets and copies their public halves.
 fn sign_release(
@@ -1078,7 +1069,7 @@ fn sign_release(
     golconda: &Golconda,
     document: &Path,
     out: &Path,
-    [keys, pcr_keys, index_keys]: [&Path; 3],
+    [keys, pcr_keys]: [&Path; 2],
 ) -> Result<()> {
     let unsigned = out.join("unsigned");
     let (name, tree) = match golconda {
@@ -1096,9 +1087,6 @@ fn sign_release(
         "--argstr".as_ref(),
         "pcrKeys".as_ref(),
         pcr_keys.as_os_str(),
-        "--argstr".as_ref(),
-        "indexKeys".as_ref(),
-        index_keys.as_os_str(),
         "--argstr".as_ref(),
         "system".as_ref(),
         req.system.as_ref(),
@@ -1124,8 +1112,6 @@ fn sign_release(
         keys.as_os_str(),
         "--pcr-keys".as_ref(),
         pcr_keys.as_os_str(),
-        "--index-keys".as_ref(),
-        index_keys.as_os_str(),
     ];
     if let Some(m) = &module {
         sign.extend(["--pkcs11-module".as_ref(), m.as_os_str()]);
@@ -2100,7 +2086,6 @@ mod tests {
                 system: "x86_64-linux",
                 keys: &self.tmp.path().join("keys"),
                 pcr_keys: None,
-                index_keys: None,
                 pkcs11_module,
                 version: version.map(v),
                 dest: dest.then_some(&d),
@@ -2193,9 +2178,8 @@ mod tests {
         assert_eq!(&args[1..3], &["--arg", "config"]);
         assert_eq!(&args[4..7], &["--argstr", "keys", keys]);
         assert_eq!(&args[7..10], &["--argstr", "pcrKeys", keys]);
-        assert_eq!(&args[10..13], &["--argstr", "indexKeys", keys]);
         assert_eq!(
-            &args[16..19],
+            &args[13..16],
             &["--arg", "golconda", s.repo.to_str().unwrap()]
         );
         assert!(
@@ -2216,8 +2200,6 @@ mod tests {
                 "--keys",
                 keys,
                 "--pcr-keys",
-                keys,
-                "--index-keys",
                 keys,
                 "--out",
                 result.to_str().unwrap()
@@ -2387,25 +2369,18 @@ mod tests {
     }
 
     #[test]
-    fn rotation_key_sets_reach_nix_and_the_signer_and_the_out_must_be_new() {
+    fn a_rotation_pcr_key_set_reaches_nix_and_the_signer_and_the_out_must_be_new() {
         let s = scene();
         let (doc, iets) = s.checkout();
         s.out("20261106.1", "20261106.1");
-        // the release key of another set: the check reads its keyring
+        // the PCR key of another set; the release key is always --keys'
         let old = s.tmp.path().join("old");
-        fs::create_dir_all(old.join("release")).unwrap();
-        fs::copy(
-            s.tmp.path().join("keys/release/index.pgp"),
-            old.join("release/index.pgp"),
-        )
-        .unwrap();
         let out = s.tmp.path().join("release-1");
         let req = BuildRequest {
             document: &doc,
             system: "x86_64-linux",
             keys: &s.tmp.path().join("keys"),
             pcr_keys: Some(&old),
-            index_keys: Some(&old),
             pkcs11_module: None,
             version: Some(v("20261106.1")),
             dest: None,
@@ -2423,14 +2398,11 @@ mod tests {
             &args[7..10],
             &["--argstr", "pcrKeys", old.to_str().unwrap()]
         );
-        assert_eq!(
-            &args[10..13],
-            &["--argstr", "indexKeys", old.to_str().unwrap()]
-        );
+        assert!(!log.contains("indexKeys"), "{log}");
         let signed = fs::read_to_string(s.tmp.path().join("sign.log")).unwrap();
         assert!(
             signed.contains(&format!("--pcr-keys {}", old.display()))
-                && signed.contains(&format!("--index-keys {}", old.display())),
+                && !signed.contains("--index-keys"),
             "{signed}"
         );
         // a second build into the same directory is refused before anything is built, and

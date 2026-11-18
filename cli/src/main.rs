@@ -107,10 +107,6 @@ enum Releases {
         /// The key set whose PCR key signs, when a db rotation keeps it (default: --keys)
         #[arg(long, value_name = "DIR")]
         pcr_keys: Option<PathBuf>,
-        /// The key set whose release key signs SHA256SUMS, when a db rotation keeps it
-        /// (default: --keys)
-        #[arg(long, value_name = "DIR")]
-        index_keys: Option<PathBuf>,
         /// The PKCS#11 module of the token that holds the db or PCR key, when a key set names
         /// it by URI (secureboot/db.pkcs11, pcr/pcr.pkcs11), e.g. a YubiKey's libykcs11.so
         #[arg(long, value_name = "FILE")]
@@ -336,7 +332,6 @@ fn run_release(command: Releases) -> Result<String, Box<dyn error::Error>> {
             doc,
             keys,
             pcr_keys,
-            index_keys,
             pkcs11_module,
             version,
             to,
@@ -351,7 +346,6 @@ fn run_release(command: Releases) -> Result<String, Box<dyn error::Error>> {
                 system: &doc.system,
                 keys: &keys,
                 pcr_keys: pcr_keys.as_deref(),
-                index_keys: index_keys.as_deref(),
                 pkcs11_module: pkcs11_module.as_deref(),
                 version: match version.as_str() {
                     "auto" => None,

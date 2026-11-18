@@ -14,7 +14,6 @@ let
     config = ../../examples/server.toml;
     inherit keys;
     pcrKeys = keys;
-    indexKeys = keys;
     system = "x86_64-linux";
   };
   inherit
