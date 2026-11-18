@@ -392,9 +392,9 @@ pub struct Pushed {
 }
 
 /// Pushes the admin vars `only` (every admin var the machine declares when empty) from the
-/// store to `host`: checks that the machine has the host key `enrol` stored (when it stored
-/// one) and that every file is stored before it sends any, seals each on the machine, then
-/// restarts the union of their consumers once.
+/// store to `host`: checks that the machine has the host key `enrol` stored and that every
+/// file is stored before it sends any, seals each on the machine, then restarts the union of
+/// their consumers once.
 pub fn push(
     store: &Store,
     identity: &Path,
@@ -402,6 +402,14 @@ pub fn push(
     host: &str,
     only: &[String],
 ) -> Result<Pushed> {
+    let pinned = store.hostkey(host)?;
+    let Ok(want) = fs::read(&pinned) else {
+        return err(format!(
+            "no host key stored for {host} ({}): run `golconda vars enrol {host}` first; \
+             nothing is pushed",
+            pinned.display()
+        ));
+    };
     let declared = remote.manifests()?;
     let admin = |name: &str| {
         declared
@@ -428,16 +436,13 @@ pub fn push(
     if !missing.is_empty() {
         return err(format!("not stored for {host}: {}", missing.join(", ")));
     }
-    let pinned = store.hostkey(host)?;
-    if let Ok(want) = fs::read(&pinned) {
-        let got = key_of(&remote.public(HOSTKEY.0, HOSTKEY.1)?);
-        if key_of(&want) != got {
-            return err(format!(
-                "{host} has the host key {got}, not the one enrolled ({}): another machine, or \
-                 this one after a factory reset (enrol it again); nothing is pushed",
-                pinned.display()
-            ));
-        }
+    let got = key_of(&remote.public(HOSTKEY.0, HOSTKEY.1)?);
+    if key_of(&want) != got {
+        return err(format!(
+            "{host} has the host key {got}, not the one enrolled ({}): another machine, or \
+             this one after a factory reset (enrol it again); nothing is pushed",
+            pinned.display()
+        ));
     }
     let mut pushed = Pushed::default();
     let mut consumers = BTreeSet::new();
@@ -812,6 +817,12 @@ esac
         (s, store, remote, id)
     }
 
+    /// What `enrol` stores for web1: the machine's host key, without its comment.
+    fn pin(s: &TempDir) {
+        fs::create_dir_all(s.path().join("vars/web1")).unwrap();
+        fs::write(s.path().join("vars/web1/.hostkey"), "ssh-ed25519 AAAA\n").unwrap();
+    }
+
     #[test]
     fn words() {
         for ok in ["web1", "sshd-host-cert", "cert", "key.pub", "a_b"] {
@@ -931,6 +942,7 @@ esac
     #[test]
     fn push_all() {
         let (s, store, remote, id) = setup("push");
+        pin(&s);
         store
             .set("web1", "sshd-host-cert", "cert", b"CERT")
             .unwrap();
@@ -966,6 +978,7 @@ esac
     #[test]
     fn push_checks_everything_first() {
         let (s, store, remote, id) = setup("pushmissing");
+        pin(&s);
         store
             .set("web1", "sshd-host-cert", "cert", b"CERT")
             .unwrap();
@@ -977,7 +990,8 @@ esac
 
     #[test]
     fn push_some() {
-        let (_scratch, store, remote, id) = setup("pushsome");
+        let (s, store, remote, id) = setup("pushsome");
+        pin(&s);
         store
             .set("web1", "sshd-host-cert", "cert", b"CERT")
             .unwrap();
@@ -1321,8 +1335,24 @@ esac
     }
 
     #[test]
+    fn push_needs_a_stored_host_key() {
+        let (s, store, remote, id) = setup("pushnohostkey");
+        store
+            .set("web1", "sshd-host-cert", "cert", b"CERT")
+            .unwrap();
+        let e = push(&store, &id, &remote, "web1", &[]).unwrap_err();
+        assert!(
+            e.0.contains("vars/web1/.hostkey") && e.0.contains("golconda vars enrol web1"),
+            "{e}"
+        );
+        // refused before ssh connects
+        assert_eq!(log(s.path(), "ssh.log"), "");
+    }
+
+    #[test]
     fn list_and_public() {
         let (scratch, store, remote, id) = setup("list");
+        pin(&scratch);
         store
             .set("web1", "sshd-host-cert", "cert", b"CERT")
             .unwrap();

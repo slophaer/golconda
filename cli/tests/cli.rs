@@ -112,6 +112,7 @@ fn vars_set_push_list() {
             "shift; case \"$*\" in\n\
              \"cat /usr/lib/golconda/vars.d/\"*) printf '%s' '{{\"class\":\"admin\",\"consumers\":[\"sshd.service\"],\"credentials\":[\"c.cert\"],\"files\":[\"cert\"],\"name\":\"c\"}}' ;;\n\
              \"[ ! -d \"*) ;;\n\
+             \"cat /var/lib/golconda/vars/sshd-hostkey/pub/key.pub\") echo 'ssh-ed25519 AAAA root@web1' ;;\n\
              *) printf '%s|%s\\n' \"$*\" \"$(cat)\" >> {} ;;\n\
              esac\n",
             log.display()
@@ -135,6 +136,13 @@ fn vars_set_push_list() {
     assert!(stdout(&o).contains("vars/web1/c/cert.age"));
     let o = run(&["vars", "list", "web1"], "");
     assert_eq!(stdout(&o), "c cert stored not-sealed\n");
+    // push needs the host key that enrol stores
+    let o = run(&["vars", "push", "-i", "id.txt", "web1"], "");
+    assert_eq!(o.status.code(), Some(1));
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert!(err.contains("golconda vars enrol web1"), "{err}");
+    assert!(!log.exists(), "something was sealed");
+    fs::write(dir.join("vars/web1/.hostkey"), "ssh-ed25519 AAAA\n").unwrap();
     let o = run(&["vars", "push", "-i", "id.txt", "web1"], "");
     assert_eq!(stdout(&o), "sealed c.cert\nrestarted sshd.service\n");
     let pushed = fs::read_to_string(&log).unwrap();

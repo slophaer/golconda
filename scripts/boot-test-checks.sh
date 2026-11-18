@@ -10,7 +10,8 @@ vars() {
 
 # push_admin_vars: sign the guest's host key with the host CA once its fingerprint matches the
 # first boot's console line, store the certificate and a KRL naming cert-revoked with golconda
-# vars, and push them. --next runs the steps one by one; --enrol runs `golconda vars enrol`. From
+# vars, and push them. --next reads the key with `golconda vars pub` first; --enrol checks a
+# wrong fingerprint first. Both then run `golconda vars enrol`. From
 # then on a release with hostCertificate on refuses plain keys, so the harness also offers the
 # certificate cert-admin (GUEST_EXTRA_ID)
 push_admin_vars() {
@@ -51,10 +52,8 @@ EOF
     RC=0
     (
       cd "$WORKDIR" || exit 1
-      ssh-keygen -q -s ssh/host-ca -h -I boot-test -n localhost ssh/host.pub
-      vars set boot-test sshd-host-cert cert < ssh/host-cert.pub
-      vars set boot-test sshd-revoked-keys krl < ssh/krl
-      vars push -i age.key boot-test
+      vars enrol -i age.key boot-test --ca-key ssh/host-ca --principal localhost --krl ssh/krl \
+        --fingerprint "$FP"
     ) > "$WORKDIR/push.out" 2>&1 || RC=1
   fi
   cat "$WORKDIR/push.out"

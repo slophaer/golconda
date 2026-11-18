@@ -71,9 +71,7 @@ one word, so `user@host` is refused: give the machine an alias in `~/.ssh/config
 `HostName` and `User root`).
 
 ```sh
-golconda vars pub web1 sshd-hostkey key.pub > host.pub
-ssh-keygen -s host_ca -h -I web1 -n web1 host.pub    # the host CA signs it: host-cert.pub
-golconda vars set web1 sshd-host-cert cert < host-cert.pub
+golconda vars enrol -i ~/.config/age/key.txt web1 --ca-key host_ca --krl fleet.krl  # first
 golconda vars set web1 sshd-revoked-keys krl < revoked.krl
 golconda vars push -i ~/.config/age/key.txt web1     # every admin var web1 declares
 golconda vars list web1                              # stored here? sealed there?
@@ -81,9 +79,10 @@ golconda vars list web1                              # stored here? sealed there
 
 - `set HOST VAR FILE` reads the value from standard input and stores it encrypted.
 - `push HOST [VAR…]` reads the manifests from the machine itself, never from an evaluation. It
-  checks that every file is stored before it sends any, and restarts each consumer once. When
-  `enrol` stored the host key (`vars/<host>/.hostkey`), it refuses a machine with another one. `-i`
-  (or `GOLCONDA_AGE_IDENTITY`) names the identity that decrypts.
+  checks that every file is stored before it sends any, and restarts each consumer once. It needs
+  the host key that `enrol` stored (`vars/<host>/.hostkey`): without that file it refuses and names
+  the `enrol` command, and it refuses a machine with another host key. `-i` (or
+  `GOLCONDA_AGE_IDENTITY`) names the identity that decrypts.
 - `list HOST` says, for each file, whether it is stored here and sealed there. One more line says
   when the machine seals without PCR 7, from `golconda-var-run --reseal --without-pcr7` until the
   next `--reseal` ([Trust: PCR 7](../design/trust.md#pcr-7)).

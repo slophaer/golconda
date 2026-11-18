@@ -71,8 +71,8 @@ For an admin var, write one call:
 `v.admin { name = "sshd-host-cert"; files = [ "cert" ]; consumers = [ "sshd.service" ]; }`. A push
 restarts the `consumers`.
 
-Admin vars are pushed with `golconda vars set`, `push`, `list` and `pub`
-([Commands](../reference/cli.md#golconda-vars)).
+Admin vars are pushed with `golconda vars set`, `push`, `list` and `pub`. `push` needs the host key
+that `golconda vars enrol` stored first ([Commands](../reference/cli.md#golconda-vars)).
 
 ## Status
 
