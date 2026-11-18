@@ -22,9 +22,16 @@ let
   };
   # the public halves of a key set, committed: the chain reads nothing else of a key set
   publicKeys = ../fixtures/public-keys;
+  # the internal entry point, as the test images use it: an attrset config (lib.mkImage takes a
+  # TOML path)
+  chain = import ../../lib/image/chain.nix {
+    inherit sources;
+    mkSystem = args: import ../../lib/system.nix (args // { inherit sources; });
+    imageLib = import ../../lib/image { };
+  };
   image =
     config:
-    f.lib.mkImage {
+    chain {
       inherit config publicKeys;
       system = "x86_64-linux";
     };
@@ -134,12 +141,6 @@ in
   ))
   (check "mkImage: the chain builds its initrd from the downstream set" (
     let
-      image =
-        config:
-        f.lib.mkImage {
-          inherit config publicKeys;
-          system = "x86_64-linux";
-        };
       replaced = image ../fixtures/downstream-initrd/server.toml;
       plain = image {
         "/system" = {
@@ -166,8 +167,7 @@ in
     let
       i = image config;
       m = i.unsigned.manifest;
-      refused =
-        args: !(builtins.tryEval (builtins.deepSeq (f.lib.mkImage args).unsigned.drvPath true)).success;
+      refused = args: !(builtins.tryEval (builtins.deepSeq (chain args).unsigned.drvPath true)).success;
       inStore = p: builtins.match "/nix/store/[a-z0-9]{32}-(db.crt|pcr.pub|index.pgp)" p != null;
     in
     # an unknown argument is refused, a private-key directory too, whatever the type

@@ -45,14 +45,20 @@ let
   # The image chain over one system, unsigned, as a release builds it (lib/image/chain.nix).
   imageChain = import ../lib/image/chain.nix { inherit sources mkSystem imageLib; };
 
-  # mkImage { config; publicKeys; pcrPublicKeys ? publicKeys; indexPublicKeys ? publicKeys;
+  # lib.mkImage { config; publicKeys; pcrPublicKeys ? publicKeys; indexPublicKeys ? publicKeys;
   #   system ? builtins.currentSystem; } →
   #   { unsigned; usrTree; initrd; signer; pkgs; signWithTestKeys; }
-  # `config` is a TOML path or options (as lib/system.nix takes it); `publicKeys` is the key set's
-  # directory, of which the chain reads the public halves only (lib/image/chain.nix). Nothing is
-  # signed: `golconda release build` runs `unsigned`'s signer with the private keys, outside the
-  # store. `signWithTestKeys` signs in the store, for throwaway keys only.
-  mkImage = imageChain;
+  # `config` is the path to the TOML document, as for lib.mkSystem; the test images give
+  # imageChain an attrset. `publicKeys` is the key set's directory, of which the chain reads the
+  # public halves only (lib/image/chain.nix). Nothing is signed: `golconda release build` runs
+  # `unsigned`'s signer with the private keys, outside the store. `signWithTestKeys` signs in the
+  # store, for throwaway keys only.
+  mkImage =
+    args:
+    if !builtins.isPath (args.config or null) then
+      throw "golconda: lib.mkImage: config must be a path to the TOML document"
+    else
+      imageChain args;
 in
 {
   packages =

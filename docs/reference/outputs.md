@@ -50,7 +50,7 @@ with `lib/pins.nix`, the reader `lib.readPins` exports:
 ```nix
 let
   image = (import ./default.nix).lib.mkImage {
-    config = ./server.toml;                   # what lib.mkSystem takes
+    config = ./server.toml;                   # the path to the document, as for lib.mkSystem
     publicKeys = "/srv/golconda-keys";        # the key set: only its public halves are read
     # pcrPublicKeys = "/srv/golconda-old";    # pcr/pcr.pub from another set; default: publicKeys
     # indexPublicKeys = "/srv/golconda-old";  # release/index.pgp from another set; default: publicKeys
@@ -74,6 +74,7 @@ Nothing it builds is signed, and no private key is read
   it gets enter the store: never give it a deployment's keys. `signWithTestToken` takes the same
   arguments and signs with the `db` and PCR keys on a SoftHSM token (`image-smoke-test-pkcs11`).
 
+`config` is the path to the TOML document; an attribute set is an error, as for `lib.mkSystem`.
 `publicKeys` is a path or an absolute string. From it the chain copies three files into the store,
 each alone: `secureboot/db.crt`, `pcr/pcr.pub` and `release/index.pgp`; a directory that also holds
 the private keys gives nothing else. A `db.crt` or `pcr.pub` that holds a private key is an error

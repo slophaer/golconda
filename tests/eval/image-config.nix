@@ -1,5 +1,5 @@
-# mkSystem's extraFragments beside the configured modules, and what the public lib.mkSystem
-# takes (the image chain's own checks, which need the real package set, are in
+# mkSystem's extraFragments beside the configured modules, and what the public lib.mkSystem and
+# lib.mkImage take (the image chain's own checks, which need the real package set, are in
 # tests/real-packages/image-config.nix).
 {
   check,
@@ -61,5 +61,21 @@ in
       inherit config;
       system = "x86_64-linux";
     }
+  ))
+  # lib.mkImage takes the document as lib.mkSystem does: it refuses an attrset config before
+  # it reads a package or a key (only the result's outer set is forced here)
+  (check "lib.mkImage takes config as a path only" (
+    let
+      takes =
+        config:
+        (tryEval (
+          f.lib.mkImage {
+            inherit config;
+            publicKeys = ../fixtures/public-keys;
+            system = "x86_64-linux";
+          }
+        )).success;
+    in
+    takes document && !(takes config)
   ))
 ]

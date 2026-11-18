@@ -166,7 +166,7 @@ your `server.toml`, with `examples/pins/golconda/sources.toml` as `pins/golconda
 fetches Golconda from that pin, a pin in uptrack's format; a flake and a plain `fetchTarball` work
 too ([Pinning Golconda](pinning.md)). Inside this repository, pass the tree itself:
 `import ./examples/golconda.nix { golconda = import ./default.nix; }`. `lib.mkImage` takes the same
-`config` and builds it into an unsigned image, which its signer signs outside Nix
+`config`, a path only, and builds it into an unsigned image, which its signer signs outside Nix
 ([Outputs](outputs.md#libmkimage)).
 
 ```nix
