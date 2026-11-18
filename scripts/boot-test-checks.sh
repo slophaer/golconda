@@ -353,20 +353,21 @@ check_no_failed() {
 # check_clock NAME: the clock the kernel read at boot was kept (every boot is checked, each under
 # its NAME). PID 1 resets a clock more than 15 years past systemd's epoch, and until timesyncd
 # syncs, DNSSEC and TLS times fail. Under KVM the guest reads the host's time (kvm-clock, not the
-# RTC), so the journal must have no "further ahead than" reset message.
+# RTC), so the journal must have no "further ahead than" reset message. The running release's
+# os-release records the epoch (image/os-release.nix)
 check_clock() {
   echo ""
   echo "=== the clock ($1) ==="
   RC=0
-  EPOCH_YEAR=$(sed -n 's/^date = "\([0-9]*\)-.*/\1/p' "$REPO_DIR/packages/systemd/sources.toml")
+  EPOCH=$(guest cat /usr/lib/os-release 2>/dev/null |
+    sed -n 's/^GOLCONDA_SYSTEMD_TIME_EPOCH="\([0-9][0-9]*\)"$/\1/p')
   J=$(guest journalctl -b -o short-unix --no-pager -q 2>&1) || RC=1
   RESET=$(echo "$J" | grep -F "further ahead than" || true)
   FIRST=$(echo "$J" | sed -n 's/^\([0-9][0-9]*\)\..*/\1/p' | sort -n | head -1)
-  YEAR=$(date -u -d "@${FIRST:-0}" +%Y 2>/dev/null) || YEAR=0
-  echo "epoch year: ${EPOCH_YEAR:-unknown}; oldest journal entry of this boot: year $YEAR"
+  echo "epoch: ${EPOCH:-none}; oldest journal entry of this boot: ${FIRST:-none}"
   [ -z "$RESET" ] || { echo "reset: $RESET"; RC=1; }
-  [ -n "$EPOCH_YEAR" ] && [ "$YEAR" -ge "$EPOCH_YEAR" ] || RC=1
-  verdict "$1 (no clock reset in the journal; no entry before $EPOCH_YEAR)" $RC
+  [ -n "$EPOCH" ] && [ "${FIRST:-0}" -ge "$EPOCH" ] || RC=1
+  verdict "$1 (no clock reset in the journal; no entry before the epoch ${EPOCH:-none})" $RC
 }
 
 # The sealed sshd host key: a local var's credential (modules/lib/var.nix)

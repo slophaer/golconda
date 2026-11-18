@@ -97,6 +97,8 @@ let
         # the programs it declares, or null, as repkgs exposes them
         bin = args.bin or null;
         patches = args.patches or [ ];
+        # the [pin] date, SOURCE_DATE_EPOCH's source, as repkgs exposes it
+        sourceDate = toml.pin.date or null;
         # what repkgs' builders read: the arguments, with the set's overrides merged into env
         spec = args // {
           env = (args.env or { }) // merge;

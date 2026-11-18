@@ -1,8 +1,6 @@
-# os-release template
-#
-# Rendered to /usr/lib/os-release on the image.
-# {version} is substituted at build time with IMAGE_VERSION.
-# {arch} is substituted with the target platform's cpu (x86_64, aarch64, ...).
+# os-release template, rendered to /usr/lib/os-release on the image (lib/usr-tree.nix).
+# {version} is IMAGE_VERSION, {arch} the target platform's cpu (x86_64, aarch64, ...),
+# {systemdEpoch} systemd's clock epoch.
 #
 # Required fields for systemd discovery:
 #   ID - for partition and UKI matching
@@ -23,4 +21,6 @@
   VARIANT_ID = "server";
   # Architecture for the target platform (not the build host)
   ARCHITECTURE = "{arch}";
+  # systemd's clock epoch (time-epoch), in seconds: PID 1 never sets the clock before it
+  GOLCONDA_SYSTEMD_TIME_EPOCH = "{systemdEpoch}";
 }

@@ -13,6 +13,8 @@ let
   inherit (builtins)
     attrNames
     concatStringsSep
+    filter
+    head
     map
     replaceStrings
     stringLength
@@ -35,13 +37,15 @@ let
   quoteOsReleaseValue =
     v: "\"" + replaceStrings [ "\\" "$" "\"" "`" ] [ "\\\\" "\\$" "\\\"" "\\`" ] v + "\"";
 
-  # Render os-release from the template, with the target platform's architecture. The image
-  # id (ID=, IMAGE_ID=) is /system.name: what sysupdate matches artifacts against.
+  # Render os-release from the template, with the target platform's architecture and systemd's
+  # clock epoch. The image id (ID=, IMAGE_ID=) is /system.name: what sysupdate matches artifacts
+  # against.
   renderOsRelease =
     {
       version,
       platform,
       imageId,
+      systemdEpoch,
     }:
     let
       arch = platform.cpu;
@@ -56,10 +60,12 @@ let
               [
                 "{version}"
                 "{arch}"
+                "{systemdEpoch}"
               ]
               [
                 version
                 arch
+                (toString systemdEpoch)
               ]
               osReleaseTemplate.${k}
           )
@@ -155,9 +161,13 @@ in
       }) roots;
 
       epoch = versionLib.toEpoch version;
+      # packages/systemd leaves time-epoch unset, so meson takes SOURCE_DATE_EPOCH: the [pin] date
+      # of its sources.toml (repkgs' sourceDate) at midnight UTC
+      systemd = head (filter (p: p.pname or null == "systemd") roots);
       osRelease = renderOsRelease {
         inherit version platform;
         imageId = composerOutput.name;
+        systemdEpoch = versionLib.toEpoch (replaceStrings [ "-" ] [ "" ] systemd.sourceDate + ".0");
       };
 
       script = ''

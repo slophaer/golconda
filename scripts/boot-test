@@ -47,7 +47,7 @@
 #   1), watchdog-armed (watchdog0 is the i6300esb, active, timeout 30 s; RebootWatchdogSec=10min),
 #   console-journal (a new journal line appears on tty1, /dev/vcs1),
 #   and clock-not-reset (this boot's journal, journalctl -b, has no clock reset by PID 1 and no
-#   entry before the year of systemd's time-epoch). Each later boot checks the clock again under
+#   entry before systemd's time-epoch, GOLCONDA_SYSTEMD_TIME_EPOCH in the guest's os-release). Each later boot checks the clock again under
 #   its own name: clock-not-reset-after-reboot (--tpm), -after-update (--next), -after-fallback
 #   (--fail-health) and -after-refused-update (--tamper-index).
 #   With the test image it also logs in with certificates from tests/fixtures/snakeoil-user-ca

@@ -89,11 +89,13 @@ in
         cpu = "aarch64";
       };
       osX86 = usrTreeLib.renderOsRelease {
+        systemdEpoch = 0;
         imageId = "t";
         version = "20261031.1";
         platform = x86;
       };
       osArm = usrTreeLib.renderOsRelease {
+        systemdEpoch = 0;
         imageId = "t";
         version = "20261031.1";
         platform = arm;

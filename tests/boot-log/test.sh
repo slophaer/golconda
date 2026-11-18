@@ -138,6 +138,7 @@ BEFORE_EPOCH='315532800.000001 boot-test kernel: Linux version 6.17
 315532804.000000 boot-test systemd[1]: Reached target multi-user.target - Multi-User System.'
 guest() {
   case "$*" in
+    *os-release*) echo 'GOLCONDA_SYSTEMD_TIME_EPOCH="1793404800"' ;;
     *"journalctl -b "*short-unix*) printf '%s\n' "$FAKE_JOURNAL" ;;
     *journalctl*short-unix*) printf '%s\n%s\n' "$BEFORE_EPOCH" "$FAKE_JOURNAL" ;;
   esac

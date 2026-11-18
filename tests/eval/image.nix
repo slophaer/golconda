@@ -15,7 +15,10 @@ let
   inherit (builtins)
     attrNames
     filter
+    fromTOML
     isString
+    readFile
+    replaceStrings
     split
     tryEval
     ;
@@ -89,6 +92,7 @@ in
   (check "usr-tree: renderOsRelease includes version and arch" (
     let
       osRel = usrTreeLib.renderOsRelease {
+        systemdEpoch = 0;
         imageId = "t";
         version = "20261031.1";
         platform = {
@@ -99,6 +103,13 @@ in
     hasInfix "VERSION_ID=\"20261031.1\"\n" osRel
     && hasInfix "IMAGE_VERSION=\"20261031.1\"\n" osRel
     && hasInfix "ARCHITECTURE=\"x86_64\"\n" osRel
+  ))
+  (check "usr-tree: os-release records systemd's clock epoch, its pin date at midnight UTC" (
+    let
+      date = (fromTOML (readFile ../../packages/systemd/sources.toml)).pin.date;
+      epoch = toEpoch (replaceStrings [ "-" ] [ "" ] date + ".0");
+    in
+    hasInfix "\nGOLCONDA_SYSTEMD_TIME_EPOCH=\"${toString epoch}\"\n" mkSystemFixture.usrTree.drvAttrs.osRelease
   ))
   # 12. The image chain's pure parts (lib/image)
   (check "image: the UKI's installed name carries the boot counter" (
@@ -170,6 +181,7 @@ in
   (check "image: os-release carries /system.name as ID and IMAGE_ID" (
     let
       os = usrTreeLib.renderOsRelease {
+        systemdEpoch = 0;
         version = "20261031.1";
         platform = {
           name = "x86_64-linux";
@@ -183,6 +195,7 @@ in
   (check "image: os-release quotes every value so a shell can source it" (
     let
       os = usrTreeLib.renderOsRelease {
+        systemdEpoch = 0;
         version = "20261031.1";
         platform = {
           name = "x86_64-linux";
