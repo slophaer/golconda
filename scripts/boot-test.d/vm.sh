@@ -89,8 +89,8 @@ enroll_keys() {
   virt-fw-vars \
     --input "$VARS" \
     --output "$VARS.new" \
-    --set-pk "$GUID" "$DB_CERT" \
-    --add-kek "$GUID" "$DB_CERT" \
+    --set-pk "$GUID" "$KEYS_DIR/secureboot/PK.crt" \
+    --add-kek "$GUID" "$KEYS_DIR/secureboot/KEK.crt" \
     --add-db "$GUID" "$DB_CERT" \
     $DB_NEXT \
     --secure-boot

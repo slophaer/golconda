@@ -138,9 +138,9 @@ the public halves of the throwaway keys. A release signs the same way, outside N
 Do not start the disk with a bare `qemu-system-x86_64` and a plain OVMF. A plain OVMF has no Secure
 Boot, so nothing checks the loader or the UKI. The kernel still checks `/usr` against the `db`
 certificate built into it, and IPE enforces ([Boot test](boot-test.md)). The harness enrols the
-throwaway db key into the variable store of OVMF's Secure Boot build (`qemu-system`'s `share/qemu`),
-starts QEMU with SMM and a 40 GiB overlay (room for `root`), and passes the host name `boot-test` as
-an SMBIOS credential.
+throwaway set's PK, KEK and db certificates into the variable store of OVMF's Secure Boot build
+(`qemu-system`'s `share/qemu`), starts QEMU with SMM and a 40 GiB overlay (room for `root`), and
+passes the host name `boot-test` as an SMBIOS credential.
 
 ```sh
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --timeout 120

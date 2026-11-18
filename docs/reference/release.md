@@ -203,11 +203,11 @@ cannot change `db` or `dbx` itself
 machine, `bootctl reboot-to-firmware true` and a reboot reach the firmware menu
 ([Boot loader: Recovery](../design/bootloader.md#recovery)).
 
-The boot test runs both. `--secure-boot` writes an OVMF variable store offline with
-`virt-fw-vars --add-db`. `--secure-boot --auto-enrol` boots from the empty store and lets
-systemd-boot enrol, with and without Microsoft's keys (`auto-enrolled`, `db-enrolled`,
-`dbx-enrolled`). It then checks that a second Setup Mode enrols nothing (`no-reenrol`;
-`scripts/boot-test`).
+The boot test runs both. `--secure-boot` writes the set's `PK.crt`, `KEK.crt` and `db.crt` into an
+OVMF variable store offline with `virt-fw-vars` (`pk-kek-enrolled`). `--secure-boot --auto-enrol`
+boots from the empty store and lets systemd-boot enrol, with and without Microsoft's keys
+(`auto-enrolled`, `db-enrolled`, `dbx-enrolled`). It then checks that a second Setup Mode enrols
+nothing (`no-reenrol`; `scripts/boot-test`).
 
 **Unverified:** enrolment on a machine's own firmware *(being built)*. Not run: clearing the keys in
 a real firmware's setup, the 15-second warning on its console, that firmware accepting the four

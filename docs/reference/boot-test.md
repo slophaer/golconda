@@ -90,7 +90,8 @@ QEMU runs the q35 machine with:
 - OVMF: with `--secure-boot` or `--tpm`, the Secure Boot build (`edk2-x86_64-secure-code.fd`, with
   SMM, and `-machine smm=on`); else the plain build (`edk2-x86_64-code.fd`), which has no Secure
   Boot. Both use a copy of the empty variable store `edk2-i386-vars.fd`. `--secure-boot` enrols the
-  key set with `virt-fw-vars` (one fixed owner GUID);
+  key set's `PK.crt`, `KEK.crt` and `db.crt` as PK, KEK and `db` with `virt-fw-vars` (one fixed
+  owner GUID), and the checks read PK and KEK back from efivarfs (`pk-kek-enrolled`);
 - the SMBIOS credential `system.hostname=boot-test` (not with `--esp-creds` or `--imds`);
 - the user network `169.254.169.0/24` in every mode, not QEMU's `10.0.2.0/24`. `--imds` needs
   Hetzner's metadata address, `169.254.169.254`, on the guest's link. The gateway, `169.254.169.2`,

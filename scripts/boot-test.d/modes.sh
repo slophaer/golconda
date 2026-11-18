@@ -162,6 +162,14 @@ test_ssh() {
     echo "$SB" | grep -i "secure boot" || true
     RC=0; echo "$SB" | grep -qi "Secure Boot: enabled" || RC=1
     verdict "secure-boot-enabled (firmware is enforcing)" $RC
+    if [ "$AUTO_ENROL" = 0 ]; then
+      # enroll_keys wrote them; check_auto_enrol checks what systemd-boot enrolled
+      SB=$(real_path "$KEYS_DIR/secureboot")
+      RC=0
+      efivar_holds PK 8be4df61-93ca-11d2-aa0d-00e098032b8c "+$SB/PK.crt" "-$SB/db.crt" || RC=1
+      efivar_holds KEK 8be4df61-93ca-11d2-aa0d-00e098032b8c "+$SB/KEK.crt" "-$SB/db.crt" || RC=1
+      verdict "pk-kek-enrolled (the firmware's PK and KEK are the key set's PK.crt and KEK.crt)" $RC
+    fi
   fi
 
   if [ "$TPM" = 1 ]; then
