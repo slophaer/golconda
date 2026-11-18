@@ -36,7 +36,7 @@ The timestamp has two uses:
 
 "Stable" means the same inputs (image id, version, `/usr` tree, keys) give the same value. Nix store
 paths are content-addressed and Nix sets every file's mtime to 1, so an unchanged build lands on the
-same path. The signer takes every time, salt and seed from the version too, so the same unsigned
+same path. The signer takes every time, salt and seed from the version too. So the same unsigned
 output signed again with the same keys gives the same release, byte for byte
 ([Image artifacts](../reference/image.md#built-today-libimage)).
 
@@ -69,9 +69,9 @@ the release date and must not be used as one: the version, and the erofs timesta
 | UKI              | `<id>_<version>.efi`                   | `EFI/Linux/<id>_<version>+3-0.efi` |
 
 `<uuid>` is `@u` in the sysupdate source pattern. The `/usr` file takes the first 128 bits of the
-verity root hash as a UUID, the verity file the last 128 bits (systemd's rule for the partition
-UUIDs). The signature has no hash-derived UUID: its JSON names the root hash. The two UUIDs are per
-release because the root hash is.
+verity root hash as a UUID, and the verity file takes the last 128 bits (systemd's rule for the
+partition UUIDs). The signature has no hash-derived UUID: its JSON names the root hash. The two
+UUIDs are per release because the root hash is.
 
 `SHA256SUMS` has exactly four lines, in this fixed order:
 
@@ -96,14 +96,14 @@ digest the signed index does not list is never written. The signature time is th
 (or the key's creation time, if that is later), so a rebuild gives the same bytes.
 
 Why OpenPGP: it is the one signature systemd 262's `systemd-pull` checks, and it checks it only by
-running `gpg`. The image therefore carries GnuPG 2.4 and libgcrypt beside OpenSSL, a second crypto
-library against [one of each](principles.md). systemd PR
+running `gpg`. The image therefore carries GnuPG 2.4 and libgcrypt beside OpenSSL. That is a second
+crypto library, against [one of each](principles.md). systemd PR
 [#44292](https://github.com/systemd/systemd/pull/44292) (UAPI.16 manifests with an inline PKCS#7
-signature, checked against x509 certificates) is the way out: once a systemd release has it, the
-`db` key's openssl tooling could sign the manifest and GnuPG would leave the image.
+signature, checked against x509 certificates) is the way out. Once a systemd release has it, the
+`db` key's openssl tooling could sign the manifest, and GnuPG would leave the image.
 
 What the signature adds: the verity signature and the signed UKI already tie each payload to the
-`db` key, so with Secure Boot an attacker on the network could only serve another signed release or
+`db` key. So with Secure Boot an attacker on the network could only serve another signed release or
 none. Without Secure Boot (`/system.secureBoot = false`) nothing checks a UKI before it runs, so the
 signed index is what stops a UKI from someone else.
 
@@ -127,7 +127,7 @@ digest against its file. Reordering the lines, renaming a file or changing a dig
 ## Counters and selection
 
 A release starts its UKI at `+3-0`: three tries left, none done (`image/boot-counting.nix`, the same
-value the sysupdate UKI target writes). systemd-boot decrements the counter on each attempt;
+value the sysupdate UKI target writes). systemd-boot decrements the counter on each attempt.
 `systemd-bless-boot` removes the suffix after `boot-complete.target`. After three failed boots the
 entry is `+0-3` and the boot loader prefers the other entry.
 
