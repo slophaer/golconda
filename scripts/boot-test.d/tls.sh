@@ -4,7 +4,7 @@
 # whose certificate chains to an anchor the test image names, one to a CA it names in both
 # `anchors` and `distrust`, and the checks of the bundle and of the two fetches.
 
-# The servers are QEMU guestfwds, like the update server's (boot-test-http.sh): the guest connects
+# The servers are QEMU guestfwds, like the update server's (boot-test.d/http.sh): the guest connects
 # to 169.254.169.5:443 and 169.254.169.6:443 (the SANs of the fixtures in tests/fixtures/ca-store,
 # whose CAs nix/test-config.nix names), and QEMU runs a TLS server over stdio for each connection.
 # .3, the DNS server of QEMU's network, is not used.

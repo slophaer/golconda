@@ -338,13 +338,13 @@ start_qemu() {
   fi
 
   # --next: the guest's connections to the image's update source, $UPDATE_ADDR:$HTTP_PORT, go to
-  # this run's own server (boot-test-http.sh), whatever the host ports are
+  # this run's own server (boot-test.d/http.sh), whatever the host ports are
   NET_UPDATE=""
   if [ -n "$NEXT" ]; then
     NET_UPDATE=",guestfwd=tcp:$UPDATE_ADDR:$HTTP_PORT-cmd:$WORKDIR/serve-http"
   fi
 
-  # --ssh-test: the CA store check's two HTTPS servers (boot-test-tls.sh)
+  # --ssh-test: the CA store check's two HTTPS servers (boot-test.d/tls.sh)
   NET_TLS=""
   if [ "$SSH_TEST" = 1 ]; then
     NET_TLS=",guestfwd=tcp:$TLS_ADDR_ANCHOR:443-cmd:$WORKDIR/serve-tls-anchor,guestfwd=tcp:$TLS_ADDR_DISTRUSTED:443-cmd:$WORKDIR/serve-tls-distrusted"

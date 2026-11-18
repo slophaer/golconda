@@ -167,7 +167,7 @@ test_ssh() {
   return 0
 }
 
-# --- --imds: a faked cloud (scripts/boot-test-http.sh serves its endpoint) ---
+# --- --imds: a faked cloud (scripts/boot-test.d/http.sh serves its endpoint) ---
 test_imds() {
   echo ""
   echo "=== /imds: waiting for $IMDS_UNIT ==="

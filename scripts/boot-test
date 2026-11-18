@@ -57,7 +57,7 @@
 #   tls-anchor-trusted (systemd-pull fetches https://169.254.169.5/, whose certificate chains to the
 #   added anchor) and tls-distrusted-refused (https://169.254.169.6/, a CA in both `anchors` and
 #   `distrust`, fails on the certificate). Both servers are QEMU guestfwds to a TLS server over
-#   stdio (boot-test-tls.sh); no host port opens.
+#   stdio (boot-test.d/tls.sh); no host port opens.
 # With --next: before the update it pushes the host certificate (the guest's host key signed by
 #   tests/fixtures/snakeoil-host-ca) and a revocation list with `golconda vars`
 #   (packages.<system>.golconda-cli; set BOOT_TEST_GOLCONDA, and put age and age-keygen on PATH),
@@ -295,14 +295,14 @@
 #
 # The files: this one has the usage above, the bootstrap, the command line, the work directory,
 # the tools and the firmware (Golconda's own packages, through scripts/tools.sh) and main.
-# It sources the parts beside it:
-#   boot-test-log.sh     the serial markers and check_markers
-#   boot-test-vm.sh      Secure Boot keys, swtpm, the guest's credentials, QEMU
-#   boot-test-http.sh    the update server (--next), the fake IMDS endpoint (--imds)
-#   boot-test-guest.sh   ssh, wait_for_ssh, verdict, guest_hash, reboot_guest
-#   boot-test-checks.sh  the shared checks (one function each; every mode calls them)
-#   boot-test-modes.sh   the first boot's ssh checks, the TPM reboot, --factory-reset
-#   boot-test-update.sh  --next: the update, --fail-health, the recovery paths, --rotate
+# It sources the parts in boot-test.d/:
+#   boot-test.d/log.sh        the serial markers and check_markers
+#   boot-test.d/vm.sh         Secure Boot keys, swtpm, the guest's credentials, QEMU
+#   boot-test.d/http.sh       the update server (--next), the fake IMDS endpoint (--imds)
+#   boot-test.d/guest.sh      ssh, wait_for_ssh, verdict, guest_hash, reboot_guest
+#   boot-test.d/checks.sh     the shared checks (one function each; every mode calls them)
+#   boot-test.d/modes.sh      the first boot's ssh checks, the TPM reboot, --factory-reset
+#   boot-test.d/update.sh     --next: the update, --fail-health, the recovery paths, --rotate
 
 set -eu
 
@@ -348,29 +348,29 @@ SECURE_BOOT_OFF=0
 ALLOW_TCG=0
 STUB_CMDLINE=""
 # --imds: Hetzner's metadata address, and the user data's IPv6 address and .network credential
-# (boot-test-http.sh serves them; no host port is opened)
+# (boot-test.d/http.sh serves them; no host port is opened)
 IMDS_ADDR=169.254.169.254
 IMDS_IPV6=2001:db8:5eed::1
 IMDS_NET_CRED=60-imds-ipv6
 
-# the parts: functions and constants, no processes start when they are sourced; boot-test-guest.sh
+# the parts: functions and constants, no processes start when they are sourced; boot-test.d/guest.sh
 # reads SSH_PORT above
-# shellcheck source=boot-test-log.sh
-. "$SCRIPT_DIR/boot-test-log.sh"
-# shellcheck source=boot-test-vm.sh
-. "$SCRIPT_DIR/boot-test-vm.sh"
-# shellcheck source=boot-test-http.sh
-. "$SCRIPT_DIR/boot-test-http.sh"
-# shellcheck source=boot-test-tls.sh
-. "$SCRIPT_DIR/boot-test-tls.sh"
-# shellcheck source=boot-test-guest.sh
-. "$SCRIPT_DIR/boot-test-guest.sh"
-# shellcheck source=boot-test-checks.sh
-. "$SCRIPT_DIR/boot-test-checks.sh"
-# shellcheck source=boot-test-modes.sh
-. "$SCRIPT_DIR/boot-test-modes.sh"
-# shellcheck source=boot-test-update.sh
-. "$SCRIPT_DIR/boot-test-update.sh"
+# shellcheck source=boot-test.d/log.sh
+. "$SCRIPT_DIR/boot-test.d/log.sh"
+# shellcheck source=boot-test.d/vm.sh
+. "$SCRIPT_DIR/boot-test.d/vm.sh"
+# shellcheck source=boot-test.d/http.sh
+. "$SCRIPT_DIR/boot-test.d/http.sh"
+# shellcheck source=boot-test.d/tls.sh
+. "$SCRIPT_DIR/boot-test.d/tls.sh"
+# shellcheck source=boot-test.d/guest.sh
+. "$SCRIPT_DIR/boot-test.d/guest.sh"
+# shellcheck source=boot-test.d/checks.sh
+. "$SCRIPT_DIR/boot-test.d/checks.sh"
+# shellcheck source=boot-test.d/modes.sh
+. "$SCRIPT_DIR/boot-test.d/modes.sh"
+# shellcheck source=boot-test.d/update.sh
+. "$SCRIPT_DIR/boot-test.d/update.sh"
 
 usage() {
   echo "Usage: $0 <disk.raw> --keys DIR [--secure-boot [--auto-enrol [--no-microsoft-keys]]] [--tpm [--secure-boot-off]] [--timeout SECONDS] [--ssh-test [--esp-creds | --imds | --certify]] [--next DIR [--rotate | --fail-health | --fail-initrd | --fail-blessed --later DIR | --fail-panic | --fail-pid1 | --tamper-index]] [--factory-reset] [--allow-tcg]"

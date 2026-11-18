@@ -3,6 +3,6 @@
 disable=SC2016
 # `trap cleanup EXIT` calls the function; shellcheck 0.11 does not see that
 disable=SC2329
-# boot-test sources boot-test-log.sh beside it
+# boot-test sources its parts in boot-test.d/
 external-sources=true
 source-path=SCRIPTDIR

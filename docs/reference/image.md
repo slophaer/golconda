@@ -364,12 +364,12 @@ put `age` and `age-keygen` (`packages.x86_64-linux.age`) and `ssh-keygen` on PAT
 free port from 10022 up and prints it (`ssh: 127.0.0.1:10023 -> guest 22`).
 
 With `--ssh-test` the harness also serves two HTTPS sites to the guest, `169.254.169.5:443` and
-`169.254.169.6:443`: QEMU guestfwds to a TLS server over stdio (`scripts/boot-test-tls.sh`, python's
-`ssl`), with the server certificates of two test CAs (`tests/fixtures/ca-store`). The test image
-names those CAs in `/trust` (the first as an anchor, the second as an anchor and, by its SHA-256
-fingerprint, distrusted), and `ca-store-links`, `ca-bundle-content`, `tls-anchor-trusted` and
-`tls-distrusted-refused` check the guest's bundle and the fetch with `systemd-pull`. No host port
-opens.
+`169.254.169.6:443`: QEMU guestfwds to a TLS server over stdio (`scripts/boot-test.d/tls.sh`,
+python's `ssl`), with the server certificates of two test CAs (`tests/fixtures/ca-store`). The test
+image names those CAs in `/trust` (the first as an anchor, the second as an anchor and, by its
+SHA-256 fingerprint, distrusted), and `ca-store-links`, `ca-bundle-content`, `tls-anchor-trusted`
+and `tls-distrusted-refused` check the guest's bundle and the fetch with `systemd-pull`. No host
+port opens.
 
 Every mode runs on QEMU's user network `169.254.169.0/24` (`-netdev user,net=`), not the default
 `10.0.2.0/24`: `--imds` needs Hetzner's metadata address, `169.254.169.254`, on the guest's link.
@@ -496,11 +496,11 @@ nothing else. QEMU runs with `-no-reboot` unless `--tpm`, `--next`, `--factory-r
 ### The markers
 
 Each check prints `PASS: <marker>` or `FAIL: <marker>`. The script and its parts
-(`scripts/boot-test-*.sh`, listed in the header of `scripts/boot-test`) are the source of truth. To
-list the names the script prints:
+(`scripts/boot-test.d/*.sh`, listed in the header of `scripts/boot-test`) are the source of truth.
+To list the names the script prints:
 
 ```sh
-grep -ho 'verdict "[a-z0-9-]*\|PASS: [a-z0-9-]*' scripts/boot-test scripts/boot-test-*.sh | sed 's/verdict "//;s/PASS: //' | sort -u
+grep -ho 'verdict "[a-z0-9-]*\|PASS: [a-z0-9-]*' scripts/boot-test scripts/boot-test.d/*.sh | sed 's/verdict "//;s/PASS: //' | sort -u
 ```
 
 Always (read from the serial log; `check_markers`):

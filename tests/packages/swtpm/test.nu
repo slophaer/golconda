@@ -1,4 +1,4 @@
-# swtpm as scripts/boot-test starts it (scripts/boot-test-vm.sh, start_tpm): `swtpm socket --tpm2`
+# swtpm as scripts/boot-test starts it (scripts/boot-test.d/vm.sh, start_tpm): `swtpm socket --tpm2`
 # on an empty state directory, with a control socket. The test adds a data socket and talks TPM 2.0
 # to it: swtpm_ioctl initialises the TPM over the control channel (what QEMU's emulator backend
 # does), swtpm_bios sends TPM2_Startup over the data channel, and swtpm_ioctl asks for the TPM's

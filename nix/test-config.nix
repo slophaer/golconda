@@ -46,7 +46,7 @@ in
     hostCertificate = true;
     revokedKeys = true;
   });
-  # the CA store (docs/design/trust.md): the boot test's HTTPS servers (scripts/boot-test-tls.sh)
+  # the CA store (docs/design/trust.md): the boot test's HTTPS servers (scripts/boot-test.d/tls.sh)
   # use certificates of two test CAs (tests/fixtures/ca-store). The first is an anchor. The second
   # is an anchor too, and distrusted: distrust wins. A Mozilla root is distrusted as well.
   "/trust" =

@@ -1,4 +1,4 @@
-# qemu-system as scripts/boot-test runs it (scripts/boot-test-vm.sh, start_qemu): the q35 machine
+# qemu-system as scripts/boot-test runs it (scripts/boot-test.d/vm.sh, start_qemu): the q35 machine
 # with SMM, KVM and TCG, the TPM on an emulator chardev (tpm-tis), virtio-blk and virtio-net on the
 # user network, and qemu-img for the disk overlay. The sandbox has no /dev/kvm, so the machine
 # starts on TCG, paused, and quits from the monitor: the devices are created and their option ROMs

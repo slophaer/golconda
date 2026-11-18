@@ -2,8 +2,8 @@
 # Stored serial logs exercise the harness decisions without QEMU or the CLI.
 set -eu
 ROOT=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd)
-. "$ROOT/scripts/boot-test-log.sh"
-. "$ROOT/scripts/boot-test-update.sh"
+. "$ROOT/scripts/boot-test.d/log.sh"
+. "$ROOT/scripts/boot-test.d/update.sh"
 FIXTURES=$ROOT/tests/boot-log
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
@@ -125,9 +125,9 @@ expect_status 1 "tamper: an empty journal is no refusal" refusal_evidence ""
 # (--fail-health) and the refused update (--tamper-index) each report their own marker, read
 # from this boot's journal only (journalctl -b). A stub guest answers with FAKE_JOURNAL for
 # `journalctl -b` and adds an earlier boot's 1980 entries without -b. The other checks are stubs.
-. "$ROOT/scripts/boot-test-guest.sh"
-. "$ROOT/scripts/boot-test-checks.sh"
-. "$ROOT/scripts/boot-test-modes.sh"
+. "$ROOT/scripts/boot-test.d/guest.sh"
+. "$ROOT/scripts/boot-test.d/checks.sh"
+. "$ROOT/scripts/boot-test.d/modes.sh"
 REPO_DIR=$ROOT
 WORKDIR=$WORK
 GOOD='1794000000.000001 boot-test kernel: Linux version 6.17
