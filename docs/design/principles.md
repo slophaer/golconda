@@ -1,13 +1,13 @@
 # Principles
 
-Golconda keeps one of everything and makes the machine disposable: the image is the unit of
-configuration, state is small and explicit. These rules decide what goes in; they are not
-preferences; [Scope](scope.md) says what they put in the current release, what comes later and what
-is out of scope. The pages that follow apply them in order: the pieces
-([Architecture](architecture.md)), the disk ([Layout](layout.md), [Boot](boot.md),
-[Updates](updates.md)), the keys ([Trust](trust.md)), the kernel ([Kernel](kernel.md)), how a system
-is described ([Modules](modules.md), [Configuration](config.md)), where the programs come from
-([Packaging](packaging.md)), and what is lost ([Comparison](comparison.md)).
+Golconda keeps one of everything and makes the machine disposable. The image is the unit of
+configuration, and state is small and explicit. These rules are binding: they decide what goes in.
+[Scope](scope.md) says what they put in the current release, what comes later and what is out of
+scope. The pages that follow apply them in order: the pieces ([Architecture](architecture.md)), the
+disk ([Layout](layout.md), [Boot](boot.md), [Updates](updates.md)), the keys ([Trust](trust.md)),
+the kernel ([Kernel](kernel.md)), how a system is described ([Modules](modules.md),
+[Configuration](config.md)), where the programs come from ([Packaging](packaging.md)), and what is
+lost ([Comparison](comparison.md)).
 
 ## Immutable by default
 
@@ -15,25 +15,25 @@ is described ([Modules](modules.md), [Configuration](config.md)), where the prog
 `/var` on the state partition and is declared: a `StateDirectory=`, a tmpfiles line, a repart
 definition. A path that is neither in the image nor declared does not exist.
 
-Enforced: a fragment's `files` must be under `/usr` (a path under `/etc` is a type error), and the
+Enforced: a fragment's `files` must be under `/usr` (a path under `/etc` is a type error). The
 `/usr` tree builder refuses a top-level directory other than `bin`, `lib`, `share`, `libexec`, `nix`
 and the `sbin` link. `/etc` gets content from tmpfiles lines only: `/factory` links its seeds, and
-`/trust` links the CA bundle. Nothing checks which module writes a tmpfiles line, and nothing checks
+`/trust` links the CA bundle. No check covers which module writes a tmpfiles line, and none covers
 `/var`.
 
 ## The image holds no per-machine value
 
 One image serves every machine of its kind. A host name, a key, a certificate or a password hash
-never enters the image: it is a bootstrap credential, a var generated on the machine, or a value the
+never enters the image. It is a bootstrap credential, a var generated on the machine, or a value the
 operator pushes ([Boot](boot.md#bootstrap-credentials), [Trust](trust.md#secrets-and-vars)).
 Enforced: an app file that contains a credential path or a key marker is a type error.
 
 ## systemd first
 
-If systemd has a component for it, that component is used and nothing else is packaged for the job:
-journald, networkd, resolved, timesyncd, sysusers, tmpfiles, repart, sysupdate, boot, stub,
-cryptsetup, veritysetup, pcrlock, creds, firstboot. Vendor configuration lives in `/usr/lib`,
-operator overrides in `/etc`, state in `/var`, exactly as systemd documents it.
+If systemd has a component for a job, Golconda uses that component and packages nothing else for the
+job. The components are journald, networkd, resolved, timesyncd, sysusers, tmpfiles, repart,
+sysupdate, boot, stub, cryptsetup, veritysetup, pcrlock, creds, firstboot. Vendor configuration
+lives in `/usr/lib`, operator overrides in `/etc`, state in `/var`, exactly as systemd documents it.
 
 ## One of each
 
