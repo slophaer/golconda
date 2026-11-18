@@ -2,9 +2,8 @@
 
 This page is the procedure for one Golconda machine on a Hetzner Cloud server. It builds an image
 for a host without Secure Boot, puts the machine's host name and ssh key on its ESP, writes the disk
-from the rescue system, and updates it. Every step ran by hand on a Hetzner Cloud `cpx12` in `fsn1`
-([What is proven: Not proven](../proven.md#not-proven)), and the metadata route of step 4 ran on
-Hetzner too.
+from the rescue system, and updates it. The runs of this procedure by hand are in
+[What is proven: Not proven](../proven.md#not-proven).
 
 What Hetzner Cloud gives and lacks, and what Golconda does about it:
 
@@ -155,6 +154,6 @@ A run started a few seconds after the publish can still read the old index throu
 report `No update needed`; start it again. `golconda release publish --unrecorded` still needs a git
 repository: pass `--repo` with one.
 
-## Not proven
+## Limits
 
-- The console: the run did not need it, so no one looked at it.
+- No test reads the console.

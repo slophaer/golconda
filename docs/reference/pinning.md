@@ -121,7 +121,7 @@ nix flake update golconda       # move to Golconda's newest commit
 ```
 
 `tests/flake-template/run.sh` locks the template's input, updates it and evaluates the flake
-([How this is tested](#how-this-is-tested)). The `image` output is the unsigned output.
+([What is proven](../proven.md)). The `image` output is the unsigned output.
 `golconda release build` reads the `flake.lock` beside the document when there is no
 `pins/golconda/sources.toml`: it builds from the locked revision of the input `golconda`, fetched by
 its `narHash`.
@@ -136,7 +136,7 @@ No tool and no lock file: the commit and its hash are in the Nix file.
 
 It is the uptrack template's `fetchTarball` without the TOML file. The snippet is
 `examples/fetch-tarball.nix`, included here as it is; a test evaluates that file
-([How this is tested](#how-this-is-tested)).
+([What is proven](../proven.md)).
 
 ```nix
 {{#include ../../examples/fetch-tarball.nix}}
@@ -159,28 +159,3 @@ nix-prefetch-url --unpack https://github.com/slophaer/golconda/archive/<rev>.tar
 | uptrack        | uptrack (Golconda builds it), the template's reader | `uptrack check`, `uptrack apply`              | `sources.toml`: purl, branch or version, rev, date, hash | one tarball, fetched once by its hash                            |
 | flake          | `flakes` on the client                              | `nix flake update golconda`                   | `flake.lock`: rev, `narHash`, `lastModified`             | one tarball, and a store copy of your repository when it changed |
 | `fetchTarball` | nothing                                             | by hand: new rev, `nix-prefetch-url --unpack` | the url and hash in the Nix file                         | one tarball, fetched once by its hash                            |
-
-## How this is tested
-
-- `tests/real-packages/packages.nix` (`checks.real-packages`) evaluates `examples/golconda.nix` with
-  this tree in place of the pin; `tests/eval/config.nix` reads `examples/pins/` with `lib/pins.nix`.
-  `checks.uptrack-sources` lists `examples/pins/` with uptrack.
-- `tests/real-packages/release-build.nix` evaluates `cli/build.nix`, the expression of
-  `golconda release build`, on this tree, on `examples/pins/` (its tarball answered with this tree)
-  and on `tests/fixtures/flake-lock/flake.lock` (its `fetchTree` answered with this tree). The CLI
-  tests `release_build_in_a_repository_that_pins_golconda` and `release_build_in_a_flake_repository`
-  run `golconda release build` in a copy of `examples/` and of the flake template with a
-  `flake.lock`, with a stand-in `nix-build`.
-- `tests/real-packages/pins.nix` checks `lib.readPins` against `pins/default.nix`.
-  `tests/eval/pins.nix` checks the reader on `tests/fixtures/pins`, and calls the flake template's
-  outputs on this tree with the stand-in packages.
-- `tests/real-packages/pins.nix` also evaluates `examples/fetch-tarball.nix`, the file this page
-  includes for the plain `fetchTarball` recipe, with the example pin's rev and hash in place of the
-  two placeholders. Its `usrTree` is the one `examples/golconda.nix` gives from the same pin.
-- `tests/flake-template/run.sh` (run by `scripts/lint`) makes a flake with `nix flake init -t` from
-  this repository's template and locks the input at `HEAD~1`. It runs `nix flake update golconda`
-  and checks that the lock is at `HEAD` with a new `narHash` and that the flake evaluates its `/usr`
-  tree. With `--build` it also builds the image's unsigned output from the flake, with the public
-  halves of a test key set (`tests/fixtures/public-keys`), and checks that the output holds the
-  manifest and the signer and no private key. That build is not in the lint: it takes the time of an
-  image build.

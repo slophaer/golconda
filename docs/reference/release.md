@@ -3,7 +3,8 @@
 This page is the procedure: make a deployment key set, build a release signed with it, and enrol its
 certificate in the firmware. The key layout and the reason for each key are in
 [Trust: Deployment keys](../design/trust.md#deployment-keys); the files a release holds are in
-[Releases](../design/releases.md).
+[Releases](../design/releases.md). [What is proven](../proven.md) names the tests of these steps,
+and its [Not proven](../proven.md#not-proven) list has the runs by hand.
 
 | step                     | needs                                                                                                       |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------- |
@@ -170,11 +171,6 @@ the build host; `golconda release build` passes its `--system` (default: this ho
 content-addressed output but finds no path for it ("built, but the builder has no output path"). For
 that reason `golconda release build` uses `nix-build`.
 
-Verification: `golconda release build` built and signed two releases with a fresh key set. Both
-booted with `--secure-boot --tpm --ssh-test`, the second as an update over HTTP (`--next`). None of
-the set's private keys was in the store afterwards. This ran by hand
-([What is proven: Not proven](../proven.md#not-proven)).
-
 ## 3. Publish the release directory
 
 `release/` holds the four release files, `SHA256SUMS` and `SHA256SUMS.gpg`. The names, the fixed
@@ -198,13 +194,6 @@ other files, and a release whose release commit records other digests or that ha
 `--unrecorded`, for a release built by hand). It deletes nothing, so the older release's files stay
 for a cache that still serves its index. For an S3 bucket, the release prefix needs anonymous `GET`:
 sysupdate sends no credentials, and every file is checked against the signed index anyway.
-
-Verification: `scripts/boot-test --next` serves `release/` to the guest at `169.254.169.2:8074`,
-through a QEMU guest forward that opens no host port, and rewrites no transfer file. The markers
-`http-source` and `http-fetch` show that the guest read its own `Type=url-file` definition and
-fetched each file over HTTP. The marker `index-signed` shows that it fetched `SHA256SUMS.gpg`. With
-`--tamper-index` the index the server sends has one byte more than its signature covers, and the run
-passes only when `sysupdate-refused` shows that the update installed nothing.
 
 ## 4. Enrol the certificate in the firmware
 
@@ -299,12 +288,6 @@ key checks, the loader, the root hash, the PCR certificate, and three in `ukify`
 the PIN source, so that the PIN is typed once into a file that lives only in memory, as
 `pkcs11:…;type=private?pin-source=file:/run/user/1000/token-pin`. The tests give the PIN with
 `pin-value=`; the prompt and `pin-source=` have not run *(being built)*.
-
-Verification: the test image's `db` and PCR keys on a SoftHSM token (a token in software, used for
-tests only) sign a release. That release is the same, byte for byte, as the release signed from the
-same keys in files. `golconda release check` passes on it (`packages.<system>.pkcs11-signed-same`).
-The image boots with `--secure-boot --ssh-test --tpm` (`@image=image-smoke-test-pkcs11` in
-`tests/boot/matrix`). `checks.image-signer` covers the key checks.
 
 ### A YubiKey
 
