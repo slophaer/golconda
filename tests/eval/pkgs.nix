@@ -8,7 +8,6 @@
   hasInfix,
   openssh,
   sshdTree,
-  standIn,
   stubSet,
   system,
   throws,
@@ -54,9 +53,29 @@ in
         "target"
       ]
   ))
-  (check "pkgs: sshd takes openssh from the set" (
+  (check "pkgs: sshd takes openssh from the set, so a replacement in the set is sshd's" (
+    let
+      replaced = openssh // {
+        outPath = "/nix/store/openssh-replaced";
+      };
+      sshd =
+        (f.modules {
+          options = {
+            "/services/sshd" = { };
+            "/pkgs".target = stubSet // {
+              pkgs = stubSet.pkgs // {
+                openssh = replaced;
+              };
+            };
+          };
+        }).modules.services.modules.sshd
+          { };
+    in
     elem fixturePkgs.openssh system.packages
-    && (sshdTree { package = standIn; }).modules.services.modules.sshd.args.options.package == standIn
+    && elem replaced sshd.packages
+    && !(elem openssh sshd.packages)
+    && sshd.links."/usr/lib/ssh".target == "${replaced}/lib/ssh"
+    && !((sshdTree { }).modules.services.modules.sshd.args.options ? package)
   ))
   (check "pkgs: without the set, sshd and /pkgs throw" (
     throws (noSet.modules.services.modules.sshd { }) && !(tryEval (noSet.modules.pkgs { })).success

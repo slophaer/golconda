@@ -118,10 +118,9 @@ in
     in
     hasInfix "a\\|b &lt;c>" p
   ))
-  (check "module-docs: sshd has no opaque option; package renders as a package" (
+  (check "module-docs: sshd has no opaque option" (
     !hasInfix "Opaque types" docs.pages."/services/sshd"
     && !hasInfix "`wrap`" docs.pages."/services/sshd"
-    && hasInfix "| `package` | package | none |" docs.pages."/services/sshd"
   ))
   # New tests for module doc comments and types
   (check "module-docs: every discovered module has a page" (

@@ -150,10 +150,6 @@ let
       type = "null";
     };
     any = { }; # any type
-    derivation = {
-      type = "string";
-      "x-golconda" = "package";
-    };
     path = {
       type = "string";
       "x-golconda" = "path";

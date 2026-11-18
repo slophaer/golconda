@@ -10,7 +10,7 @@
     }
   },
   {
-    "name": "SSH computed package default",
+    "name": "sshd: an empty table",
     "accepted": true,
     "value": {
       "/system": {
@@ -280,6 +280,19 @@
         "extraFiles": {
           "motd": "Welcome\n"
         }
+      }
+    }
+  },
+  {
+    "name": "/services/sshd has no package option",
+    "accepted": false,
+    "value": {
+      "/system": {
+        "name": "test",
+        "version": "20261031.1"
+      },
+      "/services/sshd": {
+        "package": "openssh"
       }
     }
   },

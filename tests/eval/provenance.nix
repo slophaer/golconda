@@ -97,9 +97,7 @@ in
         value = 22;
         explicit = false;
       }
-    # a computed default has no value; the TOML's own table is not hidden by the defaults
-    && !(sshd.package ? value)
-    && !sshd.package.explicit
+    # the TOML's own table is not hidden by the defaults
     && cfg."/system".name.explicit
     &&
       cfg."/system".updateSource == {

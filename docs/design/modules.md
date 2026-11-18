@@ -66,8 +66,9 @@ The repkgs sets enter the tree once, as the options of `/pkgs`:
   `buildPkgs`, which is the same set when the build is not a cross build.
 
 `/pkgs` returns `{ target; build; pkgs; }`. A module that needs a package declares
-`inputs.pkgs.path = "/pkgs"` and reads `results.pkgs.pkgs.openssh`. A package-valued option defaults
-from there, so a configuration can replace the package but never has to pass one.
+`inputs.pkgs.path = "/pkgs"` and reads `results.pkgs.pkgs.openssh`. No option takes a package: a
+downstream package that `[golconda] replaces` lists is the one way to use another build
+([Your own modules and packages](../features/extending.md)).
 
 This is adios' own mechanism: a module declares its inputs and receives their results. It carries
 one rule. A module never imports repkgs and never reads a set it did not declare; a second kind of

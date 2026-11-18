@@ -112,18 +112,11 @@ attribution of what it emits. The generated module pages cover Golconda's own tr
 
 ## Your own packages
 
-A package option takes a package name, looked up in the target set:
-
-```toml
-["/services/sshd"]
-package = "openssh"
-```
-
-`config.json` keeps the name as written. A downstream repository adds packages in `packages/` beside
-the document (or the directory `[golconda] packages = "…"` names), in the layout Golconda's own
-`packages/` uses: one directory per package with a `package.nix` and a `sources.toml`, so the
-package has a purl, an SBOM entry and update tracking. They join the target set after Golconda's
-own. A package option names only a target package; a build-host tool cannot be named.
+A downstream repository adds packages in `packages/` beside the document (or the directory
+`[golconda] packages = "…"` names), in the layout Golconda's own `packages/` uses: one directory per
+package with a `package.nix` and a `sources.toml`, so the package has a purl, an SBOM entry and
+update tracking. They join the target set after Golconda's own. No option takes a package: a module
+takes its packages from the target set.
 
 A package that takes the name of a Golconda or repkgs package replaces it, but only when the
 document lists that name:

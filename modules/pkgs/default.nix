@@ -1,5 +1,5 @@
 #! The repkgs package sets, entering the tree once: mkSystem binds `options."/pkgs".target`, the platform's set (`nix/packages.nix`), and `build`, the build host's.
-#! A module that needs a package declares `inputs.pkgs.path = "/pkgs"` and reads `results.pkgs.pkgs.<name>`; a package option defaults from there.
+#! A module that needs a package declares `inputs.pkgs.path = "/pkgs"` and reads `results.pkgs.pkgs.<name>`.
 #! A module never imports repkgs and never reads a set it did not declare. `target` is not configuration data: the TOML loader refuses a `/pkgs` table.
 #! docs/design/modules.md, "How packages enter the tree".
 { types, ... }:

@@ -169,7 +169,6 @@ in
   (check "schema: computed defaults do not require input and preserve null defaults" (
     let
       schema = schemaLib.toJsonSchema (f.modules { });
-      sshd = schema.properties."/services/sshd";
       dns = schema.properties."/network".properties.dns;
       synthetic = schemaLib.moduleToSchema { } {
         options.computed = {
@@ -178,10 +177,7 @@ in
         };
       };
     in
-    !(elem "package" (sshd.required or [ ]))
-    && !(synthetic ? required)
-    && dns ? default
-    && dns.default == null
+    !(synthetic ? required) && dns ? default && dns.default == null
   ))
   (check "schema: nullable values and optional fields are distinct" (
     schemaLib.typeToSchema (types.option types.string) == {
@@ -222,7 +218,7 @@ in
       modules = schemaLib.moduleSchemas (f.modules { });
     in
     !(schema.properties."/services/sshd".properties ? wrap)
-    && schema.properties."/services/sshd".properties.package."x-golconda" == "package"
+    && !(schema.properties."/services/sshd".properties ? package)
     && !(schema.properties ? "/pkgs")
     && modules."/pkgs".properties.target."x-golconda" == "set"
     && modules."/pkgs".properties.build."x-golconda" == "set"
@@ -257,11 +253,5 @@ in
         "string"
         "int"
       ]
-  ))
-  (check "schema: derivation maps to package marker" (
-    let
-      s = schemaLib.typeToSchemaByName "derivation";
-    in
-    s.type == "string" && s."x-golconda" == "package"
   ))
 ]

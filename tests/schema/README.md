@@ -16,8 +16,7 @@ rows from `config.json`.
 
 ## Limits
 
-JSON cannot encode a Nix derivation or function. These tests do not prove parity for Nix-only
-package overrides. Library fixtures use types that can take JSON data.
+JSON cannot encode a Nix derivation or function. Library fixtures use types that can take JSON data.
 
 Nix's `tryEval` cannot catch a missing-attribute evaluator error. The fixture runner checks for the
 required system identity fields before it forces composition. Other invalid values must fail the

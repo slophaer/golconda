@@ -45,11 +45,6 @@ in
   inputs.pkgs.path = "/pkgs";
 
   options = {
-    package = {
-      type = types.derivation;
-      defaultFunc = { results }: results.pkgs.pkgs.openssh;
-      description = "OpenSSH; default repkgs `openssh` from `/pkgs` (its `bin` lists `sshd`).";
-    };
     port = {
       type = port;
       default = 22;
@@ -83,8 +78,10 @@ in
   };
 
   impl =
-    { options }:
+    { options, results }:
     let
+      # OpenSSH from the target set; `[golconda] replaces` swaps it (docs/features/extending.md)
+      inherit (results.pkgs.pkgs) openssh;
       inherit (builtins)
         attrNames
         listToAttrs
@@ -107,7 +104,7 @@ in
           "echo \"$fp\""
           "echo \"$fp\" > /dev/console || true"
         ];
-        packages = [ options.package ];
+        packages = [ openssh ];
       };
 
       hasCA = options.trustedUserCAKeys != [ ];
@@ -185,7 +182,7 @@ in
       service = s.render {
         name = "sshd";
         app = {
-          inherit (options) package;
+          package = openssh;
           program = "sshd";
           argv = [
             "-D"
@@ -292,7 +289,7 @@ in
             # sshd execs sshd-session, sshd-auth and sftp-server by the compiled-in
             # path /usr/lib/ssh (repkgs openssh: --libexecdir=/usr/lib/ssh)
             links."/usr/lib/ssh" = {
-              target = "${options.package}/lib/ssh";
+              target = "${openssh}/lib/ssh";
               kind = "farm";
             };
           }

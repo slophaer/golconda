@@ -23,7 +23,6 @@ let
     attrNames
     isAttrs
     isPath
-    isString
     mapAttrs
     ;
 
@@ -99,26 +98,9 @@ let
   # so every route into the tree is checked.
   documentOptions = configLib.checkOptions loadedOptions;
 
-  # A package option (type derivation) takes a package name, looked up in the target set
-  # (Golconda's packages and the downstream ones). An attrset config may pass a derivation.
-  resolvePackages = mapAttrs (
-    path: given:
-    let
-      declared = (treeLib.moduleAt unloaded path).options or { };
-    in
-    mapAttrs (
-      n: v:
-      if isString v && (declared.${n}.type.name or null) == "derivation" then
-        setFull.pkgs.${v}
-          or (throw "golconda: ${path}.${n} names the package '${v}', which the target set does not have")
-      else
-        v
-    ) given
-  );
-
   # mkSystem is the one place that binds /pkgs.target: it is always the platform's set,
   # never from the document.
-  mergedOptions = resolvePackages documentOptions // {
+  mergedOptions = documentOptions // {
     "/pkgs".target = setFull.set;
   };
 
@@ -171,24 +153,10 @@ let
 
   # The normalized configuration: one row per option of every included component and /system,
   # { value?; explicit; }, for config.json. `explicit` is true when the document set the
-  # option, false when the default applies; an option with a computed default (defaultFunc)
-  # has no `value` then. A package is the name the document gave; a derivation from an
-  # attrset config renders as its name, so the JSON is data.
+  # option, false when the default applies; an option without a plain default has no `value`
+  # then.
   normalizedConfig =
     let
-      stripDerivations =
-        v:
-        if isAttrs v then
-          if v ? outPath then
-            # A derivation: record its name only
-            v.name or v.pname or "<derivation>"
-          else
-            mapAttrs (_: stripDerivations) v
-        else if builtins.isList v then
-          map stripDerivations v
-        else
-          v;
-
       rows =
         path: given:
         let
@@ -198,7 +166,7 @@ let
           n: _:
           if given ? ${n} then
             {
-              value = stripDerivations given.${n};
+              value = given.${n};
               explicit = true;
             }
           else if declared.${n} ? default && schemaLib.isPlainData declared.${n}.default then

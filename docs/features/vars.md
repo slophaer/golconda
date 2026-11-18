@@ -56,7 +56,7 @@ v.render {
   secrets = [ "key" ];
   publics = [ "key.pub" ];
   script = "ssh-keygen -q -t ed25519 -N '' -f key";
-  packages = [ options.package ];
+  packages = [ openssh ];
 }
 ```
 

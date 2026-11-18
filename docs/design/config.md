@@ -40,8 +40,7 @@ The entry point that applies this rule is `lib/system.nix`: `mkSystem ./server.t
 `mkSystem { config; platform?; }`) takes the document, binds the package set of the platform,
 selects the components, composes, and returns the composed system and its `/usr` tree derivation.
 `examples/golconda.nix` is the template a user copies next to `server.toml` (the analogue of a NixOS
-`system.nix`). The document is the whole configuration, with no Nix hook beside it: a package option
-takes a package name (`package = "openssh"`), looked up in the target set, and a downstream
+`system.nix`). The document is the whole configuration, with no Nix hook beside it: a downstream
 repository brings its own modules in `modules/` and its own packages in `packages/` (the same layout
 as Golconda's: a `package.nix` and a `sources.toml` per package), so they get purls, the SBOM and
 update tracking. A downstream package may replace a Golconda or repkgs package only when
@@ -71,14 +70,14 @@ pin would fix it: `mkStruct' { } // { inherit members; }` in `struct`, and
 
 Every image carries `/usr/lib/golconda/`:
 
-| file               | content                                                                                     |
-| ------------------ | ------------------------------------------------------------------------------------------- |
-| `config.json`      | the resolved options of every included component, after type-checking, derivations as names |
-| `schema.json`      | the JSON Schema the image was built against                                                 |
-| `sbom.json`        | CycloneDX SBOM: purl and cpe per component, its origin, pedigree (replacement, patches)     |
-| `packages.json`    | every package with its version, store path and the fragments that brought it                |
-| `attribution.json` | each file, link, unit, sysusers and tmpfiles line → the module or fragment that emitted it  |
-| `vars.d/*.json`    | one manifest per var: class, files, credential ids                                          |
+| file               | content                                                                                    |
+| ------------------ | ------------------------------------------------------------------------------------------ |
+| `config.json`      | the resolved options of every included component, after type-checking                      |
+| `schema.json`      | the JSON Schema the image was built against                                                |
+| `sbom.json`        | CycloneDX SBOM: purl and cpe per component, its origin, pedigree (replacement, patches)    |
+| `packages.json`    | every package with its version, store path and the fragments that brought it               |
+| `attribution.json` | each file, link, unit, sysusers and tmpfiles line → the module or fragment that emitted it |
+| `vars.d/*.json`    | one manifest per var: class, files, credential ids                                         |
 
 The sysupdate transfers from `/system.updateSource` are beside them in `/usr/lib/sysupdate.d/`.
 There is no `etc.manifest`: `/etc` is symlinks into the factory and `find /etc -type f` lists the

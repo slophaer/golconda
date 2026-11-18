@@ -109,34 +109,21 @@ in
     in
     sys.name == "server" && sys.version == "20261031.1"
   ))
-  (check "mkSystem: a package option takes a package name from the target set" (
+  (check "mkSystem: /services/sshd has no package option" (
     let
-      mkSystem =
-        config:
-        import ../../lib/system.nix {
-          inherit sources platform config;
-          system = platform;
-        };
-      head = {
-        "/system" = {
-          name = "t";
-          version = "20261031.1";
+      sys = import ../../lib/system.nix {
+        inherit sources platform;
+        system = platform;
+        config = {
+          "/system" = {
+            name = "t";
+            version = "20261031.1";
+          };
+          "/services/sshd".package = "openssh";
         };
       };
-      sys = mkSystem (head // { "/services/sshd".package = "openssh"; });
-      unit = sys.composed.units."sshd.service";
     in
-    # the unit runs the named package's sshd, and config.json keeps the name as written
-    builtins.elem sys.pkgs.openssh sys.composed.packages
-    && hasInfix "ExecStart=/usr/bin/sshd " unit
-    &&
-      sys.config."/services/sshd".package == {
-        value = "openssh";
-        explicit = true;
-      }
-    && !(tryEval (
-      deepSeq (mkSystem (head // { "/services/sshd".package = "no-such-package"; })).composed.units true
-    )).success
+    !(tryEval (deepSeq sys.composed.units true)).success
   ))
   (check "mkSystem: config.json has the sshd table and no derivation strings" (
     let

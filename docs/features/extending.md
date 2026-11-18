@@ -12,8 +12,7 @@ name collision.
   `/services/sshd`. The optional `[golconda] modules = "site"` names another directory.
 - **Packages.** A `packages/` directory beside the document adds packages to the target set after
   Golconda's own. Each package is a directory with a `package.nix` and a `sources.toml`, the layout
-  of Golconda's `packages/`. `[golconda] packages = "…"` names another directory. A package option
-  takes a name, such as `package = "openssh"`.
+  of Golconda's `packages/`. `[golconda] packages = "…"` names another directory.
 - **Replacing is opt-in.** A downstream package that takes the name of a Golconda or repkgs package
   replaces it only when `[golconda] replaces` lists the name. Without the entry, evaluation fails
   and names the package. An entry that no package uses is also an error, so the list says exactly
@@ -63,7 +62,8 @@ Proven: the rows of [What is proven](../proven.md) that name `tests/eval/compone
 
 - No boot test has a downstream package. The boot-test image carries one downstream module,
   `/local/test-workload` (`tests/fixtures/image-workload/modules`).
-- A package option names a target package. A build-host tool cannot be named.
+- A module takes its packages from the target set. To use another build of one of them, such as
+  OpenSSH, a downstream package replaces it (`[golconda] replaces`).
 - repkgs refuses a package that takes the name of one of its aliases: it applies aliases last, so
   the alias would win.
 - Golconda reviews no replacement. A replacement can drop the IPE policy, the verity key or the boot

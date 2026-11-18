@@ -27,9 +27,9 @@ sys() {
   echo "builtins.deepSeq (import ./lib/system.nix { config = $1; system = \"x86_64-linux\"; }).composed.units true"
 }
 
-expect "unknown package name" \
-  "golconda: /services/sshd.package names the package 'no-such-package', which the target set does not have" \
-  "$(sys '{ "/system" = { name = "t"; version = "20261031.1"; }; "/services/sshd".package = "no-such-package"; }')"
+expect "unknown option" \
+  "golconda: /services/sshd has no option 'package'" \
+  "$(sys '{ "/system" = { name = "t"; version = "20261031.1"; }; "/services/sshd".package = "openssh"; }')"
 expect "downstream package with a repkgs alias name" \
   "packages: cpython is an alias (pkgs/aliases.toml: cpython -> cpython314)" \
   "$(sys ./tests/fixtures/downstream-alias/server.toml)"

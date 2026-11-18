@@ -215,12 +215,11 @@ Two options: `target`, the repkgs set of the platform (`nix/packages.nix`), whic
 (`lib/system.nix`) passes as `options."/pkgs".target`; and `build`, the build host's set (default
 `{ pkgs = target.buildPkgs; }`, the same packages as `target` when not cross). The module returns
 `{ target; build; pkgs; }`, `pkgs` being `target.pkgs`. A module that needs a package declares
-`inputs.pkgs.path = "/pkgs"` and reads `results.pkgs.pkgs.<name>`; a package option defaults with
-`defaultFunc = { results }: ...`. A tree without `target` throws when a module first needs a
-package. A module never imports repkgs and never reads a set it did not declare; a second kind of
-set is a second module path, never a second argument. `target` is the one option that is not
-configuration data: the TOML loader refuses a `/pkgs` table, and `mkSystem` binds the platform's
-set.
+`inputs.pkgs.path = "/pkgs"` and reads `results.pkgs.pkgs.<name>`. A tree without `target` throws
+when a module first needs a package. A module never imports repkgs and never reads a set it did not
+declare; a second kind of set is a second module path, never a second argument. `target` is the one
+option that is not configuration data: the TOML loader refuses a `/pkgs` table, and `mkSystem` binds
+the platform's set.
 
 ### `/base`, `/network` and `/security`
 
@@ -356,11 +355,11 @@ Only credentials go on the command line; every fixed path is a line in `sshd_con
 fragment also brings the boot health unit `golconda-health-sshd.service`:
 `systemctl is-active sshd.service`, pulled in by a `boot-complete.target.requires/` link and
 `Before=boot-complete.target`, so a candidate without a running sshd is not blessed
-([design/boot](../../design/boot.md#boot-health)).
+([design/boot](../../design/boot.md#boot-health)). OpenSSH is `pkgs.openssh` from `/pkgs`; a
+downstream package that `[golconda] replaces` lists takes its place.
 
 | option              | type                                       | rendered as                                                                                                               |
 | ------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| `package`           | derivation, default `pkgs.openssh`         | from `/pkgs`; `program = "sshd"`                                                                                          |
 | `port`              | int, default `22`                          | `Port`                                                                                                                    |
 | `authorizedKeys`    | list of string, default `[ ]`              | `/usr/lib/sshd/authorized_keys/root`; bootstrap only                                                                      |
 | `trustedUserCAKeys` | list of string, default `[ ]`              | `/usr/lib/sshd/ca.pub` and `TrustedUserCAKeys /usr/lib/sshd/ca.pub` in `sshd_config`                                      |
