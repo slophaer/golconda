@@ -1,8 +1,8 @@
 # Boot loader
 
-One systemd-boot on the ESP starts both `/usr` slots. It is signed with the Secure Boot `db` key, it
-ships inside the signed `/usr` of each release, and a machine copies it to the ESP only after that
-release has booted and passed its health units. The loader has no A/B of its own, so this page also
+One systemd-boot on the ESP starts both `/usr` slots. It is signed with the Secure Boot `db` key. It
+ships inside the signed `/usr` of each release. A machine copies it to the ESP only after that
+release has booted and passed its health units. The loader has no A/B of its own. So this page also
 covers what changes it, how the `db` key is rotated, and how a machine is recovered when the loader
 or a key goes wrong. The boot chain itself is in [Boot](boot.md), the keys in [Trust](trust.md).
 
@@ -18,9 +18,9 @@ and the verity root hash. The result is used twice:
   prefers to the unsigned file.
 - **on the ESP**, the same file, written by the signer's disk step (`lib/image/disk.nu`). The signer
   fails unless the tree's `/usr/lib/golconda/loader.conf` is image/loader.nix's `conf`. A fresh disk
-  is therefore in the state the machine keeps, except for its `loader.conf`, which is armed to enrol
-  the Secure Boot keys once ([Enrolment](#enrolment)); the first good boot puts `/usr`'s in its
-  place.
+  is therefore in the state the machine keeps, except for its `loader.conf`. The fresh disk's file
+  is armed to enrol the Secure Boot keys once ([Enrolment](#enrolment)). The first good boot puts
+  `/usr`'s in its place.
 
 The ESP has the layout `bootctl install` makes:
 
@@ -75,7 +75,7 @@ bless-boot runs only when `boot-complete.target` is reached
   nothing, and the ESP keeps the newer loader. systemd-boot starts any UKI that firmware accepts, so
   a newer loader starts the older release.
 
-The copy is safe for Secure Boot without a check on the machine: firmware has just accepted the
+The copy is safe for Secure Boot without a check on the machine. Firmware has just accepted the
 running UKI under the current `db` and `dbx`, and the image builder signs that release's loader with
 the same key. A loader written by this unit is one this firmware starts, as long as `db` and `dbx`
 do not change before the next boot.
@@ -103,9 +103,9 @@ the disk on its first boot; a machine that already has keys gets it in firmware 
 **The files.** `scripts/make-keys` writes the Secure Boot variables into the key set once, signed by
 its PK and KEK keys (`secureboot/auth/`, `lib/image/enrol.nu`). efitools writes them
 (`cert-to-efi-sig-list` for each certificate's signature list, `sign-efi-sig-list` for the signed
-variable, `packages/efitools`); `enrol.nu` takes each file apart with code of its own and has
-openssl check its signature before it keeps it. They depend on the certificates only, not on an
-image, so no release needs the PK or KEK key. There are two sets:
+variable, `packages/efitools`). `enrol.nu` takes each file apart with code of its own and has
+openssl check its signature before it keeps it. The files depend on the certificates only, not on an
+image, so no release needs the PK or KEK key. Two sets exist:
 
 | set                                            | PK   | KEK                                                     | db                                                                                                  | dbx                                  |
 | ---------------------------------------------- | ---- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------ |
@@ -114,11 +114,11 @@ image, so no release needs the PK or KEK key. There are two sets:
 
 Our PK signs `PK.auth` and `KEK.auth`, our KEK signs `db.auth` and `dbx.auth`. Microsoft's
 certificates and revocation list come from `microsoft/secureboot_objects`, pinned by tag and hash
-(`packages/secureboot-objects`); Microsoft signs its own dbx update with its KEK, and Golconda takes
+(`packages/secureboot-objects`). Microsoft signs its own dbx update with its KEK, and Golconda takes
 the signature lists from it and signs them with ours. The signer copies the set that
 `/system.secureBootMicrosoftKeys` names to `loader/keys/auto/` on the ESP. It first checks every
-file against the set's `PK.crt` and `KEK.crt`, and that `PK`, `KEK` and `db` enrol those
-certificates and the image's `db` certificate first: a set for another key fails the release, not
+file against the set's `PK.crt` and `KEK.crt`. It also checks that `PK`, `KEK` and `db` enrol those
+certificates and the image's `db` certificate first. A set for another key fails the release, not
 the boot.
 
 **The file format.** Each file is a time-based authenticated variable (UEFI 2.10, 8.2.2): an
@@ -132,9 +132,9 @@ numbers, so the same keys and time give the same files.
 Audit Mode. With `secure-boot-enroll force` in the new disk's `loader.conf` it enrols the set named
 `auto`: it writes `db`, `dbx`, `KEK` and `PK`, in that order, and resets the machine. Writing PK
 ends Setup Mode, so the next boot runs with Secure Boot on, and systemd-boot never reads the files
-again (`src/boot/secure-boot.c`, systemd 262.1). In a virtual machine it does this at once; on
+again (`src/boot/secure-boot.c`, systemd 262.1). In a virtual machine it does this at once. On
 hardware it first prints "Enrolling custom Secure Boot keys might soft-brick your machine!" and
-counts down 15 seconds, during which a key aborts.
+counts down 15 seconds. A key aborts the countdown.
 
 ```mermaid
 flowchart TD
@@ -148,80 +148,83 @@ flowchart TD
 
 A machine that is not in Setup Mode (keys already enrolled, the usual state of a machine from a
 vendor) ignores the files. To use the automatic path there, clear the keys in firmware setup (most
-firmware calls it "Reset to Setup Mode" or "Clear Secure Boot keys"); otherwise add the `db`
+firmware calls it "Reset to Setup Mode" or "Clear Secure Boot keys"). Otherwise add the `db`
 certificate beside the vendor's keys in firmware setup
 ([Making a release](../reference/release.md#4-enrol-the-certificate-in-the-firmware)).
 
 The files are copied only for an image with `/system.secureBoot` (the manifest's `loader.enrol`). An
-image for a host without Secure Boot carries the certificate in its kernel; enrolling it would make
+image for a host without Secure Boot carries the certificate in its kernel. Enrolling it would make
 the firmware check every later loader against a key the operator did not mean to enrol. A key set
-without `secureboot/auth` is refused for a Secure Boot image, and the error names the command that
-adds the files, with the set's path: `scripts/make-keys --auth-only DIR` (it makes a PK and a KEK
-for a set that has none), or `scripts/make-keys --auth-only --reuse-pk-kek KEYS DIR` when the PK and
-KEK keys are in `KEYS`.
+without `secureboot/auth` is refused for a Secure Boot image. The error names the command that adds
+the files, with the set's path: `scripts/make-keys --auth-only DIR` (it makes a PK and a KEK for a
+set that has none), or `scripts/make-keys --auth-only --reuse-pk-kek KEYS DIR` when the PK and KEK
+keys are in `KEYS`.
 
 **Microsoft keys, and why they are the default.** On hardware a graphics card, network card or
-storage controller often carries an option ROM signed by the Microsoft UEFI CA (2011, and the Option
-ROM UEFI CA 2023 for newer cards). Firmware whose `db` lacks that CA refuses the ROM: no display, no
-network boot, perhaps no disk, and on some machines no way back into the firmware menu (a soft
-brick; loader.conf(5) warns of it). With `force`, enrolment on hardware happens without a person, so
-the default set keeps Microsoft's CAs. The cost: every loader the Microsoft UEFI CA signs (shim, and
-with it other distributions) also boots on the machine. That is why `dbx` comes with them:
-Microsoft's revocation list holds the hashes of the shims and loaders it has withdrawn (BlackLotus
-and its kind), and without it `db` would trust them. Microsoft's KEKs are there so that Microsoft's
-own `dbx` updates (signed by its KEK, applied by `fwupdmgr` or the vendor) can be applied later;
-Golconda applies none. The Windows CAs (Windows Production PCA 2011, Windows UEFI CA 2023) start
-only Windows' boot manager, which a Golconda machine does not run, so they stay out: every
-certificate in `db` is a loader that boots. `secureBootMicrosoftKeys = false` gives the deployment's
-keys alone, for a virtual machine or for hardware known to need no signed option ROM.
+storage controller often carries an option ROM. The Microsoft UEFI CA signs it (2011, and the Option
+ROM UEFI CA 2023 for newer cards). Firmware whose `db` lacks that CA refuses the ROM. The result is
+no display, no network boot, perhaps no disk, and on some machines no way back into the firmware
+menu (a soft brick; loader.conf(5) warns of it). With `force`, enrolment on hardware happens without
+a person, so the default set keeps Microsoft's CAs. The cost is that every loader the Microsoft UEFI
+CA signs (shim, and with it other distributions) also boots on the machine. For that reason `dbx`
+comes with them. Microsoft's revocation list holds the hashes of the shims and loaders it has
+withdrawn (BlackLotus and its kind), and without it `db` would trust them. Microsoft's KEKs are
+there so that Microsoft's own `dbx` updates (signed by its KEK, applied by `fwupdmgr` or the vendor)
+can be applied later; Golconda applies none. The Windows CAs (Windows Production PCA 2011, Windows
+UEFI CA 2023) start only Windows' boot manager, which a Golconda machine does not run. They stay
+out, so every certificate in `db` is a loader that boots. `secureBootMicrosoftKeys = false` gives
+the deployment's keys alone, for a virtual machine or for hardware known to need no signed option
+ROM.
 
 **Keys.** The PK and the KEK are the deployment's own, made by `scripts/make-keys` beside the `db`
 key ([Trust: Deployment keys](trust.md#deployment-keys)). The PK and KEK keys are needed again only
 for a new set of enrolment files: a `db` rotation (`make-keys --reuse-pk-kek OLD`, below) or a newer
 `dbx`. In Setup Mode OVMF (EDK II) writes `db`, `dbx` and `KEK` without checking their signatures,
-and `PK` too unless the build sets `PcdRequireSelfSignedPk`, so a boot alone would not find a wrong
-signature; `make-keys` and the signer check each one. Enrolment changes PCR 7 before anything is
-sealed: systemd-boot resets the machine after it, and the first var is sealed on the next boot
+and `PK` too unless the build sets `PcdRequireSelfSignedPk`. So a boot alone would not find a wrong
+signature, and `make-keys` and the signer check each one. Enrolment changes PCR 7 before anything is
+sealed. systemd-boot resets the machine after it, and the first var is sealed on the next boot
 ([Trust: PCR 7](trust.md#pcr-7)).
 
 **Once.** Only the first disk's ESP is armed. On the first good boot `golconda-loader-update` puts
 `/usr`'s `loader.conf` on the ESP, which says `secure-boot-enroll off`, and, once the firmware
 enforces Secure Boot, removes `loader/keys/auto`. From then on systemd-boot enrols nothing, also in
-Setup Mode: after a CMOS clear, someone who can write the ESP cannot get a PK of theirs enrolled by
-putting files there. `off`, not `manual`: `manual` would offer a menu entry for any set under
-`loader/keys/`, and the default `if-safe` enrols by itself in a virtual machine. On a machine whose
-firmware does not enforce Secure Boot the files stay on the ESP, unread. To enrol a machine again
-after its keys were cleared, write a new disk, or add `secureboot/db.crt` in firmware setup
+Setup Mode. After a CMOS clear, someone who can write the ESP cannot get a PK of theirs enrolled by
+putting files there. The setting is `off` because `manual` would offer a menu entry for any set
+under `loader/keys/`, and the default `if-safe` enrols by itself in a virtual machine. On a machine
+whose firmware does not enforce Secure Boot the files stay on the ESP, unread. To enrol a machine
+again after its keys were cleared, write a new disk, or add `secureboot/db.crt` in firmware setup
 ([Making a release: 4](../reference/release.md#4-enrol-the-certificate-in-the-firmware)). An update
 changes neither: sysupdate writes the UKI and `/usr`, and `golconda-loader-update` copies only the
 loader and `/usr`'s `loader.conf`.
 
-The boot test runs the virtual machine path with both sets: `--secure-boot --auto-enrol` starts OVMF
-with its empty variable store and checks that systemd-boot enrolled the set and reset
-(`auto-enrolled`), that `PK`, `KEK`, `db` and `dbx` hold what the table says (`pk-enrolled`,
-`kek-enrolled`, `db-enrolled`, `dbx-enrolled`; with `--no-microsoft-keys` on
-`image-smoke-test-own-keys`, none of Microsoft's), that firmware enforces Secure Boot
-(`secure-boot-enabled`), then the whole ssh battery ([What is proven](../proven.md)). That battery
-checks that the `loader.conf` in effect says `off` (`enrol-disarmed`) and that `loader/keys/auto` is
-gone (`enrol-keys-removed`). Last, the test puts the files back on the ESP, empties the variable
-store again and boots: systemd-boot enrols nothing and starts the UKI with Secure Boot off
-(`no-reenrol`), whose initrd then halts ([Boot: Secure Boot off](boot.md#secure-boot-off)). Hardware
-is *(being built)*: no run has shown the 15-second warning on a real console, a real firmware
-accepting the files, or option ROMs running after the enrolment.
+The boot test runs the virtual machine path with both sets. `--secure-boot --auto-enrol` starts OVMF
+with its empty variable store. It checks that systemd-boot enrolled the set and reset
+(`auto-enrolled`). It checks that `PK`, `KEK`, `db` and `dbx` hold what the table says
+(`pk-enrolled`, `kek-enrolled`, `db-enrolled`, `dbx-enrolled`; with `--no-microsoft-keys` on
+`image-smoke-test-own-keys`, none of Microsoft's). It also checks that firmware enforces Secure Boot
+(`secure-boot-enabled`). Then the whole ssh battery runs ([What is proven](../proven.md)). That
+battery checks that the `loader.conf` in effect says `off` (`enrol-disarmed`) and that
+`loader/keys/auto` is gone (`enrol-keys-removed`). Last, the test puts the files back on the ESP,
+empties the variable store again and boots. systemd-boot enrols nothing and starts the UKI with
+Secure Boot off (`no-reenrol`), whose initrd then halts
+([Boot: Secure Boot off](boot.md#secure-boot-off)). Hardware is *(being built)*: no run has shown
+the 15-second warning on a real console, a real firmware accepting the files, or option ROMs running
+after the enrolment.
 
 ## Key rotation
 
-A `db` key rotation signs the loader, the UKI and the verity root hash with a new key; they are one
-key ([Trust](trust.md#2-verity-key)). The PCR policy key is a separate key and does not change.
-Every step from 2 on changes PCR 7, to which the vars are sealed ([Trust: PCR 7](trust.md#pcr-7)),
-so the vars are sealed without it first and with it again at the end.
+A `db` key rotation signs the loader, the UKI and the verity root hash with a new key, because they
+are one key ([Trust](trust.md#2-verity-key)). The PCR policy key is a separate key and does not
+change. Every step from 2 on changes PCR 7, to which the vars are sealed
+([Trust: PCR 7](trust.md#pcr-7)). So the vars are sealed without it first and with it again at the
+end.
 
 1. Make the new key pair and keep the old one, with `scripts/make-keys --reuse-pk-kek OLD NEW`. The
    new set keeps the old PK and KEK (copies of their certificates; the keys stay in `OLD.private`)
-   and the old release key, and its enrolment files enrol the new `db` certificate, signed by the
-   old KEK: a machine installed later enrols the same PK and KEK as the fleet, so one KEK still
+   and the old release key. Its enrolment files enrol the new `db` certificate, signed by the old
+   KEK. So a machine installed later enrols the same PK and KEK as the fleet, and one KEK still
    signs every `db` and `dbx` update. Without `--reuse-pk-kek` the set gets a PK and a KEK of its
-   own; `make-keys` cannot tell a rotation from a new deployment, so the rotation names the old set.
+   own. `make-keys` cannot tell a rotation from a new deployment, so the rotation names the old set.
 
 1. On each machine with a TPM2, seal the vars without PCR 7:
    `ssh root@HOST /usr/lib/golconda/golconda-var-run --reseal --without-pcr7`.
@@ -241,7 +244,7 @@ so the vars are sealed without it first and with it again at the end.
    directory keeps the PCR key. The running image trusts both. The layout is in
    [Trust: Deployment keys](trust.md#deployment-keys). The old loader starts the new UKI, because
    both certificates are in `db`. At the first good boot `golconda-loader-update.service` installs
-   the new loader: the systemd-boot version is the same and the bytes are not. The old loader stays
+   the new loader: the systemd-boot version is the same and the bytes differ. The old loader stays
    as the fallback copy.
 
 1. Install one more release signed with the new key, so the other slot holds no UKI signed with the
@@ -255,10 +258,10 @@ so the vars are sealed without it first and with it again at the end.
 A `dbx` update, or a firmware update that writes the Secure Boot variables, takes the same two
 reseals around it.
 
-How the variables are written depends on the machine. Firmware setup can enrol a certificate; with
-the KEK's private key, an authenticated `db` append or `dbx` update can be written from the running
-system, but the image has no tool for it. The boot test writes the variable store offline with
-`virt-fw-vars`: `--add-db` for step 3, `--delete db --add-db <new> --add-dbx-cert <old>` for step 6.
+How the variables are written depends on the machine. Firmware setup can enrol a certificate. With
+the KEK's private key, a running system can write an authenticated `db` append or `dbx` update, but
+the image has no tool for it. The boot test writes the variable store offline with `virt-fw-vars`:
+`--add-db` for step 3, `--delete db --add-db <new> --add-dbx-cert <old>` for step 6.
 
 Step 5 is necessary. A blessed entry has no counter, so systemd-boot does not fall back from it by
 itself. If `bootctl set-default` still names the old entry after step 6, systemd-boot logs
@@ -286,21 +289,21 @@ The firmware path needs the console.
 The boot test runs the one-shot and default entries, the loader reinstall and the firmware reboot
 (`set-oneshot-other-slot`, `set-default-other-slot`, `loader-reinstall`, `reboot-to-firmware`), and
 a rotation with the old certificate in `dbx` (`--rotate`). The rows for a loader that does not
-start, a lost ESP, a lost `db` private key and a broken certificate login are *(being built)*: they
+start, a lost ESP, a lost `db` private key and a broken certificate login are *(being built)*. They
 use what is on `main`, but no test runs them ([What is proven](../proven.md#not-proven)).
 
 ## What is not possible
 
 - **No second loader.** Both slots share one ESP and one `BOOTX64.EFI`. A loader that firmware
   starts but that fails later stops every boot, and boot counting cannot help: counting is the
-  loader's job. Installing only after a good boot and keeping the fallback copy make this rare, not
-  impossible.
+  loader's job. It can happen. Installing only after a good boot and keeping the fallback copy make
+  it rare.
 - **No unattended recovery from a refused default entry or a refused loader.** It takes the firmware
   menu at a console or a reflash. There is no local login and no rescue shell
   ([Boot: Serial console](boot.md#serial-console)).
 - **The machine cannot change `db` or `dbx` by itself.** The image has no tool for authenticated
-  variable writes, and systemd-boot enrols keys from `loader/keys/` only in Setup Mode, once: the PK
-  it writes ends Setup Mode ([Enrolment](#enrolment)).
+  variable writes. systemd-boot enrols keys from `loader/keys/` only in Setup Mode, and only once,
+  because the PK it writes ends Setup Mode ([Enrolment](#enrolment)).
 - **No enrolment outside Setup Mode.** A machine with a vendor's PK ignores `loader/keys/auto`;
   someone clears the keys or adds the `db` certificate in firmware setup ([Enrolment](#enrolment)).
 - **No automatic enrolment after the first good boot.** A machine whose keys are cleared later is
