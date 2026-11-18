@@ -34,8 +34,10 @@ while [ $# -gt 0 ]; do
 }$2"; shift 2 ;;
   --jobs)
     arg "$@"
-    case $2 in '' | *[!0-9]* | 0) echo "verify: --jobs needs a number above 0" >&2; exit 2 ;; esac
-    jobs=$2; shift 2 ;;
+    # the number without its leading zeros: 007 is 7, 00 is nothing
+    jobs=${2#"${2%%[!0]*}"}
+    case $jobs in '' | *[!0-9]*) echo "verify: --jobs needs a number above 0" >&2; exit 2 ;; esac
+    shift 2 ;;
   --no-boot) boot=0; shift ;;
   --lint-only) lint_only=1; shift ;;
   --each-commit) arg "$@"; each=$2; shift 2 ;;

@@ -270,7 +270,7 @@ run scripts/verify --boot-set '--timeout 1'
 # MemAvailable moves between the two reads: one off is the same limit
 got=$(echo "$out" | sed -n 's/^== boots: 1 sets, at most \([0-9]*\) at a time$/\1/p')
 [ -n "$got" ] && [ "$got" -ge $((want - 1)) ] && [ "$got" -le $((want + 1)) ] || fail "default job limit is not $want: $out"
-for j in 0 x ''; do
+for j in 0 00 x ''; do
   run scripts/verify --jobs "$j"
   [ $rc = 2 ] || fail "--jobs '$j' accepted: $out"
 done
