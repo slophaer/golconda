@@ -76,6 +76,7 @@ PATH=$(nix-build -A packages.x86_64-linux.age --no-out-link)/bin:$PATH \
 | `--fail-health`               | each try of the new release fails a health unit                                                                                | `--next`                               | the other update modes but `--rotate`                                                   |
 | `--fail-initrd`               | each try of the new release fails in the initrd                                                                                | `--next`                               | the other update modes                                                                  |
 | `--fail-panic`, `--fail-pid1` | each try of the new release panics, or PID 1 crashes                                                                           | `--next`                               | the other update modes                                                                  |
+| `--later DIR`                 | after the recovery paths, install the third release `DIR` into the first release's slot and boot it                            | `--next`                               | `--secure-boot-off`, the update modes but `--fail-blessed`                              |
 | `--fail-blessed --later DIR`  | the blessed new release crashes PID 1 on each boot; `DIR` is a third release                                                   | `--next`                               | the other update modes                                                                  |
 
 The update modes are `--rotate`, `--tamper-index` and the `--fail-*` flags. The script refuses two
@@ -212,7 +213,12 @@ harness:
    loader (the new loader on the ESP, the old one kept as `systemd-boot-fallbackx64.efi`);
 1. runs the recovery paths of [Boot loader](../design/bootloader.md#recovery): `bootctl list`, a
    damaged loader reinstalled by `golconda-loader-update`, `bootctl set-oneshot` and
-   `bootctl set-default` to the other slot and back, and `bootctl reboot-to-firmware`.
+   `bootctl set-default` to the other slot and back, and `bootctl reboot-to-firmware`;
+1. with `--later DIR` (`image-smoke-test-later`, version `20261031.3`): powers the machine on again,
+   serves `DIR` and starts sysupdate. The third release must go into the partition that had the
+   first release's label, the slot the disk image made, while the second keeps its slot. The reboot
+   timer must start it, its `/dev/mapper/usr` must sit on that partition, and `bootctl list` must
+   show it as the default beside the second release.
 
 `image-smoke-test-next` is the next release of `image-smoke-test` (version `20261031.2`, the same
 keys). The update modes change this flow:

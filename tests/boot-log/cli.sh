@@ -208,6 +208,27 @@ else
   echo "FAIL: CLI --imds with --next (exit $actual): $(cat "$WORK/imds-next.out")"
   ERRORS=$((ERRORS + 1))
 fi
+# --later takes a plain --next too (the first release's slot), and not --rotate
+mkdir -p "$WORK/later/disk/release"
+: > "$WORK/later/disk/release/SHA256SUMS"
+actual=0
+sh "$ROOT/scripts/boot-test" "$WORK/disk.raw" --keys "$WORK/keys" --allow-tcg --next "$WORK/no-next" \
+  --later "$WORK/later" > "$WORK/next-later.out" 2>&1 || actual=$?
+if [ "$actual" = 1 ] && grep -q 'no-next has no disk/release/SHA256SUMS' "$WORK/next-later.out"; then
+  echo "PASS: CLI --later with a plain --next is not refused"
+else
+  echo "FAIL: CLI --later with a plain --next (exit $actual): $(cat "$WORK/next-later.out")"
+  ERRORS=$((ERRORS + 1))
+fi
+actual=0
+sh "$ROOT/scripts/boot-test" "$WORK/disk.raw" --keys "$WORK/keys" --allow-tcg --secure-boot --next "$WORK/no-next" \
+  --rotate --later "$WORK/later" > "$WORK/rotate-later.out" 2>&1 || actual=$?
+if [ "$actual" = 1 ] && grep -q -- '--later needs --next, alone or with --fail-blessed' "$WORK/rotate-later.out"; then
+  echo "PASS: CLI --later with --rotate is refused"
+else
+  echo "FAIL: CLI --later with --rotate (exit $actual): $(cat "$WORK/rotate-later.out")"
+  ERRORS=$((ERRORS + 1))
+fi
 # QEMU runs with KVM alone: without a /dev/kvm to open the run stops before QEMU starts, and
 # --allow-tcg lets QEMU fall back to TCG
 FAKE_MODE=success-systemd FAKE_STOPPED=$WORK/stopped-kvm FAKE_RELEASE=$WORK/release-kvm \

@@ -2,8 +2,8 @@
 # Usage: boot-test <disk.raw> --keys DIR [--secure-boot [--auto-enrol [--no-microsoft-keys]]]
 #          [--tpm [--secure-boot-off]] [--timeout SECONDS] [--allow-tcg]
 #          [--ssh-test [--esp-creds | --imds | --certify]] [--factory-reset]
-#          [--next DIR [--rotate | --tamper-index | --fail-health | --fail-initrd | --fail-panic |
-#           --fail-pid1 | --fail-blessed --later DIR]]
+#          [--next DIR [--later DIR | --rotate | --tamper-index | --fail-health | --fail-initrd |
+#           --fail-panic | --fail-pid1 | --fail-blessed --later DIR]]
 # Boot a Golconda image in QEMU (OVMF, KVM) and check it. Exit 0 when every check passes, else 1.
 #   (no flag)          the first boot: the markers on the serial console
 #   --ssh-test         log in over ssh and check the running system
@@ -16,8 +16,9 @@
 #   --certify          certify the host in its first boot (golconda vars certify)
 #   --factory-reset    reset the state partition, check the reset boot
 #   --next DIR         install the release of DIR over HTTP, boot it, the recovery paths
+#   --later DIR        then install DIR into the first release's slot, boot it
 #   --rotate           DIR has a new db key: rotate db and dbx
-#   --tamper-index     a changed index: the update must be refused
+#   --tamper-index     a changed index, then a changed artifact: no update installs
 #   --fail-health, --fail-initrd, --fail-panic, --fail-pid1
 #                      each try of DIR fails: the old release must boot after the third
 #   --fail-blessed --later DIR   the blessed release crashes: the failed-boot counter
@@ -226,8 +227,9 @@ if [ "$FAIL_BLESSED" = 1 ] && { [ -z "$NEXT" ] || [ -z "$LATER" ] || [ "$FAIL_HE
 fi
 if [ -n "$LATER" ]; then
   LATER_RELEASE=$(real_path "$LATER/disk")/release
-  if [ "$FAIL_BLESSED" = 0 ] || [ ! -f "$LATER_RELEASE/SHA256SUMS" ]; then
-    echo "Error: --later is for --fail-blessed, and $LATER must have disk/release/SHA256SUMS" >&2
+  if [ -z "$NEXT" ] || [ "$((ROTATE + TAMPER_INDEX + FAIL_HEALTH + FAIL_INITRD + FAIL_PANIC + FAIL_PID1 + SECURE_BOOT_OFF))" != 0 ] ||
+    [ ! -f "$LATER_RELEASE/SHA256SUMS" ]; then
+    echo "Error: --later needs --next, alone or with --fail-blessed, and $LATER must have disk/release/SHA256SUMS" >&2
     exit 1
   fi
 fi

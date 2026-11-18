@@ -653,7 +653,8 @@ test_next() {
     verdict "loader-signed-again (a new db key gives new loader bytes)" $RC
   fi
 
-  test_recovery
+  test_recovery || return 1
+  [ -z "$LATER" ] || test_first_slot
 }
 
 # --- the recovery paths of docs/design/bootloader.md, on a machine with two slots ---
@@ -726,6 +727,66 @@ test_recovery() {
   tail -c +"$((FW_MARK + 1))" "$SERIAL_LOG" \
     | grep -ao "Please select boot device:\|Device Manager\|Boot Maintenance Manager\|UEFI [A-Za-z0-9 ]*Device" | sort -u || true
   verdict "reboot-to-firmware (OVMF's boot menu on the serial console)" $FW
+}
+
+# --- --next --later: a third release into the first release's slot ---
+# slot_of LABEL: the device of the partition LABEL, nothing when no partition has it
+slot_of() {
+  guest "p=/dev/disk/by-partlabel/$1; [ ! -e \$p ] || readlink -f \$p" 2>/dev/null || true
+}
+
+# test_first_slot: after the recovery paths (the machine is in the firmware menu), power on: the
+# second release runs from the slot the update filled. sysupdate must put $LATER_VERSION into the
+# slot of $OLD_VERSION, the one the disk image made, and the reboot timer must start it from there.
+test_first_slot() {
+  LATER_NAME=$(basename "$(ls "$LATER_RELEASE"/*.efi)" .efi)
+  LATER_VERSION=${LATER_NAME##*_}
+  echo ""
+  echo "=== a third release, $LATER_VERSION, into the first release's slot ==="
+  stop_qemu
+  SERIAL_LOG=$WORKDIR/serial-later.log
+  rotate_tpm
+  start_qemu
+  if ! wait_for_ssh ""; then
+    verdict "update-into-first-slot (no login after the power-on before the timeout)" 1
+    return 1
+  fi
+  V=$(guest_version)
+  SLOT_A=$(slot_of "usr_$OLD_VERSION")
+  SLOT_A_VERITY=$(slot_of "usr-verity_$OLD_VERSION")
+  SLOT_B=$(slot_of "usr_$NEXT_VERSION")
+  echo "running $V; usr_$OLD_VERSION: ${SLOT_A:-none}, usr_$NEXT_VERSION: ${SLOT_B:-none}"
+  RC=0
+  { [ "$V" = "$NEXT_VERSION" ] && [ -n "$SLOT_A" ] && [ -n "$SLOT_A_VERITY" ] && [ -n "$SLOT_B" ]; } || RC=1
+  serve_release "$LATER_RELEASE" || return 1
+  guest systemctl start --wait systemd-sysupdate-update.service || RC=1
+  J=$(guest journalctl -b -u systemd-sysupdate-update.service -o cat --no-pager 2>&1) || true
+  echo "$J" | grep "Successfully installed" || true
+  echo "$J" | grep -q "Successfully installed 'http://$UPDATE_ADDR:$HTTP_PORT/${IMAGE_ID}_$LATER_VERSION" || RC=1
+  echo "usr_$LATER_VERSION: $(slot_of "usr_$LATER_VERSION"), usr-verity_$LATER_VERSION: $(slot_of "usr-verity_$LATER_VERSION")"
+  [ "$(slot_of "usr_$LATER_VERSION")" = "$SLOT_A" ] || RC=1
+  [ "$(slot_of "usr-verity_$LATER_VERSION")" = "$SLOT_A_VERITY" ] || RC=1
+  [ -z "$(slot_of "usr_$OLD_VERSION")" ] || RC=1
+  [ "$(slot_of "usr_$NEXT_VERSION")" = "$SLOT_B" ] || RC=1
+  verdict "update-into-first-slot ($LATER_VERSION into $SLOT_A, the partition labelled usr_$OLD_VERSION before; $NEXT_VERSION keeps $SLOT_B)" $RC
+
+  activate_soon || true
+  RC=0
+  wait_for_ssh "$BOOT_ID" || RC=1
+  V=$(guest_version)
+  [ "$V" = "$LATER_VERSION" ] || RC=1
+  wait_blessed || RC=1
+  activate_never
+  # /usr's verity device sits on the first slot's partitions
+  DM=$(guest 'ls /sys/block/$(basename $(readlink -f /dev/mapper/usr))/slaves' 2>&1) || true
+  echo "/dev/mapper/usr over: $(echo "$DM" | tr '\n' ' ')"
+  echo "$DM" | grep -qx "${SLOT_A#/dev/}" || RC=1
+  L=$(guest bootctl list --no-pager 2>&1) || true
+  echo "$L" | grep -E " (title|id):" || true
+  echo "$L" | grep -q "title: Golconda $LATER_VERSION (default) (selected)" || RC=1
+  echo "$L" | grep -q "id: ${IMAGE_ID}_$NEXT_VERSION.efi" || RC=1
+  ! echo "$L" | grep -q "id: ${IMAGE_ID}_$OLD_VERSION.efi" || RC=1
+  verdict "boots-first-slot ($V from $SLOT_A, blessed; bootctl: $LATER_VERSION selected, $NEXT_VERSION kept, $OLD_VERSION gone)" $RC
 }
 
 # firmware_menu: OVMF's boot menu is on the serial console after byte FW_MARK
