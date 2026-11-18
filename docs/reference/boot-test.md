@@ -204,7 +204,9 @@ harness:
    requests go to `$WORKDIR/http.log`;
 1. checks that the guest's own `10-usr.transfer` names that address, and starts
    `systemd-sysupdate-update.service`. sysupdate fetches `SHA256SUMS`, its signature and the
-   artifacts. It writes the other slots and a UKI with 3 tries;
+   artifacts. It writes the other slots and a UKI with 3 tries. When the ssh session of the start
+   ends first (exit 255, as on a loaded host), the harness waits for the end of the unit and judges
+   its `Result`, not the exit status of ssh;
 1. moves the window of `systemd-sysupdate-reboot.timer` to every 10 s with a drop-in in `/etc`. The
    guest must reboot into the release by itself, and then the timer must reboot nothing;
 1. checks the new release: the host certificate, the KRL and a second KRL, an enable link made

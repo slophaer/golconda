@@ -13,6 +13,47 @@ HUNG_FILE=/var/lib/boot-test-health-hung
 # this drop-in moves its window to every 10 s, as an administrator's drop-in in /etc would
 REBOOT_DROPIN=/etc/systemd/system/systemd-sysupdate-reboot.timer.d/zz-boot-test.conf
 
+# sysupdate_run: start the update service and wait for its end; true when it ran and succeeded.
+# On a loaded host the ssh session can end first (exit 255) while the unit runs on: then the
+# harness waits for the end of the unit and reads its Result. When the unit did not run (the same
+# InvocationID as before), the harness starts it once more.
+SYSUPDATE=systemd-sysupdate-update.service
+sysupdate_run() {
+  SU_BEFORE=$(guest systemctl show -P InvocationID $SYSUPDATE 2>/dev/null) || SU_BEFORE=""
+  for _ in 1 2; do
+    SU_RC=0
+    guest systemctl start --wait $SYSUPDATE || SU_RC=$?
+    [ "$SU_RC" = 255 ] || return "$SU_RC"
+    echo "ssh failed (exit 255) during the start of $SYSUPDATE: the harness reads its result"
+    wait_for 300 sysupdate_ended || return 1
+    SU_SHOW=$(guest systemctl show -p InvocationID -p Result -p ExecMainStatus $SYSUPDATE 2>&1) || return 1
+    echo "$SU_SHOW"
+    if ! echo "$SU_SHOW" | grep -qxF "InvocationID=$SU_BEFORE"; then
+      echo "$SU_SHOW" | grep -qx 'Result=success'
+      return
+    fi
+  done
+  return 1
+}
+sysupdate_ended() {
+  case $(guest systemctl show -P ActiveState $SYSUPDATE 2>/dev/null) in
+    inactive | failed) return 0 ;;
+  esac
+  return 1
+}
+
+# sysupdate_journal: the update service's journal of this boot. When ssh fails, the harness waits
+# up to 60 s for a login and reads it once more.
+sysupdate_journal() {
+  SJ_RC=0
+  SJ=$(guest journalctl -b -u $SYSUPDATE -o cat --no-pager 2>&1) || SJ_RC=$?
+  if [ "$SJ_RC" = 255 ]; then
+    wait_for 60 guest true 2>/dev/null || true
+    SJ=$(guest journalctl -b -u $SYSUPDATE -o cat --no-pager 2>&1) || true
+  fi
+  printf '%s\n' "$SJ"
+}
+
 # check_reboot_window: the image enables systemd-sysupdate-reboot.timer in /system.updateReboot's
 # window, systemd's 04:10 for the test image
 check_reboot_window() {
@@ -417,8 +458,8 @@ test_fail_blessed() {
   echo "--- a later release, $LATER_VERSION, is installed and tried ---"
   serve_release "$LATER_RELEASE" || return 1
   RC=0
-  guest systemctl start --wait systemd-sysupdate-update.service || RC=1
-  J=$(guest journalctl -b -u systemd-sysupdate-update.service -o cat --no-pager 2>&1) || true
+  sysupdate_run || RC=1
+  J=$(sysupdate_journal)
   echo "$J" | grep "Successfully installed" || true
   echo "$J" | grep -q "Successfully installed 'http://$UPDATE_ADDR:$HTTP_PORT/${IMAGE_ID}_$LATER_VERSION" || RC=1
   D=$(guest ls /boot/EFI/Linux 2>&1) || true
@@ -497,8 +538,8 @@ EOF
   echo "served $(basename "$U") with its middle byte changed"
   : > "$HTTP_LOG"
   R=0
-  ! guest systemctl start --wait systemd-sysupdate-update.service || R=1
-  J=$(guest journalctl -b -u systemd-sysupdate-update.service -o cat --no-pager 2>&1) || true
+  ! sysupdate_run || R=1
+  J=$(sysupdate_journal)
   echo "$J" | grep -i "checksum\|installed" | tail -5 || true
   grep -q "\"GET /$(basename "$U") HTTP/1.[01]\" 200" "$HTTP_LOG" || R=1
   echo "$J" | grep -q "does not match expected checksum" || R=1
@@ -632,8 +673,8 @@ test_next() {
   echo ""
   echo "=== systemd-sysupdate-update.service ==="
   RC=0
-  guest systemctl start --wait systemd-sysupdate-update.service || RC=1
-  JOURNAL=$(guest journalctl -b -u systemd-sysupdate-update.service -o cat --no-pager 2>&1) || true
+  sysupdate_run || RC=1
+  JOURNAL=$(sysupdate_journal)
   echo "$JOURNAL" | grep "Successfully installed" || true
   # sysupdate logs "Successfully installed '<source URL>' ... as '<target>' ...": for a url-file
   # source the source is the http URL, not a local path
@@ -825,8 +866,8 @@ test_first_slot() {
   RC=0
   { [ "$V" = "$NEXT_VERSION" ] && [ -n "$SLOT_A" ] && [ -n "$SLOT_A_VERITY" ] && [ -n "$SLOT_B" ]; } || RC=1
   serve_release "$LATER_RELEASE" || return 1
-  guest systemctl start --wait systemd-sysupdate-update.service || RC=1
-  J=$(guest journalctl -b -u systemd-sysupdate-update.service -o cat --no-pager 2>&1) || true
+  sysupdate_run || RC=1
+  J=$(sysupdate_journal)
   echo "$J" | grep "Successfully installed" || true
   echo "$J" | grep -q "Successfully installed 'http://$UPDATE_ADDR:$HTTP_PORT/${IMAGE_ID}_$LATER_VERSION" || RC=1
   echo "usr_$LATER_VERSION: $(slot_of "usr_$LATER_VERSION"), usr-verity_$LATER_VERSION: $(slot_of "usr-verity_$LATER_VERSION")"
