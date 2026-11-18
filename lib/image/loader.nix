@@ -22,8 +22,7 @@ let
   removableMediaName = uefi: "BOOT${builtins.replaceStrings lower upper uefi}.EFI";
 in
 {
-  # the signed loader's file name and its path in /usr, by platform
-  loaderFileName = fileName;
+  # the signed loader's path in /usr, by platform
   loaderUsrPath = usrPath;
 
   # The ESP's systemd-boot policy: image/loader.nix, the one text /base installs in /usr too

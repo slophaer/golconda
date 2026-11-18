@@ -166,7 +166,7 @@ in
       version,
       platform,
       buildSystem,
-      sources ? import ../../pins,
+      sources,
       ...
     }:
     usrTreeLib.usrTree {

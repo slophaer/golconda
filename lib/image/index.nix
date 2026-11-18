@@ -15,8 +15,6 @@ let
   usrPath = "/usr/lib/systemd/import-pubring.pgp";
 in
 {
-  indexKeyringUsrPath = usrPath;
-
   indexKeyring =
     {
       buildSystem,
