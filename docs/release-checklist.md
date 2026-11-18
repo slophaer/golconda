@@ -25,7 +25,7 @@ These exist in the code and the docs, but no test checks them.
   `scripts/boot-test --secure-boot --tpm --ssh-test --next`, and with `--fail-health`.
   ([Measured boot](features/measured-boot.md#status))
 - [x] **Certificate login.** A user certificate signed by the CA in `TrustedUserCAKeys` logs in with
-  an allowed principal; a revoked certificate (in the KRL) and a wrong principal are refused; the
+  an allowed principal. A revoked certificate (in the KRL) and a wrong principal are refused. The
   host presents its host certificate. Test: boot-test markers.
   ([SSH login](features/ssh-login.md#status))
 - [x] **An admin var end to end.** The host certificate and the KRL are pushed, sealed on the
@@ -46,7 +46,7 @@ These exist in the code and the docs, but no test checks them.
 - [x] **The vars deploy tool** (`golconda-vars`): keeps admin vars age-encrypted on the deploy host,
   pushes them over ssh, and has the machine seal them; rotation is "push again".
   ([Trust: Secrets and vars](design/trust.md#secrets-and-vars))
-- [x] **A release tool**, `golconda release` (build, check, publish and list through rclone): it
+- [x] **A release tool**, `golconda release` (build, check, publish and list through rclone). It
   refuses a version that does not increase and a version reused with other bytes, because either
   installs nothing and says nothing ([Updates: Versions](design/updates.md#versions)). The release
   commit's trailers are the record of a build, the destination the record of what was published
@@ -54,33 +54,33 @@ These exist in the code and the docs, but no test checks them.
 
 ## How to test it
 
-Image builds cost more than boots: a test image takes 2 to 4 minutes to build (the image without
-Secure Boot about 11, because it has its own kernel), a boot about 30 seconds. So the tests above
-follow three rules:
+Image builds cost more than boots. A test image takes 2 to 4 minutes to build (the image without
+Secure Boot about 11, because it has its own kernel), and a boot about 30 seconds. So the tests
+above follow three rules:
 
 - **Runtime checks first.** The unseal checks run `--tpm` together with `--next` and
   `--fail-health`, and the IPE check runs in the ssh battery. Neither changes an image.
 - **One configuration change.** Every change to the test configuration rebuilds all five test
   images. The test CA and principals, and the host certificate and KRL in the next release, go in
-  together, after the deploy tool exists. With `--next` the first release logs in with a plain key,
-  the harness pushes the host certificate and the KRL with the deploy tool, and the next release
+  together, after the deploy tool exists. With `--next` the first release logs in with a plain key.
+  The harness pushes the host certificate and the KRL with the deploy tool, and the next release
   turns them on. With `--certify` the next release's image boots alone and the push happens in its
   first boot, as [Trust: Host certificate](design/trust.md#host-certificate) describes.
 - **No new harness logic.** The harness calls the deploy tool rather than copying it, and each check
   is one function that every mode calls.
 
-The boot test runs on QEMU with KVM, cold. Snapshots and deterministic VMs were looked at and left
-out: a boot is short, the costly part is the build, and no deterministic VM boots UEFI with a TPM.
-Running the modes in parallel is the cheaper gain, and the harness does it: runs on one host with
+The boot test runs on QEMU with KVM, cold. The boot test uses no snapshots and no deterministic VMs:
+a boot is short, the costly part is the build, and no deterministic VM boots UEFI with a TPM.
+Running the modes in parallel is the cheaper gain, and the harness does it. Runs on one host with
 one image share nothing (each has its own work directory, ssh port, update server and metadata
-server; see [the update test](reference/boot-test.md#the-update-test)), so
+server; see [the update test](reference/boot-test.md#the-update-test)). So
 `scripts/verify --boot-set ARGS …` boots a list of flag sets at the same time, each with its own log
 and a summary line with the names of the checks that passed. The default boot, `--next`,
 `--next --fail-health`, `--imds` and the tamper run took 6 minutes together on one host, against 16
 minutes for the sum of their times. The VMs need about 2 GiB of memory each. A set can name the next
 release's image with `--next @next`: `scripts/verify` builds `<image>-next` (and the deploy tool and
 `age` that `--next` needs) and puts the paths in. A set that starts with `@image=ATTR` boots that
-image instead, and its `@next` is that image's next release; verify builds each image once and names
+image instead, and its `@next` is that image's next release. verify builds each image once and names
 the image on each summary line. So one run boots the Secure Boot sets and the sets of
 `image-smoke-test-nosb`:
 
