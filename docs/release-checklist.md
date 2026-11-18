@@ -35,8 +35,8 @@ These exist in the code and the docs, but no test checks them.
   record. Test: a boot-test marker. ([Execution policy](features/execution-policy.md))
 - [x] **hwdb from `/base`.** The images pass the `hwdb` marker in every `--ssh-test` run, with and
   without Secure Boot.
-- [x] **One run outside QEMU**, on Hetzner Cloud. Write the disk, enrol or provision, boot, log in
-  with a certificate, install the next release over HTTPS, roll back once. Test: the
+- [x] **One run outside QEMU**, on Hetzner Cloud. Write the disk, provision it, boot, log in with a
+  certificate, install the next release over HTTPS, roll back once. Test: the
   [Hetzner guide](reference/hetzner-cloud.md) run step by step, its *(planned)* removed, the results
   recorded in [What is proven](proven.md#not-proven). The run covered the ESP route, a certificate
   login, two updates over HTTPS, and one fallback from a third release to the second.

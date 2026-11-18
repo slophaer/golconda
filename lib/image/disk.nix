@@ -9,7 +9,7 @@
 #   (lib/image/manifest.nix). The signer (lib/image/disk.nu) runs systemd-repart --offline=yes:
 #   no loop device, no root. The files it writes (disk.raw, disk.json, release/):
 #   docs/reference/image.md.
-# The usr slots are 10 GiB each (image/repart.nix), so disk.raw is sparse.
+# A release has 10 GiB usr slots (image/repart.nix), a test image 1 GiB; disk.raw is sparse.
 _:
 let
   inherit (builtins)

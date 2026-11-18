@@ -166,7 +166,7 @@ let
       after = optionalAttr (listOf unitName);
       wants = optionalAttr (listOf unitName);
       # targets that pull in this unit; default [ "multi-user.target" ]: static .wants links in
-      # /usr, and [Install] WantedBy=. To enable by hand, ln -s (docs/design/updates.md)
+      # /usr, and [Install] WantedBy=, so systemctl enable works (docs/design/layout.md, "Unit files")
       wantedBy = optionalAttr (listOf targetName);
     }).override
       {

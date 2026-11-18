@@ -33,5 +33,5 @@ golconda.lib.mkSystem {
   # The build host, explicit so that evaluation stays pure (iets eval, a flake): left out,
   # `system` is builtins.currentSystem, which needs `--impure`.
   system = "x86_64-linux";
-  # platform = "aarch64-linux";  # default: the build host's
+  # platform = "x86_64-linux";  # the target; default: the build host's
 }

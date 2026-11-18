@@ -43,8 +43,8 @@ export def esp [dir: string, loader: string, uki: string, l: record, epoch: int,
 
 # make OUT P FILES UUIDS: OUT/disk.raw and repart's own listing OUT/disk.json, from the
 # definitions with the ESP directory and the slot A images of FILES (esp usr verity sig) and the
-# UUIDS. --offline: no loop device, no root; the usr slots are 10 GiB each (image/repart.nix), so
-# the file is sparse.
+# UUIDS. --offline: no loop device, no root; the usr slots of a release are 10 GiB each
+# (image/repart.nix), so the file is sparse.
 #
 # The ESP: repart passes SOURCE_DATE_EPOCH on to mkfs.fat, which writes it as the volume label's
 # time (packages/dosfstools/source-date-epoch.patch), and its own `-i <volume ID>`, derived from
