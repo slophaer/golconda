@@ -24,7 +24,7 @@ the machine and gives a revocation path.
 - **Root only, for now.** There are no per-human accounts. `LogLevel VERBOSE` writes the certificate
   principal and key id to the log, and that is the audit trail.
 - **One ssh server.** `sshd.service` with the generated `sshd_config` is the only one. systemd's ssh
-  generator is not in the image: it would start a second sshd, with `sshd_config`'s defaults and an
+  generator is not in the image. It would start a second sshd, with `sshd_config`'s defaults and an
   `AuthorizedKeysFile` of its own, on an `AF_UNIX` socket, on `AF_VSOCK` and on any address an
   `ssh.listen` credential names. The kernel has no vsock either.
 - **No local login.** No getty, no password, no rescue shell. The serial console (`console=ttyS0`)
@@ -71,16 +71,16 @@ Is this the fingerprint on web1's console or journal (golconda: ssh host key …
 ```
 
 Compare the fingerprint with the line `golconda: ssh host key …` that the first boot wrote on the
-console; `--fingerprint SHA256:…` compares without the question. Then the command does six steps: it
+console; `--fingerprint SHA256:…` compares without the question. The command then does six steps. It
 reads the host key (`golconda vars pub web1 sshd-hostkey key.pub`) and checks its fingerprint
-(`ssh-keygen -lf`); it signs it as a host certificate (`ssh-keygen -s host_ca -h -I web1 -n web1`),
-stores the certificate and the KRL (`golconda vars set web1 sshd-host-cert cert`,
-`golconda vars set web1 sshd-revoked-keys krl`), and pushes both, the KRL first
-(`golconda vars push web1`). `--principal` names what clients reach the machine by (default: the
-name given), `--validity` how long the certificate holds (default a year). A CA key on a PKCS#11
-token, such as the YubiKey that holds the `db` and PCR keys, is
-`--ca-key host_ca.pub --pkcs11-module "$(ykcs11-module)"`: ssh-keygen signs with the token's key
-that matches the public key file
+(`ssh-keygen -lf`). It signs the key as a host certificate
+(`ssh-keygen -s host_ca -h -I web1 -n web1`), stores the certificate and the KRL
+(`golconda vars set web1 sshd-host-cert cert`, `golconda vars set web1 sshd-revoked-keys krl`), and
+pushes both, the KRL first (`golconda vars push web1`). `--principal` names what clients reach the
+machine by (default: the name given). `--validity` sets how long the certificate holds (default a
+year). A CA key on a PKCS#11 token, such as the YubiKey that holds the `db` and PCR keys, is
+`--ca-key host_ca.pub --pkcs11-module "$(ykcs11-module)"`. ssh-keygen then signs with the token's
+key that matches the public key file
 ([Commands: golconda vars certify](../reference/cli.md#golconda-vars-certify)). It refuses with no
 KRL at all, and stops before anything is signed when the fingerprint is not confirmed.
 
@@ -100,10 +100,11 @@ Proven: the rows of [What is proven](../proven.md) that name `ssh-login`, `cert-
 
 - **Before the push** only plain keys log in, and no list checks them; the host is checked only by
   the console's fingerprint, not by a certificate.
-- **After the push** no plain key logs in. When certificate login breaks (the CA is lost, a KRL
-  refuses every certificate), recovery is the other slot, if its release has `hostCertificate` off
-  and someone chooses it at the console's boot menu, or a reflash, which wipes the sealed vars, so
-  the machine is certified again ([Boot loader: Recovery](../design/bootloader.md#recovery)).
+- **After the push** no plain key logs in. Certificate login can break (the CA is lost, a KRL
+  refuses every certificate). Recovery is then the other slot, if its release has `hostCertificate`
+  off and someone chooses it at the console's boot menu. The other way is a reflash, which wipes the
+  sealed vars, so the machine is certified again
+  ([Boot loader: Recovery](../design/bootloader.md#recovery)).
 - The host certificate needs the host key first: the machine makes its key, then the CA signs it.
   Renewal is `golconda vars certify` again before the certificate expires; nothing on the machine
   renews it.
