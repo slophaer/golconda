@@ -47,7 +47,7 @@ some of them, with arguments if you like (`GOLCONDA_SSH="ssh -p 2222"`):
 | `GOLCONDA_GPGV`         | `gpgv`                                          | `release check`, `release publish`, `release build` |
 
 Golconda packages age as `packages.<system>.age` (`age` and `age-keygen`). Put it on `PATH` beside
-`golconda`, with any `age-plugin-*` that the operators' keys need: age finds its plugins on `PATH`,
+`golconda`, with any `age-plugin-*` that the operators' keys need. age finds its plugins on `PATH`,
 so a key can stay on a YubiKey or in a TPM.
 
 ### `golconda vars`
@@ -106,14 +106,14 @@ this order, and stops at the first failure:
    `sshd-revoked-keys`. Without any KRL it refuses: a certificate with no KRL would end plain-key
    login while the image's fallback list still refuses every user certificate.
 1. Reads the host key over ssh, as `vars pub HOST sshd-hostkey key.pub` does, and prints its SHA-256
-   fingerprint. Without `--fingerprint` it asks: type `yes` if it is the fingerprint on the console
+   fingerprint. Without `--fingerprint` it asks. Type `yes` if it is the fingerprint on the console
    or in the journal (`golconda: ssh host key …`); any other answer, or none, stops it. With
    `--fingerprint SHA256:…` it compares and refuses a mismatch without a question.
 1. Signs the key as a host certificate with `ssh-keygen -s CA -h -I HOST -n PRINCIPALS -V VALIDITY`.
    The key id is HOST; the principals are the `--principal` names (repeat it), or HOST; the validity
    is `--validity` (default `-5m:+52w`, ssh-keygen's `-V` syntax). With `--pkcs11-module MODULE`,
    `--ca-key` is the CA's public key file and the token holds the private half
-   (`ssh-keygen -D MODULE -s CA.pub`): ssh-keygen finds a token's key by its public half, not by a
+   (`ssh-keygen -D MODULE -s CA.pub`). ssh-keygen finds a token's key by its public half, not by a
    `pkcs11:` URI, and `ssh-keygen -D MODULE` prints the token's public keys. It asks for the token's
    PIN itself.
 1. Stores the KRL (when `--krl` is given) and the certificate, as `vars set` does, and the host key
@@ -124,7 +124,7 @@ this order, and stops at the first failure:
 Nothing is stored before the key is confirmed and signed, and nothing is pushed before both are
 stored. The certificate is the last thing sealed, and a sealed certificate is what ends plain-key
 login on the machine, at sshd's restart after both. So when the push fails, sshd has not restarted
-and the machine still takes plain keys; what it sealed takes effect at sshd's next start: at most a
+and the machine still takes plain keys. What it sealed takes effect at sshd's next start: at most a
 new KRL, or both when only the restart failed. The error says how to push again. Renewal is the same
 command before the certificate expires.
 
@@ -153,25 +153,25 @@ golconda release list --to hetzner:updates/web
   `golconda` of the `flake.lock` beside it ([Pinning: A flake](pinning.md#a-flake)), else from the
   Golconda checkout that holds the document. It picks the version, builds `lib.mkImage`'s unsigned
   outputs with `nix-build` from a copy of the document with that version, runs their signer with the
-  key set on this host, runs `check`, then writes the version line into the document and commits it
-  as `release: <id> <version>`, with the digests as trailers. A run that is stopped (Ctrl-C) leaves
-  the document as it was and the copy (`.server.toml.golconda-release-*`) beside it, and the next
-  run refuses that untracked file. Nix copies only the key set's three public halves; the private
-  keys stay where they are ([Signing outside Nix](../design/signing.md)). `--out` names a new
-  directory for the release (default `result-release`): `disk.raw`, `release/`, and `unsigned`, the
-  link to the unsigned outputs; an existing one is refused, and a failed build removes it.
-  `--pcr-keys` names the key set of the PCR key when a `db` rotation keeps it; the release key is
-  always `--keys`' ([Making a release: Rotate a key](release.md#5-rotate-a-key)). `--system` is the
-  Nix system to evaluate for (default: this host's). `--pkcs11-module FILE` names the PKCS#11 module
-  of the token that holds the `db` or PCR key, when the key set names it by URI
+  key set on this host, and runs `check`. Then it writes the version line into the document and
+  commits it as `release: <id> <version>`, with the digests as trailers. A run that is stopped
+  (Ctrl-C) leaves the document as it was and the copy (`.server.toml.golconda-release-*`) beside it,
+  and the next run refuses that untracked file. Nix copies only the key set's three public halves;
+  the private keys stay where they are ([Signing outside Nix](../design/signing.md)). `--out` names
+  a new directory for the release (default `result-release`): `disk.raw`, `release/`, and
+  `unsigned`, the link to the unsigned outputs. The command refuses an existing one, and a failed
+  build removes it. `--pcr-keys` names the key set of the PCR key when a `db` rotation keeps it. The
+  release key is always `--keys`' ([Making a release: Rotate a key](release.md#5-rotate-a-key)).
+  `--system` is the Nix system to evaluate for (default: this host's). `--pkcs11-module FILE` names
+  the PKCS#11 module of the token that holds the `db` or PCR key, when the key set names it by URI
   ([Making a release: Keys on a token](release.md#6-keys-on-a-token)).
 - `check` verifies the index (the four lines in their fixed order), every digest, the shared image
   id and version in the names, the UUIDs against the root hash, and the signature against the key
   set's `release/index.pgp`.
 - `publish` checks the directory, then uploads it with rclone to a local directory or a
-  `remote:path`. It refuses a version that is not newer than the one the destination serves, the
-  same version with other files, and a release whose commit (`--repo`, default `.`) records other
-  digests. A release that no commit records needs `--unrecorded`. It deletes nothing and commits
-  nothing.
+  `remote:path`. It refuses three things: a version that is not newer than the one the destination
+  serves, the same version with other files, and a release whose commit (`--repo`, default `.`)
+  records other digests. A release that no commit records needs `--unrecorded`. It deletes nothing
+  and commits nothing.
 - `list` prints the release commits, newest first; with `--to` it marks the one the destination
   serves and those it still holds.
