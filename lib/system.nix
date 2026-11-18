@@ -1,8 +1,8 @@
 # lib/system.nix: the entry point for one Golconda system.
 #
-# mkSystem { config; platform?; system?; sources?; extraFragments?; verityCert?; } -> composed,
-#   usrTree, sbom, config, inventory, moduleDocs, schema, fragments, packages,
-#   artifacts, platform, version, name and pkgs (the attributes below).
+# mkSystem { config; platform?; system?; sources?; extraFragments?; verityCert?; packageSet?; }
+#   -> composed, usrTree, sbom, config, inventory, moduleDocs, schema, fragments, packages,
+#   packageSet, artifacts, platform, version, name and pkgs (the attributes below).
 # `config` is a path to a TOML file or an attrset of options: the document is the whole
 #   configuration, with no Nix hook. `platform` defaults to `system` (builtins.currentSystem).
 # `verityCert` is the certificate that signs /usr (lib.mkImage passes the db certificate of its
@@ -17,6 +17,9 @@
   sources ? import ../pins,
   extraFragments ? [ ],
   verityCert ? null,
+  # a set of nix/packages.nix to take, not a new one: the initrd takes the image's, and the
+  # document's [golconda] packages do not apply (docs/reference/config.md)
+  packageSet ? null,
 }:
 let
   inherit (builtins)
@@ -38,11 +41,15 @@ let
 
   # The repkgs set for this platform, one for the image: the signer, the keyring and the initrd
   # take it too (lib/image/chain.nix).
-  setFull = import ../nix/packages.nix {
-    inherit sources system platform;
-    downstream = project.packages;
-    inherit (project) replaces;
-  };
+  setFull =
+    if packageSet != null then
+      packageSet
+    else
+      import ../nix/packages.nix {
+        inherit sources system platform;
+        downstream = project.packages;
+        inherit (project) replaces;
+      };
   # The kernel's built-in keyring holds the verity certificate, the one key dm-verity and IPE
   # trust (packages/kernel/golconda.config). With Secure Boot too: the firmware's db, the
   # platform keyring, holds Microsoft's UEFI CAs by default, and a signature that chains to one
@@ -333,6 +340,7 @@ in
     schema
     ;
   packages = setFull.downstream;
+  packageSet = setFull;
   usrTree = usrTreeDrv;
   config = normalizedConfig;
   inherit (setFull) platform;

@@ -26,13 +26,11 @@ sequenceDiagram
 
 ## The initrd
 
-The initrd is a second `/usr` tree from the same store, as a zstd cpio. It is a composition of its
-own (`lib/image/initrd.nix`): the parts of the image's `/base` that the initrd runs, and the Secure
-Boot check. `modules/base/initrd.nix` names the parts; every unit drop-in of `/base` goes too. Those
-are systemd with its units and generators, udev with the rules below, dash, coreutils, hwdb, the
-tools of the boot (`mount`, `fsck`, `blkid`, `mkfs.ext4`, `chattr`), PID 1's crash and watchdog
-settings, the initrd's deadline, the failed-boot counter and the emergency reboot. It has no
-network, D-Bus, PAM, vars, CA bundle or sshd.
+The initrd is a second `/usr` tree from the same store, as a zstd cpio (`lib/image/initrd.nix`). It
+is the `mkSystem` of `/base` alone: the built-in components with no table of the document, from the
+image's package set. It has no kernel (the UKI has it), and it adds the Secure Boot check. So the
+initrd has the host's built-in units too. A unit that a target of the initrd pulls in, but that must
+run only on the host, has `ConditionPathExists=!/etc/initrd-release` (`modules/base/parts/`).
 
 systemd is PID 1 (`/init` points at it). udev runs with systemd's rules and two of lvm2's
 device-mapper rules, `10-dm` and `13-dm-disk` (lvm2 is a farm package, so they exec

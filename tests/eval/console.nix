@@ -30,11 +30,11 @@ in
     hasInfix " _TRANSPORT=journal _TRANSPORT=syslog _TRANSPORT=stdout\n" unit
     && !(hasInfix "_TRANSPORT=kernel" unit)
   ))
-  # the initrd has no such unit (lib/image/initrd.nix)
-  (check "console: golconda-console.service starts at sysinit.target" (
+  (check "console: golconda-console.service starts at sysinit.target, not in the initrd" (
     base.links."/usr/lib/systemd/system/sysinit.target.wants/golconda-console.service".target or null
     == "../golconda-console.service"
     && hasInfix "\nDefaultDependencies=no\n" unit
+    && hasInfix "\nConditionPathExists=!/etc/initrd-release\n" unit
     # a journalctl started before the flush misses the persistent journal of the first boot
     && hasInfix "\nAfter=systemd-journal-flush.service\n" unit
   ))

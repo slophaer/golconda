@@ -86,15 +86,20 @@ in
     && configOf (sysWith { secureBoot = false; } otherCert) == c
     && configOf (sysWith { secureBoot = false; } cert) == c
   ))
-  # the kernel belongs in the UKI only: the initrd's tree has none
+  # the kernel belongs in the UKI only. The initrd's system has no verityCert, so its kernel is
+  # the set's own, not the image's variant. It takes the image's secureBoot as chain.nix passes
+  # it, for the refusal alone: its /system needs no image keys
   (check "secureBoot: false keeps every kernel out of the initrd's tree" (
     let
       sys = sysWith { secureBoot = false; } storeCert;
       tree = (import ../../lib/image { }).initrdTree {
-        inherit (sys) composed version;
+        imageId = "test";
+        version = "20261031.1";
+        inherit (sys) packageSet;
         inherit sources;
         platform.name = platform;
         buildSystem = platform;
+        secureBoot = false;
       };
     in
     !(builtins.any (p: (p.pname or "") == "linux-kernel") tree.drvAttrs.roots)
@@ -123,10 +128,19 @@ in
   # (docs/design/boot.md, "Secure Boot off"); an image with secureBoot = false has no such unit
   (check "secureBoot: the initrd halts when Secure Boot is off" (
     let
-      initrdOf = sys: imageLib.initrdComposition { inherit (sys) composed; };
+      initrdOf =
+        secureBoot:
+        (imageLib.initrdSystem {
+          imageId = "t";
+          version = "20261031.1";
+          inherit (mkSystemFixture) packageSet;
+          inherit sources secureBoot;
+          platform.name = platform;
+          buildSystem = platform;
+        }).composed;
       refuse = "golconda-secure-boot-required.service";
-      on = initrdOf (sysWith { } storeCert);
-      off = initrdOf (sysWith { secureBoot = false; } storeCert);
+      on = initrdOf true;
+      off = initrdOf false;
       unit = on.units.${refuse};
     in
     hasInfix "ConditionSecurity=!uefi-secureboot" unit

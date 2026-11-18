@@ -38,6 +38,7 @@ let
     "[Unit]"
     "Description=Golconda: install this release's signed boot loader on the ESP"
     "Documentation=man:bootctl(1)"
+    "ConditionPathExists=!/etc/initrd-release"
     "ConditionFirmware=uefi"
     "ConditionPathExistsGlob=/usr/lib/systemd/boot/efi/systemd-boot*.efi.signed"
     "After=systemd-bless-boot.service"

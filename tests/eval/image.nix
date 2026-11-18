@@ -2,7 +2,6 @@
 # A function of the harness (./harness.nix); it returns a list of checks.
 {
   check,
-  compose,
   fixturePkgs,
   hasInfix,
   hasPrefix,
@@ -65,8 +64,16 @@ in
   # udev cookies, which libdevmapper does not wait on without udev_sync
   (check "base: lvm2's 10-dm and 13-dm-disk rules and dmsetup, in the host and the initrd" (
     let
+      initrd =
+        (imageLib.initrdSystem {
+          imageId = "t";
+          version = "20261031.1";
+          inherit (mkSystemFixture) packageSet;
+          inherit sources;
+          platform.name = "x86_64-linux";
+          buildSystem = "x86_64-linux";
+        }).composed;
       host = mkSystemFixture.composed;
-      initrd = imageLib.initrdComposition { composed = host; };
       rule = n: {
         target = "${fixturePkgs.lvm2}/lib/udev/rules.d/${n}";
         kind = "explicit";
@@ -82,8 +89,8 @@ in
     fixturePkgs.lvm2.args.prefix == "/usr" && hasRules host && hasRules initrd
   ))
   # One image evaluates one repkgs set: the /usr tree with its kernel and CA bundle (variants of
-  # the set), the signer and the index keyring (the chain's pkgs) take the same one
-  (check "image: the system, the signer and the keyring take one repkgs set" (
+  # the set), the initrd's /usr tree, the signer and the index keyring take the same one
+  (check "image: the system, the initrd, the signer and the keyring take one repkgs set" (
     let
       roots = image.usrTree.drvAttrs.roots;
       keyring = builtins.head (filter (p: p.name == "golconda-index-keyring") roots);
@@ -102,62 +109,6 @@ in
     && builtins.any (p: (p.pname or "") == "systemd") initrdRoots
     && builtins.any (p: (p.pname or "") == "linux-kernel") roots
     && builtins.any (p: (p.pname or "") == "ca-bundle") roots
-  ))
-  # The initrd is its own composition (lib/image/initrd.nix): what it runs of the image's /base,
-  # and the Secure Boot refusal. No other component: no sshd, network, PAM, vars or CA bundle,
-  # and none of the units the initrd would have to switch off
-  (check "initrd: systemd, dash, the dm rules and the boot's tools, nothing of the host's" (
-    let
-      i = imageLib.initrdComposition { inherit (mkSystemFixture) composed; };
-      paths = attrNames i.files ++ attrNames i.links ++ attrNames i.units;
-      has = s: builtins.any (p: builtins.match ".*${s}.*" p != null) paths;
-    in
-    builtins.sort (a: b: a < b) (map (p: p.pname) i.packages) == [
-      "dash"
-      "e2fsprogs"
-      "hwdb"
-      "lvm2"
-      "systemd"
-      "uutils-coreutils"
-    ]
-    &&
-      attrNames i.units == [
-        "golconda-emergency-reboot.service"
-        "golconda-failed-boots.service"
-        "golconda-secure-boot-required.service"
-      ]
-    &&
-      i.links."/usr/lib/systemd/system/sysinit.target.wants/golconda-failed-boots.service".target
-      == "../golconda-failed-boots.service"
-    && i.files ? "/usr/lib/golconda/golconda-failed-boots"
-    && i.files ? "/usr/lib/repart.d/30-root.conf"
-    && i.links ? "/usr/bin/fsck.ext4"
-    && !(has "networkd" || has "resolved" || has "timesyncd" || has "network-generator")
-    && !(has "sshd" || has "dbus" || has "security" || has "sysctl" || has "factory")
-    && !(has "ca-" || has "var-run" || has "vars" || has "zoneinfo")
-    && i.sysusers == [ ]
-    && i.tmpfiles == [ ]
-    && i.name == mkSystemFixture.composed.name
-  ))
-  # A drop-in that /base adds for a unit, or a PID 1 setting, reaches the initrd without a name
-  # (modules/base/initrd.nix); another component's stays out
-  (check "initrd: every drop-in and PID 1 setting of /base, none of another component" (
-    let
-      c = compose [
-        {
-          name = "/x";
-          files."/usr/lib/systemd/system/sshd.service.d/x.conf" = "[Unit]\n";
-        }
-      ];
-      i = imageLib.initrdComposition { composed = c; };
-      isDropIn =
-        p: builtins.match "/usr/lib/systemd/(system[.]conf[.]d|system/[^/]+[.]d)/[^/]+" p != null;
-      fromBase = p: c.origins.files.${p} == [ "/base" ];
-      dropIns = filter isDropIn (attrNames c.files);
-    in
-    builtins.any fromBase dropIns
-    && builtins.all (p: i.files ? ${p} == fromBase p) dropIns
-    && c.files ? "/usr/lib/systemd/system/sshd.service.d/x.conf"
   ))
   # 8. usr-tree library: pure helpers
   (check "usr-tree: stripUsrPrefix strips /usr/ prefix" (

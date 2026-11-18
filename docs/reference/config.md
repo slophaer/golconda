@@ -201,10 +201,11 @@ golconda.lib.mkSystem {
 
 `lib.mkSystem` uses the pins of the Golconda tree it comes from. `lib/system.nix` takes more
 arguments, for the image chain and the tests: an attribute set of options as `config`, `sources`,
-`verityCert`, and `extraFragments`. The last are the build's own fragments, each with a `name`
-(`lib/image`: the update index, the initrd's tools), listed in `fragments`. `extraFragments` adds
-them beside the components; a duplicate claim still fails rather than overrides. They are not
-configuration: the document is.
+`verityCert`, `packageSet`, and `extraFragments`. `packageSet` is a set of `nix/packages.nix` that
+`mkSystem` takes instead of a new one: the initrd takes the image's. `extraFragments` are the
+build's own fragments, each with a `name` (`lib/image`: the update index, the initrd's tools),
+listed in `fragments`. `extraFragments` adds them beside the components; a duplicate claim still
+fails rather than overrides. They are not configuration: the document is.
 
 `mkSystem` binds `/pkgs.target` to the platform's set and selects the components (the built-ins,
 then every optional component the document has a table for; an empty table selects one with its
@@ -222,6 +223,7 @@ returns:
 | `schema`          | the JSON Schema of this tree, downstream modules included; the image's `schema.json`                  |
 | `fragments`       | the names of the build's own fragments (`extraFragments`)                                             |
 | `packages`        | the downstream packages: name → `{ replaces; }`, `"golconda"`, `"repkgs"` or null                     |
+| `packageSet`      | the set of `nix/packages.nix` that the system takes                                                   |
 | `artifacts`       | the files `mkSystem` adds to `/usr/lib/golconda/`                                                     |
 | `platform`        | the elaborated platform record                                                                        |
 | `version`, `name` | from `/system`                                                                                        |

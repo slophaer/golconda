@@ -231,6 +231,19 @@ in
       "getty@.service"
     ]
   ))
+  (check "base: networkd, timesyncd and the network generator skip the initrd" (
+    let
+      fs = (compose [ ]).files;
+      skips =
+        u:
+        hasInfix "[Unit]\nConditionPathExists=!/etc/initrd-release"
+          fs."/usr/lib/systemd/system/${u}.d/golconda.conf".text;
+    in
+    skips "systemd-networkd.service"
+    && skips "systemd-networkd.socket"
+    && skips "systemd-timesyncd.service"
+    && skips "systemd-network-generator.service"
+  ))
   (check "base: the serial getty skips without agetty (no local login)" (
     # systemd-getty-generator pulls serial-getty@ttyS0.service in from the console= argument
     hasInfix "ConditionPathExists=/usr/bin/agetty"

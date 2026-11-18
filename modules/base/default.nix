@@ -66,7 +66,7 @@ in
       p = set.pkgs;
 
       # The rest of the fragment is in parts/, one concern each; this file merges them.
-      # Each part returns the fragment fields it fills. initrd.nix names what the initrd takes.
+      # Each part returns the fragment fields it fills.
       boot = import ./parts/boot.nix; # the health gate, the loader update
       console = import ./parts/console.nix; # the journal on tty1, the screen
       dbus = import ./parts/dbus.nix { inherit p; }; # the system bus on dbus-broker

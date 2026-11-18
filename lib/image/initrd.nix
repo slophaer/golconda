@@ -1,24 +1,17 @@
 # lib/image/initrd.nix: the initrd, a zstd cpio around a minimal /usr tree (docs/design/boot.md).
 #
-# initrdComposition { composed; } → the initrd's own composition, from the image's composed system:
-#   what the initrd runs of /base (`fromBase`), and the Secure Boot refusal when the image has
-#   /system.secureBoot. The packages are the image's, so a downstream replacement holds here too.
-# initrdTree { composed; version; platform; buildSystem; sources; } → that composition's /usr tree.
+# initrdSystem { imageId; version; platform; buildSystem; packageSet; sources; secureBoot ? true; }
+#   → the mkSystem of the initrd: /base alone, from the image's package set (`packageSet` of its
+#   mkSystem) and pins, with the refusal of the image's /system.secureBoot.
+# initrdTree (the same arguments) → that system's /usr tree without the kernel (the UKI has it).
 # initrd { usrTree; imageId; version; buildSystem; pkgs; } → derivation with initrd.cpio.zst:
 #   the tree, /init -> usr/lib/systemd/systemd, /etc/initrd-release, the merged-/usr links and
 #   the empty mount points.
 _:
 let
-  inherit (builtins)
-    attrNames
-    filter
-    head
-    listToAttrs
-    match
-    ;
+  inherit (builtins) filter;
   common = import ./common.nix { };
   usrTreeLib = import ../usr-tree.nix { };
-  merge = import ../../modules/lib/merge.nix;
   on = import ../../modules/lib/on.nix;
   inherit (import ../../modules/lib/text.nix) lines;
 
@@ -55,78 +48,57 @@ let
     };
   };
 
-  # What the initrd runs of the image's /base, by name (modules/base/initrd.nix)
-  fromBase = import ../../modules/base/initrd.nix;
-
-  # a unit drop-in or a PID 1 setting
-  isDropIn = p: match "/usr/lib/systemd/(system[.]conf[.]d|system/[^/]+[.]d)/[^/]+" p != null;
-
-  # fromBase, taken from the image's composition, and every drop-in of /base; a name /base does
-  # not have stops the build
-  baseFragment =
-    composed:
-    let
-      missing =
-        what: n:
-        throw "golconda: the initrd takes ${what} ${n} from /base, which has none (modules/base/initrd.nix)";
-      take =
-        field: names:
-        listToAttrs (
-          map (n: {
-            name = n;
-            value = composed.${field}.${n} or (missing field n);
-          }) names
-        );
-      dropIns = filter (p: isDropIn p && composed.origins.files.${p} == [ "/base" ]) (
-        attrNames composed.files
-      );
-    in
+  initrdSystem =
     {
-      packages = map (
-        n:
-        let
-          found = filter (p: (p.pname or null) == n) composed.packages;
-        in
-        if found == [ ] then missing "the package" n else head found
-      ) fromBase.packages;
-      units = take "units" fromBase.units;
-      files = take "files" (fromBase.files ++ dropIns);
-      links = take "links" fromBase.links;
-    };
-
-  initrdComposition =
-    { composed }:
-    merge.withOrigins (
-      [
-        {
-          origin = "/base";
-          fragment = baseFragment composed;
-        }
-      ]
-      ++ map (fragment: {
-        origin = fragment.name;
-        inherit fragment;
-      }) (on composed.secureBoot [ refuseFragment ])
-    )
-    // {
-      inherit (composed) name version;
+      imageId,
+      version,
+      platform,
+      buildSystem,
+      # the image's set and pins (chain.nix passes them): a downstream package replaces here too
+      packageSet,
+      sources,
+      # the image's /system.secureBoot (chain.nix passes it), for the refusal alone: the initrd's
+      # own /system keeps the default, so it needs no image keys (lib/system.nix)
+      secureBoot ? true,
+      ...
+    }:
+    import ../system.nix {
+      inherit sources packageSet;
+      system = buildSystem;
+      platform = platform.name;
+      config."/system" = {
+        name = imageId;
+        inherit version;
+      };
+      # The initrd reaches sockets.target and sysinit.target, which pull networkd (its socket)
+      # and timesyncd through /base's .wants links. sysusers does not run in the initrd, so /base
+      # gives those units ConditionPathExists=!/etc/initrd-release. resolved is wanted by
+      # multi-user.target only, which the initrd does not reach.
+      extraFragments = on secureBoot [ refuseFragment ];
     };
 in
 {
-  inherit initrdComposition;
+  # the system mkSystem makes of /base alone (lib/system.nix)
+  inherit initrdSystem;
 
-  # initrdTree: the initrd composition's /usr tree; the kernel is in the UKI
+  # initrdTree: the initrd system's /usr tree, without the kernel
   initrdTree =
-    {
-      composed,
+    args@{
       version,
       platform,
       buildSystem,
       sources,
       ...
     }:
+    let
+      sys = initrdSystem args;
+    in
     usrTreeLib.usrTree {
-      composerOutput = initrdComposition { inherit composed; };
+      # the kernel is in the UKI, not in the initrd. The initrd's system has no verityCert, so
+      # its kernel is the set's own, not the image's variant: neither goes in
+      composerOutput = sys.composed // {
+        packages = filter (p: p != sys.pkgs.linux-kernel) sys.composed.packages;
+      };
       inherit
         platform
         version

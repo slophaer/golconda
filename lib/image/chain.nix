@@ -111,9 +111,18 @@ let
     inherit sources;
     buildSystem = system;
   };
-  # the initrd's own composition, from the system's (lib/image/initrd.nix)
   initrd = imageLib.initrd (
-    stepArgs // { usrTree = imageLib.initrdTree (stepArgs // { inherit (sys) composed; }); }
+    stepArgs
+    // {
+      # not sys.usrTree
+      usrTree = imageLib.initrdTree (
+        stepArgs
+        // {
+          inherit (sys) packageSet;
+          inherit (sys.composed) secureBoot;
+        }
+      );
+    }
   );
   signer = imageLib.signer {
     inherit pkgs sources;

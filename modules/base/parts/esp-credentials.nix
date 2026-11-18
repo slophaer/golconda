@@ -14,6 +14,7 @@ let
     "[Unit]"
     "Description=Golconda: remove the bootstrap credentials from the ESP"
     "Documentation=man:systemd-stub(7)"
+    "ConditionPathExists=!/etc/initrd-release"
     "ConditionFirmware=uefi"
     "After=systemd-firstboot.service systemd-sysusers.service systemd-tmpfiles-setup.service"
     ""

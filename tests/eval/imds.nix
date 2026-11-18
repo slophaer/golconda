@@ -11,6 +11,8 @@
   fixturePkgs,
   hasInfix,
   hasSuffix,
+  mkSystemFixture,
+  sources,
   ...
 }:
 let
@@ -103,17 +105,20 @@ in
     && !(r.links ? ${wantsLink})
     && !(r.files ? ${importDropIn})
   ))
-  # the initrd takes /base's drop-ins, never /imds' marker: the IMDS units stay off there, also
-  # in an image with /imds (it has no network and no system users)
-  (check "imds: the initrd has no /imds, so the IMDS units stay off there" (
+  (check "imds: the initrd (/base alone) has no /imds, so the IMDS units stay off there" (
     let
-      initrd = (import ../../lib/image { }).initrdComposition {
-        composed = composeWith { "/imds" = { }; };
+      initrd = (import ../../lib/image { }).initrdSystem {
+        imageId = "t";
+        version = "20261031.1";
+        inherit (mkSystemFixture) packageSet;
+        inherit sources;
+        platform.name = "x86_64-linux";
+        buildSystem = "x86_64-linux";
       };
     in
-    all (u: initrd.files ? ${dropIn u}) stackUnits
-    && !(initrd.files ? ${marker})
-    && !(initrd.links ? ${wantsLink})
+    all (u: initrd.composed.files ? ${dropIn u}) stackUnits
+    && !(initrd.composed.files ? ${marker})
+    && !(initrd.composed.links ? ${wantsLink})
   ))
   (check "imds: an empty /imds table turns systemd's stack and its own import on" (
     let

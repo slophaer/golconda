@@ -19,6 +19,7 @@ let
     "Description=Golconda: show the journal on tty1"
     "Documentation=man:journalctl(1)"
     "DefaultDependencies=no"
+    "ConditionPathExists=!/etc/initrd-release"
     "After=systemd-journal-flush.service"
     "Conflicts=shutdown.target"
     "Before=shutdown.target"
