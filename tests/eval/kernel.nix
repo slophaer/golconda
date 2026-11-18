@@ -125,6 +125,7 @@ in
       "IA32_EMULATION"
       "SECURITY_SELINUX"
       "NETLABEL"
+      "NETWORK_SECMARK"
       "NFS_FS"
       "NFSD"
       "ISO9660_FS"

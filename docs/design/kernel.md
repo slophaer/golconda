@@ -69,7 +69,8 @@ covers it. The base is the x86_64 defconfig, so `golconda.config` turns each one
   graphics (`DRM_I915`), USB printers, joysticks, touch screens, tablets, hibernation, `binfmt_misc`
   and 32-bit programs (`IA32_EMULATION`). A server has no user for them. The screen is the
   firmware's framebuffer (`simpledrm`) or `virtio-gpu`.
-- **SELinux and NetLabel**: IPE is the execution policy. The BPF LSM stays on.
+- **SELinux, NetLabel and packet security marks** (`NETWORK_SECMARK`): IPE is the execution policy.
+  The BPF LSM stays on.
 - **Filesystems**: btrfs (the state is ext4), NFS (client and server), ISO 9660 and quota.
 
 ## Hangs and watchdogs
