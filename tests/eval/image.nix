@@ -2,6 +2,7 @@
 # A function of the harness (./harness.nix); it returns a list of checks.
 {
   check,
+  compose,
   fixturePkgs,
   hasInfix,
   hasPrefix,
@@ -137,6 +138,26 @@ in
     && i.sysusers == [ ]
     && i.tmpfiles == [ ]
     && i.name == mkSystemFixture.composed.name
+  ))
+  # A drop-in that /base adds for a unit, or a PID 1 setting, reaches the initrd without a name
+  # (modules/base/initrd.nix); another component's stays out
+  (check "initrd: every drop-in and PID 1 setting of /base, none of another component" (
+    let
+      c = compose [
+        {
+          name = "/x";
+          files."/usr/lib/systemd/system/sshd.service.d/x.conf" = "[Unit]\n";
+        }
+      ];
+      i = imageLib.initrdComposition { composed = c; };
+      isDropIn =
+        p: builtins.match "/usr/lib/systemd/(system[.]conf[.]d|system/[^/]+[.]d)/[^/]+" p != null;
+      fromBase = p: c.origins.files.${p} == [ "/base" ];
+      dropIns = filter isDropIn (attrNames c.files);
+    in
+    builtins.any fromBase dropIns
+    && builtins.all (p: i.files ? ${p} == fromBase p) dropIns
+    && c.files ? "/usr/lib/systemd/system/sshd.service.d/x.conf"
   ))
   # 8. usr-tree library: pure helpers
   (check "usr-tree: stripUsrPrefix strips /usr/ prefix" (

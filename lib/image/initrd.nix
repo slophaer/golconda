@@ -9,7 +9,13 @@
 #   the empty mount points.
 _:
 let
-  inherit (builtins) filter head listToAttrs;
+  inherit (builtins)
+    attrNames
+    filter
+    head
+    listToAttrs
+    match
+    ;
   common = import ./common.nix { };
   usrTreeLib = import ../usr-tree.nix { };
   merge = import ../../modules/lib/merge.nix;
@@ -49,81 +55,31 @@ let
     };
   };
 
-  # What the initrd runs of the image's /base (modules/base), by name: systemd (its initrd units
-  # and generators, from the farm), udev with lvm2's dm rules for the verity /usr, dash, the tools
-  # the boot runs (repart's mkfs.ext4, fsck, mount, blkid; chattr and coreutils for the failed-boot
-  # counter), hwdb (the IMDS generator reads it, and the IMDS drop-ins keep its units off), PID 1's
-  # settings, the initrd's deadline, the failed-boot counter and the emergency reboot.
-  fromBase = {
-    packages = [
-      "systemd"
-      "dash"
-      "uutils-coreutils"
-      "e2fsprogs"
-      "lvm2"
-      "hwdb"
-    ];
-    units = [
-      "golconda-failed-boots.service"
-      "golconda-emergency-reboot.service"
-    ];
-    files = [
-      "/usr/lib/locale.conf"
-      "/usr/lib/repart.d/30-root.conf"
-      "/usr/lib/golconda/golconda-failed-boots"
-      "/usr/lib/systemd/system.conf.d/golconda-caps.conf"
-      "/usr/lib/systemd/system.conf.d/golconda-crash.conf"
-      "/usr/lib/systemd/system.conf.d/golconda-watchdog.conf"
-      "/usr/lib/systemd/system/initrd.target.d/golconda-trial-boot.conf"
-      "/usr/lib/systemd/system/systemd-firstboot.service.d/golconda.conf"
-      "/usr/lib/systemd/system/ldconfig.service.d/golconda.conf"
-      "/usr/lib/systemd/system/modprobe@.service.d/golconda.conf"
-      "/usr/lib/systemd/system/serial-getty@.service.d/golconda.conf"
-    ]
-    ++ map (u: "/usr/lib/systemd/system/${u}.d/golconda.conf") [
-      "systemd-imdsd.socket"
-      "systemd-imdsd@.service"
-      "systemd-imds-early-network.service"
-      "systemd-imds-metrics.socket"
-      "systemd-imds-metrics@.service"
-      "systemd-imds-import.service"
-    ];
-    links = [
-      "/usr/bin/sh"
-      "/usr/bin/mount"
-      "/usr/bin/umount"
-      "/usr/bin/fsck"
-      "/usr/bin/blkid"
-      "/usr/bin/fsck.ext4"
-      "/usr/bin/chattr"
-      "/usr/lib/systemd"
-      "/usr/lib/udev"
-      "/usr/lib/sysusers.d"
-      "/usr/lib/tmpfiles.d"
-      "/usr/lib/nvpcr"
-      "/usr/lib/udev/hwdb.bin"
-      "/usr/lib/udev/rules.d/10-dm.rules"
-      "/usr/lib/udev/rules.d/13-dm-disk.rules"
-      "/usr/lib/systemd/system/emergency.target.wants/golconda-emergency-reboot.service"
-      "/usr/lib/systemd/system/sysinit.target.wants/golconda-failed-boots.service"
-    ];
-  };
+  # What the initrd runs of the image's /base, by name (modules/base/initrd.nix)
+  fromBase = import ../../modules/base/initrd.nix;
 
-  # fromBase, taken from the image's composition; a name /base does not have stops the build
+  # a unit drop-in or a PID 1 setting
+  isDropIn = p: match "/usr/lib/systemd/(system[.]conf[.]d|system/[^/]+[.]d)/[^/]+" p != null;
+
+  # fromBase, taken from the image's composition, and every drop-in of /base; a name /base does
+  # not have stops the build
   baseFragment =
     composed:
     let
       missing =
         what: n:
-        throw "golconda: the initrd takes ${what} ${n} from /base, which has none (lib/image/initrd.nix)";
+        throw "golconda: the initrd takes ${what} ${n} from /base, which has none (modules/base/initrd.nix)";
       take =
-        field:
+        field: names:
         listToAttrs (
           map (n: {
             name = n;
             value = composed.${field}.${n} or (missing field n);
-          }) fromBase.${field}
+          }) names
         );
+      dropIns = filter (p: isDropIn p && composed.origins.files.${p} == [ "/base" ]) (
+        attrNames composed.files
+      );
     in
     {
       packages = map (
@@ -133,9 +89,9 @@ let
         in
         if found == [ ] then missing "the package" n else head found
       ) fromBase.packages;
-      units = take "units";
-      files = take "files";
-      links = take "links";
+      units = take "units" fromBase.units;
+      files = take "files" (fromBase.files ++ dropIns);
+      links = take "links" fromBase.links;
     };
 
   initrdComposition =

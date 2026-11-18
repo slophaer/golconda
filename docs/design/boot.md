@@ -28,10 +28,11 @@ sequenceDiagram
 
 The initrd is a second `/usr` tree from the same store, as a zstd cpio. It is a composition of its
 own (`lib/image/initrd.nix`): the parts of the image's `/base` that the initrd runs, and the Secure
-Boot check. Those are systemd with its units and generators, udev with the rules below, dash,
-coreutils, hwdb, the tools of the boot (`mount`, `fsck`, `blkid`, `mkfs.ext4`, `chattr`), PID 1's
-crash and watchdog settings, the initrd's deadline, the failed-boot counter and the emergency
-reboot. It has no network, D-Bus, PAM, vars, CA bundle or sshd.
+Boot check. `modules/base/initrd.nix` names the parts; every unit drop-in of `/base` goes too. Those
+are systemd with its units and generators, udev with the rules below, dash, coreutils, hwdb, the
+tools of the boot (`mount`, `fsck`, `blkid`, `mkfs.ext4`, `chattr`), PID 1's crash and watchdog
+settings, the initrd's deadline, the failed-boot counter and the emergency reboot. It has no
+network, D-Bus, PAM, vars, CA bundle or sshd.
 
 systemd is PID 1 (`/init` points at it). udev runs with systemd's rules and two of lvm2's
 device-mapper rules, `10-dm` and `13-dm-disk` (lvm2 is a farm package, so they exec
