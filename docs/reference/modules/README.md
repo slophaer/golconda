@@ -189,8 +189,9 @@ cosmetic change.
 
 `merge [ fragmentA fragmentB ]` unions `units`, `files` and `links`, normalises every file to
 `{ text; mode; }`, concatenates `sysusers` and `tmpfiles` (each line once; two different lines for
-one tmpfiles path or one sysusers user or group throw), returns `packages` with each package once,
-and records in `origins.packages` which fragments (by `name`) brought each.
+one tmpfiles path or one sysusers user or group throw, except one line of each adjusting tmpfiles
+type, `z Z t T h H a A`, beside the line that creates the path), returns `packages` with each
+package once, and records in `origins.packages` which fragments (by `name`) brought each.
 
 One duplicate check covers what evaluation knows of the `/usr` tree. Each fragment claims paths: a
 unit `/usr/lib/systemd/system/<name>`, a file its path, a link its path. A path claimed twice

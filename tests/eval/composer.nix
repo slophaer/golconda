@@ -286,6 +286,49 @@ in
     && !(tryEval (deepSeq (merge frags).tmpfiles true)).success
     && same.tmpfiles == [ "d /var/empty 0755 root root -" ]
   ))
+  (check "composer allows one creating line and adjusting lines of other types for one path" (
+    merge.duplicateError [
+      {
+        name = "/a";
+        tmpfiles = [ "d /var/x 0755 root root -" ];
+      }
+      {
+        name = "/b";
+        tmpfiles = [
+          "a+ /var/x - - - - u:foo:rx"
+          "z /var/x 0750 root root -"
+        ];
+      }
+      {
+        name = "/c";
+        tmpfiles = [
+          "h /var/x - - - - +C"
+          "t /var/x - - - - user.x=1"
+        ];
+      }
+    ] == null
+  ))
+  (check "composer refuses two lines of one type or two creating lines for one path" (
+    let
+      msgOf =
+        a: b:
+        merge.duplicateError [
+          {
+            name = "/a";
+            tmpfiles = [ a ];
+          }
+          {
+            name = "/b";
+            tmpfiles = [ b ];
+          }
+        ];
+      names = msg: msg != null && hasInfix "/var/x" msg && hasInfix "/a" msg && hasInfix "/b" msg;
+    in
+    names (msgOf "a /var/x - - - - u:foo:r" "a+ /var/x - - - - u:bar:r")
+    && names (msgOf "z /var/x 0750 root root -" "z /var/x 0700 root root -")
+    && names (msgOf "f /var/x 0644 root root -" "w /var/x - - - - text")
+    && names (msgOf "d /var/x 0755 root root -" "e /var/x - - - 10d")
+  ))
   (check "composer refuses a control character in a sysusers or tmpfiles line" (
     merge.duplicateError [ { sysusers = [ "u foo -\nu root 0" ]; } ] != null
     &&

@@ -194,8 +194,10 @@ merges them, then the sysupdate definitions it renders from `updateSource` and t
 
 - Attribute-set fields are unioned, and a key that appears twice throws with the key's name.
 - List fields are concatenated, and an identical line is kept once. A tmpfiles line claims its path
-  and a sysusers `u` or `g` line its user or group: two different lines for one key throw. A line
-  with a control character throws.
+  and a sysusers `u` or `g` line its user or group: two different lines for one key throw. One path
+  can also take one line of each type that adjusts a path (`z`, `Z`, `t`, `T`, `h`, `H`, `a`, `A`),
+  as tmpfiles.d(5) applies them on top of the line that creates it. A line with a control character
+  throws.
 - `packages` is one list with each package once, and `origins.packages` says which fragments brought
   it.
 - The fragments' links are one map, and one duplicate check covers the whole map.

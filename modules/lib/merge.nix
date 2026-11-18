@@ -7,9 +7,9 @@
 # Every file comes out as { text; mode; }. `links` is one map, path under /usr -> { target; kind; };
 # the image builder links /usr/bin/<name> from each package's exports.json (lib/usr-tree.nix),
 # because evaluation cannot see what a build installs. One check covers units, files, links and
-# the tmpfiles and sysusers lines: a path claimed twice throws with both claims and both origins.
-# The paths that the system and the image builder write are claimed first. `merge.withOrigins`
-# adds `origins` (key -> origins, first-seen order); `merge.duplicateError` is the message or null.
+# the tmpfiles and sysusers lines: a path claimed twice throws with both claims and both origins
+# (except `tmpfilesAdjusting`). The paths that the system and the image builder write are claimed
+# first. `merge.withOrigins` adds `origins`; `merge.duplicateError` is the message or null.
 let
   inherit (builtins)
     any
@@ -181,6 +181,28 @@ let
     in
     if builtins.length fs < 2 then null else builtins.elemAt fs 1;
 
+  # The tmpfiles types that change a path and do not create it (tmpfiles.d(5)).
+  # One path takes one line of another type and one line of each of these.
+  tmpfilesAdjusting = [
+    "z" # mode, owner
+    "Z"
+    "t" # extended attributes
+    "T"
+    "h" # file attributes
+    "H"
+    "a" # ACL
+    "A"
+  ];
+
+  # The slot of a tmpfiles line at its path: its type letter if the type
+  # adjusts, "create" for all other types.
+  tmpfilesSlot =
+    line:
+    let
+      letter = builtins.substring 0 1 line;
+    in
+    if elem letter tmpfilesAdjusting then letter else "create";
+
   # Every key one labelled fragment claims, as { path; what; origin; }: a unit
   # at /usr/lib/systemd/system/<name>, a file at its path, a link at its path,
   # a tmpfiles line at its path, and a sysusers line for its user or group. A
@@ -195,20 +217,25 @@ let
         inherit (l) origin;
       };
       lineClaims =
-        field: keyOf:
+        field: keyOf: slotOf:
         concatMap (
           line:
           let
             k = keyOf line;
           in
-          if k == null then [ ] else [ (claim k "${field} line '${line}'" // { inherit line; }) ]
+          if k == null then
+            [ ]
+          else
+            [ (claim k "${field} line '${line}'" // { inherit line; } // slotOf line) ]
         ) (f.${field} or [ ]);
     in
     map (n: claim "/usr/lib/systemd/system/${n}" "unit '${n}'") (attrNames (f.units or { }))
     ++ map (p: claim p "file") (attrNames (f.files or { }))
     ++ map (p: claim p "${links.${p}.kind} link to ${links.${p}.target}") (attrNames links)
-    ++ lineClaims "sysusers" sysusersKey
-    ++ lineClaims "tmpfiles" tmpfilesKey;
+    ++ lineClaims "sysusers" sysusersKey (_: { })
+    ++ lineClaims "tmpfiles" tmpfilesKey (line: {
+      slot = tmpfilesSlot line;
+    });
 
   # The first sysusers or tmpfiles line with a control character, as an error,
   # or null: a line break would add a line.
@@ -228,8 +255,30 @@ let
   # Each element once, in first-seen order.
   unique = foldl' (acc: x: if elem x acc then acc else acc ++ [ x ]) [ ];
 
-  # The one duplicate check: one path, one claim. The message names both
-  # claims and both origins.
+  # Two claims of one path that can stand together: identical lines (one
+  # claim), or tmpfiles lines in different slots.
+  compatible =
+    a: b: (a ? line && b ? line && a.line == b.line) || (a ? slot && b ? slot && a.slot != b.slot);
+
+  # The first pair of claims that cannot stand together, or null.
+  clashOf =
+    cs:
+    if cs == [ ] then
+      null
+    else
+      let
+        others = filter (c: !compatible (head cs) c) (tail cs);
+      in
+      if others == [ ] then
+        clashOf (tail cs)
+      else
+        [
+          (head cs)
+          (head others)
+        ];
+
+  # The one duplicate check: one path, one claim, except for compatible
+  # claims. The message names both claims and both origins.
   duplicateErrorOf =
     labelled:
     let
@@ -240,14 +289,14 @@ let
       errorAt =
         path:
         let
-          first = head byPath.${path};
-          # an identical line is the same claim
-          clash = filter (c: !(c ? line && first ? line && c.line == first.line)) (tail byPath.${path});
+          clash = clashOf byPath.${path};
+          first = head clash;
+          second = builtins.elemAt clash 1;
         in
-        if clash == [ ] then
+        if clash == null then
           null
         else
-          "golconda: ${path} defined twice: ${first.what} from ${first.origin}, ${(head clash).what} from ${(head clash).origin}";
+          "golconda: ${path} defined twice: ${first.what} from ${first.origin}, ${second.what} from ${second.origin}";
       errors = filter (e: e != null) (map errorAt (attrNames byPath));
     in
     if controlError != null then
