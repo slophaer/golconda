@@ -53,7 +53,9 @@ without `codeSigning`; each has a key of its own. The enrolment files are signed
 `DIR.private` offline. `systemd-sbsign` takes a PEM certificate (systemd 262, `systemd-sbsign(1)`).
 The signer checks each private key against its public half and each verity root hash signature
 against the certificate, so a key and certificate that do not match fail the release and not the
-boot. Keep the set: a rotation uses the old `pcr/` key and the old release key (step 5).
+boot. Keep the set: a rotation uses the old `pcr/` key and the old release key (step 5). The release
+key is made at 00:00 UTC of the day before, so a machine whose clock is at its release's date takes
+it ([Updates: What an update authenticates](../design/updates.md#what-an-update-authenticates)).
 
 **A set without the enrolment files** is refused for a Secure Boot image; the error names the
 command for that set. `scripts/make-keys --auth-only DIR` writes `secureboot/auth` into the existing

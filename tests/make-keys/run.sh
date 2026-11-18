@@ -125,6 +125,19 @@ home2=$tmp/g2
 mkdir -m 700 "$home2"
 GNUPGHOME=$home2 gpg --batch --no-default-keyring --keyring "$keys/release/index.pgp" --verify "$tmp/SHA256SUMS.gpg" "$tmp/SHA256SUMS" 2>/dev/null \
   || fail "index.pgp verifies a signature of index.key"
+# the clock floor: a machine's clock is at least 00:00 UTC of the release date, and sign-index
+# (lib/image/disk.nu) signs at that time, or one second after the key's creation when that is
+# later. The key is made at 00:00 UTC the day before, so a release of today signs at the floor,
+# and gpg at the floor takes it.
+today=$(($(date -u +%s) / 86400 * 86400))
+created=$(gpg --batch --with-colons --show-keys "$keys/release/index.pgp" | awk -F: '$1 == "pub" { print $6; exit }')
+[ "$created" = $((today - 86400)) ] || fail "the release key is made at 00:00 UTC the day before (is $created)"
+at=$today
+[ "$at" -gt "${created:-0}" ] || at=$((created + 1))
+GNUPGHOME=$home gpg --batch --yes --faked-system-time "$at!" --detach-sign --output "$tmp/floor.gpg" "$tmp/SHA256SUMS" 2>/dev/null ||
+  fail "index.key signs at the clock floor"
+GNUPGHOME=$home2 gpg --batch --faked-system-time "$today!" --no-default-keyring --keyring "$keys/release/index.pgp" \
+  --verify "$tmp/floor.gpg" "$tmp/SHA256SUMS" 2>/dev/null || fail "a release of today verifies at the clock floor"
 GNUPGHOME=$home gpgconf --kill gpg-agent 2>/dev/null
 GNUPGHOME=$home2 gpgconf --kill gpg-agent 2>/dev/null
 

@@ -97,7 +97,9 @@ write the ESP can replace the UKI, and with it the kernel that holds the trusted
 The clock must be after the creation of the release key: `gpg` refuses a key from the future.
 timesyncd sets the clock from the network. Without it, PID 1 moves a clock that is behind the
 release's date forward to that date (the mtime of the empty `/usr/lib/clock-epoch`) *(being built)*.
-A release key made later than 00:00 UTC of that date is still ahead of that clock.
+`scripts/make-keys` makes the release key at 00:00 UTC of the day before it runs, so the key is
+older than 00:00 UTC of every release dated on or after the day it ran. A release dated earlier is
+still ahead of that clock.
 
 Proven: `index-signed` and `sysupdate-installed` (`--next`), and `sysupdate-refused` with
 `boots-old` for a changed index (`--next --tamper-index`); the no-Secure-Boot image passed

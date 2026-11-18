@@ -237,7 +237,9 @@ run_openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$stage/pc
 run_openssl pkey -in "$stage/pcr/pcr.key" -pubout -out "$stage/pcr/pcr.pub"
 
 # the release key, in a scratch home that goes with its agent (a short path: the agent's socket);
-# a rotation copies the old set's
+# a rotation copies the old set's. It is made at 00:00 UTC the day before: a machine's clock is at
+# least 00:00 UTC of its release date, and gpg refuses a key made after its clock
+# (docs/design/updates.md).
 mkdir "$stage/release" "$stage/g"
 gpg_run() {
   if ! GNUPGHOME="$stage/g" gpg --batch "$@" 2>"$stage/gpg.log"; then
@@ -249,7 +251,8 @@ gpg_run() {
 if [ -n "$old" ]; then
   cp "$old/release/index.key" "$old/release/index.pgp" "$stage/release/"
 else
-  gpg_run --passphrase '' --quick-gen-key "golconda release index $(date -u +%Y%m%d) <index@golconda.invalid>" ed25519 sign never
+  made=$(($(date -u +%s) / 86400 * 86400 - 86400))
+  gpg_run --faked-system-time "$made!" --passphrase '' --quick-gen-key "golconda release index $(date -u +%Y%m%d) <index@golconda.invalid>" ed25519 sign never
   gpg_run --export --output "$stage/release/index.pgp"
   gpg_run --pinentry-mode loopback --passphrase '' --armor --export-secret-keys --output "$stage/release/index.key"
 fi
