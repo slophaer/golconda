@@ -26,7 +26,7 @@ which module won. You read the answer in the error, or in `attribution.json`.
   ```
 
 - **No global namespace.** A module changes another's output only by calling it and transforming the
-  result. Nothing acts at a distance, so `mkForce` has no counterpart.
+  result. No module acts at a distance, so `mkForce` has no counterpart.
 
 - **A module is on when its table is in the document.** There is no `enable` flag. A table
   `["/services/sshd"]` selects the component, and removing the table removes it.
