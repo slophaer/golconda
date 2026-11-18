@@ -1,18 +1,18 @@
 # lib/image/initrd.nix: the initrd, a zstd cpio around a minimal /usr tree (docs/design/boot.md).
 #
-# initrdSystem { imageId; version; platform; buildSystem; packagesDir ? null;
-#   replaces ? [ ]; sources ? the pins; secureBoot ? true; } → the mkSystem of the initrd: /base
-#   as lib/system.nix composes it, with the image's /system.secureBoot, downstream packages,
-#   [golconda] replaces and pins, so the initrd's set is the system's.
-# initrdTree (the same arguments) → that system's /usr tree without the kernel (the UKI has it).
+# initrdComposition { composed; } → the initrd's own composition, from the image's composed system:
+#   what the initrd runs of /base (`fromBase`), and the Secure Boot refusal when the image has
+#   /system.secureBoot. The packages are the image's, so a downstream replacement holds here too.
+# initrdTree { composed; version; platform; buildSystem; sources; } → that composition's /usr tree.
 # initrd { usrTree; imageId; version; buildSystem; pkgs; } → derivation with initrd.cpio.zst:
 #   the tree, /init -> usr/lib/systemd/systemd, /etc/initrd-release, the merged-/usr links and
 #   the empty mount points.
 _:
 let
-  inherit (builtins) filter;
+  inherit (builtins) filter head listToAttrs;
   common = import ./common.nix { };
   usrTreeLib = import ../usr-tree.nix { };
+  merge = import ../../modules/lib/merge.nix;
   on = import ../../modules/lib/on.nix;
   inherit (import ../../modules/lib/text.nix) lines;
 
@@ -49,71 +49,128 @@ let
     };
   };
 
-  initrdSystem =
+  # What the initrd runs of the image's /base (modules/base), by name: systemd (its initrd units
+  # and generators, from the farm), udev with lvm2's dm rules for the verity /usr, dash, the tools
+  # the boot runs (repart's mkfs.ext4, fsck, mount, blkid; chattr and coreutils for the failed-boot
+  # counter), hwdb (the IMDS generator reads it, and the IMDS drop-ins keep its units off), PID 1's
+  # settings, the initrd's deadline, the failed-boot counter and the emergency reboot.
+  fromBase = {
+    packages = [
+      "systemd"
+      "dash"
+      "uutils-coreutils"
+      "e2fsprogs"
+      "lvm2"
+      "hwdb"
+    ];
+    units = [
+      "golconda-failed-boots.service"
+      "golconda-emergency-reboot.service"
+    ];
+    files = [
+      "/usr/lib/locale.conf"
+      "/usr/lib/repart.d/30-root.conf"
+      "/usr/lib/golconda/golconda-failed-boots"
+      "/usr/lib/systemd/system.conf.d/golconda-caps.conf"
+      "/usr/lib/systemd/system.conf.d/golconda-crash.conf"
+      "/usr/lib/systemd/system.conf.d/golconda-watchdog.conf"
+      "/usr/lib/systemd/system/initrd.target.d/golconda-trial-boot.conf"
+      "/usr/lib/systemd/system/systemd-firstboot.service.d/golconda.conf"
+      "/usr/lib/systemd/system/ldconfig.service.d/golconda.conf"
+      "/usr/lib/systemd/system/modprobe@.service.d/golconda.conf"
+      "/usr/lib/systemd/system/serial-getty@.service.d/golconda.conf"
+    ]
+    ++ map (u: "/usr/lib/systemd/system/${u}.d/golconda.conf") [
+      "systemd-imdsd.socket"
+      "systemd-imdsd@.service"
+      "systemd-imds-early-network.service"
+      "systemd-imds-metrics.socket"
+      "systemd-imds-metrics@.service"
+      "systemd-imds-import.service"
+    ];
+    links = [
+      "/usr/bin/sh"
+      "/usr/bin/mount"
+      "/usr/bin/umount"
+      "/usr/bin/fsck"
+      "/usr/bin/blkid"
+      "/usr/bin/fsck.ext4"
+      "/usr/bin/chattr"
+      "/usr/lib/systemd"
+      "/usr/lib/udev"
+      "/usr/lib/sysusers.d"
+      "/usr/lib/tmpfiles.d"
+      "/usr/lib/nvpcr"
+      "/usr/lib/udev/hwdb.bin"
+      "/usr/lib/udev/rules.d/10-dm.rules"
+      "/usr/lib/udev/rules.d/13-dm-disk.rules"
+      "/usr/lib/systemd/system/emergency.target.wants/golconda-emergency-reboot.service"
+      "/usr/lib/systemd/system/sysinit.target.wants/golconda-failed-boots.service"
+    ];
+  };
+
+  # fromBase, taken from the image's composition; a name /base does not have stops the build
+  baseFragment =
+    composed:
+    let
+      missing =
+        what: n:
+        throw "golconda: the initrd takes ${what} ${n} from /base, which has none (lib/image/initrd.nix)";
+      take =
+        field:
+        listToAttrs (
+          map (n: {
+            name = n;
+            value = composed.${field}.${n} or (missing field n);
+          }) fromBase.${field}
+        );
+    in
     {
-      imageId,
-      version,
-      platform,
-      buildSystem,
-      packagesDir ? null,
-      replaces ? [ ],
-      # the pins the image's own system has (chain.nix passes them)
-      sources ? import ../../pins,
-      # the image's /system.secureBoot (chain.nix passes it), for the refusal alone: the initrd's
-      # own /system keeps the default, so its set needs no image keys (lib/system.nix)
-      secureBoot ? true,
-      ...
-    }:
-    import ../system.nix {
-      inherit sources;
-      system = buildSystem;
-      platform = platform.name;
-      config = {
-        "/system" = {
-          name = imageId;
-          inherit version;
-        };
-      }
-      // (
-        if packagesDir == null then
-          { }
-        else
-          {
-            golconda = {
-              packages = packagesDir;
-              inherit replaces;
-            };
-          }
-      );
-      # The initrd reaches sockets.target and sysinit.target, which pull networkd (its socket)
-      # and timesyncd through /base's .wants links. sysusers does not run in the initrd, so /base
-      # gives those units ConditionPathExists=!/etc/initrd-release. resolved is wanted by
-      # multi-user.target only, which the initrd does not reach.
-      extraFragments = on secureBoot [ refuseFragment ];
+      packages = map (
+        n:
+        let
+          found = filter (p: (p.pname or null) == n) composed.packages;
+        in
+        if found == [ ] then missing "the package" n else head found
+      ) fromBase.packages;
+      units = take "units";
+      files = take "files";
+      links = take "links";
+    };
+
+  initrdComposition =
+    { composed }:
+    merge.withOrigins (
+      [
+        {
+          origin = "/base";
+          fragment = baseFragment composed;
+        }
+      ]
+      ++ map (fragment: {
+        origin = fragment.name;
+        inherit fragment;
+      }) (on composed.secureBoot [ refuseFragment ])
+    )
+    // {
+      inherit (composed) name version;
     };
 in
 {
-  # the system mkSystem makes of /base alone (lib/system.nix)
-  inherit initrdSystem;
+  inherit initrdComposition;
 
-  # initrdTree: the initrd system's /usr tree, without the kernel
+  # initrdTree: the initrd composition's /usr tree; the kernel is in the UKI
   initrdTree =
-    args@{
+    {
+      composed,
       version,
       platform,
       buildSystem,
       sources ? import ../../pins,
       ...
     }:
-    let
-      sys = initrdSystem args;
-    in
     usrTreeLib.usrTree {
-      # the kernel is in the UKI, not in the initrd. The initrd's own set: with
-      # /system.secureBoot = false the image's kernel is another derivation
-      composerOutput = sys.composed // {
-        packages = filter (p: p != sys.pkgs.linux-kernel) sys.composed.packages;
-      };
+      composerOutput = initrdComposition { inherit composed; };
       inherit
         platform
         version

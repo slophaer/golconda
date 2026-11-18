@@ -64,16 +64,8 @@ in
   # udev cookies, which libdevmapper does not wait on without udev_sync
   (check "base: lvm2's 10-dm and 13-dm-disk rules and dmsetup, in the host and the initrd" (
     let
-      initrd =
-        (imageLib.initrdSystem {
-          imageId = "t";
-          version = "20261031.1";
-          pkgs = fixturePkgs;
-          inherit sources;
-          platform.name = "x86_64-linux";
-          buildSystem = "x86_64-linux";
-        }).composed;
       host = mkSystemFixture.composed;
+      initrd = imageLib.initrdComposition { composed = host; };
       rule = n: {
         target = "${fixturePkgs.lvm2}/lib/udev/rules.d/${n}";
         kind = "explicit";
@@ -94,18 +86,57 @@ in
     let
       roots = image.usrTree.drvAttrs.roots;
       keyring = builtins.head (filter (p: p.name == "golconda-index-keyring") roots);
+      initrdRoots = image.initrd.drvAttrs.usrTree.drvAttrs.roots;
     in
     builtins.length (
       setsOf (
         roots
+        ++ initrdRoots
         ++ [
           keyring.pkgs.gnupg
           image.signer.pkgs.gnupg
         ]
       )
     ) == 1
+    && builtins.any (p: (p.pname or "") == "systemd") initrdRoots
     && builtins.any (p: (p.pname or "") == "linux-kernel") roots
     && builtins.any (p: (p.pname or "") == "ca-bundle") roots
+  ))
+  # The initrd is its own composition (lib/image/initrd.nix): what it runs of the image's /base,
+  # and the Secure Boot refusal. No other component: no sshd, network, PAM, vars or CA bundle,
+  # and none of the units the initrd would have to switch off
+  (check "initrd: systemd, dash, the dm rules and the boot's tools, nothing of the host's" (
+    let
+      i = imageLib.initrdComposition { inherit (mkSystemFixture) composed; };
+      paths = attrNames i.files ++ attrNames i.links ++ attrNames i.units;
+      has = s: builtins.any (p: builtins.match ".*${s}.*" p != null) paths;
+    in
+    builtins.sort (a: b: a < b) (map (p: p.pname) i.packages) == [
+      "dash"
+      "e2fsprogs"
+      "hwdb"
+      "lvm2"
+      "systemd"
+      "uutils-coreutils"
+    ]
+    &&
+      attrNames i.units == [
+        "golconda-emergency-reboot.service"
+        "golconda-failed-boots.service"
+        "golconda-secure-boot-required.service"
+      ]
+    &&
+      i.links."/usr/lib/systemd/system/sysinit.target.wants/golconda-failed-boots.service".target
+      == "../golconda-failed-boots.service"
+    && i.files ? "/usr/lib/golconda/golconda-failed-boots"
+    && i.files ? "/usr/lib/repart.d/30-root.conf"
+    && i.links ? "/usr/bin/fsck.ext4"
+    && !(has "networkd" || has "resolved" || has "timesyncd" || has "network-generator")
+    && !(has "sshd" || has "dbus" || has "security" || has "sysctl" || has "factory")
+    && !(has "ca-" || has "var-run" || has "vars" || has "zoneinfo")
+    && i.sysusers == [ ]
+    && i.tmpfiles == [ ]
+    && i.name == mkSystemFixture.composed.name
   ))
   # 8. usr-tree library: pure helpers
   (check "usr-tree: stripUsrPrefix strips /usr/ prefix" (

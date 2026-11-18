@@ -3,8 +3,8 @@
 # systemd-imds-generator pulls them in wherever hwdb names a cloud (40-imds.hwdb). Without this,
 # the early network file, the prohibit route and the daemon would come to every Hetzner machine
 # without a word in its configuration. So each unit gets a drop-in with a condition on /usr/lib/golconda/imds, a file
-# only /imds ships. The initrd is /base alone (lib/image/initrd.nix), so they stay off there too:
-# it has no network and no system users (sysusers runs after it). Returns { files; }.
+# only /imds ships. The initrd takes these drop-ins and never the file (lib/image/initrd.nix), so
+# they stay off there too: it has no network and no system users. Returns { files; }.
 let
   inherit (import ../../lib/text.nix) lines;
 

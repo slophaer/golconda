@@ -234,8 +234,7 @@
         }
     ))
     (check "failed boots: the host resets the count after multi-user.target and boot-complete.target" (
-      hasInfix "\nConditionPathExists=!/etc/initrd-release\n" complete
-      && hasInfix "\nAfter=multi-user.target boot-complete.target\n" complete
+      hasInfix "\nAfter=multi-user.target boot-complete.target\n" complete
       && hasInfix "\nExecStart=${program} complete\n" complete
       # no Requires=: an uncounted boot has no boot-complete.target, and must not pull it in
       && !(hasInfix "Requires=" complete)
@@ -257,8 +256,7 @@
           ]
           (readFile ../../modules/base/golconda-failed-boots)
       && hasInfix "\nfallback=3\nhalt=6\n" baseOnly.files.${program}.text
-      # constants: the document sets neither threshold nor the trial boot deadline, so the
-      # initrd, built from /base alone, has the same program as the host
+      # constants: the document sets neither threshold nor the trial boot deadline
       &&
         attrNames (f.modules { }).modules.base.options == [
           "journalMaxUse"
@@ -290,7 +288,6 @@
       hasInfix "\nExecStart=${program}\n" u
       && hasInfix "\nType=oneshot\n" u
       && hasInfix "\nRemainAfterExit=yes\n" u
-      && hasInfix "\nConditionPathExists=!/etc/initrd-release\n" u
       && hasInfix "\nConditionFirmware=uefi\n" u
       # firstboot writes /etc/hostname from firstboot.hostname, sysusers the passwd.* ones, tmpfiles
       # /root/.ssh/authorized_keys; a crash before they finish keeps the ESP's copy for the next boot

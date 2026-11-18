@@ -77,13 +77,12 @@ one-of-each decision is a feature value there, and a package that cannot honour 
 
 ## One set for each image
 
-An image evaluates one repkgs set for its system. The `/usr` tree, the signer and the release
-keyring take it; the initrd's own system evaluates one more. Two packages depend on the
-configuration: the kernel carries the image's verity key (`lib/system.nix`), and the CA bundle is
-made from `/trust`'s options (`modules/trust`). Each is a variant of the set's package
-(`set.variant`): only that derivation changes, and the options are read after their type check. The
-SBOM evaluates a second set, without the downstream packages, only for the ancestor of a package
-that a downstream package replaces.
+An image evaluates one repkgs set. The `/usr` tree, the initrd, the signer and the release keyring
+take it. Two packages depend on the configuration: the kernel carries the image's verity key
+(`lib/system.nix`), and the CA bundle is made from `/trust`'s options (`modules/trust`). Each is a
+variant of the set's package (`set.variant`): only that derivation changes, and the options are read
+after their type check. The SBOM evaluates a second set, without the downstream packages, only for
+the ancestor of a package that a downstream package replaces.
 
 ## Prefixed packages
 

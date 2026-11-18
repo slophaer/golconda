@@ -1,8 +1,8 @@
-# A downstream repository that replaces a /base package (tzdata). The initrd composes /base
-# from its own set, so the chain must hand it the downstream packages
-# (tests/eval/image-config.nix).
+# A downstream repository that replaces a package of /base that the initrd takes (dash). The
+# initrd takes the image's packages, so it has the downstream one
+# (tests/real-packages/image-config.nix).
 [golconda]
-replaces = ["tzdata"]
+replaces = ["dash"]
 
 ["/system"]
 name = "downstream-initrd"

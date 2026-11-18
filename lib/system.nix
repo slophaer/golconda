@@ -36,8 +36,8 @@ let
   unloaded = tree { };
   treeLib = import ./tree.nix { };
 
-  # The repkgs set for this platform, one for the image: the signer and the keyring take it too
-  # (lib/image/chain.nix).
+  # The repkgs set for this platform, one for the image: the signer, the keyring and the initrd
+  # take it too (lib/image/chain.nix).
   setFull = import ../nix/packages.nix {
     inherit sources system platform;
     downstream = project.packages;

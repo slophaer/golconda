@@ -110,29 +110,10 @@ in
         inherit publicKeys;
         system = "x86_64-linux";
       };
-      initrdSys =
-        packagesDir: replaces:
-        (import ../../lib/image { }).initrdSystem {
-          imageId = "t";
-          version = "20261031.1";
-          inherit (i) pkgs;
-          platform = {
-            name = "x86_64-linux";
-          };
-          buildSystem = "x86_64-linux";
-          inherit packagesDir replaces;
-        };
-      allowed = [
-        "openssh"
-        "ripgrep"
-      ];
     in
-    # the fixture's openssh (version 0.0.3) replaces Golconda's for the chain's own set
+    # the fixture's openssh (version 0.0.3) replaces Golconda's in the image's one set
     i.pkgs.openssh.version == "0.0.3"
-    && (initrdSys ../fixtures/downstream/packages allowed).pkgs.openssh.version == "0.0.3"
-    && (initrdSys null [ ]).pkgs.openssh.version != "0.0.3"
-    # the initrd and the chain's own set need the same opt-in as the system
-    && !(builtins.tryEval (initrdSys ../fixtures/downstream/packages [ ]).pkgs.openssh.version).success
+    # and needs the same opt-in as the system
     && !(builtins.tryEval
       (f.lib.mkImage {
         config = ../fixtures/downstream-unlisted/server.toml;
@@ -153,9 +134,9 @@ in
       };
       tree = i: builtins.unsafeDiscardStringContext (toString i.initrd.usrTree);
     in
-    # the fixture's tzdata (0.0.4) is in the chain's set, and the initrd tree that the
-    # chain builds differs from the one without the downstream packages
-    replaced.pkgs.tzdata.version == "0.0.4" && tree replaced != tree plain
+    # the fixture's dash (0.0.4) is in the image's set, and the initrd tree that the chain
+    # builds differs from the one without the downstream packages
+    replaced.pkgs.dash.version == "0.0.4" && tree replaced != tree plain
   ))
   (check "mkImage: refuses a document without sshd: the image would have no login" (
     !(builtins.tryEval (

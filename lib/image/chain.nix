@@ -79,10 +79,8 @@ let
   pcrPublicKey = publicFile pcrPublicKeys "pcr/pcr.pub";
   indexPublicKey = publicFile publicKeys "release/index.pgp";
 
-  # the configuration's downstream directories ([golconda]): the initrd takes them as the system
-  project = (import ../config.nix { tree = null; }).readProject config;
-  # the system's package set, with its kernel: the signer and the keyring take it, so they and
-  # the system evaluate one set and a downstream package replaces for all of them
+  # the system's package set, with its kernel: the signer, the keyring and the initrd take it, so
+  # the image evaluates one set and a downstream package replaces for all of them
   inherit (composed) pkgs;
   indexKeyring = imageLib.indexKeyring {
     inherit pkgs sources;
@@ -113,19 +111,9 @@ let
     inherit sources;
     buildSystem = system;
   };
+  # the initrd's own composition, from the system's (lib/image/initrd.nix)
   initrd = imageLib.initrd (
-    stepArgs
-    // {
-      # not sys.usrTree
-      usrTree = imageLib.initrdTree (
-        stepArgs
-        // {
-          packagesDir = project.packages;
-          inherit (project) replaces;
-          inherit (sys.composed) secureBoot;
-        }
-      );
-    }
+    stepArgs // { usrTree = imageLib.initrdTree (stepArgs // { inherit (sys) composed; }); }
   );
   signer = imageLib.signer {
     inherit pkgs sources;

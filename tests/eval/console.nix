@@ -25,11 +25,11 @@ in
     && hasInfix "\nTTYPath=/dev/tty1\n" unit
     && hasInfix "\nRestart=always\n" unit
   ))
-  (check "console: golconda-console.service starts at sysinit.target, not in the initrd" (
+  # the initrd has no such unit (lib/image/initrd.nix)
+  (check "console: golconda-console.service starts at sysinit.target" (
     base.links."/usr/lib/systemd/system/sysinit.target.wants/golconda-console.service".target or null
     == "../golconda-console.service"
     && hasInfix "\nDefaultDependencies=no\n" unit
-    && hasInfix "\nConditionPathExists=!/etc/initrd-release\n" unit
     # a journalctl started before the flush misses the persistent journal of the first boot
     && hasInfix "\nAfter=systemd-journal-flush.service\n" unit
   ))
