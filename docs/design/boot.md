@@ -31,29 +31,37 @@ own (`lib/image/initrd.nix`): the parts of the image's `/base` that the initrd r
 Boot check. Those are systemd with its units and generators, udev with the rules below, dash,
 coreutils, hwdb, the tools of the boot (`mount`, `fsck`, `blkid`, `mkfs.ext4`, `chattr`), PID 1's
 crash and watchdog settings, the initrd's deadline, the failed-boot counter and the emergency
-reboot. It has no network, D-Bus, PAM, vars, CA bundle or sshd. systemd is PID 1 (`/init` points at
-it), udev runs with systemd's rules and two of lvm2's device-mapper rules, `10-dm` and `13-dm-disk`
-(lvm2 is a farm package, so they exec `/usr/bin/dmsetup`), and `dmsetup`, all from `/base`, so the
-host has them too; `blkid` must be there as well, or `13-dm-disk` cannot probe the verity device and
-systemd keeps it at `SYSTEMD_READY=0`. With them `/dev/mapper/usr` exists, in the initrd and on the
-host, and `dev-mapper-usr.device`, which `usr.mount` requires, is active. lvm2 is built without
-`udev_sync`: libdevmapper would link libudev, which is systemd's, and systemd → cryptsetup → lvm2 →
-libudev is a cycle; libdevmapper does not wait on udev cookies, and systemd's device units do the
-waiting. So `95-dm-notify`, which answers those cookies, is left out. Around `/usr` sit
-`/etc/initrd-release` (a link to `os-release`, how systemd knows it is in an initrd), the merged-usr
-links `/bin` `/sbin` `/lib`, and the empty mount points. There is no machine-id, no shadow, no
-getty, no static init. It needs no state partition to find `/usr`: `usrhash=` on the cmdline names
-the verity root hash, the generators derive the two DPS partition UUIDs from it, veritysetup
-attaches `/dev/mapper/usr`, and repart makes the state partition from
-`/usr/lib/repart.d/30-root.conf` on first boot. The kernel execs `/init`, its default: a repkgs
-binary maps its dynamic linker relative to its own path, which before `/proc` exists is the path the
-kernel execs; the fork's crt-interp and glibc follow the `/init` link to the real file without
-`/proc`. The kernel's configuration is in [Kernel](kernel.md).
+reboot. It has no network, D-Bus, PAM, vars, CA bundle or sshd.
+
+systemd is PID 1 (`/init` points at it). udev runs with systemd's rules and two of lvm2's
+device-mapper rules, `10-dm` and `13-dm-disk` (lvm2 is a farm package, so they exec
+`/usr/bin/dmsetup`), and `dmsetup` is there too. All come from `/base`, so the host has them too.
+`blkid` must be there as well, or `13-dm-disk` cannot probe the verity device and systemd keeps it
+at `SYSTEMD_READY=0`. With them `/dev/mapper/usr` exists, in the initrd and on the host, and
+`dev-mapper-usr.device`, which `usr.mount` requires, is active.
+
+lvm2 is built without `udev_sync`. libdevmapper would link libudev, which is systemd's, and systemd
+→ cryptsetup → lvm2 → libudev is a cycle. libdevmapper does not wait on udev cookies, and systemd's
+device units do the waiting. So `95-dm-notify`, which answers those cookies, is left out.
+
+Around `/usr` sit `/etc/initrd-release` (a link to `os-release`, how systemd knows it is in an
+initrd), the merged-usr links `/bin` `/sbin` `/lib`, and the empty mount points. There is no
+machine-id, no shadow, no getty, no static init.
+
+It needs no state partition to find `/usr`. `usrhash=` on the cmdline names the verity root hash,
+and the generators derive the two DPS partition UUIDs from it. veritysetup attaches
+`/dev/mapper/usr`, and repart makes the state partition from `/usr/lib/repart.d/30-root.conf` on
+first boot.
+
+The kernel execs `/init`, its default. A repkgs binary maps its dynamic linker relative to its own
+path, which before `/proc` exists is the path the kernel execs. The fork's crt-interp and glibc
+follow the `/init` link to the real file without `/proc`. The kernel's configuration is in
+[Kernel](kernel.md).
 
 ## Boot counting and A/B
 
 The UKI is installed as `EFI/Linux/<id>_<version>+3-0.efi`. systemd-boot decrements the counter on
-each attempt; `systemd-bless-boot` renames it to good when `boot-complete.target` is reached. After
+each attempt. `systemd-bless-boot` renames it to good when `boot-complete.target` is reached. After
 three failures systemd-boot falls back to the other entry, which is the other `/usr` slot. See
 [Updates](updates.md).
 
@@ -88,26 +96,26 @@ adds two small health units, one in each module that knows the fact:
 "Routable" is networkctl's state: the link has carrier and a routable address, so DHCP finished and
 there is a route to the network. Each unit is `Before=boot-complete.target` and is pulled into the
 target by a `boot-complete.target.requires/` link, the same shape as systemd's own
-`systemd-boot-check-no-failures.service`. A failed health unit fails the target's start job;
+`systemd-boot-check-no-failures.service`. A failed health unit fails the target's start job.
 `systemd-bless-boot.service` requires the target and is ordered after it, so it does not run. The
 counter stays and one attempt is lost. systemd's own bless-boot ordering is not changed and no
 orchestrator is added. sshd is the only login, so `lib.mkImage` refuses a document without a
-`["/services/sshd"]` table: that image would pass the network health unit and have no way in.
+`["/services/sshd"]` table. That image would pass the network health unit and have no way in.
 
-What the health units leave out, on purpose: DNS and resolved, a default route to the operator's
-network, reachability from outside the machine (firewall, NAT, the client side), and every step of a
-login (authentication, the host key credential, `/etc/pam.d/sshd`, the listening socket).
-`is-active` proves that the sshd process runs, not that a login would succeed.
+The health units leave out DNS and resolved, a default route to the operator's network, reachability
+from outside the machine (firewall, NAT, the client side), and every step of a login
+(authentication, the host key credential, `/etc/pam.d/sshd`, the listening socket). `is-active`
+proves that the sshd process runs, not that a login would succeed.
 
-What happens after a failure is the [trial boot](#trial-boot) policy: on a counted boot that had a
-try left, the machine reboots, and systemd-boot counts down `+3-0` → `+2-1` → `+1-2`. At `+0-3` the
-entry is bad, and systemd-boot selects a second deployment entry on the ESP (the other `/usr` slot)
-instead, which is the point of boot counting. Before the first update the image carries one slot
-only: there systemd-boot still boots the exhausted entry, and a failed health unit leaves it up and
-unblessed until it is repaired or the other slot is filled. The health units run only on a counted
-boot: `systemd-bless-boot-generator` adds `boot-complete.target` only when the entry has a counter,
-so a blessed entry boots without them. Masking a health unit turns the gate off: the target's job is
-then never queued, so the boot is neither blessed nor rebooted.
+After a failure the [trial boot](#trial-boot) policy applies. On a counted boot that had a try left,
+the machine reboots, and systemd-boot counts down `+3-0` → `+2-1` → `+1-2`. At `+0-3` the entry is
+bad, and systemd-boot selects a second deployment entry on the ESP (the other `/usr` slot) instead.
+Before the first update the image carries one slot only. There systemd-boot still boots the
+exhausted entry, and a failed health unit leaves it up and unblessed until it is repaired or the
+other slot is filled. The health units run only on a counted boot: `systemd-bless-boot-generator`
+adds `boot-complete.target` only when the entry has a counter, so a blessed entry boots without
+them. Masking a health unit turns the gate off: the target's job is then never queued, so the boot
+is neither blessed nor rebooted.
 
 ### Trial boot
 
@@ -136,7 +144,7 @@ The last row judges a machine that may answer ssh, so it reboots only when that 
 at every boot: the EFI variable in which systemd-boot names the file it has just renamed
 (`<id>_<version>+L-D.efi`). It links the drop-in only when the variable is set and `L + D` is at
 most the tries a release starts with (3, `image/boot-counting.nix`). systemd-boot renames an entry
-that had no try left from `+0-3` to `+0-4`, so a sum above 3 means it started an exhausted entry
+that had no try left from `+0-3` to `+0-4`. So a sum above 3 means it started an exhausted entry
 because nothing better was left. On a blessed entry, and on an exhausted one, a failed health unit
 leaves the machine up and unblessed for its operator, with no reboot loop. The generator logs its
 verdict to the kernel log (`golconda-trial-boot: <entry> is on trial`, or `had no try left`), so it
@@ -147,9 +155,10 @@ that timed out (systemd's `job.c`), so one unit covers both. The deadline counts
 the host's PID 1; the initrd has its own.
 
 The kernel carries the watchdog drivers built in ([Kernel](kernel.md#hangs-and-watchdogs)): QEMU's
-i6300esb, Intel's and AMD's TCO, and softdog, a kernel timer, where no hardware one is found.
-softdog catches a PID 1 that stops, not a kernel that hangs. The watchdog runs from the initrd's PID
-1 on: firmware that never starts the loader, and a kernel that hangs before PID 1, are not covered.
+i6300esb, Intel's and AMD's TCO, and softdog. softdog is a kernel timer, used where no hardware
+watchdog is found. It catches a PID 1 that stops, not a kernel that hangs. The watchdog runs from
+the initrd's PID 1 on: firmware that never starts the loader, and a kernel that hangs before PID 1,
+are not covered.
 
 In QEMU, with no reboot from the harness, `--next --fail-health` proves the health row,
 `--next --fail-initrd` the initrd failure row, `--next --fail-panic` the panic row and
@@ -169,15 +178,15 @@ uncounted boot at `multi-user.target`. The first try of an entry (`+2-1`, a new 
 new count. The count is an EFI variable, not a file, so it waits for no disk and no file system.
 
 The thresholds are constants. After 3 boots in a row that did not complete (the tries a release
-starts with, `image/boot-counting.nix`), the next boot starts the other slot: the third boot sets
+starts with, `image/boot-counting.nix`), the next boot starts the other slot. The third boot sets
 the one-shot entry (`bootctl set-oneshot`) and records its own entry in
 `GolcondaFailedEntry-<the same guid>`. When the other entry's boot completes, the counter renames
 the failed UKI on the ESP to `<id>_<version>+0-3.efi`, the name of an entry with no try left.
-systemd-boot sorts it last, so later boots and `golconda-update-pending` keep to the release that
+systemd-boot sorts it last. So later boots and `golconda-update-pending` keep to the release that
 works. A newer release that sysupdate installs sorts first. When the failed entry's own boot
 completes, nothing is marked, and its one-shot goes.
 
-After 6 boots in a row, a boot reboots on no failure: the counter sets `kernel.panic=0` and, in
+After 6 boots in a row, no failure reboots the machine: the counter sets `kernel.panic=0` and, in
 `/run`, `CrashAction=freeze`, no watchdog and no deadline for `initrd.target`. The two reboot units
 of the trial boot policy skip themselves, and the console keeps the last messages. Each step is a
 line in the kernel log (`golconda-failed-boots: …`). `--next --fail-blessed` proves both on a
@@ -195,25 +204,25 @@ Limits:
 systemd-sysupdate tells the slots apart by GPT label: an installed slot carries its version
 (`usr_20261031.1`, `usr-verity_…`, `usr-verity-sig_…`), a free one `_empty`, which gpt-auto also
 skips. The builder labels slot A this way and leaves B `_empty`; an update relabels the slot it
-writes ([Image artifacts](../reference/image.md#a-release)). It also gives the slot the partition
-UUIDs in the release file names, the two halves of the new root hash, so the new UKI's `usrhash=`
-finds its own slot and the old UKI still finds the old one. The UKI goes to `EFI/Linux` on the ESP
-(`PathRelativeTo=boot`), which gpt-auto mounts at `/boot`.
+writes ([Image artifacts](../reference/image.md#a-release)). The update also gives the slot the
+partition UUIDs in the release file names, the two halves of the new root hash. So the new UKI's
+`usrhash=` finds its own slot and the old UKI still finds the old one. The UKI goes to `EFI/Linux`
+on the ESP (`PathRelativeTo=boot`), which gpt-auto mounts at `/boot`.
 
 ## Kernel command line
 
 The cmdline is fixed in the UKI and measured with it. The one authoritative copy is in
 [Image artifacts: the kernel command line](../reference/image.md#the-kernel-command-line); the LSM
-parameters are described in [Kernel](kernel.md). No operator edits: the ESP carries
-`loader/loader.conf` with `editor no` (the editor would let anyone at the console change the
+parameters are described in [Kernel](kernel.md). The cmdline takes no operator edits. The ESP
+carries `loader/loader.conf` with `editor no` (the editor would let anyone at the console change the
 cmdline) and `timeout 0` (the menu does not wait); see [Boot loader](bootloader.md). The UKI under
 `EFI/Linux` needs no entry line. This is menu policy, not protection: an offline disk writer can
 change the unsigned configuration ([Trust](trust.md)). The cmdline carries `rw` and neither `ro` nor
-`systemd.volatile=` (`/` is the state partition; the initrd mounts it read-only unless the cmdline
+`systemd.volatile=`. `/` is the state partition. The initrd mounts it read-only unless the cmdline
 says `rw`, and gpt-auto's remount-rw drop-in takes effect only when `systemd-remount-fs.service`
-runs, after switch-root). A debug image with other parameters is a separate build *(later)*.
+runs, after switch-root. A debug image with other parameters is a separate build *(later)*.
 
-PID 1 needs the root writable before that: on the first boot `/etc` is empty, and on a read-only
+PID 1 needs the root writable before that. On the first boot `/etc` is empty, and on a read-only
 root it cannot write `/etc/machine-id` ("System cannot boot: Missing /etc/machine-id and /etc/ is
 read-only"). On a measured boot `systemd-pcrmachine.service` then fails to measure the machine ID,
 and its `FailureAction=reboot-force` reboots the machine at every boot
@@ -232,17 +241,17 @@ boot: `/usr` runs only if the kernel verified the verity signature. The kernel c
 `console=ttyS0` gives output on the serial line, `console=tty0` on the local display. Both show the
 kernel log and PID 1's status lines. The display (tty1) also shows the journal of this boot, info
 and higher: `golconda-console.service` runs `journalctl --follow` on it. journald itself writes to
-no console, because it writes to a console synchronously, and a slow screen would slow every service
-that logs. No getty runs on either: there is no local login path
-([Trust: Identity](trust.md#identity)). Recovery from a machine that no longer answers over ssh is
-the other slot (boot counting, or a manual choice in the systemd-boot menu) or a reflash;
+no console, because a console write is synchronous and a slow screen would slow every service that
+logs. No getty runs on either: there is no local login path ([Trust: Identity](trust.md#identity)).
+Recovery from a machine that no longer answers over ssh is the other slot (boot counting, or a
+manual choice in the systemd-boot menu) or a reflash.
 [Factory reset and recovery](../features/factory-reset.md) states what each path can and cannot do,
 and [Boot loader: Recovery](bootloader.md#recovery) gives the loader steps.
 
 ## Bootstrap credentials
 
 A few values are neither in the image nor generated on the machine: they arrive as systemd
-credentials at first boot. This is Golconda's provisioning path; there is no cloud-init.
+credentials at first boot. This is Golconda's provisioning path, and it has no cloud-init.
 
 | credential                 | read by                | what it sets                                                                                                                   |
 | -------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
@@ -254,7 +263,7 @@ Root's first key has two routes, and both apply. The image key (`/services/sshd.
 `/usr/lib/sshd/authorized_keys/root`) is the fixed bootstrap key of a fleet: every machine of the
 image has it. The credential `ssh.authorized_keys.root` (on the ESP, or from IMDS) is a key for one
 machine, given when it is provisioned. sshd's `AuthorizedKeysFile` names both files, so a key from
-either file logs in; neither replaces the other. The `f^` line writes the credential's file only
+either file logs in. Neither replaces the other. The `f^` line writes the credential's file only
 when it does not exist, so a later credential does not change it. With `hostCertificate` on, sshd
 reads neither file once the host certificate is sealed ([Trust: Identity](trust.md#identity)).
 
@@ -285,13 +294,13 @@ Delivery, in the order systemd-stub and PID 1 look:
 - **ESP**: `loader/credentials/*.cred` files; systemd-stub passes them to the initrd.
 
 An ESP credential must be in the systemd-creds envelope; plain text is not accepted. systemd-stub
-puts the files in the initrd, and PID 1 imports them into `/run/credentials/@encrypted`, not
-`@system`; it decrypts on read, which is how it reads `system.hostname`. A machine has no host key
-before its first boot, so the file is encrypted with the null key
-(`systemd-creds encrypt --with-key=null --name=<name>`); `scripts/provision-esp` does this for a
+puts the files in the initrd. PID 1 imports them into `/run/credentials/@encrypted`, not `@system`,
+and decrypts on read, which is how it reads `system.hostname`. A machine has no host key before its
+first boot, so the file is encrypted with the null key
+(`systemd-creds encrypt --with-key=null --name=<name>`). `scripts/provision-esp` does this for a
 disk image. The policy `systemd.credentials_boot_policy=relaxed`, the default, accepts a null-key
 credential when Secure Boot is off or the machine has no TPM2. With Secure Boot on and a TPM2
-present, PID 1 refuses it: anyone who can write the ESP could otherwise plant a credential that the
+present, PID 1 refuses it. Otherwise anyone who can write the ESP could plant a credential that the
 measured boot chain never vouched for. On such a machine use SMBIOS or fw_cfg.
 
 SMBIOS and fw_cfg have no such check. PID 1 imports their credentials at every boot, also with
@@ -304,20 +313,20 @@ carries no secret. Secrets are vars ([Trust: Secrets and vars](trust.md#secrets-
 
 An ESP credential holds for one boot. systemd-stub passes every `loader/credentials/*.cred` (and
 every `*.cred` in a UKI's `.extra.d/`) at every boot, so a file left there would grant its value
-again: root's ssh key after a factory reset, or on a machine whose pushed configuration refuses
-plain keys. `golconda-esp-credentials.service` (`/base`, wanted by `multi-user.target`) runs at
-every boot after `systemd-firstboot`, `systemd-sysusers` and `systemd-tmpfiles-setup`, the units
+again. Examples are root's ssh key after a factory reset, or on a machine whose pushed configuration
+refuses plain keys. `golconda-esp-credentials.service` (`/base`, wanted by `multi-user.target`) runs
+at every boot after `systemd-firstboot`, `systemd-sysusers` and `systemd-tmpfiles-setup`, the units
 that apply the first boot's credentials. It removes every such file and logs a journal line for
 each. A first boot that crashes before them keeps the files for its next try. What must outlast the
 boot is then on the state partition: `/root/.ssh/authorized_keys`, and `/etc/hostname`, which
 systemd-firstboot writes from `firstboot.hostname` (`scripts/provision-esp --hostname` writes that
 credential beside `system.hostname`). A credential that applies at every boot, such as `network.*`,
-holds for the first boot only when it comes from the ESP; give a lasting one by SMBIOS or in the
+holds for the first boot only when it comes from the ESP. Give a lasting one by SMBIOS or in the
 image. After a factory reset the machine has no ESP credential, so it boots with the fallback host
-name and no plain root key: it needs provisioning again, or a certificate login.
+name and no plain root key. It needs provisioning again, or a certificate login.
 
 Removal does not make the ESP trusted. Where PID 1 accepts a null-key credential, whoever can write
-the ESP can still plant one for the next boot; removal makes that a single, logged use
+the ESP can still plant one for the next boot. Removal makes that a single, logged use
 ([Trust: The ESP](trust.md#the-esp)).
 
 ## First boot
@@ -344,7 +353,7 @@ systemd-stub measures the UKI's parts into PCR 11. `systemd-measure` precomputes
 build time and signs them; the signature travels in the UKI (`.pcrsig`). Credentials are sealed to
 the signing key, not to a PCR 11 value, so a new signed image unseals them without re-sealing. Of
 the firmware PCRs (0–7), only PCR 7, the Secure Boot state and keys, is part of the policy, on a
-Secure Boot image ([Trust: PCR 7](trust.md#pcr-7)); locking the rest with `systemd-pcrlock` is
+Secure Boot image ([Trust: PCR 7](trust.md#pcr-7)). Locking the rest with `systemd-pcrlock` is
 *(later)* ([Trust: Downgrade weakness](trust.md#downgrade-weakness)).
 
 ## Secure Boot
@@ -352,7 +361,7 @@ Secure Boot image ([Trust: PCR 7](trust.md#pcr-7)); locking the rest with `syste
 Keys are generated once per deployment with `scripts/make-keys`. The UKI (`lib/image/uki.nu`) and
 systemd-boot (`lib/image/loader.nu`, `systemd-sbsign`) are signed at build time with the same db key
 and certificate, so one enrolled certificate covers the loader and the image it starts. The signed
-loader ships in `/usr`, and a machine installs it on the ESP after a good boot; the loader update,
+loader ships in `/usr`, and a machine installs it on the ESP after a good boot. The loader update,
 the key rotation and the recovery paths are in [Boot loader](bootloader.md). Firmware starts nothing
 else: with only this certificate enrolled, firmware refuses an unsigned loader.
 
@@ -366,21 +375,21 @@ with `/usr`'s, which enrols nothing, and removes the files once Secure Boot is o
 ## Secure Boot off
 
 An image with `/system.secureBoot` (the default) is built for firmware that enforces Secure Boot. On
-firmware that does not, nothing checked the loader or the UKI, so the initrd refuses to go on:
+firmware that does not, nothing checked the loader or the UKI, so the initrd refuses to go on.
 `golconda-secure-boot-required.service` (`ConditionSecurity=!uefi-secureboot`,
-`lib/image/initrd.nix`) runs before `sysinit.target`, writes
+`lib/image/initrd.nix`) runs before `sysinit.target`. It writes
 `golconda: Secure Boot is off, and this image needs it (/system.secureBoot): halting.` and a line
-that says how to turn it on to the kernel log, which reaches the serial console and the screen, and
-halts the machine with `SuccessAction=halt-force`, which stops no unit: the initrd's TPM measurement
-units reboot when they are stopped mid-run (`FailureAction=reboot-force`). Nothing in the initrd
-that comes after it runs: no state partition is made or mounted, and no switch to it happens. The
+that says how to turn it on to the kernel log, which reaches the serial console and the screen. It
+then halts the machine with `SuccessAction=halt-force`, which stops no unit, because the initrd's
+TPM measurement units reboot when they are stopped mid-run (`FailureAction=reboot-force`). No later
+step of the initrd runs: no state partition is made or mounted, and no switch to it happens. The
 [failed-boot counter](#failed-boots) comes after it too, so a halted boot is not a failed boot.
 
-It halts, and does not reboot into the firmware setup (`systemctl reboot --firmware-setup`): the
-line stays on the console for the operator, the machine stays off the network, and nothing loops. To
-boot again, turn Secure Boot on in the firmware setup, with the deployment's keys enrolled, and
-power the machine on. A boot that skips the refusal still unseals no var: they are sealed to PCR 7,
-which holds the Secure Boot state ([Trust: PCR 7](trust.md#pcr-7)). An image with
+It halts. It does not reboot into the firmware setup (`systemctl reboot --firmware-setup`). The line
+stays on the console for the operator, the machine stays off the network, and the boot does not
+loop. To boot again, turn Secure Boot on in the firmware setup, with the deployment's keys enrolled,
+and power the machine on. A boot that skips the refusal still unseals no var: they are sealed to PCR
+7, which holds the Secure Boot state ([Trust: PCR 7](trust.md#pcr-7)). An image with
 `secureBoot = false` has no such unit.
 
 **Status.** Proven with `--secure-boot --tpm --secure-boot-off`, on OVMF with the same keys and
