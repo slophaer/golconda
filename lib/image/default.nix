@@ -20,12 +20,14 @@ in
   inherit (common) uuidOfHex hexOf;
 
   # throwawayKeys { buildSystem; pkgs; sources; variant ? null; reusePkKek ? null; } -> derivation with the
-  # key pairs of the test images: the Secure Boot db, the PCR policy key and the release key. They
-  # are made inside the store because they are fixtures: a production key never enters it. `out` is
-  # the whole set, `public` the public halves (the chain's publicKeys, the boot test's --keys). A
-  # `variant` is a second set for the key rotation test (docs/design/bootloader.md); `reusePkKek`
-  # gives it that set's PK, KEK and release key. The builder sees keys.nu, enrol.nu and common.nu
-  # only, so an edit of another step keeps the keys and every unsigned output.
+  # key set of the test images, made by scripts/make-keys inside the store, because the keys are
+  # fixtures: a production key never enters it. `out` is the set (docs/reference/release.md),
+  # `private` its DIR.private (PK.key, KEK.key), `public` the public halves (the chain's
+  # publicKeys, the boot test's --keys). A `variant` is a second set for the key rotation test
+  # (docs/design/bootloader.md): `reusePkKek`, another set, makes it with make-keys
+  # --reuse-pk-kek. The builder sees make-keys and golconda-enrol-auth only, so an edit of another
+  # step keeps the keys and every unsigned output. SOURCE_DATE_EPOCH, the first test release's day,
+  # dates the set.
   throwawayKeys =
     {
       buildSystem,
@@ -34,29 +36,55 @@ in
       variant ? null,
       reusePkKek ? null,
     }:
-    common.nuDerivation {
+    let
+      inherit
+        (import "${sources.repkgs}/bootstrap" {
+          seed = null;
+          system = buildSystem;
+        })
+        seed
+        ;
+      makeKeys = builtins.path {
+        path = ../../scripts/make-keys;
+        name = "make-keys";
+      };
+      enrolAuth = (import ./signer.nix { }).enrolTool { inherit pkgs buildSystem sources; };
+      reuse = if reusePkKek == null then "" else "--reuse-pk-kek $TMPDIR/k/old";
+    in
+    import ../ca-derivation.nix {
       name = "golconda-throwaway-keys" + (if variant == null then "" else "-${variant}");
-      inherit buildSystem sources;
-      module = "keys";
-      tools = [
-        pkgs.openssl
-        pkgs.openssh # ssh-keygen for the test CA
-        pkgs.gnupg # the release key (release/index.key, .pgp)
-        pkgs.efitools # the enrolment files (enrol.nu)
+      system = buildSystem;
+      builder = "${seed}/bin/sh";
+      outputs = [
+        "out"
+        "private"
+        "public"
       ];
-      modules = [
-        "keys.nu"
-        "enrol.nu"
-        "common.nu"
+      PATH = "${seed}/bin";
+      SOURCE_DATE_EPOCH = "1793404800";
+      args = [
+        "-eu"
+        "-c"
+        ''
+          # make-keys gets its tools from the tools.sh beside it: here the store's
+          mkdir -p $TMPDIR/scripts $TMPDIR/k
+          cp ${makeKeys} $TMPDIR/scripts/make-keys
+          echo 'tools_path() { printf %s ${pkgs.openssl}/bin:${pkgs.gnupg}/bin:${enrolAuth}/bin; }' > $TMPDIR/scripts/tools.sh
+          ${
+            if reusePkKek == null then
+              ""
+            else
+              "cp -R ${reusePkKek} $TMPDIR/k/old && cp -R ${reusePkKek.private} $TMPDIR/k/old.private && chmod -R u+w $TMPDIR/k"
+          }
+          sh $TMPDIR/scripts/make-keys ${reuse} $TMPDIR/k/set
+          cp -R $TMPDIR/k/set $out
+          mkdir $private
+          [ ! -d $TMPDIR/k/set.private ] || cp $TMPDIR/k/set.private/* $private/
+          for f in secureboot/db.crt secureboot/PK.crt secureboot/KEK.crt secureboot/auth pcr/pcr.pub release/index.pgp; do
+            mkdir -p $(dirname $public/$f)
+            cp -R $out/$f $public/$f
+          done
+        ''
       ];
-      attrs = {
-        outputs = [
-          "out"
-          "public"
-        ];
-        secureBootObjects = "${pkgs.secureboot-objects}/share/secureboot-objects";
-      }
-      // (if variant == null then { } else { inherit variant; })
-      // (if reusePkKek == null then { } else { reusePkKek = "${reusePkKek}"; });
     };
 }

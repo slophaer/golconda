@@ -250,10 +250,10 @@ and gives it the volume ID it derives from the ESP's partition UUID (`-i`). dosf
 (`packages/dosfstools/source-date-epoch.patch`, dosfstools PR #106, merged after 4.2).
 `packages.<system>.disk-reproducible` signs the test image a second time and compares the release
 and `disk.raw` byte for byte; `scripts/verify` builds it beside the image.
-`packages.<system>.release-without-pk-kek` signs it with a copy of its key set without
-`secureboot/PK.key` and `KEK.key` and compares the same way: the signer copies the enrolment files
-that `scripts/make-keys` signed and reads no PK or KEK key. The boot test covers the verity
-certificate in the kernel keyring and TPM sealing ([What is proven](../proven.md)).
+`packages.<system>.release-without-pk-kek` checks that the key set the test image is signed with has
+no `PK.key` and `KEK.key`: `scripts/make-keys` keeps them in `DIR.private`, and the signer copies
+the enrolment files that `make-keys` signed. The boot test covers the verity certificate in the
+kernel keyring and TPM sealing ([What is proven](../proven.md)).
 
 The smoke, the test image and the production image boot the same command line
 ([The kernel command line](#the-kernel-command-line)).

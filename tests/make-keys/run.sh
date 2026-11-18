@@ -5,6 +5,8 @@
 # the key pairs matching and the OpenPGP files; a relative DIR; the refusals (non-empty directory,
 # git work tree, unknown option). Needs nix on PATH and a Nix daemon; scripts/lint runs it.
 set -u
+# make-keys dates the set by SOURCE_DATE_EPOCH when it is set; the checks below want now
+unset SOURCE_DATE_EPOCH
 repo=$(dirname "$(dirname "$(dirname "$(realpath "$0")")")")
 . "$repo/scripts/tools.sh"
 # the same openssl and gpg make-keys runs, to look at what it made
@@ -47,6 +49,23 @@ found=$(cd "$private" && find . -type f | sed 's|^\./||' | LC_ALL=C sort | tr '\
 [ "$found" = "KEK.key PK.key " ] || fail "DIR.private holds PK.key and KEK.key: found: $found"
 printf '%s\n' "$out" | grep -qx "move $private to offline media: only scripts/make-keys --auth-only and --reuse-pk-kek read it" ||
   fail "the report names DIR.private and offline media"
+
+# the test images' throwaway set comes from this script too (lib/image/default.nix throwawayKeys):
+# its output `out` has the files of DIR, `private` those of DIR.private, `public` no private key
+layout() { (cd "$1" && find . -type f | sed 's|^\./||' | LC_ALL=C sort | tr '\n' ' '); }
+if t=$(tools_outs "$repo" throwaway-keys throwaway-keys.public throwaway-keys.private); then
+  t_out=$(echo "$t" | sed -n 1p)
+  t_public=$(echo "$t" | sed -n 2p)
+  t_private=$(echo "$t" | sed -n 3p)
+  [ "$(layout "$t_out")" = "$(layout "$keys")" ] || fail "throwaway set: the files of a make-keys set: $(layout "$t_out")"
+  [ "$(layout "$t_private")" = "$(layout "$private")" ] ||
+    fail "throwaway set: private holds PK.key and KEK.key: $(layout "$t_private")"
+  [ -z "$(find "$t_public" -name '*.key')" ] || fail "throwaway set: public holds no key"
+  openssl x509 -in "$t_out/secureboot/db.crt" -noout -text | grep -qF "Code Signing" ||
+    fail "throwaway set: db.crt has codeSigning"
+else
+  fail "throwaway set: packages.<system>.throwaway-keys builds"
+fi
 
 # modes
 mode() { stat -c %a "$1"; }
@@ -140,6 +159,12 @@ GNUPGHOME=$home2 gpg --batch --faked-system-time "$today!" --no-default-keyring 
   --verify "$tmp/floor.gpg" "$tmp/SHA256SUMS" 2>/dev/null || fail "a release of today verifies at the clock floor"
 GNUPGHOME=$home gpgconf --kill gpg-agent 2>/dev/null
 GNUPGHOME=$home2 gpgconf --kill gpg-agent 2>/dev/null
+# SOURCE_DATE_EPOCH dates the set: the certificates' names and the release key's creation
+SOURCE_DATE_EPOCH=1700000000 "$repo/scripts/make-keys" "$tmp/keys-dated" >/dev/null 2>&1 || fail "SOURCE_DATE_EPOCH: make-keys exits 0"
+openssl x509 -in "$tmp/keys-dated/secureboot/db.crt" -noout -subject | grep -qF "golconda deployment db 20231114" ||
+  fail "SOURCE_DATE_EPOCH: db.crt names the set's day"
+created=$(gpg --batch --with-colons --show-keys "$tmp/keys-dated/release/index.pgp" | awk -F: '$1 == "pub" { print $6; exit }')
+[ "$created" = 1699833600 ] || fail "SOURCE_DATE_EPOCH: the release key is made at 00:00 UTC the day before (is $created)"
 
 # the report names the fingerprints, and never key material
 printf '%s\n' "$out" | grep -q '^db.crt sha256 (DER): [0-9a-f]\{64\}$' || fail "report: db.crt fingerprint"

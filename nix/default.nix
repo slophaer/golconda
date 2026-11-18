@@ -223,6 +223,10 @@ in
 
       image-smoke-test = smokeTest.smoke;
 
+      # the test images' key set, made by scripts/make-keys in the store; tests/make-keys/run.sh
+      # compares it with a set made on the host
+      throwaway-keys = throwawayKeys;
+
       # The test image's initrd is bit-reproducible: Nix builds its derivation again, with one
       # variable more that lib/image/initrd.nu does not read, and the two initrd.cpio.zst are the
       # same bytes. The variable is the first build's output, so the second build starts after
@@ -280,27 +284,15 @@ in
           + "touch $out\n"
         );
 
-      # A release needs no PK or KEK key: make-keys signed the enrolment files once. The test
-      # image signed with a copy of its key set without secureboot/PK.key and KEK.key is the same
-      # release, file for file.
-      release-without-pk-kek =
-        let
-          noPkKek = import ./run.nix set "golconda-throwaway-keys-no-pk-kek" [ ] ''
-            cp -R ${throwawayKeys} $out
-            chmod -R u+w $out
-            rm $out/secureboot/PK.key $out/secureboot/KEK.key
-          '';
-          a = smokeTest.signed;
-          b = smokeTest.signWithTestKeys {
-            keys = noPkKek;
-            pcrKeys = throwawayKeys;
-          };
-        in
-        import ./run.nix set "check-release-without-pk-kek" [ ] (
-          "[ ! -e ${noPkKek}/secureboot/PK.key ] && [ ! -e ${noPkKek}/secureboot/KEK.key ]\n"
-          + run.sameRelease a b
-          + "touch $out\n"
-        );
+      # A release needs no PK or KEK key: make-keys signed the enrolment files once and put the
+      # two keys in DIR.private, the key set's output `private`. The signer of every test image
+      # gets `out`, which holds neither.
+      release-without-pk-kek = import ./run.nix set "check-release-without-pk-kek" [ ] ''
+        [ ! -e ${throwawayKeys}/secureboot/PK.key ] && [ ! -e ${throwawayKeys}/secureboot/KEK.key ]
+        [ -f ${throwawayKeys.private}/PK.key ] && [ -f ${throwawayKeys.private}/KEK.key ]
+        [ -f ${smokeTest.signed}/release/SHA256SUMS ]
+        touch $out
+      '';
 
       # The test image whose disk enrols the key set's certificates alone, without Microsoft's
       # (/system.secureBootMicrosoftKeys = false): boot-test --auto-enrol --no-microsoft-keys

@@ -54,6 +54,13 @@ in
       name = "golconda-enrol-auth";
       inherit buildSystem sources;
       module = "signer";
+      # its own files only: the test images' throwaway keys depend on it (throwawayKeys)
+      modules = [
+        "signer.nu"
+        "enrol-main.nu"
+        "enrol.nu"
+        "common.nu"
+      ];
       tools = [
         pkgs.openssl # the key checks and the signature check
         pkgs.efitools # cert-to-efi-sig-list and sign-efi-sig-list write the files

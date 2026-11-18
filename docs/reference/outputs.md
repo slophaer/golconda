@@ -14,6 +14,7 @@ schema is the flake one, produced by flake-incompat.
 | `packages.<system>.tests-<name>`                        | yes         | the test of package `<name>` in `tests/packages/<name>/test.nu` (uutils-coreutils, gnupg)                                                    |
 | `packages.x86_64-linux.image-smoke`                     | x86_64 only | the image chain over `examples/server.toml`, signed with throwaway keys ([Image artifacts](image.md))                                        |
 | `packages.x86_64-linux.image-smoke-test`                | x86_64 only | the boot test image, version `20261031.1`: `image-smoke` with the test SSH key and an update source (`scripts/boot-test`)                    |
+| `packages.x86_64-linux.throwaway-keys`                  | x86_64 only | the test images' key set, made by `scripts/make-keys` in the store; outputs `out`, `private` (the PK and KEK keys), `public`                 |
 | `packages.x86_64-linux.image-smoke-test-nosb`           | x86_64 only | the test image for a host without Secure Boot (`/system.secureBoot = false`): its kernel carries the throwaway `db` certificate              |
 | `packages.x86_64-linux.image-smoke-test-nosb-next`      | x86_64 only | its next release, `20261031.2`                                                                                                               |
 | `packages.x86_64-linux.image-smoke-test-next`           | x86_64 only | its next release, `20261031.2`, with the same throwaway keys: what `scripts/boot-test --next` installs                                       |

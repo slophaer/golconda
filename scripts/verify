@@ -241,8 +241,8 @@ bg initrd-reproducible nix-build -A "packages.$system.initrd-reproducible" \
 # the test image's release, signed again from the same unsigned output, is the same bytes
 bg disk-reproducible nix-build -A "packages.$system.disk-reproducible" \
   -o result-verify-disk-reproducible
-# the PKCS#11 signer gives the same release as the key files; a key set without PK.key and
-# KEK.key signs the same release (nix/default.nix)
+# the PKCS#11 signer gives the same release as the key files; the test image's key set has no
+# PK.key and KEK.key (nix/default.nix)
 for a in pkcs11-signed-same release-without-pk-kek; do
   bg "$a" nix-build -A "packages.$system.$a" -o "result-verify-$a"
 done

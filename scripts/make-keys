@@ -10,7 +10,7 @@
 #                       deployment, so a rotation names the old set.
 # DIR and DIR.private must be new or empty and outside any git work tree. The script makes them
 # 0700 and each file 0600, and prints the paths and fingerprints, never key material. The layout
-# is in docs/reference/release.md.
+# is in docs/reference/release.md. SOURCE_DATE_EPOCH, when set, is the set's date (default: now).
 set -eu
 
 usage() { sed -n '2,/^set -eu$/{/^set -eu$/d;s/^# \{0,1\}//p}' "$0"; }
@@ -83,8 +83,11 @@ TOOLS=$(tools_path "$(dirname "$SCRIPT_DIR")" openssl gnupg golconda-enrol-auth)
 }
 PATH="$TOOLS:$PATH"
 # no configuration: the certificates carry only the extensions named below (openssl.cnf's [req]
-# would add its v3_ca ones; lib/image/keys.nu does the same)
+# would add its v3_ca ones)
 export OPENSSL_CONF=/dev/null
+# the set's date: in the certificates' names and the release key's creation time
+now=${SOURCE_DATE_EPOCH:-$(date -u +%s)}
+day=$(date -u -d "@$now" +%Y%m%d)
 
 # run_openssl ARGS...: openssl prints key-generation progress on stderr; keep it in $work, and
 # print it only on failure
@@ -117,7 +120,7 @@ keypair() {
   n=$2
   shift 2
   run_openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 3650 \
-    -subj "/CN=golconda deployment $n $(date -u +%Y%m%d)" \
+    -subj "/CN=golconda deployment $n $day" \
     -addext "basicConstraints=critical,CA:TRUE" \
     -addext "keyUsage=critical,digitalSignature,keyCertSign,cRLSign" \
     "$@" -addext "subjectKeyIdentifier=hash" \
@@ -251,8 +254,8 @@ gpg_run() {
 if [ -n "$old" ]; then
   cp "$old/release/index.key" "$old/release/index.pgp" "$stage/release/"
 else
-  made=$(($(date -u +%s) / 86400 * 86400 - 86400))
-  gpg_run --faked-system-time "$made!" --passphrase '' --quick-gen-key "golconda release index $(date -u +%Y%m%d) <index@golconda.invalid>" ed25519 sign never
+  made=$((now / 86400 * 86400 - 86400))
+  gpg_run --faked-system-time "$made!" --passphrase '' --quick-gen-key "golconda release index $day <index@golconda.invalid>" ed25519 sign never
   gpg_run --export --output "$stage/release/index.pgp"
   gpg_run --pinentry-mode loopback --passphrase '' --armor --export-secret-keys --output "$stage/release/index.key"
 fi
