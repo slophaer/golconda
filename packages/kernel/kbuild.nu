@@ -119,10 +119,10 @@ def trusted-keys []: nothing -> any {
 # jig keys a cached object on its command line and on the inputs its depfile names, and clang's
 # depfile leaves out .incbin files. Two objects .incbin what changes with neither source nor config:
 # the built-in certificates (certs/system_certificates.o) and the compressed kernel
-# (arch/x86/boot/compressed/piggy.o). The digest of each input goes on the object's command line
-# (AFLAGS_<object>, a make variable kbuild reads), so a cached object never carries another
-# build's certificate or kernel. jig now refuses to cache a compile that names .incbin; the digests
-# stay as a second guard for the trust property (docs/design/trust.md).
+# (arch/x86/boot/compressed/piggy.o). jig does not cache a compile that names .incbin (repkgs
+# pkgs/ji/jig/src/cc_mode.h). The digest of each input on the object's command line
+# (AFLAGS_<object>, a make variable kbuild reads) is a second guard: a cached object never carries
+# another build's certificate or kernel (docs/design/trust.md).
 def incbin-flag [object: string, file: string]: nothing -> string {
   $"AFLAGS_($object).o=-DGOLCONDA_INCBIN_SHA256=(open --raw $file | hash sha256)"
 }

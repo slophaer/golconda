@@ -101,6 +101,44 @@ in
     && !(base ? IKCONFIG_PROC)
     && !(hasInfix "CONFIG_IKCONFIG" conf)
   ))
+  # the defconfig base turns these on; a deleted line would leave them on (docs/design/kernel.md)
+  (check "kernel: the defconfig's desktop parts, NFS, ISO 9660, quota and btrfs are off" (
+    let
+      conf = readFile ../../packages/kernel/golconda.config;
+      off = n: hasInfix "\n# CONFIG_${n} is not set\n" conf && !(hasInfix "\nCONFIG_${n}=" conf);
+      on = n: hasInfix "\nCONFIG_${n}=y\n" conf;
+    in
+    all off [
+      "SOUND"
+      "CFG80211"
+      "WLAN"
+      "RFKILL"
+      "PCCARD"
+      "AGP"
+      "DRM_I915"
+      "USB_PRINTER"
+      "INPUT_JOYSTICK"
+      "INPUT_TOUCHSCREEN"
+      "INPUT_TABLET"
+      "HIBERNATION"
+      "BINFMT_MISC"
+      "IA32_EMULATION"
+      "SECURITY_SELINUX"
+      "NETLABEL"
+      "NFS_FS"
+      "NFSD"
+      "ISO9660_FS"
+      "QUOTA"
+      "BTRFS_FS"
+    ]
+    && all on [
+      "BPF_LSM"
+      "NF_TABLES"
+      "WIREGUARD"
+      "ZRAM"
+      "DRM_SIMPLEDRM"
+    ]
+  ))
   (check "systemd: no sysext or confext stack (they would overlay /usr and /etc)" (
     pkgs.systemd.args.meson.defs.sysext == false
   ))

@@ -55,7 +55,8 @@ The signature reaches dm-verity through the UKI cmdline
 ## Left out
 
 An option that nothing in the image uses is off: it is code an attacker can reach, and no test
-covers it.
+covers it. The base is the x86_64 defconfig, so `golconda.config` turns each one off with a
+`# CONFIG_X is not set` line. The build fails when one of them is on after `olddefconfig`.
 
 - **vsock** (`CONFIG_VSOCKETS`): a host-to-guest socket without a network. Nothing listens on it,
   and it is where systemd's ssh generator would put a second sshd (the image does not have that
@@ -64,6 +65,12 @@ covers it.
   directory.
 - **`/proc/config.gz`** (`CONFIG_IKCONFIG`): nothing reads it. The package has the resolved config
   in `lib/modules/<version>/config`.
+- **Desktop and laptop parts**: sound, Wi-Fi (`CFG80211`, `WLAN`, `RFKILL`), PC Card, AGP, Intel
+  graphics (`DRM_I915`), USB printers, joysticks, touch screens, tablets, hibernation, `binfmt_misc`
+  and 32-bit programs (`IA32_EMULATION`). A server has no user for them. The screen is the
+  firmware's framebuffer (`simpledrm`) or `virtio-gpu`.
+- **SELinux and NetLabel**: IPE is the execution policy. The BPF LSM stays on.
+- **Filesystems**: btrfs (the state is ext4), NFS (client and server), ISO 9660 and quota.
 
 ## Hangs and watchdogs
 

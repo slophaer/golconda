@@ -40,11 +40,19 @@ let lines = (open --raw $"($root)/source/.config" | lines)
 for want in ["CONFIG_BASE=y" "CONFIG_NUMBER=42" 'CONFIG_TEXT="a\"b"' "# CONFIG_OFF is not set"] {
   if $want not-in $lines { error make {msg: $"config serialization lost ($want)"} }
 }
-"CONFIG_BASE=m\n" | save $"($root)/policy.config"
+"CONFIG_BASE=m\n# CONFIG_DESKTOP is not set\n" | save $"($root)/policy.config"
 $env.PKGS_CTX = ($env.PKGS_CTX | upsert spec.env.GOLCONDA_KERNEL_FRAGMENTS ([$"($root)/policy.config"] | to json))
 kbuild configure
 let merged = (open --raw $"($root)/source/.config" | lines)
 if "CONFIG_BASE=m" not-in $merged or "CONFIG_BASE=y" in $merged { error make {msg: "policy fragment did not override typed base"} }
+if "# CONFIG_DESKTOP is not set" not-in $merged { error make {msg: "policy fragment lost an option it turns off"} }
+# a symbol the fragment turns off and olddefconfig turns on again (a select) fails the build
+let selected = (with-env {SELECT_ON: "DESKTOP"} {
+  try { kbuild configure; {failed: false} } catch {|e| {failed: true, message: $e.msg} }
+})
+if not $selected.failed or not ($selected.message | str contains "CONFIG_DESKTOP") {
+  error make {msg: "an option the fragment turns off was on after olddefconfig, and the build passed"}
+}
 let dropped = (with-env {DROP_NUMBER: "1"} {
   try { kbuild configure; {failed: false} } catch {|e| {failed: true, message: $e.msg} }
 })
@@ -104,4 +112,4 @@ let bad_version = (try { kbuild install; false } catch { true })
 if not $bad_version { error make {msg: "failed kernelversion was accepted"} }
 cd $pwd
 rm -rf $root
-print "kernel: install, debug output, config types, fragment precedence, extra config, files, built-in keys, incbin digests, conflict and lost-option rejection pass"
+print "kernel: install, debug output, config types, fragment precedence, off options, extra config, files, built-in keys, incbin digests, conflict and lost-option rejection pass"

@@ -5,6 +5,7 @@ defconfig:
 
 olddefconfig:
 	@if test "$${DROP_NUMBER:-0}" = 1; then grep -v '^CONFIG_NUMBER=' .config > .config.new; mv .config.new .config; fi
+	@if test -n "$${SELECT_ON:-}"; then sed 's/^# CONFIG_$(SELECT_ON) is not set$$/CONFIG_$(SELECT_ON)=y/' .config > .config.new; mv .config.new .config; fi
 
 vmlinux:
 	@printf 'unstripped kernel\n' > vmlinux
