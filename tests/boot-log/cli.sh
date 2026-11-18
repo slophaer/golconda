@@ -229,6 +229,16 @@ else
   echo "FAIL: CLI --later with --rotate (exit $actual): $(cat "$WORK/rotate-later.out")"
   ERRORS=$((ERRORS + 1))
 fi
+# --fail-health with --rotate is refused: each update mode is a run of its own
+actual=0
+sh "$ROOT/scripts/boot-test" "$WORK/disk.raw" --keys "$WORK/keys" --allow-tcg --secure-boot --next "$WORK/no-next" \
+  --rotate --fail-health > "$WORK/rotate-health.out" 2>&1 || actual=$?
+if [ "$actual" = 1 ] && grep -q -- '--fail-health needs --next, and is a fallback of its own: not with --rotate' "$WORK/rotate-health.out"; then
+  echo "PASS: CLI --fail-health with --rotate is refused"
+else
+  echo "FAIL: CLI --fail-health with --rotate (exit $actual): $(cat "$WORK/rotate-health.out")"
+  ERRORS=$((ERRORS + 1))
+fi
 # QEMU runs with KVM alone: without a /dev/kvm to open the run stops before QEMU starts, and
 # --allow-tcg lets QEMU fall back to TCG
 FAKE_MODE=success-systemd FAKE_STOPPED=$WORK/stopped-kvm FAKE_RELEASE=$WORK/release-kvm \

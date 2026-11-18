@@ -237,8 +237,8 @@ if [ "$((FAIL_PANIC + FAIL_PID1))" -gt 0 ] && { [ -z "$NEXT" ] || [ "$((FAIL_PAN
   echo "Error: --fail-panic and --fail-pid1 need --next, and each is a fallback of its own: not with each other, --fail-health, --fail-initrd, --fail-blessed, --rotate or --tamper-index" >&2
   exit 1
 fi
-if [ "$FAIL_HEALTH" = 1 ] && [ -z "$NEXT" ]; then
-  echo "Error: --fail-health needs --next" >&2
+if [ "$FAIL_HEALTH" = 1 ] && { [ -z "$NEXT" ] || [ "$ROTATE" = 1 ]; }; then
+  echo "Error: --fail-health needs --next, and is a fallback of its own: not with --rotate" >&2
   exit 1
 fi
 if [ "$TAMPER_INDEX" = 1 ] && { [ -z "$NEXT" ] || [ "$FAIL_HEALTH" = 1 ] || [ "$ROTATE" = 1 ]; }; then

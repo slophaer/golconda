@@ -71,17 +71,16 @@ PATH=$(nix-build -A packages.x86_64-linux.age --no-out-link)/bin:$PATH \
 | `--certify`                   | certify the host in its first boot with `golconda vars certify` (`image-smoke-test-next`)                                      | `--ssh-test`                           | `--next`, `--esp-creds`, `--imds`                                                       |
 | `--factory-reset`             | reset the state partition and check the reset boot                                                                             | `--ssh-test`                           | `--next`                                                                                |
 | `--next DIR`                  | install the release of the image output `DIR` over HTTP and boot it; turns on `--ssh-test`                                     |                                        | `--certify`, `--factory-reset`                                                          |
-| `--rotate`                    | `DIR` is signed with a new `db` key: rotate `db` and `dbx`                                                                     | `--next`, `--secure-boot`              | `--auto-enrol`, the other update modes but `--fail-health`                              |
+| `--rotate`                    | `DIR` is signed with a new `db` key: rotate `db` and `dbx`                                                                     | `--next`, `--secure-boot`              | `--auto-enrol`, the other update modes                                                  |
 | `--tamper-index`              | serve a changed `SHA256SUMS`, then a changed artifact under the true index: nothing must install                               | `--next`                               | the other update modes                                                                  |
-| `--fail-health`               | each try of the new release fails a health unit                                                                                | `--next`                               | the other update modes but `--rotate`                                                   |
+| `--fail-health`               | each try of the new release fails a health unit                                                                                | `--next`                               | the other update modes                                                                  |
 | `--fail-initrd`               | each try of the new release fails in the initrd                                                                                | `--next`                               | the other update modes                                                                  |
 | `--fail-panic`, `--fail-pid1` | each try of the new release panics, or PID 1 crashes                                                                           | `--next`                               | the other update modes                                                                  |
 | `--later DIR`                 | after the recovery paths, install the third release `DIR` into the first release's slot and boot it                            | `--next`                               | `--secure-boot-off`, the update modes but `--fail-blessed`                              |
 | `--fail-blessed --later DIR`  | the blessed new release crashes PID 1 on each boot; `DIR` is a third release                                                   | `--next`                               | the other update modes                                                                  |
 
 The update modes are `--rotate`, `--tamper-index` and the `--fail-*` flags. The script refuses two
-of them in one run. The one pair that it does not refuse, `--rotate` with `--fail-health`, has no
-line in `tests/boot/matrix`.
+of them in one run.
 
 ## The machine
 
