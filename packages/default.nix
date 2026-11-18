@@ -11,10 +11,8 @@
   # userland: the image's /bin/sh and coreutils
   dash = ./dash;
   uutils-coreutils = ./uutils-coreutils;
-  # remote access and network debugging
+  # remote access
   openssh = ./openssh;
-  iproute2 = ./iproute2;
-  libmnl = ./libmnl;
   # the CA store: the bundle (cacert's roots, /trust's anchors and distrust list) and the tool
   # that makes it
   ca-bundle = ./ca-bundle;
@@ -44,7 +42,6 @@
   json-c = ./json-c;
   popt = ./popt;
   e2fsprogs = ./e2fsprogs;
-  btrfs-progs = ./btrfs-progs;
   # the compiled hardware database udev reads (/base links it)
   hwdb = ./hwdb;
   # build-time: the /usr image, the ESP and the UKI

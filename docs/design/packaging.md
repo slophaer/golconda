@@ -135,7 +135,7 @@ Golconda's other packages, for the build, the release host and the tests, are in
 too: systemd-hwdb compiles a server's selection of the target systemd's `hwdb.d` at build time, and
 `/base` links the result to `/usr/lib/udev/hwdb.bin`. `/factory` points `/etc/localtime` at the
 configured zone there. Release images add GnuPG through the index fragment; the base tree alone does
-not need it. btrfs-progs has a package and tests but is not in the image.
+not need it.
 
 GnuPG and libgcrypt remain an intentional exception to the single crypto-stack preference: systemd's
 signed-index path uses OpenPGP. systemd PR [#44292](https://github.com/systemd/systemd/pull/44292)

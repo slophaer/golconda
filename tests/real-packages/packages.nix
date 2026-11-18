@@ -47,7 +47,6 @@ in
       (name: f.checks.x86_64-linux.${name}.drvPath == f.packages.x86_64-linux.${name}.drvPath)
       [
         "tests-gnupg"
-        "tests-btrfs-progs"
         "tests-uutils-coreutils"
       ]
   ))
