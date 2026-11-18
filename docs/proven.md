@@ -1,6 +1,6 @@
 # What is proven
 
-Each row names the test that proves a claim; the design pages say why. A marker is a line that
+Each row names the test that proves a claim. The design pages say why. A marker is a line that
 `scripts/boot-test` prints (`PASS: <marker>`). It runs the image in QEMU with OVMF
 ([Boot test](reference/boot-test.md)). A check is a Nix output or a script that `scripts/lint` or
 `scripts/verify` runs.
@@ -100,15 +100,15 @@ command that runs it.
 
 - **Runs by hand only.** No marker or check repeats these runs. The
   [Hetzner Cloud guide](reference/hetzner-cloud.md) ran on a `cpx12`, with and without `/imds`, with
-  an update over HTTPS and a fallback. Two releases built by `golconda release build` with a new
-  `scripts/make-keys` set booted, the second as an update, and no private key of the set was in the
-  store afterwards. A release signed on the host was the same as one signed in the sandbox. A boot
-  without `rw` on the kernel command line does not reach `multi-user.target`.
+  an update over HTTPS and a fallback. `golconda release build` built two releases with a new
+  `scripts/make-keys` set. Both booted, the second as an update, and no private key of the set was
+  in the store afterwards. A release signed on the host was the same as one signed in the sandbox. A
+  boot without `rw` on the kernel command line does not reach `multi-user.target`.
 
-- **imdsd over IPv6.** No run has imdsd reach an IPv6 endpoint: QEMU serves none.
+- **imdsd over IPv6.** No run has imdsd reach an IPv6 endpoint, because QEMU serves none.
 
-- **Other build hosts.** No test builds on hosts with different build file systems, and no test
-  builds a whole release twice from the same inputs and compares the two.
+- **Other build hosts.** No test builds on hosts with different build file systems. No test builds a
+  whole release twice from the same inputs and compares the two.
 
 - **Enrolment on real firmware** *(being built)*. The harness enrols keys offline in the variable
   store, or lets systemd-boot enrol them in OVMF (`--auto-enrol`). Not run on hardware: clearing the
@@ -126,7 +126,7 @@ command that runs it.
   releases, so it leaves out step 5 of the rotation.
 
 - **A key on a real token.** The `db` and PCR keys on a token, and the host CA key that
-  `golconda vars certify` signs with (`cli/tests/cli.rs`), are proven with SoftHSM only; no run on a
-  YubiKey *(being built)*: the YubiKey's packages (`pcsc-lite`, `ccid`, `yubico-piv-tool`,
+  `golconda vars certify` signs with (`cli/tests/cli.rs`), are proven with SoftHSM only. No run on a
+  YubiKey *(being built)*. The YubiKey's packages (`pcsc-lite`, `ccid`, `yubico-piv-tool`,
   `yubikey-tools`) are tested without a token (`tests-yubikey-tools`: the module loads and finds no
   slot). The release key on a token *(later)*.
