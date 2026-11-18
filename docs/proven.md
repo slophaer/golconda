@@ -2,8 +2,8 @@
 
 Each row names the test that proves a claim; the design pages say why. A marker is a line that
 `scripts/boot-test` prints (`PASS: <marker>`). It runs the image in QEMU with OVMF
-([Image artifacts: the boot test](reference/image.md#boot-test-scriptsboot-test)). A check is a Nix
-output or a script that `scripts/lint` or `scripts/verify` runs.
+([Boot test](reference/boot-test.md)). A check is a Nix output or a script that `scripts/lint` or
+`scripts/verify` runs.
 
 The last column names the line of `tests/boot/matrix` that prints the marker, by its flags after
 `--secure-boot --ssh-test --tpm`, without `--timeout`. The first line has no other flag. A line that

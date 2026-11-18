@@ -137,11 +137,10 @@ the public halves of the throwaway keys. A release signs the same way, outside N
 
 Do not start the disk with a bare `qemu-system-x86_64` and a plain OVMF. A plain OVMF has no Secure
 Boot, so nothing checks the loader or the UKI; the kernel still checks `/usr` against the `db`
-certificate built into it, and IPE enforces
-([Image artifacts](image.md#boot-test-scriptsboot-test)). The harness does what is needed: it enrols
-the throwaway db key into the variable store of OVMF's Secure Boot build (`qemu-system`'s
-`share/qemu`), starts QEMU with SMM and a 40 GiB overlay (room for `root`), and passes the host name
-`boot-test` as an SMBIOS credential.
+certificate built into it, and IPE enforces ([Boot test](boot-test.md)). The harness does what is
+needed: it enrols the throwaway db key into the variable store of OVMF's Secure Boot build
+(`qemu-system`'s `share/qemu`), starts QEMU with SMM and a 40 GiB overlay (room for `root`), and
+passes the host name `boot-test` as an SMBIOS credential.
 
 ```sh
 scripts/boot-test result/disk/disk.raw --keys result/keys --secure-boot --timeout 120
@@ -252,4 +251,4 @@ s, waits for the guest to reboot itself, and checks the result: `release-index`,
 `sysupdate-installed`, `boots-next`, `units-composed-only-after-update` and
 `no-failed-units-after-update`.
 
-The limits of this test are on [Image artifacts: the update test](image.md#the-update-test).
+The limits of this test are on [Boot test: the update test](boot-test.md#the-update-test).

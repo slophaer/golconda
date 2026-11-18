@@ -120,4 +120,4 @@ and `failed-boots-halt`. The limits are below.
 - [Boot loader: Recovery](../design/bootloader.md#recovery) and
   [What is not possible](../design/bootloader.md#what-is-not-possible).
 - [Updates: Factory reset](../design/updates.md#factory-reset).
-- [The factory reset test](../reference/image.md#the-factory-reset-test).
+- [The factory reset test](../reference/boot-test.md#the-factory-reset-test).

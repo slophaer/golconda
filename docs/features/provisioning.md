@@ -159,6 +159,6 @@ Proven: the rows of [What is proven](../proven.md) that name `hostname`, `esp-cr
   [First boot](../design/boot.md#first-boot).
 - [Hetzner Cloud](../reference/hetzner-cloud.md#4-the-machines-credentials): the ESP route end to
   end.
-- [Image artifacts](../reference/image.md): the `--esp-creds` test.
+- [Boot test](../reference/boot-test.md#provisioning): the `--esp-creds` test.
 - [Trust: Secrets and vars](../design/trust.md#secrets-and-vars).
 - [Login by ssh](ssh-login.md).

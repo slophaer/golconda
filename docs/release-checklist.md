@@ -73,7 +73,7 @@ The boot test runs on QEMU with KVM, cold. Snapshots and deterministic VMs were 
 out: a boot is short, the costly part is the build, and no deterministic VM boots UEFI with a TPM.
 Running the modes in parallel is the cheaper gain, and the harness does it: runs on one host with
 one image share nothing (each has its own work directory, ssh port, update server and metadata
-server; see [the update test](reference/image.md#the-update-test)), so
+server; see [the update test](reference/boot-test.md#the-update-test)), so
 `scripts/verify --boot-set ARGS …` boots a list of flag sets at the same time, each with its own log
 and a summary line with the names of the checks that passed. The default boot, `--next`,
 `--next --fail-health`, `--imds` and the tamper run took 6 minutes together on one host, against 16

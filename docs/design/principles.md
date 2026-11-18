@@ -73,6 +73,5 @@ needs them is not packaged.
 
 Packages come from repkgs and `packages/`, and so do the tools the scripts run on the build host
 (`scripts/tools.sh`) and the sandboxed checks' builders (the repkgs seed's shell, `nix/checks.nix`).
-The boot test's virtual machine is no exception
-([Image artifacts: Boot test](../reference/image.md#boot-test-scriptsboot-test)). `checks.boundary`
-fails when a Nix file or a script names nixpkgs, or when `pins/` pins it.
+The boot test's virtual machine is no exception ([Boot test](../reference/boot-test.md)).
+`checks.boundary` fails when a Nix file or a script names nixpkgs, or when `pins/` pins it.

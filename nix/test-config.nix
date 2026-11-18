@@ -29,7 +29,7 @@ in
     # user network (169.254.169.0/24, for --imds: the metadata address 169.254.169.254
     # must be on the link), and the test forwards the guest's connections to port 8074
     # there to a per-run HTTP server of the next release's disk.release/ (guestfwd;
-    # docs/reference/image.md). The IMDS lock names the metadata endpoints of 40-imds.hwdb
+    # docs/reference/boot-test.md). The IMDS lock names the metadata endpoints of 40-imds.hwdb
     # (modules/imds), not this address.
     updateSource = "http://169.254.169.2:8074/";
   };

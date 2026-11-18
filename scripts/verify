@@ -1,7 +1,7 @@
 #!/bin/sh
 # verify [-C DIR] [--image ATTR] [--boot-args ARGS | --boot-set ARGS...] [--jobs N]
 #        [--no-boot] [--lint-only] [--each-commit BASE]
-# Lint, build an image and the checks that build it again, and boot it (docs/reference/image.md).
+# Lint, build an image and the checks that build it again, and boot it (docs/reference/boot-test.md).
 # A failed lint or image stops the run. The tree must be clean, without untracked files.
 #   -C DIR             verify the tree in DIR (default: this repository)
 #   --image ATTR       the image under packages.<system> (default image-smoke-test)

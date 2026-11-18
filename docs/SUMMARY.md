@@ -55,6 +55,7 @@
 
 - [Partitions and paths](reference/layout.md)
 - [Image artifacts](reference/image.md)
+- [Boot test](reference/boot-test.md)
 - [Modules](reference/modules/README.md)
   - [`/base`](reference/modules/generated/base.md)
   - [`/factory`](reference/modules/generated/factory.md)
