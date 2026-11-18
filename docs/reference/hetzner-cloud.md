@@ -1,8 +1,8 @@
 # Deploying to Hetzner Cloud
 
-This page is the procedure for one Golconda machine on a Hetzner Cloud server: build an image for a
-host without Secure Boot, put the machine's host name and ssh key on its ESP, write the disk from
-the rescue system, and update it. Every step ran by hand on a Hetzner Cloud `cpx12` in `fsn1`
+This page is the procedure for one Golconda machine on a Hetzner Cloud server. It builds an image
+for a host without Secure Boot, puts the machine's host name and ssh key on its ESP, writes the disk
+from the rescue system, and updates it. Every step ran by hand on a Hetzner Cloud `cpx12` in `fsn1`
 ([What is proven: Not proven](../proven.md#not-proven)), and the metadata route of step 4 ran on
 Hetzner too.
 
@@ -44,9 +44,10 @@ updateSource = "https://updates.example.com/web/"
 port = 22
 ```
 
-No `authorizedKeys`: the key comes from the ESP in step 4, so one image serves every machine.
-sysupdate checks the release key's signature on the index, which matters here: without Secure Boot,
-nothing else would stop a UKI served by someone else. HTTPS still hides what the machine fetches.
+The document sets no `authorizedKeys`. The key comes from the ESP in step 4, so one image serves
+every machine. sysupdate checks the release key's signature on the index. This matters here, because
+without Secure Boot nothing else would stop a UKI served by someone else. HTTPS still hides what the
+machine fetches.
 
 ## 3. Build
 
@@ -54,14 +55,14 @@ nothing else would stop a UKI served by someone else. HTTPS still hides what the
 golconda release build -f web.toml --keys /srv/golconda-keys
 ```
 
-Nix builds the image unsigned, with the key set's public halves only, and the signer signs it on
-this host with the private keys where they lie
+Nix builds the image unsigned, with the key set's public halves only. The signer signs it on this
+host with the private keys where they lie
 ([Making a release: Build and sign](release.md#2-build-and-sign)).
 
 The kernel is built again for this image: its built-in keyring holds `db.crt`. Its config is the
-same for every key set, so with jig's compile cache (`jigd`) after one such build, only the
-certificate object and the compressed kernel's wrapper compile again, and the kernel relinks. The
-output holds `disk.raw` and `release/`.
+same for every key set. With jig's compile cache (`jigd`) after one such build, only the certificate
+object and the compressed kernel's wrapper compile again, and the kernel relinks. The output holds
+`disk.raw` and `release/`.
 
 ## 4. The machine's credentials
 
@@ -73,23 +74,23 @@ scripts/provision-esp web1.raw --hostname web1 --authorized-keys ~/.ssh/id_ed255
 ```
 
 `scripts/provision-esp` writes `loader/credentials/system.hostname.cred`, `firstboot.hostname.cred`
-and `ssh.authorized_keys.root.cred`, each in the `systemd-creds` envelope with the null key: the
-machine has no key of its own yet. systemd-stub passes them to the initrd; PID 1 takes the host name
-from them, systemd-firstboot writes it to `/etc/hostname`, and `systemd-tmpfiles` writes
+and `ssh.authorized_keys.root.cred`, each in the `systemd-creds` envelope with the null key, because
+the machine has no key of its own yet. systemd-stub passes them to the initrd. PID 1 takes the host
+name from them, systemd-firstboot writes it to `/etc/hostname`, and `systemd-tmpfiles` writes
 `/root/.ssh/authorized_keys` from the key, all at first boot. Then
-`golconda-esp-credentials.service` removes the three files from the ESP: they hold for one boot.
-systemd accepts a null-key credential when Secure Boot is off or there is no TPM
-([Boot: Bootstrap credentials](../design/boot.md#bootstrap-credentials)); both hold here, so whoever
+`golconda-esp-credentials.service` removes the three files from the ESP, because they hold for one
+boot. systemd accepts a null-key credential when Secure Boot is off or there is no TPM
+([Boot: Bootstrap credentials](../design/boot.md#bootstrap-credentials)). Both hold here, so whoever
 can write the disk can plant one ([Trust: The ESP](../design/trust.md#the-esp)). The ESP is not
 encrypted: put no secret in a credential.
 
-Or with `["/imds"]` in the document, nothing on the ESP: the host name and the ssh keys the server
-was created with come from Hetzner's metadata, and the user data can carry more credentials, such as
-the static IPv6 address as `network.network.60-ipv6` (`Address=<prefix>::1/64`, `Gateway=fe80::1`,
-`DHCP=ipv4`); a user data `ssh.authorized_keys.root` is skipped when the server has keys
-([Provisioning: Cloud metadata](../features/provisioning.md#hetzner-cloud)). The prefix is known
-once the server exists: give the user data with `hcloud server rebuild --user-data-from-file` before
-step 5's rescue boot.
+Or put `["/imds"]` in the document and write nothing to the ESP. The host name and the ssh keys the
+server was created with then come from Hetzner's metadata. The user data can carry more credentials,
+such as the static IPv6 address as `network.network.60-ipv6` (`Address=<prefix>::1/64`,
+`Gateway=fe80::1`, `DHCP=ipv4`). A user data `ssh.authorized_keys.root` is skipped when the server
+has keys ([Provisioning: Cloud metadata](../features/provisioning.md#hetzner-cloud)). The prefix is
+known once the server exists: give the user data with `hcloud server rebuild --user-data-from-file`
+before step 5's rescue boot.
 
 ## 5. Create the server and write the disk
 
@@ -128,7 +129,7 @@ reboots all the same.
 
 Watch it in the Cloud Console (or `hcloud server request-console web1`): the screen shows the
 kernel's messages and the journal. On the first boot repart makes the state partition in the rest of
-the disk and moves the GPT's backup header to its end, firstboot runs without a prompt, and the
+the disk and moves the GPT's backup header to its end. firstboot runs without a prompt, and the
 health units bless the entry ([Boot: First boot](../design/boot.md#first-boot)).
 
 ```sh
@@ -137,7 +138,7 @@ ssh root@$IP hostname        # web1
 ssh root@$IP systemctl --failed
 ```
 
-The clock is right from the first boot: systemd's built-in epoch (`time-epoch`) is the date of its
+The clock is right from the first boot. systemd's built-in epoch (`time-epoch`) is the date of its
 pin, so PID 1 keeps the firmware's time, and `systemd-timesyncd` then syncs it.
 
 ## 7. Updates
