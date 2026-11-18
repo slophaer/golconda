@@ -19,20 +19,21 @@ in
 // {
   inherit (common) uuidOfHex hexOf;
 
-  # throwawayKeys { buildSystem; pkgs; sources; variant ? null; reusePkKek ? null; } -> derivation with the
+  # throwawayKeys { buildSystem; pkgs; sources; version; variant ? null; reusePkKek ? null; } -> derivation with the
   # key set of the test images, made by scripts/make-keys inside the store, because the keys are
   # fixtures: a production key never enters it. `out` is the set (docs/reference/release.md),
   # `private` its DIR.private (PK.key, KEK.key), `public` the public halves (the chain's
   # publicKeys, the boot test's --keys). A `variant` is a second set for the key rotation test
   # (docs/design/bootloader.md): `reusePkKek`, another set, makes it with make-keys
   # --reuse-pk-kek. The builder sees make-keys and golconda-enrol-auth only, so an edit of another
-  # step keeps the keys and every unsigned output. SOURCE_DATE_EPOCH, the first test release's day,
-  # dates the set.
+  # step keeps the keys and every unsigned output. `version`, the first test release's, dates the
+  # set: SOURCE_DATE_EPOCH is its timestamp (lib/version.nix).
   throwawayKeys =
     {
       buildSystem,
       pkgs,
       sources,
+      version,
       variant ? null,
       reusePkKek ? null,
     }:
@@ -61,7 +62,7 @@ in
         "public"
       ];
       PATH = "${seed}/bin";
-      SOURCE_DATE_EPOCH = "1793404800";
+      SOURCE_DATE_EPOCH = toString ((import ../version.nix { }).toEpoch version);
       args = [
         "-eu"
         "-c"

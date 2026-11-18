@@ -146,6 +146,16 @@ in
   (check "usr-tree: stripUsrPrefix returns null for non-/usr paths" (
     usrTreeLib.stripUsrPrefix "/etc/foo" == null && usrTreeLib.stripUsrPrefix "/var/lib/x" == null
   ))
+  # the release key is made the day before this date, and a machine's clock is at least its
+  # release's date: the test key set follows the first test version (nix/default.nix)
+  (check "throwawayKeys: the key set is dated by the version it gets" (
+    (imageLib.throwawayKeys {
+      buildSystem = "x86_64-linux";
+      pkgs = fixturePkgs;
+      inherit sources;
+      version = "20261101.1";
+    }).drvAttrs.SOURCE_DATE_EPOCH == toString (toEpoch "20261101.1")
+  ))
   (check "version: toEpoch throws on a bad format" (
     let
       bad = v: !(tryEval (toEpoch v)).success;

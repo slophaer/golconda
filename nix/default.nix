@@ -70,9 +70,12 @@ in
     let
       run = import ./run.nix set;
 
+      # the first test release; the throwaway keys carry its date
+      firstVersion = "20261031.1";
       throwawayKeys = imageLib.throwawayKeys {
         inherit pkgs sources;
         buildSystem = system;
+        version = firstVersion;
       };
 
       # The chain with 1 GiB usr slots, over five times a test /usr image: the signer writes and
@@ -132,11 +135,11 @@ in
       # Boot test image: see nix/test-config.nix.
       testConfig = import ./test-config.nix;
       smokeTest = testImage {
-        config = testConfig { version = "20261031.1"; };
+        config = testConfig { version = firstVersion; };
       };
       # the same image, signed with the db and PCR keys on a PKCS#11 token
       smokeTestToken = testImage {
-        config = testConfig { version = "20261031.1"; };
+        config = testConfig { version = firstVersion; };
         onToken = true;
       };
 
@@ -159,6 +162,7 @@ in
       rotatedKeys = imageLib.throwawayKeys {
         inherit pkgs sources;
         buildSystem = system;
+        version = firstVersion;
         variant = "rotated";
         # a db rotation keeps the PK, the KEK and the release key (scripts/make-keys --reuse-pk-kek)
         reusePkKek = throwawayKeys;
@@ -300,7 +304,7 @@ in
         (testImage {
           config =
             let
-              c = testConfig { version = "20261031.1"; };
+              c = testConfig { version = firstVersion; };
             in
             c
             // {
@@ -313,7 +317,7 @@ in
       # The test image without Secure Boot, and its next release for --next
       image-smoke-test-nosb =
         (testImage {
-          config = noSecureBootConfig { version = "20261031.1"; };
+          config = noSecureBootConfig { version = firstVersion; };
         }).smoke;
       image-smoke-test-nosb-next =
         (testImage {
