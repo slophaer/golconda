@@ -5,30 +5,30 @@ schema is the flake one, produced by flake-incompat.
 
 ## Outputs
 
-| attribute                                               | per system  | content                                                                                                                                           |
-| ------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages.<system>.golconda-cli`                        | yes         | the `golconda` command line from `cli/` (`vars`, `release`), built by repkgs ([Commands](cli.md#the-golconda-tool))                               |
-| `packages.<system>.yubikey-tools`                       | yes         | `pcscd`, `yubico-piv-tool` and the YubiKey's PKCS#11 module for a release host, never in an image ([a YubiKey](release.md#a-yubikey-being-built)) |
-| `packages.<system>.{systemd,mtools,util-linux,cpython}` | yes         | the tools `scripts/provision-esp` runs on the build host (`scripts/tools.sh`), from repkgs and `packages/`                                        |
-| `packages.x86_64-linux.kernel`                          | x86_64 only | the Linux kernel from `packages/kernel/`, including the Golconda policy fragment                                                                  |
-| `packages.<system>.tests-<name>`                        | yes         | the test of package `<name>` in `tests/packages/<name>/test.nu` (uutils-coreutils, gnupg)                                                         |
-| `packages.x86_64-linux.image-smoke`                     | x86_64 only | the image chain over `examples/server.toml`, signed with throwaway keys ([Image artifacts](image.md))                                             |
-| `packages.x86_64-linux.image-smoke-test`                | x86_64 only | the boot test image, version `20261031.1`: `image-smoke` with the test SSH key and an update source (`scripts/boot-test`)                         |
-| `packages.x86_64-linux.image-smoke-test-nosb`           | x86_64 only | the test image for a host without Secure Boot (`/system.secureBoot = false`): its kernel carries the throwaway `db` certificate                   |
-| `packages.x86_64-linux.image-smoke-test-nosb-next`      | x86_64 only | its next release, `20261031.2`                                                                                                                    |
-| `packages.x86_64-linux.image-smoke-test-next`           | x86_64 only | its next release, `20261031.2`, with the same throwaway keys: what `scripts/boot-test --next` installs                                            |
-| `packages.x86_64-linux.image-smoke-test-later`          | x86_64 only | a third release, `20261031.3`, with the same throwaway keys: what `scripts/boot-test --fail-blessed --later` installs after the fallback          |
-| `packages.x86_64-linux.image-smoke-test-rotated`        | x86_64 only | the same next release signed with a second throwaway `db` key: `scripts/boot-test --next <it> --rotate`                                           |
-| `checks.<system>`                                       | yes         | the sandboxed checks; the names are in `nix/checks.nix`                                                                                           |
-| `formatter.<system>`                                    | yes         | treefmt (`nix fmt`) with its formatters and the lint rules in `lints/`, built by repkgs                                                           |
-| `devShells.<system>.default`                            | yes         | mdbook, iets, uptrack                                                                                                                             |
-| `modules`                                               | no          | the adios tree; `modules { options = {...}; }` evaluates it                                                                                       |
-| `docs-pages`, `docs-summary`                            | no          | the generated reference pages, and the module lines `docs/SUMMARY.md` must carry                                                                  |
-| `schema`                                                | no          | JSON Schema 2020-12 of the module tree (see below)                                                                                                |
-| `configLib`                                             | no          | TOML configuration loader (see below)                                                                                                             |
-| `lib.mkSystem`                                          | no          | the entry point: a TOML document → the composed system and its `/usr` tree ([Configuration](config.md#the-entry-point))                           |
-| `lib.mkImage`                                           | no          | a TOML document and a key set's public halves → the unsigned image chain and its signer ([`lib.mkImage`](#libmkimage))                            |
-| `lib.readPins`                                          | no          | a directory of pins in uptrack's format → `{ <name> = the unpacked tree; }`, the reader of `pins/` ([Pinning](pinning.md#your-other-inputs))      |
+| attribute                                               | per system  | content                                                                                                                                      |
+| ------------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages.<system>.golconda-cli`                        | yes         | the `golconda` command line from `cli/` (`vars`, `release`), built by repkgs ([Commands](cli.md#the-golconda-tool))                          |
+| `packages.<system>.yubikey-tools`                       | yes         | `pcscd`, `yubico-piv-tool` and the YubiKey's PKCS#11 module for a release host, never in an image ([a YubiKey](release.md#a-yubikey))        |
+| `packages.<system>.{systemd,mtools,util-linux,cpython}` | yes         | the tools `scripts/provision-esp` runs on the build host (`scripts/tools.sh`), from repkgs and `packages/`                                   |
+| `packages.x86_64-linux.kernel`                          | x86_64 only | the Linux kernel from `packages/kernel/`, including the Golconda policy fragment                                                             |
+| `packages.<system>.tests-<name>`                        | yes         | the test of package `<name>` in `tests/packages/<name>/test.nu` (uutils-coreutils, gnupg)                                                    |
+| `packages.x86_64-linux.image-smoke`                     | x86_64 only | the image chain over `examples/server.toml`, signed with throwaway keys ([Image artifacts](image.md))                                        |
+| `packages.x86_64-linux.image-smoke-test`                | x86_64 only | the boot test image, version `20261031.1`: `image-smoke` with the test SSH key and an update source (`scripts/boot-test`)                    |
+| `packages.x86_64-linux.image-smoke-test-nosb`           | x86_64 only | the test image for a host without Secure Boot (`/system.secureBoot = false`): its kernel carries the throwaway `db` certificate              |
+| `packages.x86_64-linux.image-smoke-test-nosb-next`      | x86_64 only | its next release, `20261031.2`                                                                                                               |
+| `packages.x86_64-linux.image-smoke-test-next`           | x86_64 only | its next release, `20261031.2`, with the same throwaway keys: what `scripts/boot-test --next` installs                                       |
+| `packages.x86_64-linux.image-smoke-test-later`          | x86_64 only | a third release, `20261031.3`, with the same throwaway keys: what `scripts/boot-test --fail-blessed --later` installs after the fallback     |
+| `packages.x86_64-linux.image-smoke-test-rotated`        | x86_64 only | the same next release signed with a second throwaway `db` key: `scripts/boot-test --next <it> --rotate`                                      |
+| `checks.<system>`                                       | yes         | the sandboxed checks; the names are in `nix/checks.nix`                                                                                      |
+| `formatter.<system>`                                    | yes         | treefmt (`nix fmt`) with its formatters and the lint rules in `lints/`, built by repkgs                                                      |
+| `devShells.<system>.default`                            | yes         | mdbook, iets, uptrack                                                                                                                        |
+| `modules`                                               | no          | the adios tree; `modules { options = {...}; }` evaluates it                                                                                  |
+| `docs-pages`, `docs-summary`                            | no          | the generated reference pages, and the module lines `docs/SUMMARY.md` must carry                                                             |
+| `schema`                                                | no          | JSON Schema 2020-12 of the module tree (see below)                                                                                           |
+| `configLib`                                             | no          | TOML configuration loader (see below)                                                                                                        |
+| `lib.mkSystem`                                          | no          | the entry point: a TOML document → the composed system and its `/usr` tree ([Configuration](config.md#the-entry-point))                      |
+| `lib.mkImage`                                           | no          | a TOML document and a key set's public halves → the unsigned image chain and its signer ([`lib.mkImage`](#libmkimage))                       |
+| `lib.readPins`                                          | no          | a directory of pins in uptrack's format → `{ <name> = the unpacked tree; }`, the reader of `pins/` ([Pinning](pinning.md#your-other-inputs)) |
 
 `systems` in `default.nix` lists `x86_64-linux` only, so `<system>` is `x86_64-linux`. aarch64 is
 *(later)* ([Scope](../design/scope.md#later)).

@@ -78,7 +78,7 @@ stores the certificate and the KRL (`golconda vars set web1 sshd-host-cert cert`
 `golconda vars set web1 sshd-revoked-keys krl`), and pushes both, the KRL first
 (`golconda vars push web1`). `--principal` names what clients reach the machine by (default: the
 name given), `--validity` how long the certificate holds (default a year). A CA key on a PKCS#11
-token, such as the YubiKey that holds the release keys, is
+token, such as the YubiKey that holds the `db` and PCR keys, is
 `--ca-key host_ca.pub --pkcs11-module "$(ykcs11-module)"`: ssh-keygen signs with the token's key
 that matches the public key file
 ([Commands: golconda vars certify](../reference/cli.md#golconda-vars-certify)). It refuses with no
@@ -108,7 +108,7 @@ Proven: the rows of [What is proven](../proven.md) that name `ssh-login`, `cert-
   Renewal is `golconda vars certify` again before the certificate expires; nothing on the machine
   renews it.
 - `golconda vars certify` with a CA key on a token is tested with SoftHSM, not with a YubiKey
-  ([Making a release: A YubiKey](../reference/release.md#a-yubikey-being-built)).
+  ([Making a release: A YubiKey](../reference/release.md#a-yubikey)).
 - A password-less root is the only account. Per-operator records with `run0` and polkit are
   *(later)*.
 - A hardware second factor (FIDO2) is client policy: the CA signs a FIDO2 key.
