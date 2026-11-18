@@ -1,4 +1,4 @@
-#! The boot tests' configured workload: a downstream service that Golconda's library (`/golconda-lib`)
+#! The boot tests' configured workload: a downstream service that Golconda's API (`/golconda/api`)
 #! renders, with the sandbox tier `strict` and one credential, whose public fallback PID 1 gives.
 #! It checks its app file and the credential, then prints `custom-workload: checks passed`, the
 #! line that the boot test's `sandbox-tier` waits for. boot-complete.target requires it, so a
@@ -7,14 +7,14 @@ _: {
   name = "test-workload";
 
   inputs = {
-    golconda.path = "/golconda-lib";
+    api.path = "/golconda/api";
     pkgs.path = "/pkgs";
   };
 
   impl =
     { results, ... }:
     let
-      inherit (results.golconda) service merge;
+      inherit (results.api) service merge;
       name = "custom-workload";
     in
     merge [

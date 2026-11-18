@@ -99,7 +99,7 @@ my-servers/
 text = "hello\n"
 ```
 
-A module that runs a service declares the input `/golconda-lib` and makes the unit with
+A module that runs a service declares the input `/golconda/api` and makes the unit with
 `service.render`, as `/services/sshd` does: it gets a sandbox tier and checked credential
 references. The module `myapp` of
 [Your own modules and packages](../features/extending.md#a-service-of-your-own) is selected by its
@@ -110,7 +110,8 @@ table:
 port = 9000
 ```
 
-`/golconda-lib` is a provider, as `/pkgs` is: a document has no table for it.
+`/golconda/api`, Golconda's API, is a provider, as `/pkgs` is: a document has no table for it or for
+its group `/golconda`.
 
 The optional `[golconda]` table names another directory, relative to the document:
 

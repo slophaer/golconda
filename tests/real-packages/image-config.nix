@@ -87,7 +87,7 @@ in
           link.path == "/usr/lib/systemd/system/multi-user.target.wants/custom-workload.service"
           && link.target == "../custom-workload.service"
         ) tree.links
-        # the library's renderer (/golconda-lib): the strict tier and the credential
+        # the API's renderer (/golconda/api): the strict tier and the credential
         && hasInfix "\nProtectSystem=strict\n" tree.units."custom-workload.service"
         && hasInfix "\nLoadCredentialEncrypted=custom-workload.token\n" tree.units."custom-workload.service"
       )

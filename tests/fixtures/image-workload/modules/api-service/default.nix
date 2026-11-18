@@ -1,11 +1,11 @@
 #! A downstream service for the tests (tests/eval/components.nix): its table gives the text of
-#! one app file, and the `service` type of `/golconda-lib` checks it.
+#! one app file, and the `service` type of `/golconda/api` checks it.
 { types, ... }:
 {
-  name = "library-service";
+  name = "api-service";
 
   inputs = {
-    golconda.path = "/golconda-lib";
+    api.path = "/golconda/api";
     pkgs.path = "/pkgs";
   };
 
@@ -17,8 +17,8 @@
 
   impl =
     { options, results, ... }:
-    results.golconda.service.render {
-      name = "library-service";
+    results.api.service.render {
+      name = "api-service";
       app = {
         package = results.pkgs.pkgs.dash;
         files.conf = options.text;

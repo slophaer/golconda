@@ -339,17 +339,17 @@ in
   (check "downstream: Golconda has no module named local (the downstream mount would hide it)" (
     !((builtins.readDir ../../modules) ? local)
   ))
-  (check "downstream: a /local module that declares /golconda-lib renders its service with it" (
+  (check "downstream: a /local module that declares /golconda/api renders its service with it" (
     let
       sys = mkSystem (workload {
         "/local/test-workload" = { };
       });
       unit = sys.composed.units."custom-workload.service";
     in
-    (sys.inventory."/golconda-lib".role or null) == "provider"
+    (sys.inventory."/golconda/api".role or null) == "provider"
     &&
       sys.inventory."/local/test-workload".inputs == [
-        "/golconda-lib"
+        "/golconda/api"
         "/pkgs"
       ]
     && all (l: hasInfix "\n${l}\n" unit) s.sandboxLines.strict
@@ -361,35 +361,49 @@ in
     && sys.composed.links ? "/usr/lib/systemd/system/multi-user.target.wants/custom-workload.service"
   ))
   (check
-    "downstream: the service type of /golconda-lib refuses a per-machine value in a /local app file"
+    "downstream: the service type of /golconda/api refuses a per-machine value in a /local app file"
     (
       let
         units =
           text:
           (mkSystem (workload {
-            "/local/library-service".text = text;
+            "/local/api-service".text = text;
           })).composed.units;
       in
-      units "ok\n" ? "library-service.service"
-      && throws (units "key: /etc/credstore/library-service.key\n")
+      units "ok\n" ? "api-service.service"
+      && throws (units "key: /etc/credstore/api-service.key\n")
       && throws (units "-----BEGIN OPENSSH PRIVATE KEY-----\n")
     )
   )
-  (check "downstream: /golconda-lib is a provider: no table, no schema entry, no config.json row" (
+  (check "downstream: /golconda/api is a provider: no table, no schema entry, no config.json row" (
     let
       sys = mkSystem (workload {
         "/local/test-workload" = { };
       });
     in
-    sys.inventory ? "/golconda-lib"
-    && !(sys.inventory."/golconda-lib" ? included)
-    && !(sys.schema.properties ? "/golconda-lib")
-    && !(sys.config ? "/golconda-lib")
-    && !(elem "/golconda-lib" configLib.validPaths)
+    sys.inventory ? "/golconda/api"
+    && !(sys.inventory."/golconda/api" ? included)
+    && !(sys.schema.properties ? "/golconda/api")
+    && !(sys.config ? "/golconda/api")
+    && !(elem "/golconda/api" configLib.validPaths)
     &&
       throws
         (mkSystem (workload {
-          "/golconda-lib" = { };
+          "/golconda/api" = { };
+        })).composed.units
+  ))
+  (check "downstream: /golconda is a group: no table, no schema entry, no config.json row" (
+    let
+      sys = mkSystem (workload { });
+    in
+    sys.inventory."/golconda".role == "group"
+    && !(sys.schema.properties ? "/golconda")
+    && !(sys.config ? "/golconda")
+    && !(elem "/golconda" configLib.validPaths)
+    &&
+      throws
+        (mkSystem (workload {
+          "/golconda" = { };
         })).composed.units
   ))
   (check "downstream: a package named after a repkgs alias is refused (the alias would win)" (

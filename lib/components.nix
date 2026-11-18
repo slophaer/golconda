@@ -5,9 +5,9 @@
 #              table only configures it. An optional one is in a system when the configuration
 #              has its table; an empty table selects it with its defaults.
 #   provider   gives data to the modules that declare it as an input; no fragment (/pkgs,
-#              /golconda-lib)
+#              /golconda/api)
 #   composer   /system: unions the fragments of the selected components
-#   group      holds child modules and has no impl (/services)
+#   group      holds child modules and has no impl (/services, /golconda)
 # An input (`inputs.<x>.path`) never selects a component: reading /pkgs installs nothing. A
 # downstream repository adds a module (under /local), never a bare fragment.
 _:
@@ -34,7 +34,7 @@ let
   ];
   providers = [
     "/pkgs"
-    "/golconda-lib"
+    "/golconda/api"
   ];
   composer = "/system";
   internalOptions.${composer} = [ "components" ];

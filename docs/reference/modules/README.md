@@ -11,7 +11,7 @@ this shape: [design/modules](../../design/modules.md).
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `/system`        | the composer: `name`, `version`, `updateSource`, `updateReboot`, and `components` from `mkSystem` → the output below                                                                 |
 | `/pkgs`          | the repkgs set, passed once as `target`; returns `{ target; pkgs }` to the modules that declare the input                                                                            |
-| `/golconda-lib`  | the libraries of `modules/lib/` for downstream modules: returns `{ service; var; merge; fragment; }` to the modules that declare the input; no options                               |
+| `/golconda/api`  | Golconda's API for downstream modules: returns `{ service; var; merge; fragment; }` of `modules/lib/` to the modules that declare the input; no options                              |
 | `/base`          | built in, composed first: systemd, dbus-broker, dash, uutils coreutils, e2fsprogs, tzdata, hwdb, lvm2, the kernel, the base units, `C.UTF-8`, `ntp`, `journalMaxUse` (details below) |
 | `/network`       | built in: networkd `.network` files (DHCP on every wired link by default) and resolved's fallback `dns`                                                                              |
 | `/security`      | built in: `/usr/lib/sysctl.d/50-golconda.conf`, the kernel hardening settings                                                                                                        |

@@ -52,7 +52,8 @@ in
       attrNames docs.pages == [
         "/base"
         "/factory"
-        "/golconda-lib"
+        "/golconda"
+        "/golconda/api"
         "/imds"
         "/network"
         "/pkgs"
@@ -68,7 +69,8 @@ in
     attrNames docs.files == [
       "base.md"
       "factory.md"
-      "golconda-lib.md"
+      "golconda-api.md"
+      "golconda.md"
       "imds.md"
       "index.md"
       "network.md"
@@ -141,7 +143,8 @@ in
     discoveredPaths == [
       "/base"
       "/factory"
-      "/golconda-lib"
+      "/golconda"
+      "/golconda/api"
       "/imds"
       "/network"
       "/pkgs"

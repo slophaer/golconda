@@ -10,7 +10,7 @@ name collision.
 - **Modules.** A `modules/` directory beside the document mounts under `/local`. A module in
   `modules/motd/default.nix` is `/local/motd`. A table `["/local/motd"]` selects it, as it selects
   `/services/sshd`. The optional `[golconda] modules = "site"` names another directory.
-- **Golconda's library.** A module that declares the input `/golconda-lib` gets the libraries of
+- **Golconda's API.** A module that declares the input `/golconda/api` gets the libraries of
   Golconda's own modules: `service`, `var`, `merge` and `fragment`. A service that `service.render`
   makes has a sandbox tier, checked credential references and app files with no per-machine value,
   as `/services/sshd` has.
@@ -57,7 +57,7 @@ A module looks like the one on [Typed modules](typed-modules.md#using-it). The f
 ### A service of your own
 
 This module runs `myapp`, a package in `packages/` beside the document, as a service. It reads the
-package from `/pkgs` and the renderer from `/golconda-lib`:
+package from `/pkgs` and the renderer from `/golconda/api`:
 
 ```nix
 # modules/myapp/default.nix: /local/myapp
@@ -65,7 +65,7 @@ package from `/pkgs` and the renderer from `/golconda-lib`:
 {
   name = "myapp";
   inputs = {
-    golconda.path = "/golconda-lib";
+    api.path = "/golconda/api";
     pkgs.path = "/pkgs";
   };
   options.port = {
@@ -76,7 +76,7 @@ package from `/pkgs` and the renderer from `/golconda-lib`:
   impl =
     { options, results, ... }:
     let
-      inherit (results.golconda) service;
+      inherit (results.api) service;
     in
     service.render {
       name = "myapp";
