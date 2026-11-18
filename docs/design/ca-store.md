@@ -18,7 +18,7 @@ The image ships one CA file, `/usr/share/ca-certificates/ca-bundle.crt`. It hold
 roots, plus the operator's `anchors`, minus the `distrust` list. The configuration names them
 (`/trust`, [reference](../reference/modules/README.md)). An `anchors` entry is the text of one PEM
 certificate, which is public data. A `distrust` entry is the SHA-256 fingerprint of a certificate's
-DER form, which is how a CA is named in a report or by `openssl x509 -noout -fingerprint -sha256`; a
+DER form, which is how a CA is named in a report or by `openssl x509 -noout -fingerprint -sha256`. A
 fingerprint is the only form, so the list does not carry a certificate that the bundle must drop:
 
 ```toml
@@ -36,44 +36,43 @@ The module keeps one form (64 lower-case hex digits), so two spellings of one fi
 duplicate. An entry that is not a fingerprint fails when the configuration is read.
 
 A certificate in both lists is distrusted. Distrusting a Mozilla root removes that root and keeps
-the others. A fingerprint that matches no certificate of cacert or of the anchors fails the build,
-so a typo does not pass in silence (and neither does a root that a cacert update dropped). A
+the others. A fingerprint that matches no certificate of cacert or of the anchors fails the build.
+So a typo does not pass in silence, and neither does a root that a cacert update dropped. A
 duplicate entry is an error, as every duplicate is
 ([Principles](principles.md#duplicates-are-errors)).
 
 **Built when the image is built.** The `ca-bundle` package (`packages/ca-bundle`) runs p11-kit's
 `trust extract` over the roots and the two lists and writes the bundle. The roots and the anchors go
-to the trust module's `anchors/`, each certificate whose fingerprint is listed to its `blocklist/`,
-and the module writes every anchor that is not blocklisted, for the purpose `server-auth` as plain
-PEM. The build then compares the file with (roots + anchors) − the distrusted certificates as sets
-and fails on any difference, since `trust` skips a file it cannot parse without a word. The bundle
-is read-only, covered by dm-verity like the rest of `/usr`, and signed with the release, and an
-update replaces it whole. No unit runs on the machine, nothing writes the bundle, and the image has
-no `trust` binary and no module configuration for p11-kit's trust module, so nothing there reads
-`anchors` or `blocklist` directories.
+to the trust module's `anchors/`, and each certificate whose fingerprint is listed goes to its
+`blocklist/`. The module writes every anchor that is not blocklisted, for the purpose `server-auth`,
+as plain PEM. The build then compares the file with (roots + anchors) − the distrusted certificates
+as sets. It fails on any difference, because `trust` skips a file it cannot parse without a word.
+The bundle is read-only, covered by dm-verity like the rest of `/usr`, and signed with the release,
+and an update replaces it whole. No unit runs on the machine and nothing writes the bundle. The
+image has no `trust` binary and no module configuration for p11-kit's trust module, so nothing there
+reads `anchors` or `blocklist` directories.
 
-Why not a unit on the machine that runs `trust extract` over `/etc/ssl/anchors` into `/etc` or
-`/var`: the bundle would be a writable file that decides whom every TLS client trusts, so any root
-process could change that without a signed image; a unit must order itself before every client,
-`sysupdate` among them; and the image would carry the trust tool and its module. What it would buy
-is an anchor added without a release. The image already updates by a release, which is minutes of
-work and one signed index, and the operator's CA certificates are public, fleet-wide data, not
-per-machine values. A secret does not belong in a CA store, so the vars
+Golconda has no unit on the machine that runs `trust extract` over `/etc/ssl/anchors` into `/etc` or
+`/var`. The bundle would be a writable file that decides whom every TLS client trusts, so any root
+process could change that without a signed image. A unit must order itself before every client,
+`sysupdate` among them. The image would also carry the trust tool and its module. What the unit
+would buy is an anchor added without a release. The image already updates by a release, which is
+minutes of work and one signed index. The operator's CA certificates are public, fleet-wide data,
+not per-machine values. A secret does not belong in a CA store, so the vars
 ([Secrets and vars](trust.md#secrets-and-vars)) have no part in it. An operator who must change
 trust on one machine at once can put a file at `/etc/ssl/cert.pem` or
 `/etc/ssl/certs/ca-certificates.crt`: the `L` lines do not replace an existing file. That is a hand
 repair, outside the image. A run-time anchor directory is out of scope
-([Scope](scope.md#out-of-scope-by-design)): a new release is the way.
+([Scope](scope.md#out-of-scope-by-design)). A new release is the way.
 
-Two tmpfiles lines make the paths the image's TLS clients read by default: `L /etc/ssl/cert.pem`,
-which OpenSSL reads because `openssl version -d` says `OPENSSLDIR=/etc/ssl`, and
-`L /etc/ssl/certs/ca-certificates.crt`, which libcurl reads because it is built with
-`CURL_CA_BUNDLE` set to that path. Both are links to the one file in `/usr`, so `/etc` holds no copy
-to go stale. These are the readers in the image: the systemd tools that open an HTTPS URL
-(`systemd-pull`, `systemd-sysupdate`, the IMDS import) through libcurl, and OpenSSL in systemd
-(`systemd-resolved`'s DNS over TLS, when it is on). libcurl and OpenSSL also search the directory
-`/etc/ssl/certs` by hash, and it holds no hashed link. No package ships `certifi` or its own bundle;
-there is no Java, so no keystore.
+Two tmpfiles lines make the paths that the image's TLS clients read by default. OpenSSL reads
+`L /etc/ssl/cert.pem`, because `openssl version -d` says `OPENSSLDIR=/etc/ssl`. libcurl reads
+`L /etc/ssl/certs/ca-certificates.crt`, because it is built with `CURL_CA_BUNDLE` set to that path.
+Both are links to the one file in `/usr`, so `/etc` holds no copy to go stale. These are the readers
+in the image: the systemd tools that open an HTTPS URL (`systemd-pull`, `systemd-sysupdate`, the
+IMDS import) through libcurl, and OpenSSL in systemd (`systemd-resolved`'s DNS over TLS, when it is
+on). libcurl and OpenSSL also search the directory `/etc/ssl/certs` by hash, and it holds no hashed
+link. No package ships `certifi` or its own bundle. The image has no Java, so it has no keystore.
 
 Proven by build checks and by boot ([What is proven](../proven.md)). No test server holds the key of
 a Mozilla root, so no fetch to one runs.
