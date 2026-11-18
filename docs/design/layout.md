@@ -43,15 +43,15 @@ tree builder makes them:
   them.
 - **`explicit`**: anything else, such as `/usr/bin/sh` → dash and the `.wants` links below.
 
-One rule covers the map: a path with two sources is an error naming both, whatever their kinds, and
-a link and a file at one path is an error too.
+One rule covers the map. A path with two sources is an error naming both, whatever their kinds. A
+link and a file at one path is an error too.
 
 `/usr/bin/<name>` for a package's executables is not in the map, because evaluation cannot see what
 a build installs. The builder reads each package's `exports.json` and links every name in its `bin`
 (what `bin/` holds after the build). A package that declares `bin` in its `package.nix` gets only
-those names, and each must be in `exports.json`. The same rule holds there: a name from two
-packages, or from a package and a link of the map, stops the build, and the message names the path
-and both sources. Everything else stays reachable only through `/usr/nix/store`.
+those names, and each must be in `exports.json`. The same rule holds there. A name from two
+packages, or from a package and a link of the map, stops the build. The message names the path and
+both sources. Everything else stays reachable only through `/usr/nix/store`.
 
 ### Unit enablement
 
@@ -104,6 +104,6 @@ rule ([Kernel: IPE](kernel.md#ipe-integrity-policy-enforcement)).
 | `/tmp`, `/run`   | tmpfs | systemd                                                                                                                                                                                                                                                                                                                             |
 | `/var/lib/<app>` | root  | service state always lives under `/var/lib`; there is no `/srv`                                                                                                                                                                                                                                                                     |
 
-The `/etc` rule has three consequences: a vendor change reaches every unmodified file on the next
-boot with no tool, `find /etc -type f` lists the operator's changes, and a file a program rewrites
-in place (such as the CA bundle) must be a directory of its own, not a link.
+The `/etc` rule has three consequences. A vendor change reaches every unmodified file on the next
+boot with no tool. `find /etc -type f` lists the operator's changes. A file a program rewrites in
+place (such as the CA bundle) must be a directory of its own, not a link.
