@@ -114,7 +114,7 @@ must be the one described above.
 No build reads a private key, so the daemon needs no setting for the deployment's keys, and a remote
 builder never sees them. Nix builds the image unsigned with the key set's public halves; the signer
 signs it on the release host, where `golconda release build` runs
-([Trust: Signing outside Nix](../design/trust.md#signing-outside-nix)).
+([Signing outside Nix](../design/signing.md)).
 
 ## The compile cache in the sandbox
 

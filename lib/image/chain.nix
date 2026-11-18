@@ -1,6 +1,6 @@
 # The image chain over one system: the code behind `lib.mkImage` and the test images of
 # nix/default.nix. Nix builds every artifact unsigned; the signer (lib/image/sign.nu) signs and
-# assembles the release outside the store (docs/design/trust.md, "Signing outside Nix").
+# assembles the release outside the store (docs/design/signing.md).
 #
 # `import ./chain.nix { inherit sources mkSystem imageLib; }` is the function of
 # { config; publicKeys; pcrPublicKeys ? publicKeys; system ? ...; }.

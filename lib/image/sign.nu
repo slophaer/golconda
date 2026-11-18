@@ -1,4 +1,4 @@
-# sign.nu: the signer (docs/design/trust.md, "Signing outside Nix"). It takes the unsigned outputs
+# sign.nu: the signer (docs/design/signing.md). It takes the unsigned outputs
 # of the image chain (manifest.json, lib/image/manifest.nix) and a key set in scripts/make-keys'
 # layout, and writes OUT/disk.raw and disk.json (disk.nu), OUT/release/ (the four release files,
 # SHA256SUMS and SHA256SUMS.gpg) and OUT/cmdline (the UKI's, for the record). The same inputs and
@@ -21,7 +21,7 @@ use enrol.nu
 # a file path, or a `pkcs11:` URI when the set holds the key on a token: secureboot/db.pkcs11 and
 # pcr/pcr.pkcs11 in place of db.key and pcr.key, one line with the URI (RFC 7512). The token
 # signs; the key never leaves it (use-token). The release key is a file: gpg signs the index,
-# and gpg takes no PKCS#11 key (docs/design/trust.md, Keys on a token).
+# and gpg takes no PKCS#11 key (docs/design/signing.md, "Keys on a token").
 export def private-keys [db: string, pcr: string]: nothing -> record {
   for k in [$db $pcr] {
     if ($k | str starts-with "pkcs11:") {
@@ -30,7 +30,7 @@ export def private-keys [db: string, pcr: string]: nothing -> record {
   }
   let index_uri = ($db | path join release/index.pkcs11 | path expand)
   if ($index_uri | path exists) {
-    error make {msg: $"($index_uri): the release key cannot be on a PKCS#11 token, because gpg takes no PKCS#11 key. Keep it as release/index.key \(docs/design/trust.md\)."}
+    error make {msg: $"($index_uri): the release key cannot be on a PKCS#11 token, because gpg takes no PKCS#11 key. Keep it as release/index.key \(docs/design/signing.md\)."}
   }
   {
     dbKey: (key-of $db secureboot/db)

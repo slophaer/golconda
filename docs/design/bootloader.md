@@ -8,9 +8,9 @@ or a key goes wrong. The boot chain itself is in [Boot](boot.md), the keys in [T
 
 ## The loader in the image
 
-The signer (`lib/image/loader.nu`, [Trust: Signing outside Nix](trust.md#signing-outside-nix)) signs
-systemd's `systemd-boot<arch>.efi` with `systemd-sbsign`, with the same `db` key and certificate as
-the UKI and the verity root hash. The result is used twice:
+The signer (`lib/image/loader.nu`, [Signing outside Nix](signing.md)) signs systemd's
+`systemd-boot<arch>.efi` with `systemd-sbsign`, with the same `db` key and certificate as the UKI
+and the verity root hash. The result is used twice:
 
 - **in `/usr`**, at `/usr/lib/systemd/boot/efi/systemd-boot<arch>.efi.signed`, beside the unsigned
   file the systemd farm links. The signer puts the file into its copy of the `/usr` tree before it

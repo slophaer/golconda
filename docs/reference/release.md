@@ -25,8 +25,7 @@ reads a checkout's files where they lie, and the store is world-readable; `--aut
 set there too), and a directory that exists and is not empty, creates the directory with mode `0700`
 and every file with mode `0600`, and prints the paths, what each key signs and the certificate's
 SHA-256 fingerprint. It never prints key material. Keep the directory on the release host: no build
-reads the private keys, and no step copies them
-([Trust: Signing outside Nix](../design/trust.md#signing-outside-nix)).
+reads the private keys, and no step copies them ([Signing outside Nix](../design/signing.md)).
 
 The PK and KEK keys go to a second directory beside the set, `DIR.private/` (`PK.key` and `KEK.key`,
 mode `0600`, the directory `0700`; new or empty, as `DIR`). The script ends with one line that says
@@ -99,7 +98,7 @@ beside it:
 1. The signer of that output (`unsigned/sign`) runs on this host with the key directory. It makes
    the erofs image with the signed loader in it, the verity tree and its signature, the UKI, the
    disk and the release directory, and signs `SHA256SUMS`
-   ([Trust: Signing outside Nix](../design/trust.md#signing-outside-nix)).
+   ([Signing outside Nix](../design/signing.md)).
 
 The release goes to `--out`, a new directory (default `result-release`): `disk.raw`, `disk.json`,
 `release/`, and `unsigned`, the link to the unsigned outputs. Then the command checks the release
@@ -237,7 +236,7 @@ rotation on the machine, with a boot of each slot, would test it.
 
 The `db` key and the PCR key can stay on a PKCS#11 token instead of in files: the token signs, and
 the release host holds no copy of either key. The release key stays a file
-([Trust: Keys on a token](../design/trust.md#keys-on-a-token)).
+([Signing: Keys on a token](../design/signing.md#keys-on-a-token)).
 
 In the key set, a key on a token replaces its key file with a `.pkcs11` file of one line, the key's
 PKCS#11 URI (RFC 7512). The public halves stay: `lib.mkImage` reads them.

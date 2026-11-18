@@ -157,13 +157,13 @@ golconda release list --to hetzner:updates/web
   as `release: <id> <version>`, with the digests as trailers. A run that is stopped (Ctrl-C) leaves
   the document as it was and the copy (`.server.toml.golconda-release-*`) beside it, and the next
   run refuses that untracked file. Nix copies only the key set's three public halves; the private
-  keys stay where they are ([Trust: Signing outside Nix](../design/trust.md#signing-outside-nix)).
-  `--out` names a new directory for the release (default `result-release`): `disk.raw`, `release/`,
-  and `unsigned`, the link to the unsigned outputs; an existing one is refused, and a failed build
-  removes it. `--pcr-keys` names the key set of the PCR key when a `db` rotation keeps it; the
-  release key is always `--keys`' ([Making a release: Rotate a key](release.md#5-rotate-a-key)).
-  `--system` is the Nix system to evaluate for (default: this host's). `--pkcs11-module FILE` names
-  the PKCS#11 module of the token that holds the `db` or PCR key, when the key set names it by URI
+  keys stay where they are ([Signing outside Nix](../design/signing.md)). `--out` names a new
+  directory for the release (default `result-release`): `disk.raw`, `release/`, and `unsigned`, the
+  link to the unsigned outputs; an existing one is refused, and a failed build removes it.
+  `--pcr-keys` names the key set of the PCR key when a `db` rotation keeps it; the release key is
+  always `--keys`' ([Making a release: Rotate a key](release.md#5-rotate-a-key)). `--system` is the
+  Nix system to evaluate for (default: this host's). `--pkcs11-module FILE` names the PKCS#11 module
+  of the token that holds the `db` or PCR key, when the key set names it by URI
   ([Making a release: Keys on a token](release.md#6-keys-on-a-token)).
 - `check` verifies the index (the four lines in their fixed order), every digest, the shared image
   id and version in the names, the UUIDs against the root hash, and the signature against the key

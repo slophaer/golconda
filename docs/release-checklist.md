@@ -108,7 +108,7 @@ Wanted, but not needed for v0.1:
   console's diff of a document against git left with the console
   ([Scope: Later](design/scope.md#later));
 - the release key on a token: the `db` and PCR keys can be on a PKCS#11 token, the release key is a
-  file ([Trust: Keys on a token](design/trust.md#keys-on-a-token));
+  file ([Signing: Keys on a token](design/signing.md#keys-on-a-token));
 - a read-only `/etc` (a confext built from the image). It would also drop enable links for units a
   release no longer ships;
 - loader recovery by hand and a boot without the `db` enrolled

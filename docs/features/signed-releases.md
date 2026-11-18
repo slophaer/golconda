@@ -45,8 +45,8 @@ golconda release build -f server.toml --keys /srv/golconda-keys
 
 The set holds `secureboot/db.key` and `db.crt`, `pcr/pcr.key` and `pcr.pub`, and `release/index.key`
 (OpenPGP Ed25519) and `index.pgp`. Nix reads only the three public halves; no private key enters the
-store or a build ([Trust: Signing outside Nix](../design/trust.md#signing-outside-nix)). The release
-is in `result-release/release/`; serve it at `/system.updateSource`.
+store or a build ([Signing outside Nix](../design/signing.md)). The release is in
+`result-release/release/`; serve it at `/system.updateSource`.
 
 ## Status
 

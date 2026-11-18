@@ -73,7 +73,7 @@
 - **prefixed package**: a package compiled with `prefix = "/usr"` (systemd, dbus-broker, openssh)
   because it addresses its own files by absolute path; reached through the farm.
 - **release host**: the machine that holds the key set and runs `golconda release build`. The signer
-  runs there, outside Nix ([Trust: Signing outside Nix](../design/trust.md#signing-outside-nix)).
+  runs there, outside Nix ([Signing outside Nix](../design/signing.md)).
 - **release key**: the OpenPGP key (`release/index.key`) that signs a release's `SHA256SUMS`; its
   public half is the image's keyring for `Verify=yes`
   ([Releases: The signed index](../design/releases.md#the-signed-index)).

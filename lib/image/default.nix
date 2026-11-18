@@ -1,7 +1,7 @@
 # lib/image: from a /usr tree to a bootable disk image, with repkgs packages only. Nix builds the
 # unsigned parts (initrd, index, manifest, the signer); the signer signs and assembles the release
-# outside the store (docs/design/trust.md, "Signing outside Nix"). The artifacts:
-# docs/reference/image.md; why: docs/design/{layout,boot,trust}.md.
+# outside the store (docs/design/signing.md). The artifacts:
+# docs/reference/image.md; why: docs/design/{layout,boot,trust,signing}.md.
 _:
 let
   common = import ./common.nix { };

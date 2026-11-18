@@ -59,7 +59,7 @@ image.unsigned
 ```
 
 Nothing it builds is signed, and no private key is read
-([Trust: Signing outside Nix](../design/trust.md#signing-outside-nix)). It returns:
+([Signing outside Nix](../design/signing.md)). It returns:
 
 - `unsigned`: `manifest.json`, which names the `/usr` tree, the initrd, the kernel, systemd's stub
   and unsigned systemd-boot and every parameter of the signer's steps; `keys/`, copies of the public

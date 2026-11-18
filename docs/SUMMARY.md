@@ -42,6 +42,7 @@
 - [Updates](design/updates.md)
 - [Releases](design/releases.md)
 - [Trust](design/trust.md)
+  - [Signing outside Nix](design/signing.md)
   - [Verity key](design/verity-key.md)
   - [CA store](design/ca-store.md)
 - [Kernel](design/kernel.md)

@@ -9,7 +9,7 @@
 #   compression  -z: lz4hc
 #
 # The signer (lib/image/erofs.nu) runs mkfs.erofs, not Nix: /usr carries the signed loader
-# (lib/image/sign.nu), so the image's bytes depend on a signature (docs/design/trust.md).
+# (lib/image/sign.nu), so the image's bytes depend on a signature (docs/design/signing.md).
 _:
 let
   common = import ./common.nix { };

@@ -190,9 +190,9 @@ package.
 Nix builds the parts that need no key, each a content-addressed derivation with a nushell builder
 (`common.nix`) and repkgs packages only. The signer (`golconda-sign`, `lib/image/sign.nu`) signs and
 assembles the rest outside Nix, with the deployment's keys where they lie
-([Trust: Signing outside Nix](../design/trust.md#signing-outside-nix)). A test image runs the same
-signer in a derivation with throwaway keys; `packages.<system>.image-smoke` does so for the system
-of `examples/server.toml`, and links `unsigned`, `disk` and `keys`, which `scripts/boot-test` reads.
+([Signing outside Nix](../design/signing.md)). A test image runs the same signer in a derivation
+with throwaway keys; `packages.<system>.image-smoke` does so for the system of
+`examples/server.toml`, and links `unsigned`, `disk` and `keys`, which `scripts/boot-test` reads.
 
 | step     | where                                          | output                                                                                                                                                                             |
 | -------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
