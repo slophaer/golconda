@@ -265,9 +265,10 @@ The smoke, the test image and the production image boot the same command line
 - The UKI cmdline carries `usrhash=<root hash>`, which the generators use to find the `/usr`
   partition; the partition UUIDs of `usr-a` and `usr-a-verity` are the two halves of that hash.
 - repart needs no root and no loop device with `--offline=yes`; outside the sandbox it runs the same
-  way. The disk file is written straight into the output: it is sparse (two 10 GiB slots), and it
-  has no free space for the `root` partition: boot it through a larger overlay, which
-  `scripts/boot-test` does ([the walkthrough](walkthrough.md#6-first-boot)), or `truncate` a copy.
+  way. The disk file is written straight into the output: it is sparse (two 10 GiB slots; the test
+  images of `nix/default.nix` have two 1 GiB slots), and it has no free space for the `root`
+  partition: boot it through a larger overlay, which `scripts/boot-test` does
+  ([the walkthrough](walkthrough.md#6-first-boot)), or `truncate` a copy.
 
 ## The kernel command line
 

@@ -146,6 +146,27 @@ in
     && hasInfix "ReadOnly=yes" defs."10-usr-a.conf"
     && hasInfix "Type=usr-verity-sig" defs."12-usr-a-verity-sig.conf"
   ))
+  # the test images take smaller usr slots (nix/default.nix); production keeps image/repart.nix's
+  (check "image: usrSlotSize sets both usr slots, the default is image/repart.nix's 10G" (
+    let
+      small = imageLib.repartDefinitions {
+        version = "20261031.1";
+        usrSlotSize = "1G";
+      };
+      defaults = imageLib.repartDefinitions { version = "20261031.1"; };
+      both =
+        defs: size:
+        builtins.all
+          (n: hasInfix "SizeMinBytes=${size}\n" defs.${n} && hasInfix "SizeMaxBytes=${size}\n" defs.${n})
+          [
+            "10-usr-a.conf"
+            "20-usr-b.conf"
+          ];
+    in
+    both small "1G"
+    && both defaults "10G"
+    && small."11-usr-a-verity.conf" == defaults."11-usr-a-verity.conf"
+  ))
   (check "image: os-release carries /system.name as ID and IMAGE_ID" (
     let
       os = usrTreeLib.renderOsRelease {

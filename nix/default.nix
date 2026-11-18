@@ -75,18 +75,29 @@ in
         buildSystem = system;
       };
 
+      # The chain with 1 GiB usr slots, over five times a test /usr image: the signer writes and
+      # hashes a disk of about 3 GB, not 22 GB. A release keeps image/repart.nix's 10 GiB.
+      smallSlotChain = import ../lib/image/chain.nix {
+        inherit sources mkSystem;
+        imageLib = imageLib // {
+          manifest = a: imageLib.manifest (a // { usrSlotSize = "1G"; });
+        };
+      };
+
       # A test image: the chain over `config` with the public halves of throwaway keys, signed
       # in the store by the signer a release host runs (lib/image/signer.nix), with its proofs
-      # (lib/image/smoke.nix). `pcrKeys` defaults to `keys`.
+      # (lib/image/smoke.nix). `pcrKeys` defaults to `keys`. `smallSlots`: the usr slots of
+      # smallSlotChain.
       testImage =
         {
           config,
           keys ? throwawayKeys,
           pcrKeys ? keys,
           onToken ? false,
+          smallSlots ? true,
         }:
         let
-          chain = imageChain {
+          chain = (if smallSlots then smallSlotChain else imageChain) {
             inherit system config;
             publicKeys = keys.public;
             pcrPublicKeys = pcrKeys.public;
@@ -112,8 +123,11 @@ in
           };
         };
 
-      # the base system of examples/server.toml, as lib.mkSystem makes it
-      imageSmoke = testImage { config = ../examples/server.toml; };
+      # the base system of examples/server.toml, as lib.mkSystem makes it, with a release's slots
+      imageSmoke = testImage {
+        config = ../examples/server.toml;
+        smallSlots = false;
+      };
 
       # Boot test image: see nix/test-config.nix.
       testConfig = import ./test-config.nix;

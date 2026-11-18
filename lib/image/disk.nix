@@ -1,12 +1,14 @@
 # lib/image/disk.nix: the GPT disk image, with systemd-repart.
 #
-# repartDefinitions { version } -> <name>.conf -> INI text: the build-time definitions of
-#   image/repart.nix (every partition but root) with the builder's fields: the ESP's CopyFiles,
-#   slot A's labels, CopyBlocks and the two UUIDs derived from the root hash. Values known only
-#   at build time stay as {esp} {usr} {verity} {sig} {usrUuid} {verityUuid}, which disk.nu fills in.
-# diskParams { imageId; version; platform; } -> the manifest's `disk` (lib/image/manifest.nix).
-#   The signer (lib/image/disk.nu) runs systemd-repart --offline=yes: no loop device, no root.
-#   The files it writes (disk.raw, disk.json, release/): docs/reference/image.md.
+# repartDefinitions { version; usrSlotSize ? null; } -> <name>.conf -> INI text: the build-time
+#   definitions of image/repart.nix (every partition but root) with the builder's fields: the
+#   ESP's CopyFiles, slot A's labels, CopyBlocks and the two UUIDs derived from the root hash.
+#   Values known only at build time stay as {esp} {usr} {verity} {sig} {usrUuid} {verityUuid},
+#   which disk.nu fills in. `usrSlotSize` replaces the size of both usr slots (the test images).
+# diskParams { imageId; version; platform; usrSlotSize ? null; } -> the manifest's `disk`
+#   (lib/image/manifest.nix). The signer (lib/image/disk.nu) runs systemd-repart --offline=yes:
+#   no loop device, no root. The files it writes (disk.raw, disk.json, release/):
+#   docs/reference/image.md.
 # The usr slots are 10 GiB each (image/repart.nix), so disk.raw is sparse.
 _:
 let
@@ -25,13 +27,14 @@ let
   ini = import ../../modules/lib/ini.nix;
 
   # the builder's fields per definition; anything else from image/repart.nix is left alone
-  builderFields = version: {
+  builderFields = version: usrSlot: {
     "00-esp".Partition.CopyFiles = "{esp}:/";
     "10-usr-a".Partition = {
       Label = slotLabel "usr" version;
       CopyBlocks = "{usr}";
       UUID = "{usrUuid}";
-    };
+    }
+    // usrSlot;
     "11-usr-a-verity".Partition = {
       Label = slotLabel "usr-verity" version;
       CopyBlocks = "{verity}";
@@ -41,6 +44,7 @@ let
       Label = slotLabel "usr-verity-sig" version;
       CopyBlocks = "{sig}";
     };
+    "20-usr-b".Partition = usrSlot;
   };
 
   # An installed slot's GPT label: the sysupdate target pattern (image/sysupdate.nix `slots`) with
@@ -75,14 +79,25 @@ rec {
     };
 
   repartDefinitions =
-    { version }:
+    {
+      version,
+      usrSlotSize ? null,
+    }:
     let
       buildTime = filter (n: image.repart.${n}.Partition.Type != "root") (attrNames image.repart);
+      usrSlot =
+        if usrSlotSize == null then
+          { }
+        else
+          {
+            SizeMinBytes = usrSlotSize;
+            SizeMaxBytes = usrSlotSize;
+          };
       withFields =
         n:
         let
           d = image.repart.${n};
-          f = (builderFields version).${n} or { };
+          f = (builderFields version usrSlot).${n} or { };
         in
         d // { Partition = d.Partition // (f.Partition or { }); };
     in
@@ -98,9 +113,10 @@ rec {
       imageId,
       version,
       platform,
+      usrSlotSize ? null,
     }:
     {
-      definitions = repartDefinitions { inherit version; };
+      definitions = repartDefinitions { inherit version usrSlotSize; };
       architecture = platform.names.systemd;
       seed = common.uuidOfHex (common.hexOf "${imageId}_${version}.disk");
       epoch = (import ../version.nix { }).toEpoch version;

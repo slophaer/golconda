@@ -1,7 +1,7 @@
 # lib/image/manifest.nix: the unsigned outputs of the image chain, what the signer takes.
 #
 # manifest { imageId; version; platform; buildSystem; pkgs; usrTree; initrd; signer; publicKeys;
-#   secureBoot; microsoftKeys; } -> derivation with
+#   secureBoot; microsoftKeys; usrSlotSize ? null; } -> derivation with
 #   manifest.json  every input of the signer (lib/image/sign.nu): store paths and the parameters
 #                  of each step (erofs, verity, uki, loader, disk, the release file names)
 #   keys/          db.crt, pcr.pub, index.pgp: copies of the public halves (publicKeys); the build
@@ -58,7 +58,10 @@ in
           erofs = erofs.erofsParams { inherit imageId version; };
           verity = verity.verityParams { inherit imageId version; };
           uki = uki.ukiParams args;
-          disk = disk.diskParams { inherit imageId version platform; };
+          disk = disk.diskParams {
+            inherit imageId version platform;
+            usrSlotSize = args.usrSlotSize or null;
+          };
           release = disk.releaseNames { inherit imageId version; };
           publicKeys = {
             dbCert = "${publicKeys.dbCert}";
