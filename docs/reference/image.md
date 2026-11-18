@@ -848,4 +848,4 @@ an ssh failure cannot count as a pass.
 
 What this test does not prove: a reset on a machine with an update installed (the test image has one
 `/usr` slot), the TPM clear and sealed credentials, or the console path on a machine whose ssh is
-down. Those stay manual ([Recovery: State reset](../design/recovery.md#state-reset)).
+down. Those stay manual ([Factory reset: Limits](../features/factory-reset.md#limits)).

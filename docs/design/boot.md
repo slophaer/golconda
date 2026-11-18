@@ -231,8 +231,8 @@ no console, because it writes to a console synchronously, and a slow screen woul
 that logs. No getty runs on either: there is no local login path
 ([Trust: Identity](trust.md#identity)). Recovery from a machine that no longer answers over ssh is
 the other slot (boot counting, or a manual choice in the systemd-boot menu) or a reflash;
-[Recovery](recovery.md) states what each path can and cannot do, and
-[Boot loader: Recovery](bootloader.md#recovery) gives the loader steps.
+[Factory reset and recovery](../features/factory-reset.md) states what each path can and cannot do,
+and [Boot loader: Recovery](bootloader.md#recovery) gives the loader steps.
 
 ## Bootstrap credentials
 

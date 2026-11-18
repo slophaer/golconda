@@ -41,7 +41,6 @@
 - [Boot loader](design/bootloader.md)
 - [Updates](design/updates.md)
 - [Releases](design/releases.md)
-- [Recovery](design/recovery.md)
 - [Trust](design/trust.md)
   - [Verity key](design/verity-key.md)
   - [CA store](design/ca-store.md)

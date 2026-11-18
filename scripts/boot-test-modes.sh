@@ -204,7 +204,7 @@ test_reboot() {
   return 0
 }
 
-# --- --factory-reset (docs/design/recovery.md) ---
+# --- --factory-reset (docs/features/factory-reset.md) ---
 # `systemctl start factory-reset.target` sets the FactoryResetRequest EFI variable, and
 # systemd-repart recreates the FactoryReset= root partition on the next boot. The ESP and the /usr
 # slots must stay, and first boot must run again.

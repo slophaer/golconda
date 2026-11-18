@@ -46,7 +46,10 @@ The five paths, in the order to try them:
 1. **The systemd-boot menu.** `loader.conf` sets `timeout 0`, but the menu opens when a key is held
    at firmware start. It lists the UKIs under `EFI/Linux`. Pick the older one by hand.
 1. **State reset.** The command above. It repairs a broken state partition, not a broken image.
-1. **Reflash.** Write a fresh disk image. It replaces the ESP, both slots and the state.
+1. **Reflash.** Write a fresh disk image. It replaces the ESP, both slots and the state, so every
+   credential sealed to the old machine is lost. It needs physical access to the disk, and to the
+   firmware setup when the enrolment must change
+   ([Trust: Deployment keys](../design/trust.md#deployment-keys)).
 
 From a running machine, `bootctl set-oneshot <id>_<version>.efi` boots the other slot once, and
 `bootctl set-default` keeps it until cleared.
@@ -100,7 +103,8 @@ and `failed-boots-halt`. The limits are below.
 ## Limits
 
 - No local login and no rescue shell. A machine without working ssh has no console session.
-- No remote recovery channel. A failed boot reboots by itself in the cases that
+- No remote recovery channel. When sshd or the network is the failing unit, ssh cannot reach the
+  machine. A failed boot reboots by itself in the cases that
   [Boot: Trial boot](../design/boot.md#trial-boot) lists.
 - The reset test ran on the test image: one `/usr` slot, QEMU. A reset after an update, the TPM
   clear and sealed credentials, real firmware, and the case where ssh is down are manual steps.
@@ -113,7 +117,6 @@ and `failed-boots-halt`. The limits are below.
 
 ## More
 
-- [Recovery](../design/recovery.md), with [What is missing](../design/recovery.md#what-is-missing).
 - [Boot loader: Recovery](../design/bootloader.md#recovery) and
   [What is not possible](../design/bootloader.md#what-is-not-possible).
 - [Updates: Factory reset](../design/updates.md#factory-reset).

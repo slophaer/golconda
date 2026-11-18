@@ -198,7 +198,8 @@ Rotation and recovery:
 - **An installed machine** with a rotated key: its next UKI and root hash signatures must come from
   the new key, and firmware must hold the new certificate, or Secure Boot and the verity check fail
   ([Execution policy](#execution-policy)). With no local console path, that enrolment is offline
-  work on the variable store or a reinstall ([Recovery](recovery.md)).
+  work on the variable store or a reinstall
+  ([Factory reset and recovery](../features/factory-reset.md)).
 
 ### Keys on a token
 
