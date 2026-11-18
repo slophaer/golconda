@@ -229,10 +229,10 @@ The host key's public half is in `/var/lib/golconda/vars/sshd-hostkey/pub/key.pu
 The options `hostCertificate` and `revokedKeys` add an admin-supplied host certificate and
 revocation list as further vars. The boot test runs all of this with its own test CA, not with this
 document: `--ssh-test` logs in with a user certificate and refuses another principal (`cert-login`,
-`cert-wrong-principal-refused`), and `--next` pushes the host certificate and the KRL with
-`golconda vars`, then checks that the next release presents the one and refuses a revoked
-certificate (`host-cert-presented`, `cert-revoked-refused`, `krl-rotated`); `--certify` does the
-push in the first boot of a release that has both options on (`certify-one-release`). See
+`cert-wrong-principal-refused`), and `--next` certifies the host and pushes the KRL with
+`golconda vars certify`, then checks that the next release presents the host certificate and refuses
+a revoked certificate (`host-cert-presented`, `cert-revoked-refused`, `krl-rotated`); `--certify`
+does the push in the first boot of a release that has both options on (`certify-one-release`). See
 [What is proven](../proven.md).
 
 ## 8. The next version
