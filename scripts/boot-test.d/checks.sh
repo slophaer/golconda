@@ -340,6 +340,19 @@ check_console() {
   verdict "console-journal (golconda-console.service shows a new journal line on tty1)" $RC
 }
 
+# check_screen: simpledrm drives the screen, the firmware's framebuffer on QEMU's std VGA
+# (packages/kernel/golconda.config: SYSFB_SIMPLEFB, DRM_SIMPLEDRM; no i915 or bochs driver)
+check_screen() {
+  echo ""
+  echo "=== the screen's driver ==="
+  D=$(guest 'echo "card0=$(basename "$(readlink /sys/class/drm/card0/device/driver)")"; journalctl -k -b -o cat | grep "\[drm\]"' 2>&1) || true
+  echo "$D"
+  RC=0
+  echo "$D" | grep -qx 'card0=simple-framebuffer' || RC=1
+  echo "$D" | grep -q '\[drm\] Initialized simpledrm .* on minor 0$' || RC=1
+  verdict "screen-simpledrm (DRM card0 is simpledrm on the simple-framebuffer device)" $RC
+}
+
 # check_no_failed NAME: no unit has failed in the running boot
 check_no_failed() {
   echo ""

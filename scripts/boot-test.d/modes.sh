@@ -65,6 +65,7 @@ test_ssh() {
   check_sshd_sockets
   check_hang_panic
   check_console
+  check_screen
 
   # the downstream workload's unit is service.render's, with the tier strict
   # (tests/fixtures/image-workload/modules/test-workload). Result=success holds while it still

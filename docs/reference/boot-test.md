@@ -114,7 +114,7 @@ this marker does not prove that firstboot ran.
 
 With `--ssh-test` the harness logs in as root and checks the running system: the host name, failed
 units, varlink, the boot loader, hwdb, IPE, the index keyring, the unit links, sshd, the sysctls,
-the watchdog, the screen, the clock and the certificate logins with
+the watchdog, the screen and its driver (simpledrm), the clock and the certificate logins with
 `tests/fixtures/snakeoil-user-ca`. It also serves two HTTPS sites to the guest, `169.254.169.5:443`
 and `169.254.169.6:443`: QEMU guestfwds to a TLS server over stdio (`scripts/boot-test.d/tls.sh`),
 with the certificates of two test CAs (`tests/fixtures/ca-store`). The test image names the first CA
