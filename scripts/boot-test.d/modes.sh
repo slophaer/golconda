@@ -2,6 +2,12 @@
 # Part of scripts/boot-test, sourced by it (no processes start when sourced).
 # The modes of one boot: the first-boot checks, --imds, the TPM reboot, the factory reset.
 
+# workload_checked: the workload printed its line after its last assertion, in this boot
+workload_checked() {
+  guest journalctl -b -u custom-workload.service -o cat 2>/dev/null |
+    grep -qxF "custom-workload: checks passed"
+}
+
 test_ssh() {
   echo ""
   echo "=== SSH tests ==="
@@ -61,10 +67,12 @@ test_ssh() {
   check_console
 
   # the downstream workload's unit is service.render's, with the tier strict
-  # (tests/fixtures/image-workload/modules/test-workload)
+  # (tests/fixtures/image-workload/modules/test-workload). Result=success holds while it still
+  # runs: its line after the last assertion shows that it finished them
   echo ""
   echo "=== sandbox tier: custom-workload.service ==="
   RC=0
+  wait_for 30 workload_checked || { echo "no line \"custom-workload: checks passed\""; RC=1; }
   T=$(guest systemctl show -p Result -p ProtectSystem -p NoNewPrivileges -p RestrictAddressFamilies \
     custom-workload.service 2>&1) || true
   echo "$T"
@@ -76,7 +84,7 @@ test_ssh() {
     case " $AF " in *" $f "*) ;; *) RC=1 ;; esac
   done
   [ "$(echo "$AF" | wc -w)" = 3 ] || RC=1
-  verdict "sandbox-tier (custom-workload.service ran with the strict tier's ProtectSystem=, NoNewPrivileges= and RestrictAddressFamilies=)" $RC
+  verdict "sandbox-tier (custom-workload.service passed its checks with the strict tier's ProtectSystem=, NoNewPrivileges= and RestrictAddressFamilies=)" $RC
 
   echo ""
   echo "=== varlinkctl list-interfaces ==="
