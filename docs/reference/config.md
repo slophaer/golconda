@@ -27,7 +27,7 @@ root = ["alice@example.com"]
 dns = ["192.0.2.53"]
 ```
 
-An unknown table name throws with the list of valid paths, and an option name the module does not
+An unknown table name throws with the list of valid paths. An option name the module does not
 declare throws with the valid names: a misspelt `prot = 2222` is an error, not a silent port 22. A
 `/pkgs` table throws: the package set is not data.
 
@@ -126,10 +126,10 @@ attribution of what it emits. The generated module pages cover Golconda's own tr
 ## Your own packages
 
 A downstream repository adds packages in `packages/` beside the document (or the directory
-`[golconda] packages = "…"` names), in the layout Golconda's own `packages/` uses: one directory per
-package with a `package.nix` and a `sources.toml`, so the package has a purl, an SBOM entry and
-update tracking. They join the target set after Golconda's own. No option takes a package: a module
-takes its packages from the target set.
+`[golconda] packages = "…"` names). The layout is the one Golconda's own `packages/` uses: one
+directory per package with a `package.nix` and a `sources.toml`. So the package has a purl, an SBOM
+entry and update tracking. They join the target set after Golconda's own. No option takes a package:
+a module takes its packages from the target set.
 
 A package that takes the name of a Golconda or repkgs package replaces it, but only when the
 document lists that name:
@@ -145,7 +145,7 @@ applies to everything that uses the package: the image, the initrd, the loader a
 the build host's tools when the build host and the target are the same platform. `mkSystem` returns
 each package under `packages`: `{ "openssh": { "replaces": "golconda" } }` (`"repkgs"` for one of
 the fork's, null for a new name). repkgs refuses a package that takes the name of one of its
-aliases: it applies its aliases last, so the alias would win.
+aliases. It applies its aliases last, so the alias would win.
 
 When a downstream package enters the runtime closure, its SBOM component has
 `golconda:origin = downstream`. A replacement also names the package it replaced in CycloneDX
@@ -201,14 +201,15 @@ golconda.lib.mkSystem {
 
 `lib.mkSystem` uses the pins of the Golconda tree it comes from. `lib/system.nix` takes more
 arguments, for the image chain and the tests: an attribute set of options as `config`, `sources`,
-`verityCert`, and `extraFragments`, the build's own fragments, each with a `name` (`lib/image`: the
-update index, the initrd's tools), listed in `fragments`. `extraFragments` adds them beside the
-components; a duplicate claim still fails rather than overrides. They are not configuration: the
-document is.
+`verityCert`, and `extraFragments`. The last are the build's own fragments, each with a `name`
+(`lib/image`: the update index, the initrd's tools), listed in `fragments`. `extraFragments` adds
+them beside the components; a duplicate claim still fails rather than overrides. They are not
+configuration: the document is.
 
-`mkSystem` binds `/pkgs.target` to the platform's set, selects the components (the built-ins, then
-every optional component the document has a table for; an empty table selects one with its defaults;
-[design/modules](../design/modules.md#which-modules-a-system-has)), composes, and returns:
+`mkSystem` binds `/pkgs.target` to the platform's set and selects the components (the built-ins,
+then every optional component the document has a table for; an empty table selects one with its
+defaults; [design/modules](../design/modules.md#which-modules-a-system-has)). It composes and
+returns:
 
 | field             | content                                                                                               |
 | ----------------- | ----------------------------------------------------------------------------------------------------- |
@@ -238,8 +239,8 @@ tree is checked.
 
 ## Nix escapes
 
-The document is the whole configuration. Nix is code, and code lives in two places: a module (in
-`modules/` beside the document, [Your own modules](#your-own-modules)), which holds logic too (a
-value shared between options, a conditional), and a package (in `packages/`,
+The document is the whole configuration. Nix is code, and code lives in two places. One is a module
+(in `modules/` beside the document, [Your own modules](#your-own-modules)), which holds logic too (a
+value shared between options, a conditional). The other is a package (in `packages/`,
 [Your own packages](#your-own-packages)). A document names a package by name; it cannot name a
 derivation or a function.
