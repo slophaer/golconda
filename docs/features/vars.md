@@ -6,7 +6,7 @@ to its own TPM2 (a security chip) and hands it to one service as a systemd crede
 
 ## How it works
 
-There are two classes of var.
+A var has one of two classes.
 
 - **local**: the machine generates the value at first boot. `golconda-var-<name>.service` runs
   `/usr/lib/golconda/golconda-var-run`, which runs the generator script, seals each secret with
