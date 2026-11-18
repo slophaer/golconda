@@ -241,9 +241,9 @@ Set `updateSource = "https://updates.example.com/server/"` in `"/system"` and th
 *(eval)*. To release a new version, run `golconda release build` again: it picks the next version,
 writes it into the document and commits it. Then publish the `release/` directory
 ([Releases](../design/releases.md)). On the machine, `systemd-sysupdate-update.service` writes the B
-slots and the new UKI to the ESP, and `systemd-sysupdate-reboot.timer` reboots into them at 04:10
-(`/system.updateReboot`). Three failed boots make systemd-boot choose the other slot
-([Updates](../design/updates.md)).
+slots and the new UKI to the ESP, and `systemd-sysupdate-reboot.timer` reboots into them at 04:10,
+plus up to 30 random minutes (`/system.updateReboot`). Three failed boots make systemd-boot choose
+the other slot ([Updates](../design/updates.md)).
 
 The harness runs this whole update. `scripts/boot-test … --next DIR` serves the next release over
 HTTP at the image's `updateSource`, lets the guest install it and moves the reboot window to every

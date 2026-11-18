@@ -163,5 +163,5 @@ golconda release list --to hetzner:updates/web
   serves, the same version with other files, and a release whose commit (`--repo`, default `.`)
   records other digests. A release that no commit records needs `--unrecorded`. It deletes nothing
   and commits nothing.
-- `list` prints the release commits, newest first; with `--to` it marks the one the destination
-  serves and those it still holds.
+- `list` prints the release commits, newest first; `--image ID` keeps those of one image. With
+  `--to` it marks the one the destination serves and those it still holds.

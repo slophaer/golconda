@@ -115,7 +115,7 @@ off, also on a cloud, and the command line keeps the generator from pulling the 
 Golconda tree ([Making a release: Get the tools](../reference/release.md#get-the-tools)):
 
 ```sh
-cp --sparse=always <out>/disk.raw web1.raw
+cp --sparse=always result-release/disk.raw web1.raw
 scripts/provision-esp web1.raw --hostname web1 --authorized-keys ~/.ssh/id_ed25519.pub
 ```
 

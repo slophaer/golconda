@@ -27,9 +27,10 @@ checks the `/usr` signature, so a changed `/usr` alone does not run
 ## 1. Keys and the build host
 
 Get `scripts/` and `golconda` first ([Making a release: Get the tools](release.md#get-the-tools)).
-The keys are the ones of [Making a release](release.md): `scripts/make-keys /srv/golconda-keys`. The
-`secureboot/` pair signs the UKI (which no firmware checks here) and `/usr`; the kernel built for
-this image trusts `secureboot/db.crt`. The build host is the one of [Build host](build-host.md).
+The keys are the ones of [Making a release](release.md): `scripts/make-keys /srv/golconda-keys`, on
+the release host. The `secureboot/` pair signs the UKI (which no firmware checks here) and `/usr`;
+the kernel built for this image trusts `secureboot/db.crt`. The build host is the one of
+[Build host](build-host.md).
 
 ## 2. The document
 
@@ -66,10 +67,10 @@ object and the compressed kernel's wrapper compile again, and the kernel relinks
 
 ## 4. The machine's credentials
 
-Copy the disk (the store copy is read-only) and write the credentials onto its ESP:
+Copy the disk for the machine and write the credentials onto its ESP:
 
 ```sh
-cp --sparse=always <out>/disk.raw web1.raw
+cp --sparse=always result-release/disk.raw web1.raw
 scripts/provision-esp web1.raw --hostname web1 --authorized-keys ~/.ssh/id_ed25519.pub
 ```
 
