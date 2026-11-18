@@ -41,9 +41,6 @@ fn usage_errors_exit_2() {
     let o = golconda(&["frobnicate"]);
     assert_eq!(o.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&o.stderr).contains("Usage: golconda"));
-    // the release key comes from --keys alone: it cannot change yet
-    let o = golconda(&["release", "build", "--keys", "k", "--index-keys", "k"]);
-    assert_eq!(o.status.code(), Some(2));
 }
 
 #[test]

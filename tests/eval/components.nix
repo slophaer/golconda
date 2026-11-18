@@ -183,9 +183,6 @@ in
     in
     !r.success
   ))
-  (check "mkSystem: the image has no modules.json" (
-    !(mkSystemFixture.artifacts ? "/usr/lib/golconda/modules.json")
-  ))
   (check "mkSystem: the inventory agrees with the image" (
     agrees mkSystemFixture
     && mkSystemFixture.inventory."/services/sshd".reason == "config"

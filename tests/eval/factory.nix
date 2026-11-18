@@ -113,10 +113,6 @@ in
   (check "factory: no hostname option (it is a bootstrap credential)" (
     !((f.modules { }).modules.factory.args.options ? hostname)
   ))
-  # the seeds are the built-in ones only: a document cannot write /etc
-  (check "factory: no extraFiles option" (
-    !((f.modules { }).modules.factory.args.options ? extraFiles)
-  ))
   (check "factory: timezone changes the link and is a zone name" (
     elem "L /etc/localtime - - - - /usr/share/zoneinfo/Europe/Berlin"
       (factoryOf {

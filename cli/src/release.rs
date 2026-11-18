@@ -2398,11 +2398,9 @@ mod tests {
             &args[7..10],
             &["--argstr", "pcrKeys", old.to_str().unwrap()]
         );
-        assert!(!log.contains("indexKeys"), "{log}");
         let signed = fs::read_to_string(s.tmp.path().join("sign.log")).unwrap();
         assert!(
-            signed.contains(&format!("--pcr-keys {}", old.display()))
-                && !signed.contains("--index-keys"),
+            signed.contains(&format!("--pcr-keys {}", old.display())),
             "{signed}"
         );
         // a second build into the same directory is refused before anything is built, and

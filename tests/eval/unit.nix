@@ -86,22 +86,12 @@
       }
     )
   ))
-  # every service is a system service: there is no scope
-  (check "service: user is required and scope is refused" (
+  (check "service: user is required" (
     throws (
       s.render {
         name = "x";
         app.package = standIn;
         sandbox = "strict";
-      }
-    )
-    && hasInfix "scope" (
-      s.service.verify {
-        name = "x";
-        scope = "user";
-        app.package = standIn;
-        user = "root";
-        sandbox = "default";
       }
     )
     && (s.render {

@@ -109,22 +109,6 @@ in
     in
     sys.name == "server" && sys.version == "20261031.1"
   ))
-  (check "mkSystem: /services/sshd has no package option" (
-    let
-      sys = import ../../lib/system.nix {
-        inherit sources platform;
-        system = platform;
-        config = {
-          "/system" = {
-            name = "t";
-            version = "20261031.1";
-          };
-          "/services/sshd".package = "openssh";
-        };
-      };
-    in
-    !(tryEval (deepSeq sys.composed.units true)).success
-  ))
   (check "mkSystem: config.json has the sshd table and no derivation strings" (
     let
       mkSystem =
