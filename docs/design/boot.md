@@ -239,14 +239,15 @@ boot: `/usr` runs only if the kernel verified the verity signature. The kernel c
 ## Serial console
 
 `console=ttyS0` gives output on the serial line, `console=tty0` on the local display. Both show the
-kernel log and PID 1's status lines. The display (tty1) also shows the journal of this boot, info
-and higher: `golconda-console.service` runs `journalctl --follow` on it. journald itself writes to
-no console, because a console write is synchronous and a slow screen would slow every service that
-logs. No getty runs on either: there is no local login path ([Trust: Identity](trust.md#identity)).
-Recovery from a machine that no longer answers over ssh is the other slot (boot counting, or a
-manual choice in the systemd-boot menu) or a reflash.
-[Factory reset and recovery](../features/factory-reset.md) states what each path can and cannot do,
-and [Boot loader: Recovery](bootloader.md#recovery) gives the loader steps.
+kernel log. PID 1's status lines go to `/dev/console`, the serial line. The display (tty1) also
+shows the rest of the journal of this boot, info and higher: `golconda-console.service` runs
+`journalctl --follow` on it and skips the kernel's lines. journald itself writes to no console,
+because a console write is synchronous and a slow screen would slow every service that logs. No
+getty runs on either: there is no local login path ([Trust: Identity](trust.md#identity)). Recovery
+from a machine that no longer answers over ssh is the other slot (boot counting, or a manual choice
+in the systemd-boot menu) or a reflash. [Factory reset and recovery](../features/factory-reset.md)
+states what each path can and cannot do, and [Boot loader: Recovery](bootloader.md#recovery) gives
+the loader steps.
 
 ## Bootstrap credentials
 

@@ -25,6 +25,11 @@ in
     && hasInfix "\nTTYPath=/dev/tty1\n" unit
     && hasInfix "\nRestart=always\n" unit
   ))
+  # the kernel console shows the kernel's lines on tty0 (image/uki.nix): the unit shows the rest
+  (check "console: golconda-console.service skips the kernel's lines" (
+    hasInfix " _TRANSPORT=journal _TRANSPORT=syslog _TRANSPORT=stdout\n" unit
+    && !(hasInfix "_TRANSPORT=kernel" unit)
+  ))
   # the initrd has no such unit (lib/image/initrd.nix)
   (check "console: golconda-console.service starts at sysinit.target" (
     base.links."/usr/lib/systemd/system/sysinit.target.wants/golconda-console.service".target or null
