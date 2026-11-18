@@ -111,6 +111,7 @@ refused "admin: refuses a path as a file" --admin sshd-host-cert ../cert
 refused "admin: needs a name and a file" --admin sshd-host-cert
 refused "admin: a file matches a whole line of NAME.admin, not a part" --admin pair cert
 refused "admin: a file matches a whole line of NAME.admin, not more" --admin pair cert-chain-2
+refused "admin: a file is a string, not a pattern" --admin pair 'cert.chain'
 mv "$GOLCONDA_VARS_D/sshd-host-cert.admin" "$WORK/sshd-host-cert.admin"
 refused "admin: a var without NAME.admin is not an admin var" --admin sshd-host-cert cert
 mv "$WORK/sshd-host-cert.admin" "$GOLCONDA_VARS_D/sshd-host-cert.admin"

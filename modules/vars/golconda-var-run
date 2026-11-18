@@ -81,12 +81,10 @@ if [ "${1:-}" = --admin ]; then
   done
   [ -f "$varsd/$name.json" ] || { echo "golconda-var-run: no var $name in this image" >&2; exit 1; }
   # NAME.admin: the files of an admin var, one name per line (modules/lib/var.nix). A whole
-  # line must match; the image has no grep
+  # line must match, as a string, not a pattern
   admin=$varsd/$name.admin
   [ -f "$admin" ] || { echo "golconda-var-run: $name is not an admin var" >&2; exit 1; }
-  found=
-  while IFS= read -r line; do [ "$line" = "$file" ] && found=1; done < "$admin"
-  [ -n "$found" ] || { echo "golconda-var-run: $name has no file $file" >&2; exit 1; }
+  grep -qFx -- "$file" "$admin" || { echo "golconda-var-run: $name has no file $file" >&2; exit 1; }
   seal "$name.$file" -
   exit 0
 fi

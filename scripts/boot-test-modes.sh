@@ -106,7 +106,7 @@ test_ssh() {
   # Root cannot switch it off: PID 1 dropped CAP_MAC_ADMIN, so a write of 0 to ipe/enforce fails
   # and enforce stays 1. Then a copy of /usr's shell on the root partition must be refused with
   # EACCES, and the kernel must log a new IPE denial; the count before and after keeps an earlier
-  # denial from passing. The image has no grep, so the journal is filtered here.
+  # denial from passing. The host filters the journal.
   echo ""
   echo "=== IPE: a copy outside /usr ==="
   RC=0

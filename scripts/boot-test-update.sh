@@ -502,7 +502,7 @@ print(d["rootHash"], d["signature"])' 2>&1) || true
   esac
   VS=/usr/lib/systemd/systemd-veritysetup
   OUT=$(guest "$VS attach golconda-sigcheck /dev/disk/by-partlabel/usr_$NEXT_VERSION /dev/disk/by-partlabel/usr-verity_$NEXT_VERSION $RH root-hash-signature=base64:$SIG 2>&1; echo attach=\$?; $VS detach golconda-sigcheck 2>&1") || true
-  # the image has no grep: filter the kernel's messages here
+  # the host filters the kernel's messages
   KLOG=$(guest journalctl -k -b -o cat --no-pager 2>&1 | grep -i 'verity' | tail -5) || true
   echo "$OUT"
   echo "$KLOG"

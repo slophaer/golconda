@@ -95,6 +95,8 @@ let
     "mv"
     "rm"
   ];
+  # repkgs' grep removes the egrep and fgrep shell wrappers
+  stubGrep = withBin "grep-3.12" [ "grep" ];
   stubLinuxKernel = withBin "linux-kernel-6.18.0" [ ];
   # cacert ships one file, tzdata one directory: neither has a bin list
   stubCacert = withBin "cacert-2026.1" [ ];
@@ -115,6 +117,7 @@ let
       dbus-broker = stubDbusBroker;
       dash = stubDash;
       uutils-coreutils = stubUutils;
+      grep = stubGrep;
       cacert = stubCacert;
       ca-bundle = stubCaBundle;
       tzdata = stubTzdata;

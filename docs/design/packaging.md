@@ -122,7 +122,7 @@ unstripped `vmlinux` with full DWARF 5, for `gdb` and crash analysis; it is larg
 The image holds these packages and their closures:
 
 - systemd (with repart, sysupdate, cryptsetup, TPM2, PKCS#11, PAM), dbus-broker, dash, uutils
-  coreutils, the kernel;
+  coreutils, GNU grep (`/usr/bin/grep` only, for the var runner), the kernel;
 - openssh, linux-pam (no setuid helpers), p11-kit, tpm2-tss (ESYS only);
 - e2fsprogs (first-boot `mkfs.ext4`), lvm2 (device-mapper only), libtasn1, json-c, popt;
 - tzdata (zoneinfo), ca-bundle (the CA bundle, from cacert), hwdb (compiled hardware database),

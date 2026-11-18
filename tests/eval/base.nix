@@ -35,6 +35,9 @@ in
     && any (p: p.name == "dash-0.5.13.5") result.packages
     && any (p: p.name == "uutils-coreutils-0.0.25") result.packages
   ))
+  (check "base: GNU grep, for the var runner's whole-line match (modules/vars/golconda-var-run)" (
+    any (p: p.name == "grep-3.12" && p.bin == [ "grep" ]) (compose [ ]).packages
+  ))
   (check "base: /usr/bin/sh is an explicit link to dash" (
     let
       result = compose [ ];
