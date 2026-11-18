@@ -38,7 +38,7 @@ systemd image; and typed modules whose composition is a plain function.
 
 ## What you give up against NixOS
 
-An honest list for someone who runs NixOS today, with when (if ever) the gap closes.
+A list for someone who runs NixOS today, with when (if ever) the gap closes.
 
 | you lose                                     | what it costs                                                                                                                                                                                                                                                         | when                      |
 | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
@@ -68,8 +68,8 @@ An honest list for someone who runs NixOS today, with when (if ever) the gap clo
   measured boot, sysupdate, first-boot repart, credentials for provisioning, and `/etc` as tmpfiles
   lines. Left behind: distribution packages and mkosi.
 
-Why not ParticleOS itself, then? ParticleOS is built from a distribution's packages, so the system
-is reproducible only as far as that distribution is; Golconda builds every package and the whole
-image from one pinned expression, with one toolchain and one of each library, and the module tree is
-typed data that a schema, a diff and a GUI can read. The runtime is the same systemd; the build is
-the difference.
+Golconda does not use ParticleOS itself, because ParticleOS is built from a distribution's packages.
+The system is then reproducible only as far as that distribution is. Golconda builds every package
+and the whole image from one pinned expression, with one toolchain and one of each library. The
+module tree is typed data that a schema, a diff and a GUI can read. The runtime is the same systemd.
+The build differs.
