@@ -174,8 +174,8 @@ nix-prefetch-url --unpack https://github.com/slophaer/golconda/archive/<rev>.tar
   includes for the plain `fetchTarball` recipe, with the example pin's rev and hash in place of the
   two placeholders. Its `usrTree` is the one `examples/golconda.nix` gives from the same pin.
 - `tests/flake-template/run.sh` (run by `scripts/lint`) makes a flake with `nix flake init -t` from
-  this repository's template, locks the input at `HEAD~1`, runs `nix flake update golconda`, and
-  checks that the lock is at `HEAD` with a new `narHash` and that the flake evaluates its `/usr`
+  this repository's template and locks the input at `HEAD~1`. It runs `nix flake update golconda`
+  and checks that the lock is at `HEAD` with a new `narHash` and that the flake evaluates its `/usr`
   tree. With `--build` it also builds the image's unsigned output from the flake, with the public
   halves of a test key set (`tests/fixtures/public-keys`), and checks that the output holds the
   manifest and the signer and no private key. That build is not in the lint: it takes the time of an
