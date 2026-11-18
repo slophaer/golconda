@@ -672,7 +672,8 @@ With `--rotate`:
 With `--secure-boot --tpm --ssh-test --secure-boot-off`, after the first boot and its reboot: the
 harness keeps PK, KEK and `db` and sets `SecureBootEnable` false
 ([Boot: Secure Boot off](../design/boot.md#secure-boot-off)). Before that it prints PCR 7's event
-log (`systemd-pcrlock log --pcr=7`).
+log (`systemd-pcrlock log --pcr=7`). With `--next` as well, the 3 power-ons follow the update, and
+the next release is blessed and the default; the bypassed boot is skipped.
 
 | marker                        | what it proves                                                                                                                                                                                                                                                                                                    |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -680,6 +681,7 @@ log (`systemd-pcrlock log --pcr=7`).
 | `secure-boot-off-vars-sealed` | with the SMBIOS string `io.systemd.stub.kernel-cmdline-extra=rd.systemd.mask=golconda-secure-boot-required.service systemd.log_target=console` the boot reaches `multi-user.target`, PID 1's lines on the console say the TPM policy does not match and sshd failed to set up its credentials, and no login works |
 | `secure-boot-off-not-counted` | that boot's console has no `golconda-failed-boots: failed boots in a row` line: the 3 halted boots left no failed-boot count                                                                                                                                                                                      |
 | `hostkey-unchanged`           | with Secure Boot on again, the same TPM unseals the first boot's host key                                                                                                                                                                                                                                         |
+| `secure-boot-off-no-fallback` | with Secure Boot on again: the release that ran before Secure Boot went off runs (with `--next`, the next release), no UKI on the ESP is `+0-`, and `golconda-failed-boots-complete.service` removed the count                                                                                                    |
 
 With `--factory-reset --ssh-test` ([The factory reset test](#the-factory-reset-test)):
 

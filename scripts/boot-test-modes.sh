@@ -374,6 +374,9 @@ set_secure_boot() {
 }
 
 test_secure_boot_off() {
+  # the release that must run at the end: with --next, the next release (test_next leaves it
+  # blessed and the default, with QEMU in the firmware menu)
+  SB_VERSION=${NEXT_VERSION:-$(guest_version)}
   echo ""
   echo "=== PCR 7 of the Secure Boot boot (systemd-pcrlock log) ==="
   guest /usr/lib/systemd/systemd-pcrlock log --pcr=7 --no-pager 2>&1 | head -40 || true
@@ -402,7 +405,37 @@ test_secure_boot_off() {
     ! grep -aqi 'Switching root\|Reached target.*Multi-User' "$SERIAL_LOG" || RC=1
   done
   verdict "secure-boot-off-refused (on 3 power-ons the initrd named the reason on the console and halted: no switch root, no reboot)" $RC
+  # with --next the next boot has Secure Boot on, as an operator's: a bypassed boot would complete
+  # and reset a count before it
+  [ -n "$NEXT" ] || test_secure_boot_bypassed
 
+  echo ""
+  echo "=== Secure Boot on again ==="
+  set_secure_boot true
+  SERIAL_LOG=$WORKDIR/serial-secure-boot-on-again.log
+  TIMEOUT=$SAVED_TIMEOUT
+  rotate_tpm
+  start_qemu
+  if ! wait_for_ssh ""; then
+    verdict "hostkey-unchanged (Secure Boot on again: no login before the timeout)" 1
+    return 1
+  fi
+  check_unsealed "Secure Boot on again, the same TPM"
+  # the halted boots armed no fallback: the same release runs, and its entry is not marked bad
+  V=$(guest_version)
+  D=$(guest ls /boot/EFI/Linux 2>&1) || true
+  echo "running ${V:-no answer}; /boot/EFI/Linux:"
+  echo "$D"
+  RC=0
+  [ "$V" = "$SB_VERSION" ] || RC=1
+  ! echo "$D" | grep -q '+0-' || RC=1
+  failed_count_gone || RC=1
+  verdict "secure-boot-off-no-fallback (Secure Boot on again: $SB_VERSION runs, no entry is marked bad, the failed-boot count is gone)" $RC
+}
+
+# test_secure_boot_bypassed: Secure Boot off, with the refusal masked: the vars must not unseal, and
+# the halted boots before it were not counted
+test_secure_boot_bypassed() {
   echo ""
   echo "=== Secure Boot off, the refusal bypassed: the vars must not unseal ==="
   SERIAL_LOG=$WORKDIR/serial-secure-boot-off-bypassed.log
@@ -431,17 +464,4 @@ test_secure_boot_off() {
   RC=0
   ! grep -aq 'golconda-failed-boots: failed boots in a row' "$SERIAL_LOG" || RC=1
   verdict "secure-boot-off-not-counted (the 3 halted boots left no failed-boot count)" $RC
-
-  echo ""
-  echo "=== Secure Boot on again ==="
-  set_secure_boot true
-  SERIAL_LOG=$WORKDIR/serial-secure-boot-on-again.log
-  TIMEOUT=$SAVED_TIMEOUT
-  rotate_tpm
-  start_qemu
-  if ! wait_for_ssh ""; then
-    verdict "hostkey-unchanged (Secure Boot on again: no login before the timeout)" 1
-    return 1
-  fi
-  check_unsealed "Secure Boot on again, the same TPM"
 }

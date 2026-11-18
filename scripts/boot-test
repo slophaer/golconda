@@ -242,8 +242,8 @@
 #   the update they are sealed again without PCR 7 (vars-resealed-without-pcr7), after the rotated
 #   boot with it (vars-resealed-pcr7), and after one more reboot the host key unseals
 #   (hostkey-unchanged).
-# With --secure-boot --tpm --secure-boot-off (needs --ssh-test; not with --next, --auto-enrol,
-#   --factory-reset, --certify, --esp-creds or --imds): a Secure Boot image on firmware with Secure
+# With --secure-boot --tpm --secure-boot-off (needs --ssh-test; not with --auto-enrol,
+#   --factory-reset, --certify, --esp-creds, --imds or an update mode but --next): a Secure Boot image on firmware with Secure
 #   Boot off (docs/design/boot.md, "Secure Boot off"). After the first boot and its reboot the
 #   harness keeps PK, KEK and db and sets SecureBootEnable false. On 3 power-ons the initrd must
 #   refuse: the console has its line and "System halted", and nothing reboots or switches root
@@ -253,7 +253,9 @@
 #   TPM policy does not match, sshd fails to set up its credentials and no login works
 #   (secure-boot-off-vars-sealed). The failed-boot counter of that boot finds no failed boot
 #   before it: the halted boots are not counted (secure-boot-off-not-counted). Last, Secure Boot on again with the same TPM: the key unseals
-#   (hostkey-unchanged).
+#   (hostkey-unchanged), the same release runs, no entry is marked bad and the count is gone
+#   (secure-boot-off-no-fallback). With --next the 3 power-ons follow the update, the bypassed boot
+#   is skipped, and the next release must run.
 # With --factory-reset (needs --ssh-test and the test image; a boot of its own): writes a marker
 #   in /etc, reads /etc/machine-id, runs `systemctl start factory-reset.target` in the guest and
 #   waits for the reset boot. It checks that the marker is gone (state-gone), the machine id
@@ -487,9 +489,10 @@ if [ "$CERTIFY" = 1 ] && { [ "$SSH_TEST" = 0 ] || [ -n "$NEXT" ] || [ "$ESP_CRED
   exit 1
 fi
 if [ "$SECURE_BOOT_OFF" = 1 ] && { [ "$SECURE_BOOT" = 0 ] || [ "$TPM" = 0 ] || [ "$SSH_TEST" = 0 ] ||
-  [ -n "$NEXT" ] || [ "$AUTO_ENROL" = 1 ] || [ "$FACTORY_RESET" = 1 ] || [ "$CERTIFY" = 1 ] ||
+  [ "$((ROTATE + FAIL_HEALTH + FAIL_INITRD + FAIL_BLESSED + FAIL_PANIC + FAIL_PID1 + TAMPER_INDEX))" != 0 ] ||
+  [ "$AUTO_ENROL" = 1 ] || [ "$FACTORY_RESET" = 1 ] || [ "$CERTIFY" = 1 ] ||
   [ "$ESP_CREDS" = 1 ] || [ "$IMDS" = 1 ]; }; then
-  echo "Error: --secure-boot-off needs --secure-boot, --tpm and --ssh-test, and is a run of its own: not with --next, --auto-enrol, --factory-reset, --certify, --esp-creds or --imds" >&2
+  echo "Error: --secure-boot-off needs --secure-boot, --tpm and --ssh-test, and takes --next alone of the update modes: not with --rotate, --fail-*, --tamper-index, --auto-enrol, --factory-reset, --certify, --esp-creds or --imds" >&2
   exit 1
 fi
 

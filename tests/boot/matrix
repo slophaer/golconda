@@ -15,6 +15,7 @@
 --secure-boot --ssh-test --tpm --timeout 600 --next @next --tamper-index
 --secure-boot --ssh-test --tpm --timeout 600 --next @next=image-smoke-test-rotated --rotate
 --secure-boot --ssh-test --tpm --timeout 900 --secure-boot-off
+--secure-boot --ssh-test --tpm --timeout 900 --next @next --secure-boot-off
 --secure-boot --ssh-test --tpm --timeout 600 --auto-enrol
 --secure-boot --ssh-test --tpm --timeout 600 --auto-enrol --next @next
 @image=image-smoke-test-own-keys --secure-boot --ssh-test --tpm --timeout 600 --auto-enrol --no-microsoft-keys
