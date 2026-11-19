@@ -1,0 +1,34 @@
+From: phaer <hello@phaer.org>
+Subject: [PATCH] panic: flush the consoles after the "Rebooting in" line
+
+panic() flushes the consoles with console_flush_on_panic(), which
+ignores the console lock, and only then prints "Rebooting in %d
+seconds..". That printk prints only when the panic CPU gets the console
+lock. When another context holds it, for example a task that writes to
+a VT and was stopped or preempted, the line stays in the buffer and no
+console shows it before the reboot.
+
+Flush the consoles once more after the line, as the panic_timeout == 0
+path already does after its last line.
+
+Upstream: not sent
+Assisted-by: Claude Code (claude-opus-5-5)
+---
+ kernel/panic.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/kernel/panic.c b/kernel/panic.c
+--- a/kernel/panic.c
++++ b/kernel/panic.c
+@@ -561,6 +561,11 @@
+ 		 * We can't use the "normal" timers since we just panicked.
+ 		 */
+ 		pr_emerg("Rebooting in %d seconds..\n", panic_timeout);
++		/*
++		 * The flush above ignored the console lock. If another
++		 * context holds it, the printk above only stored the line.
++		 */
++		console_flush_on_panic(CONSOLE_FLUSH_PENDING);
+ 
+ 		for (i = 0; i < panic_timeout * 1000; i += PANIC_TIMER_STEP) {
+ 			touch_nmi_watchdog();

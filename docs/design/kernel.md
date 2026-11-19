@@ -80,6 +80,11 @@ built in, and so are the watchdog drivers: QEMU's `i6300esb`, Intel's `iTCO_wdt`
 `lpc_ich`), AMD's `sp5100_tco` and `softdog`. What a hang then does is the
 [trial boot](boot.md#trial-boot) policy's.
 
+One patch, `packages/kernel/panic-reboot-line.patch`, flushes the consoles after a panic's
+`Rebooting in 10 seconds..` line. Without it, the line stays in the kernel's buffer when another
+context holds the console lock, for example the `journalctl` that writes the journal to `tty1`. The
+boot test requires the line on the serial console after each panic.
+
 ## Lockdown
 
 The cmdline sets `lockdown=integrity`. This is kernel self-protection: it blocks operations that

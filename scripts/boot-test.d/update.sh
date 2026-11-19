@@ -278,11 +278,13 @@ time_reboots() {
 
 # reboot_trace MARK DOWN: one letter for each event in the serial log after byte MARK, from the
 # first DOWN on: D the failure DOWN, S systemd-shutdown's reboot, R the kernel's "reboot: Restarting
-# system" (a reboot(2) call), K a new kernel
+# system" (a reboot(2) call), P the kernel's "Rebooting in 10 seconds.." (panic=10), K a new kernel
 reboot_trace() {
   tail -c +"$(($1 + 1))" "$SERIAL_LOG" | tr -d '\033\r' \
-    | grep -aoF -e "$2" -e "systemd-shutdown[1]: Rebooting" -e "reboot: Restarting system" -e "Linux version" \
-    | sed 's/^reboot: .*/R/;t;s/^systemd-shutdown.*/S/;t;s/^Linux version/K/;t;s/.*/D/' \
+    | grep -aoF -e "$2" -e "systemd-shutdown[1]: Rebooting" -e "reboot: Restarting system" \
+      -e "Rebooting in 10 seconds.." -e "Linux version" \
+    | sed -e 's/^reboot: .*/R/;t' -e 's/^systemd-shutdown.*/S/;t' -e 's/^Rebooting in.*/P/;t' \
+      -e 's/^Linux version/K/;t' -e 's/.*/D/' \
     | tr -d '\n' | sed 's/^[^D]*//'
 }
 
@@ -291,16 +293,16 @@ reboot_trace() {
 # boot-test-crash.service (kill -SEGV 1) fails each of three tries: panic=10 or CrashAction=reboot
 # must reboot after 10 s, not the hardware watchdog after 30 s, and the fourth boot must run the old
 # release. The serial console shows the path of each try: after a PID 1 crash, PID 1's reboot(2)
-# prints "reboot: Restarting system" (the watchdog resets the machine without a line). The
-# kernel's "Rebooting in 10 seconds.." after a panic can stay in its buffer, so a panic's try must
-# only reach a new kernel without a reboot(2). The i6300esb records a reset by its timeout in
-# bootstatus (WDIOF_CARDRESET), which the fourth boot reads for the third try
+# prints "reboot: Restarting system"; after a panic, panic=10 prints "Rebooting in 10 seconds.."
+# (the watchdog resets the machine without a line; docs/design/kernel.md). The i6300esb records a
+# reset by its timeout in bootstatus (WDIOF_CARDRESET), which the fourth boot reads for the third
+# try
 test_fail_tries() {
   case $1 in
     panic)
       ARM=panic
       DOWN="Kernel panic - not syncing: sysrq triggered crash"
-      TRACE=DKDKDK
+      TRACE=DPKDPKDPK
       BY=panic=10
       ;;
     *)

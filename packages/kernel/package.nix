@@ -11,6 +11,9 @@ let
 in
 package {
   name = "linux-kernel";
+  # panic=10's "Rebooting in 10 seconds.." reaches the consoles also when another context holds
+  # the console lock (docs/design/kernel.md)
+  patches = [ ./panic-reboot-line.patch ];
 
   phases = [
     "kbuild.configure"
