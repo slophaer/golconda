@@ -31,7 +31,7 @@ not forgotten, it is refused ([Principles](principles.md)).
 | keys on a token            | the signer takes the `db` and PCR keys from a PKCS#11 token; the release key is a file                                                              | [Signing](signing.md#keys-on-a-token)                   |
 | trial boot                 | a counted boot that fails reboots into its next try: a panic, a PID 1 crash, `emergency.target`, an initrd hang, a failed health unit               | `/base`, [Boot](boot.md#trial-boot)                     |
 | failed boots               | after 3 boots in a row that do not complete, the other slot boots; after 6, the machine halts                                                       | `/base`, [Boot](boot.md#failed-boots)                   |
-| watchdog                   | PID 1 runs the hardware watchdog, or softdog where there is none; the kernel panics on a lockup or a hung task                                      | `/base`, [Kernel](kernel.md#hangs-and-watchdogs)        |
+| watchdog                   | PID 1 runs the hardware watchdog, or softdog where there is none; the kernel panics on a lockup; a hung task only warns                             | `/base`, [Kernel](kernel.md#hangs-and-watchdogs)        |
 | update reboot              | `systemd-sysupdate-reboot.timer` in the window of `/system.updateReboot`, only when systemd-boot would start another entry                          | `/system`, [Updates](updates.md#activation)             |
 
 ## Later

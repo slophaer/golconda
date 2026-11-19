@@ -280,7 +280,7 @@ This section is the only copy of the command line in the documentation. Other pa
 `cmdlineTemplate` in `image/uki.nix` is:
 
 ```text
-usrhash={usrhash} systemd.verity_usr_options=root-hash-signature=base64:{usrhashSig} rw panic=10 softlockup_panic=1 nmi_watchdog=panic hung_task_panic=1 lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=1 systemd.imds.import=0 console=tty0 console=ttyS0,115200
+usrhash={usrhash} systemd.verity_usr_options=root-hash-signature=base64:{usrhashSig} rw panic=10 softlockup_panic=1 nmi_watchdog=panic watchdog_thresh=30 hung_task_panic=0 lsm=lockdown,yama,ipe,bpf lockdown=integrity ipe.enforce=1 systemd.imds.import=0 console=tty0 console=ttyS0,115200
 ```
 
 The UKI step (`lib/image/uki.nu`) fills `{usrhash}` and `{usrhashSig}` and appends `cmdlineExtra`
@@ -288,15 +288,16 @@ The UKI step (`lib/image/uki.nu`) fills `{usrhash}` and `{usrhashSig}` and appen
 the EFI stub would cut the line after the signature. The result is in the UKI's `.cmdline` section
 and in the step's `cmdline` output.
 
-| parameter                                                 | meaning                                                                                                                                                        |
-| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `usrhash={usrhash}`                                       | the verity root hash; the generators derive the two `/usr` partition UUIDs from it, which is how a UKI finds its own slot                                      |
-| `systemd.verity_usr_options=root-hash-signature=…`        | the base64 PKCS#7 signature of that hash; the kernel checks it against its built-in db certificate, and IPE trusts only such volumes                           |
-| `rw`                                                      | the state partition is the root file system; without it the initrd mounts it read-only and the host key var fails to seal. `/usr` stays read-only by dm-verity |
-| `panic=10`                                                | a kernel panic reboots after 10 s, so a release whose kernel panics loses a try ([Boot: Trial boot](../design/boot.md#trial-boot))                             |
-| `softlockup_panic=1 nmi_watchdog=panic hung_task_panic=1` | a soft lockup, a hard one (the NMI watchdog: `kernel.hardlockup_panic`) or a task blocked for 120 s panics, so `panic=10` reboots a hang the kernel sees       |
-| `lsm=lockdown,yama,ipe,bpf`                               | the LSM stack order (capability is always first)                                                                                                               |
-| `lockdown=integrity`                                      | kernel lockdown level: blocks kexec, `/dev/mem` and similar                                                                                                    |
-| `ipe.enforce=1`                                           | IPE runs only the initramfs and verity volumes whose signature the kernel verified                                                                             |
-| `systemd.imds.import=0`                                   | systemd-imds-generator does not pull `systemd-imds-import.service` into the initrd, which has no network; `/imds` pulls it into the host, on a cloud only      |
-| `console=tty0 console=ttyS0,115200`                       | the local console and the serial line; output only, there is no getty                                                                                          |
+| parameter                                                  | meaning                                                                                                                                                        |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `usrhash={usrhash}`                                        | the verity root hash; the generators derive the two `/usr` partition UUIDs from it, which is how a UKI finds its own slot                                      |
+| `systemd.verity_usr_options=root-hash-signature=…`         | the base64 PKCS#7 signature of that hash; the kernel checks it against its built-in db certificate, and IPE trusts only such volumes                           |
+| `rw`                                                       | the state partition is the root file system; without it the initrd mounts it read-only and the host key var fails to seal. `/usr` stays read-only by dm-verity |
+| `panic=10`                                                 | a kernel panic reboots after 10 s, so a release whose kernel panics loses a try ([Boot: Trial boot](../design/boot.md#trial-boot))                             |
+| `softlockup_panic=1 nmi_watchdog=panic watchdog_thresh=30` | a soft lockup (60 s) or a hard one (30 s, the NMI watchdog: `kernel.hardlockup_panic`) panics, so `panic=10` reboots a lockup the kernel sees                  |
+| `hung_task_panic=0`                                        | a task blocked for 120 s only warns: a slow disk on a loaded host does not panic a machine that works ([Boot: Trial boot](../design/boot.md#trial-boot))       |
+| `lsm=lockdown,yama,ipe,bpf`                                | the LSM stack order (capability is always first)                                                                                                               |
+| `lockdown=integrity`                                       | kernel lockdown level: blocks kexec, `/dev/mem` and similar                                                                                                    |
+| `ipe.enforce=1`                                            | IPE runs only the initramfs and verity volumes whose signature the kernel verified                                                                             |
+| `systemd.imds.import=0`                                    | systemd-imds-generator does not pull `systemd-imds-import.service` into the initrd, which has no network; `/imds` pulls it into the host, on a cloud only      |
+| `console=tty0 console=ttyS0,115200`                        | the local console and the serial line; output only, there is no getty                                                                                          |

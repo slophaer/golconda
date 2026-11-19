@@ -252,19 +252,21 @@ check_hwdb() {
   verdict "$1 (/usr/lib/udev/hwdb.bin answers for DMI, PCI and USB; none in /etc)" $RC
 }
 
-# check_hang_panic: a hang reboots (docs/design/boot.md, "Trial boot"). The lockup and hung task
-# detectors panic (the cmdline's *_panic=1), a panic reboots after 10 s, and PID 1 runs the hardware
-# watchdog with a 30 s timeout: QEMU's i6300esb (-device i6300esb), not softdog
+# check_hang_panic: a hang reboots (docs/design/boot.md, "Trial boot"). The lockup detectors panic
+# (the cmdline's softlockup_panic=1 and nmi_watchdog=panic) after 30 s (watchdog_thresh=30; a soft
+# lockup after 60 s), a hung task only warns (hung_task_panic=0), a panic reboots after 10 s, and
+# PID 1 runs the hardware watchdog with a 30 s timeout: QEMU's i6300esb (-device i6300esb), not
+# softdog
 check_hang_panic() {
   echo ""
   echo "=== hangs become panics; the watchdog ==="
-  S=$(guest 'for k in panic softlockup_panic hardlockup_panic hung_task_panic; do echo "$k=$(cat /proc/sys/kernel/$k)"; done' 2>&1) || true
+  S=$(guest 'for k in panic softlockup_panic hardlockup_panic hung_task_panic watchdog_thresh; do echo "$k=$(cat /proc/sys/kernel/$k)"; done' 2>&1) || true
   echo "$S"
   RC=0
-  for k in panic=10 softlockup_panic=1 hardlockup_panic=1 hung_task_panic=1; do
+  for k in panic=10 softlockup_panic=1 hardlockup_panic=1 hung_task_panic=0 watchdog_thresh=30; do
     echo "$S" | grep -qx "$k" || RC=1
   done
-  verdict "hang-panic-sysctls (kernel.panic=10; a soft or hard lockup and a hung task panic)" $RC
+  verdict "hang-panic-sysctls (kernel.panic=10; a lockup panics, after 30 s or 60 s; a hung task warns)" $RC
   W=$(guest 'd=/sys/class/watchdog/watchdog0; for f in identity state timeout; do echo "$f=$(cat $d/$f)"; done; systemctl show -p RuntimeWatchdogUSec -p RebootWatchdogUSec' 2>&1) || true
   echo "$W"
   RC=0

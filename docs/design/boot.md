@@ -129,9 +129,15 @@ counting needs a reboot to count, so `/base` reboots a boot that fails
 | the initrd fails (a unit fails into `emergency.target`)                                 | `golconda-emergency-reboot.service`, wanted by `emergency.target`: `SuccessAction=reboot`                                                          | every boot        |
 | the host fails into `emergency.target` (`local-fs.target`, `systemd-fsck-root.service`) | `golconda-emergency-reboot.service`, as in the initrd; the isolate also cancels the job of `boot-complete.target`, so the last row cannot reboot   | every boot        |
 | the initrd hangs                                                                        | `initrd.target`: `JobTimeoutSec=10min`, `JobTimeoutAction=reboot`                                                                                  | every boot        |
-| the kernel hangs: a soft or hard lockup, a task blocked for 120 s                       | `softlockup_panic=1 nmi_watchdog=panic hung_task_panic=1` on the UKI cmdline: the kernel's detectors panic, and `panic=10` reboots                 | every boot        |
+| the kernel hangs: a soft or hard lockup                                                 | `softlockup_panic=1 nmi_watchdog=panic watchdog_thresh=30` on the UKI cmdline: the kernel's detectors panic, and `panic=10` reboots                | every boot        |
 | PID 1 or the kernel stops for 30 s, also a hang no detector sees                        | the hardware watchdog, which PID 1 runs (`system.conf.d/golconda-watchdog.conf`: `RuntimeWatchdogSec=30s`, `RebootWatchdogSec=10min` for a reboot) | every boot        |
 | a health unit fails, or `boot-complete.target` is not reached in time                   | the generator's drop-in for `boot-complete.target`: `JobTimeoutSec=15min` and `OnFailure=golconda-trial-boot-failed.service`, which reboots        | a trial boot only |
+
+A hard lockup is a CPU with interrupts off for 30 s (`watchdog_thresh=30`), a soft lockup one that
+runs in the kernel without scheduling for twice as long. A task blocked for 120 s only logs a
+warning (`hung_task_panic=0`): a slow disk on a loaded host does not panic a machine that works, a
+machine that hangs whole is the watchdog's row, and a health unit that hangs is the deadline's. Both
+values are constants on the UKI cmdline, so they hold from the kernel's start.
 
 The first seven rows end a boot that nobody can reach: no getty runs, and sshd is not up. On a
 counted entry the reboot is the next try; on a blessed one it is a retry that may succeed (a disk

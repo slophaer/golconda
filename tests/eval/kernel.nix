@@ -207,9 +207,10 @@ in
     && hasInfix "lockdown=integrity" uki.cmdlineTemplate
     && hasInfix "ipe.enforce=1" uki.cmdlineTemplate
   ))
-  # a kernel hang becomes a panic, and panic=10 reboots (docs/design/boot.md, "Trial boot"): the
-  # detectors are built in and the cmdline makes each one panic
-  (check "kernel: the lockup and hung task detectors are built in and panic" (
+  # a kernel lockup becomes a panic, and panic=10 reboots (docs/design/boot.md, "Trial boot"): the
+  # detectors are built in, the cmdline makes both lockup detectors panic after 30 s (60 s for a
+  # soft lockup), and a hung task only warns
+  (check "kernel: the lockup and hung task detectors are built in, a lockup panics" (
     let
       uki = import ../../image/uki.nix;
       config = readFile ../../packages/kernel/golconda.config;
@@ -221,7 +222,8 @@ in
     && hasInfix " panic=10 " uki.cmdlineTemplate
     && hasInfix " softlockup_panic=1 " uki.cmdlineTemplate
     && hasInfix " nmi_watchdog=panic " uki.cmdlineTemplate
-    && hasInfix " hung_task_panic=1 " uki.cmdlineTemplate
+    && hasInfix " watchdog_thresh=30 " uki.cmdlineTemplate
+    && hasInfix " hung_task_panic=0 " uki.cmdlineTemplate
   ))
   # the hardware watchdogs are built in (no modules), softdog last: the Makefile's link order
   # registers it after the hardware drivers, so it is watchdog0 only on a machine without one
