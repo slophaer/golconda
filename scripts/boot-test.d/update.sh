@@ -294,14 +294,15 @@ reboot_trace() {
 # must reboot after 10 s, not the hardware watchdog after 30 s, and the fourth boot must run the old
 # release. The serial console shows the path of each try: after a PID 1 crash, PID 1's reboot(2)
 # prints "reboot: Restarting system"; after a panic, panic=10 prints "Rebooting in 10 seconds.."
-# (the watchdog resets the machine without a line; docs/design/kernel.md). The i6300esb records a
-# reset by its timeout in bootstatus (WDIOF_CARDRESET), which the fourth boot reads for the third
-# try
+# (the watchdog resets the machine without a line; docs/design/kernel.md). A panic try counts from
+# the unit's line: during an oops the 8250 console does not wait for the port lock, so PID 1's
+# status lines can split the kernel's panic lines. The i6300esb records a reset by its timeout in
+# bootstatus (WDIOF_CARDRESET), which the fourth boot reads for the third try
 test_fail_tries() {
   case $1 in
     panic)
       ARM=panic
-      DOWN="Kernel panic - not syncing: sysrq triggered crash"
+      DOWN="boot-test: panic ($NEXT_VERSION)"
       TRACE=DPKDPKDPK
       BY=panic=10
       ;;

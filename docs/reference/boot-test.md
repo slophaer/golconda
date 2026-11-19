@@ -251,8 +251,9 @@ keys). The update modes change this flow:
   The serial console shows the path. After each PID 1 crash the kernel prints
   `reboot: Restarting system`, because PID 1 calls `reboot(2)`. After each panic the kernel prints
   `Rebooting in 10 seconds..` (`panic=10`), and the next kernel starts with no `reboot(2)` line. A
-  reset by the watchdog prints no line. The fourth boot reads the i6300esb's `bootstatus`: it must
-  be 0, so the watchdog did not reset the third try.
+  reset by the watchdog prints no line. A panic's try counts from the unit's line: during an oops,
+  PID 1's status lines can split the kernel's lines on the serial port. The fourth boot reads the
+  i6300esb's `bootstatus`: it must be 0, so the watchdog did not reset the third try.
 - `--fail-blessed --later DIR` tests the [failed-boot counter](../design/boot.md#failed-boots). The
   activated release is blessed, then crashes PID 1 on each boot. After 3 boots the old release runs
   once, resets the count and marks the new release bad (`+0-3`). Then `DIR`
