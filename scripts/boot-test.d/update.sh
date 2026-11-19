@@ -288,23 +288,36 @@ reboot_trace() {
     | tr -d '\n' | sed 's/^[^D]*//'
 }
 
-# test_fail_tries KIND: the panic or PID 1 crash (pid1) row of the trial boot policy
-# (docs/design/boot.md, "Trial boot"). The candidate's boot-test-panic.service (sysrq c) or
-# boot-test-crash.service (kill -SEGV 1) fails each of three tries: panic=10 or CrashAction=reboot
-# must reboot after 10 s, not the hardware watchdog after 30 s, and the fourth boot must run the old
-# release. The serial console shows the path of each try: after a PID 1 crash, PID 1's reboot(2)
-# prints "reboot: Restarting system"; after a panic, panic=10 prints "Rebooting in 10 seconds.."
-# (the watchdog resets the machine without a line; docs/design/kernel.md). A panic try counts from
+# test_fail_tries KIND: the panic, PID 1 crash (pid1) or watchdog row of the trial boot policy
+# (docs/design/boot.md, "Trial boot"). The candidate's boot-test-panic.service (sysrq c),
+# boot-test-crash.service (kill -SEGV 1) or boot-test-watchdog.service (it freezes PID 1) fails each
+# of three tries: panic=10 or CrashAction=reboot must reboot after 10 s, not the hardware watchdog
+# after 30 s; a frozen PID 1 stops feeding the watchdog, which must reset the machine. The fourth
+# boot must run the old release. The serial console shows the path of each try: after a PID 1 crash,
+# PID 1's reboot(2) prints "reboot: Restarting system"; after a panic, panic=10 prints "Rebooting in
+# 10 seconds.."; a watchdog reset prints no line (docs/design/kernel.md). A panic try counts from
 # the unit's line: during an oops the 8250 console does not wait for the port lock, so PID 1's
 # status lines can split the kernel's panic lines. The i6300esb records a reset by its timeout in
-# bootstatus (WDIOF_CARDRESET), which the fourth boot reads for the third try
+# bootstatus (WDIOF_CARDRESET, 32), which the fourth boot reads for the third try
 test_fail_tries() {
+  MIN=8
+  STATUS=0
+  HOW="not the watchdog, at least 8 s after its failure"
   case $1 in
     panic)
       ARM=panic
       DOWN="boot-test: panic ($NEXT_VERSION)"
       TRACE=DPKDPKDPK
       BY=panic=10
+      ;;
+    watchdog)
+      ARM=watchdog
+      DOWN="boot-test: freeze PID 1 ($NEXT_VERSION)"
+      TRACE=DKDKDK
+      BY="the hardware watchdog"
+      STATUS=32
+      MIN=0
+      HOW="with no reboot line of the kernel's or PID 1's, bootstatus WDIOF_CARDRESET"
       ;;
     *)
       ARM=crash
@@ -344,16 +357,17 @@ test_fail_tries() {
   B=$(guest cat /sys/class/watchdog/watchdog0/bootstatus 2>&1) || true
   echo "the failures and reboots on the serial console: $R; the watchdog's bootstatus: $B"
   [ "$R" = "$TRACE" ] || RC=1
-  [ "$B" = 0 ] || RC=1
+  [ "$B" = "$STATUS" ] || RC=1
   # the 10 s wait: at least 8 s from each failure to the next kernel. A slow firmware start on a
-  # loaded host can add 20 s, so the time sets no upper bound; a missing reboot gives fewer delays
+  # loaded host can add 20 s, so the time sets no upper bound; a missing reboot gives fewer delays.
+  # The watchdog's reset has no bound: the trace and bootstatus show it, and load only delays it
   N=0
   for d in $DELAYS; do
     N=$((N + 1))
-    [ "$d" -ge 8 ] || RC=1
+    [ "$d" -ge "$MIN" ] || RC=1
   done
   [ "$N" = 3 ] || RC=1
-  verdict "fail-$1-rebooted (three tries, each counted and rebooted by $BY, not the watchdog, at least 8 s after its failure:$DELAYS s)" $RC
+  verdict "fail-$1-rebooted (three tries, each counted and rebooted by $BY, $HOW:$DELAYS s)" $RC
   fallback_after "$1"
   check_reboot_skipped "update-reboot-skipped-after-$1-fallback"
   activate_never
@@ -704,8 +718,14 @@ test_next() {
   [ "$RC" != 0 ] || test_verity_keyring
 
   check_reboot_window
-  if [ "$FAIL_PANIC" = 1 ] || [ "$FAIL_PID1" = 1 ]; then
-    if [ "$FAIL_PANIC" = 1 ]; then test_fail_tries panic; else test_fail_tries pid1; fi || return 1
+  if [ "$((FAIL_PANIC + FAIL_PID1 + FAIL_WATCHDOG))" -gt 0 ]; then
+    if [ "$FAIL_PANIC" = 1 ]; then
+      test_fail_tries panic
+    elif [ "$FAIL_PID1" = 1 ]; then
+      test_fail_tries pid1
+    else
+      test_fail_tries watchdog
+    fi || return 1
     check_no_failed no-failed-units-after-update
     return 0
   fi

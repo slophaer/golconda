@@ -11,6 +11,7 @@
 --secure-boot --ssh-test --tpm --timeout 900 --next @next --fail-initrd
 --secure-boot --ssh-test --tpm --timeout 900 --next @next --fail-panic
 --secure-boot --ssh-test --tpm --timeout 900 --next @next --fail-pid1
+--secure-boot --ssh-test --tpm --timeout 900 --next @next --fail-watchdog
 --secure-boot --ssh-test --tpm --timeout 1800 --next @next --fail-blessed --later @next=image-smoke-test-later
 --secure-boot --ssh-test --tpm --timeout 600 --next @next --tamper-index
 --secure-boot --ssh-test --tpm --timeout 600 --next @next=image-smoke-test-rotated --rotate

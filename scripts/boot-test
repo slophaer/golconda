@@ -3,7 +3,7 @@
 #          [--tpm [--secure-boot-off]] [--timeout SECONDS] [--allow-tcg]
 #          [--ssh-test [--esp-creds | --imds | --certify]] [--factory-reset]
 #          [--next DIR [--later DIR | --rotate | --tamper-index | --fail-health | --fail-initrd |
-#           --fail-panic | --fail-pid1 | --fail-blessed --later DIR]]
+#           --fail-panic | --fail-pid1 | --fail-watchdog | --fail-blessed --later DIR]]
 # Boot a Golconda image in QEMU (OVMF, KVM) and check it. Exit 0 when every check passes, else 1.
 #   (no flag)          the first boot: the markers on the serial console
 #   --ssh-test         log in over ssh and check the running system
@@ -19,7 +19,7 @@
 #   --later DIR        then install DIR into the first release's slot, boot it
 #   --rotate           DIR has a new db key: rotate db and dbx
 #   --tamper-index     a changed index, then a changed artifact: no update installs
-#   --fail-health, --fail-initrd, --fail-panic, --fail-pid1
+#   --fail-health, --fail-initrd, --fail-panic, --fail-pid1, --fail-watchdog
 #                      each try of DIR fails: the old release must boot after the third
 #   --fail-blessed --later DIR   the blessed release crashes: the failed-boot counter
 # Manual: docs/reference/boot-test.md
@@ -59,6 +59,7 @@ FAIL_BLESSED=0
 LATER=""
 FAIL_PANIC=0
 FAIL_PID1=0
+FAIL_WATCHDOG=0
 TAMPER_INDEX=0
 FACTORY_RESET=0
 ESP_CREDS=0
@@ -115,6 +116,7 @@ while [ $# -gt 0 ]; do
     --later) LATER="$2"; shift 2 ;;
     --fail-panic) FAIL_PANIC=1; shift ;;
     --fail-pid1) FAIL_PID1=1; shift ;;
+    --fail-watchdog) FAIL_WATCHDOG=1; shift ;;
     --tamper-index) TAMPER_INDEX=1; shift ;;
     --factory-reset) FACTORY_RESET=1; shift ;;
     --esp-creds) ESP_CREDS=1; shift ;;
@@ -210,7 +212,7 @@ if [ "$CERTIFY" = 1 ] && { [ "$SSH_TEST" = 0 ] || [ -n "$NEXT" ] || [ "$ESP_CRED
   exit 1
 fi
 if [ "$SECURE_BOOT_OFF" = 1 ] && { [ "$SECURE_BOOT" = 0 ] || [ "$TPM" = 0 ] || [ "$SSH_TEST" = 0 ] ||
-  [ "$((ROTATE + FAIL_HEALTH + FAIL_INITRD + FAIL_BLESSED + FAIL_PANIC + FAIL_PID1 + TAMPER_INDEX))" != 0 ] ||
+  [ "$((ROTATE + FAIL_HEALTH + FAIL_INITRD + FAIL_BLESSED + FAIL_PANIC + FAIL_PID1 + FAIL_WATCHDOG + TAMPER_INDEX))" != 0 ] ||
   [ "$AUTO_ENROL" = 1 ] || [ "$FACTORY_RESET" = 1 ] || [ "$CERTIFY" = 1 ] ||
   [ "$ESP_CREDS" = 1 ] || [ "$IMDS" = 1 ]; }; then
   echo "Error: --secure-boot-off needs --secure-boot, --tpm and --ssh-test, and takes --next alone of the update modes: not with --rotate, --fail-*, --tamper-index, --auto-enrol, --factory-reset, --certify, --esp-creds or --imds" >&2
@@ -227,14 +229,14 @@ if [ "$FAIL_BLESSED" = 1 ] && { [ -z "$NEXT" ] || [ -z "$LATER" ] || [ "$FAIL_HE
 fi
 if [ -n "$LATER" ]; then
   LATER_RELEASE=$(real_path "$LATER/disk")/release
-  if [ -z "$NEXT" ] || [ "$((ROTATE + TAMPER_INDEX + FAIL_HEALTH + FAIL_INITRD + FAIL_PANIC + FAIL_PID1 + SECURE_BOOT_OFF))" != 0 ] ||
+  if [ -z "$NEXT" ] || [ "$((ROTATE + TAMPER_INDEX + FAIL_HEALTH + FAIL_INITRD + FAIL_PANIC + FAIL_PID1 + FAIL_WATCHDOG + SECURE_BOOT_OFF))" != 0 ] ||
     [ ! -f "$LATER_RELEASE/SHA256SUMS" ]; then
     echo "Error: --later needs --next, alone or with --fail-blessed, and $LATER must have disk/release/SHA256SUMS" >&2
     exit 1
   fi
 fi
-if [ "$((FAIL_PANIC + FAIL_PID1))" -gt 0 ] && { [ -z "$NEXT" ] || [ "$((FAIL_PANIC + FAIL_PID1 + FAIL_BLESSED + FAIL_HEALTH + FAIL_INITRD + ROTATE + TAMPER_INDEX))" != 1 ]; }; then
-  echo "Error: --fail-panic and --fail-pid1 need --next, and each is a fallback of its own: not with each other, --fail-health, --fail-initrd, --fail-blessed, --rotate or --tamper-index" >&2
+if [ "$((FAIL_PANIC + FAIL_PID1 + FAIL_WATCHDOG))" -gt 0 ] && { [ -z "$NEXT" ] || [ "$((FAIL_PANIC + FAIL_PID1 + FAIL_WATCHDOG + FAIL_BLESSED + FAIL_HEALTH + FAIL_INITRD + ROTATE + TAMPER_INDEX))" != 1 ]; }; then
+  echo "Error: --fail-panic, --fail-pid1 and --fail-watchdog need --next, and each is a fallback of its own: not with each other, --fail-health, --fail-initrd, --fail-blessed, --rotate or --tamper-index" >&2
   exit 1
 fi
 if [ "$FAIL_HEALTH" = 1 ] && { [ -z "$NEXT" ] || [ "$ROTATE" = 1 ]; }; then

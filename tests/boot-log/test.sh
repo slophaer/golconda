@@ -121,6 +121,23 @@ Successfully installed 'http://169.254.169.2:8074/boot-test_20261031.2.usr.x.raw
 expect_status 1 "tamper: a download error is no refusal" refusal_evidence "Failed to download http://169.254.169.2:8074/SHA256SUMS: HTTP 404"
 expect_status 1 "tamper: an empty journal is no refusal" refusal_evidence ""
 
+# --fail-watchdog: from the unit's line to the next kernel no line says the kernel or PID 1
+# rebooted (reboot_trace: D K for each try). The reboot before the first freeze is not counted; a
+# panic (P), PID 1's reboot(2) (R) or systemd-shutdown (S) after a freeze is another path
+FREEZE='boot-test: freeze PID 1 (20261110.2)'
+KERNEL='[    0.000000] Linux version 6.18.60'
+trace_is() { [ "$(reboot_trace 0 "$FREEZE")" = "$1" ]; }
+printf '%s\n' '[    9.0] reboot: Restarting system' "$KERNEL" "[   20.1] $FREEZE" \
+  '[   41.0] rcu: INFO: rcu_preempt detected stalls on CPUs/tasks:' "$KERNEL" "[   21.0] $FREEZE" \
+  "$KERNEL" > "$WORK/watchdog.log"
+SERIAL_LOG=$WORK/watchdog.log
+expect_status 0 "watchdog: a reset after each freeze" trace_is DKDK
+for cause in 'Rebooting in 10 seconds..' 'reboot: Restarting system' 'systemd-shutdown[1]: Rebooting.'; do
+  printf '%s\n' "[   20.1] $FREEZE" "[   31.0] $cause" "$KERNEL" "[   21.0] $FREEZE" "$KERNEL" \
+    > "$WORK/watchdog.log"
+  expect_status 1 "watchdog: '$cause' is no hardware reset" trace_is DKDK
+done
+
 # check_clock after every later boot: the TPM reboot, the update (--next), the fallback
 # (--fail-health) and the refused update (--tamper-index) each report their own marker, read
 # from this boot's journal only (journalctl -b). A stub guest answers with FAKE_JOURNAL for
@@ -153,7 +170,7 @@ for f in check_unsealed check_enable_kept check_no_failed check_hwdb check_units
   check_reboot_window activate_soon activate_never check_reboot_skipped; do
   eval "$f() { :; }"
 done
-TPM=1 TAMPER_INDEX=0 FAIL_HEALTH=0 FAIL_INITRD=0 FAIL_BLESSED=0 FAIL_PANIC=0 FAIL_PID1=0 ROTATE=0 BOOT_ID=first-boot FIRST_BOOT_ID=first-boot
+TPM=1 TAMPER_INDEX=0 FAIL_HEALTH=0 FAIL_INITRD=0 FAIL_BLESSED=0 FAIL_PANIC=0 FAIL_PID1=0 FAIL_WATCHDOG=0 ROTATE=0 BOOT_ID=first-boot FIRST_BOOT_ID=first-boot
 OLD_VERSION=20261110.1 NEXT_VERSION=20261110.2 UPDATE_ADDR=169.254.169.2 HTTP_PORT=8074
 NEXT_RELEASE=$WORK/release HTTP_LOG=$WORK/http.log
 mkdir -p "$NEXT_RELEASE"

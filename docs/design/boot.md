@@ -167,10 +167,11 @@ are not covered.
 
 In QEMU, with no reboot from the harness, `--next --fail-health` proves the health row,
 `--next --fail-initrd` the initrd failure row, `--next --fail-panic` the panic row and
-`--next --fail-pid1` the crash row ([What is proven](../proven.md)). The initrd hang row and the
-host `emergency.target` row have no test of their own *(being built)*. Of the two hang rows, every
-`--ssh-test` boot proves the settings (`hang-panic-sysctls`, `watchdog-armed`); no test hangs the
-kernel or lets the watchdog expire *(being built)*.
+`--next --fail-pid1` the crash row, and `--next --fail-watchdog` the watchdog row: PID 1 is frozen,
+and the i6300esb resets the machine ([What is proven](../proven.md)). The initrd hang row and the
+host `emergency.target` row have no test of their own *(being built)*. Of the lockup row, every
+`--ssh-test` boot proves the settings (`hang-panic-sysctls`); no test locks a CPU up *(being
+built)*.
 
 ### Failed boots
 

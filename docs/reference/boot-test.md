@@ -76,6 +76,7 @@ PATH=$(nix-build -A packages.x86_64-linux.age --no-out-link)/bin:$PATH \
 | `--fail-health`               | each try of the new release fails a health unit                                                                                | `--next`                               | the other update modes                                                                  |
 | `--fail-initrd`               | each try of the new release fails in the initrd                                                                                | `--next`                               | the other update modes                                                                  |
 | `--fail-panic`, `--fail-pid1` | each try of the new release panics, or PID 1 crashes                                                                           | `--next`                               | the other update modes                                                                  |
+| `--fail-watchdog`             | each try of the new release freezes PID 1, so the hardware watchdog resets the machine                                         | `--next`                               | the other update modes                                                                  |
 | `--later DIR`                 | after the recovery paths, install the third release `DIR` into the first release's slot and boot it                            | `--next`                               | `--secure-boot-off`, the update modes but `--fail-blessed`                              |
 | `--fail-blessed --later DIR`  | the blessed new release crashes PID 1 on each boot; `DIR` is a third release                                                   | `--next`                               | the other update modes                                                                  |
 
@@ -97,7 +98,7 @@ QEMU runs the q35 machine with:
   Hetzner's metadata address, `169.254.169.254`, on the guest's link. The gateway, `169.254.169.2`,
   is the update source of the test images. QEMU's DHCP server offers the host name `dhcp-test`. The
   ssh port is forwarded to `127.0.0.1`;
-- an i6300esb watchdog, which PID 1 arms;
+- an i6300esb watchdog, which PID 1 arms; when it fires, QEMU resets the guest;
 - the serial console in a log file, `-display none`, and no monitor or QMP socket. The harness
   reaches the guest through the serial log and ssh only;
 - `-no-reboot`, unless `--tpm`, `--next`, `--factory-reset` or `--auto-enrol` is given: those reboot
@@ -256,6 +257,13 @@ keys). The update modes change this flow:
   reset by the watchdog prints no line. A panic's try counts from the unit's line: during an oops,
   PID 1's status lines can split the kernel's lines on the serial port. The fourth boot reads the
   i6300esb's `bootstatus`: it must be 0, so the watchdog did not reset the third try.
+- `--fail-watchdog` arms `boot-test-watchdog.service`, which freezes PID 1 with the cgroup freezer
+  (`init.scope/cgroup.freeze`), so PID 1 stops feeding the i6300esb. A busy loop at real-time
+  priority on every CPU does not stop PID 1: the kernel's fair server still gives it 50 ms of each
+  second. QEMU resets the guest when the i6300esb fires (`-action watchdog=reset`). Between the
+  unit's line and the next kernel, no line may say that the kernel or PID 1 rebooted, and the fourth
+  boot's `bootstatus` must be 32 (`WDIOF_CARDRESET`): the watchdog reset the third try. The time to
+  the reset has no bound, as a loaded host only delays it.
 - `--fail-blessed --later DIR` tests the [failed-boot counter](../design/boot.md#failed-boots). The
   activated release is blessed, then crashes PID 1 on each boot. After 3 boots the old release runs
   once, resets the count and marks the new release bad (`+0-3`). Then `DIR`

@@ -87,7 +87,8 @@ Proven: the rows of [What is proven](../proven.md) that name `sysupdate-installe
 
 - A fresh disk has one slot. There the loader still boots the exhausted entry, so after three
   reboots the machine stays up and unblessed until you fill the other slot.
-- An initrd that hangs has no test of its own, and a kernel that hangs needs a hardware watchdog
+- An initrd that hangs has no test of its own. The hardware watchdog's reset
+  (`--next --fail-watchdog`) ran on QEMU's i6300esb only
   ([Boot: Trial boot](../design/boot.md#trial-boot)).
 - The machine goes back to an older release only by a fallback: boot counting, or the failed-boot
   count ([Boot: Failed boots](../design/boot.md#failed-boots)). `golconda release` refuses a version
