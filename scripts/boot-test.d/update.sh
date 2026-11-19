@@ -276,6 +276,64 @@ time_reboots() {
   return 1
 }
 
+# test_hung_task MARK: a hung task warns and reboots nothing (docs/design/boot.md, "Trial boot").
+# The candidate, which the reboot timer started after byte MARK of the serial log, runs the test
+# image's boot-test-hung-task.service: a writer blocks on a frozen file system, and the kernel,
+# with kernel.hung_task_timeout_secs=10 and hung_task_panic=0, logs it. 40 s later on the guest's
+# clock, past the hardware watchdog's 30 s, the same boot must run, completed, with the writer still
+# blocked. Then the harness thaws the file system, the writer ends, and its unit succeeds. The waits
+# count the guest's time and end early only when QEMU stops, so a loaded host only makes them longer
+test_hung_task() {
+  echo ""
+  echo "=== a hung task on $NEXT_VERSION: the kernel warns, and nothing reboots ==="
+  RC=0
+  wait_for 600 hung_pid || RC=1
+  W="INFO: task sh:${P:-0} blocked for more than "
+  [ "$RC" != 0 ] || wait_for 600 hung_warned "$1" "$W" || RC=1
+  tail -c +"$(($1 + 1))" "$SERIAL_LOG" | tr -d '\033\r' | grep -a "boot-test: hung task\|blocked for more than" || true
+  verdict "fail-hung-task-warned (the kernel logged \"${W}N seconds\" for the writer)" $RC
+  T0=$(guest_uptime) || T0=""
+  RC=0
+  { [ -n "$T0" ] && wait_for 600 uptime_past $((T0 + 40)); } || RC=1
+  B=$(guest cat /proc/sys/kernel/random/boot_id 2>/dev/null) || true
+  S=$(guest systemctl is-active boot-complete.target boot-test-hung-task.service 2>&1) || true
+  echo "guest uptime ${T0:-?} s at the warning, $(guest_uptime || echo ?) s now; $(echo "$S" | tr '\n' ' ')"
+  [ "$B" = "$BOOT_ID" ] || RC=1
+  [ "$(echo "$S" | grep -cx active)" = 2 ] || RC=1
+  [ "$(serial_count "$1" "Linux version")" = 1 ] || RC=1
+  [ "$(serial_count "$1" "Kernel panic")" = 0 ] || RC=1
+  verdict "fail-hung-task-no-reboot (40 s of the guest's clock after the warning the same boot runs, boot-complete.target is active, the writer still blocks, one kernel and no panic since the activation)" $RC
+  RC=0
+  guest fsfreeze -u /run/boot-test-hung || RC=1
+  wait_for 300 unit_inactive boot-test-hung-task.service || RC=1
+  R=$(guest systemctl show -p ActiveState -p Result boot-test-hung-task.service 2>&1) || true
+  echo "$R"
+  echo "$R" | grep -qx ActiveState=inactive || RC=1
+  echo "$R" | grep -qx Result=success || RC=1
+  guest "cat /run/boot-test-hung/file" 2>/dev/null | grep -qx written || RC=1
+  guest "rm /var/lib/boot-test/hung-task-$NEXT_VERSION && umount /run/boot-test-hung" || RC=1
+  verdict "fail-hung-task-thawed (after fsfreeze -u the writer wrote its file and its unit succeeded)" $RC
+}
+
+# hung_pid: P gets the PID of the guest's writer, the main process of boot-test-hung-task.service
+hung_pid() {
+  P=$(guest systemctl show -p MainPID --value boot-test-hung-task.service 2>/dev/null) || P=0
+  [ "${P:-0}" != 0 ]
+}
+
+# hung_warned MARK LINE: the serial log after byte MARK holds LINE
+hung_warned() { [ "$(serial_count "$1" "$2")" -ge 1 ]; }
+
+# guest_uptime: the guest's uptime in whole seconds; uptime_past S: it is S or more
+guest_uptime() { guest cut -d. -f1 /proc/uptime 2>/dev/null; }
+uptime_past() {
+  U=$(guest_uptime) || return 1
+  [ -n "$U" ] && [ "$U" -ge "$1" ]
+}
+
+# unit_inactive UNIT: the guest's UNIT is inactive
+unit_inactive() { [ "$(guest systemctl show -p ActiveState --value "$1" 2>/dev/null)" = inactive ]; }
+
 # reboot_trace MARK DOWN: one letter for each event in the serial log after byte MARK, from the
 # first DOWN on: D the failure DOWN, S systemd-shutdown's reboot, R the kernel's "reboot: Restarting
 # system" (a reboot(2) call), P the kernel's "Rebooting in 10 seconds.." (panic=10), K a new kernel
@@ -743,6 +801,12 @@ test_next() {
   fi
   # an operator's enable link, made before the update, for check_enable_kept
   guest systemctl enable "$ENABLE_UNIT" || true
+  if [ "$FAIL_HUNG_TASK" = 1 ]; then
+    RC=0
+    guest "mkdir -p /var/lib/boot-test && touch /var/lib/boot-test/hung-task-$NEXT_VERSION && sync" || RC=1
+    verdict "fail-hung-task-armed (/var/lib/boot-test/hung-task-$NEXT_VERSION)" $RC
+  fi
+  MARK=$(wc -c < "$SERIAL_LOG")
   echo "Waiting for the reboot timer to activate $NEXT_VERSION..."
   activate_soon || true
   if ! wait_for_ssh "$BOOT_ID"; then
@@ -755,6 +819,7 @@ test_next() {
   verdict "boots-next ($OLD_VERSION -> $V)" $RC
   check_reboot_skipped update-reboot-skipped
   activate_never
+  [ "$FAIL_HUNG_TASK" = 0 ] || test_hung_task "$MARK"
   if [ "$FAIL_BLESSED" = 1 ]; then
     # the run ends on a halted machine: no loader and no recovery checks
     test_fail_blessed

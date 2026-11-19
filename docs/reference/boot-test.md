@@ -77,6 +77,7 @@ PATH=$(nix-build -A packages.x86_64-linux.age --no-out-link)/bin:$PATH \
 | `--fail-initrd`               | each try of the new release fails in the initrd                                                                                | `--next`                               | the other update modes                                                                  |
 | `--fail-panic`, `--fail-pid1` | each try of the new release panics, or PID 1 crashes                                                                           | `--next`                               | the other update modes                                                                  |
 | `--fail-watchdog`             | each try of the new release freezes PID 1, so the hardware watchdog resets the machine                                         | `--next`                               | the other update modes                                                                  |
+| `--fail-hung-task`            | a task of the new release blocks: the kernel must warn, and nothing may reboot                                                 | `--next`                               | the other update modes                                                                  |
 | `--later DIR`                 | after the recovery paths, install the third release `DIR` into the first release's slot and boot it                            | `--next`                               | `--secure-boot-off`, the update modes but `--fail-blessed`                              |
 | `--fail-blessed --later DIR`  | the blessed new release crashes PID 1 on each boot; `DIR` is a third release                                                   | `--next`                               | the other update modes                                                                  |
 
@@ -264,6 +265,14 @@ keys). The update modes change this flow:
   unit's line and the next kernel, no line may say that the kernel or PID 1 rebooted, and the fourth
   boot's `bootstatus` must be 32 (`WDIOF_CARDRESET`): the watchdog reset the third try. The time to
   the reset has no bound, as a loaded host only delays it.
+- `--fail-hung-task` arms `boot-test-hung-task.service` before the activation. It sets
+  `kernel.hung_task_timeout_secs` to 10, loop-mounts an ext4 image in `/run`, freezes it and blocks
+  a writer on it (`/run`, not `/`: a frozen root would stop the journal and the logins). The kernel
+  must log `blocked for more than` for the writer. 40 s later on the guest's clock, past the
+  watchdog's 30 s, the same boot must run, `boot-complete.target` active and the writer still
+  blocked, with one kernel and no panic since the activation. After `fsfreeze -u` the writer ends
+  and its unit succeeds. The waits count the guest's time, so a loaded host only makes them longer.
+  The rest of the run is `--next`'s.
 - `--fail-blessed --later DIR` tests the [failed-boot counter](../design/boot.md#failed-boots). The
   activated release is blessed, then crashes PID 1 on each boot. After 3 boots the old release runs
   once, resets the count and marks the new release bad (`+0-3`). Then `DIR`
