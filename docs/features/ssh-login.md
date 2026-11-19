@@ -14,7 +14,7 @@ the machine and gives a revocation path.
   carry to log in as that user.
 - **The machine's identity** is its host key, a local var, plus an optional host certificate and key
   revocation list. Both are admin vars (the CA pushes them). sshd reads them from its credentials
-  directory, never from the image ([Secrets as vars](vars.md)).
+  directory ([Secrets as vars](vars.md)).
 - **No password path exists.** The generated `sshd_config` fixes `PasswordAuthentication no`,
   `KbdInteractiveAuthentication no`, `ChallengeResponseAuthentication no` and
   `PermitRootLogin prohibit-password`. No option turns them on.
@@ -48,7 +48,8 @@ sequenceDiagram
 ```toml
 ["/services/sshd"]
 trustedUserCAKeys = ["ssh-ed25519 AAAA... user-ca"]
-revokedKeys = true       # the admin var sshd-revoked-keys (file krl); until it is pushed, certificates are refused
+revokedKeys = true       # the admin var sshd-revoked-keys (file krl)
+imageRevokedKeys = "U1NIS1JMCgA..."  # base64 -w0 fleet.krl: sshd's KRL until the push
 hostCertificate = true   # the admin var sshd-host-cert (file cert); until it is pushed, the plain host key
 ["/services/sshd".principals]
 root = ["alice@example.com"]
@@ -57,7 +58,10 @@ root = ["alice@example.com"]
 `authorizedKeys` lists plain public keys for root. Use it to bootstrap: with `hostCertificate` on,
 plain keys work only until the host certificate is sealed. `revokedKeys` and `hostCertificate`
 default to `false`. `hostCertificate` and `principals` need `trustedUserCAKeys`: without a user CA,
-the build fails.
+the build fails. Until the KRL is pushed, and after a factory reset, sshd reads the CA's KRL that
+the image carries (`imageRevokedKeys`), so certificates log in unless it names them. Without
+`imageRevokedKeys` it reads a list that refuses every certificate of the user CAs
+([Trust: Revocation](../design/trust.md#revocation)).
 
 A new machine gets its host certificate in its first release. Turn both options on, boot, and run
 one command from the deploy host. It needs a plain key that logs in (`authorizedKeys`, or the
@@ -86,12 +90,14 @@ identity ([Scope: Later](../design/scope.md#later)): step-ca signs user certific
 ## Status
 
 Proven: the rows of [What is proven](../proven.md) that name `ssh-login`, `cert-login`,
-`sshd-golconda-only`, `host-cert-presented` and `certify-one-release`. The limits are below.
+`sshd-golconda-only`, `host-cert-presented`, `cert-revoked-refused-before-certify` and
+`certify-one-release`. The limits are below.
 
 ## Limits
 
-- **Before the push** only plain keys log in, and no list checks them; the host is checked only by
-  the console's fingerprint, not by a certificate.
+- **Before the push** sshd checks keys against the image's KRL, which is as current as the image, or
+  without `imageRevokedKeys` refuses every certificate; the host is checked only by the console's
+  fingerprint, not by a certificate.
 - **After the push** no plain key logs in. Certificate login can break (the CA is lost, a KRL
   refuses every certificate). Recovery is then the other slot, if its release has `hostCertificate`
   off and someone chooses it at the console's boot menu. The other way is a reflash, which wipes the

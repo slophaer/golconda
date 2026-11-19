@@ -152,7 +152,9 @@ at all. pam_unix is built with `pam_unix-try-getspnam`, so that root (sshd's acc
 `/etc/shadow` itself (repkgs `pkgs/li/linux-pam`).
 
 The machine's own identity is its host key (a local var), a host certificate and a key revocation
-list (both admin vars). sshd reads them from its credentials directory, never from the image.
+list (both admin vars). sshd reads them from its credentials directory. Until the KRL is pushed, PID
+1 puts a fallback there: the image's KRL, or a list that names the user CAs
+([Revocation](#revocation)).
 
 Operators as `/usr/lib/userdb/*.user` records, with `run0` gated by polkit on a few action ids (a
 root-less image), are *(later)*. So is one CA for SSH and X.509 with TPM device attestation
@@ -163,10 +165,11 @@ root-less image), are *(later)*. So is one CA for SSH and X.509 with TPM device 
 A new machine goes from its first boot to certificate login in one release, with `hostCertificate`
 and `revokedKeys` on from the start. At first boot the machine makes and seals its host key and
 writes the fingerprint to the journal and the console. Until the push, sshd presents the plain host
-key. PID 1 gives sshd a fallback revocation list under the same credential id (`SetCredential=`).
-That list names the user CAs of `trustedUserCAKeys`, so sshd refuses every certificate of those CAs,
-and plain keys log in. `golconda vars certify HOST` then checks the fingerprint against the console
-line and signs the host key with the host CA key. It pushes the KRL and the host certificate
+key. PID 1 gives sshd a fallback revocation list under the same credential id
+([Revocation](#revocation)). With the image's KRL, certificates log in unless it names them; without
+it, sshd refuses every certificate of the user CAs. Plain keys log in. `golconda vars certify HOST`
+then checks the fingerprint against the console line and signs the host key with the host CA key. It
+pushes the KRL and the host certificate
 ([Commands: golconda vars certify](../reference/cli.md#golconda-vars-certify)). The machine seals
 both, and the push restarts sshd (`KillMode=process` keeps the push's own session). sshd then
 presents the certificate, checks the KRL and refuses every plain key. After a new `sshd-hostkey`,
@@ -179,7 +182,7 @@ sequenceDiagram
   participant O as operator
   participant C as host CA key (file or token)
   M->>M: make and seal the host key, fingerprint on the console
-  M->>M: start sshd with the fallback list and the plain host key
+  M->>M: start sshd with the fallback KRL and the plain host key
   O->>M: golconda vars certify: ssh with the bootstrap key, read the host key
   O->>O: compare the fingerprint with the console line
   O->>C: ssh-keygen -s: sign the host key
@@ -210,12 +213,6 @@ without a login takes the boot menu at the console
 it the sealed vars: the machine needs a new host certificate after its first boot. A plain key does
 not open a way back in.
 
-Revocation is never off: sshd always reads a list. Before the push, that list refuses more than any
-real KRL could: every certificate of the user CAs, because the machine cannot know yet which of them
-are revoked. What logs in then is what the release already trusts without a CA. That is the plain
-keys of the image or of the provisioning credentials, which are the operator's own. A plain key is
-checked against no list until the push, and refused after it.
-
 The CA must sign the machine's key and no other. Before the push the client cannot check the host.
 There is no certificate yet, so a machine in the middle could hand over its own key for signing. The
 console line is the check, on a channel that the network cannot change (the serial console, a
@@ -236,6 +233,26 @@ The signer is `ssh-keygen`, with the host CA key in a file or on a token. A host
 signed once per machine and per renewal, offline like the release keys, and needs no CA service. The
 CLI tests sign with a real `ssh-keygen` from a key file and from a key on a SoftHSM token; no run
 with a YubiKey has been done. Signing host certificates through step-ca's API is *(later)*.
+
+### Revocation
+
+Revocation is never off: with `revokedKeys` on, sshd always reads a list, the credential
+`sshd-revoked-keys.krl` (`-o RevokedKeys=`). The pushed admin var wins. Until it is pushed, and
+after a factory reset, which deletes it, PID 1 gives a fallback under the same id
+(`SetCredential=`):
+
+- With `imageRevokedKeys`, the image's KRL. A KRL belongs to the user CA, so it is the same for
+  every machine, and the image carries the one of its build (base64 in the configuration, one `\xNN`
+  escape a byte in `sshd.service`). Certificates log in unless it names them. A revocation newer
+  than the image takes a push or a new release.
+- Without it, a flat list that names the user CAs of `trustedUserCAKeys`: it refuses more than any
+  real KRL could, every certificate of those CAs, because the machine cannot know which of them are
+  revoked. What logs in then is what the release trusts without a CA: the plain keys of the image or
+  of the provisioning credentials.
+
+Proven by boot with `--certify` and `--certify --factory-reset` ([What is proven](../proven.md)). No
+boot test boots an image that has `revokedKeys` on and no `imageRevokedKeys`; evaluation checks the
+text of the list of the user CAs (`tests/eval/sshd.nix`).
 
 ## The ESP
 

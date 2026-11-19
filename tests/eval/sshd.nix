@@ -148,6 +148,7 @@ in
     sshdOptions == [
       "authorizedKeys"
       "hostCertificate"
+      "imageRevokedKeys"
       "port"
       "principals"
       "revokedKeys"
@@ -229,6 +230,47 @@ in
     && !hasInfix "Include" sshdConfig
     && !(system.files ? "${sshdDir}/certified.conf")
     && !hasInfix "golconda-sshd-certified" unit
+  ))
+  # the image's KRL (owner, 2026-11-15): a KRL belongs to the CA, so the image carries the one of
+  # its build, and until a KRL is pushed sshd reads it instead of the list of the user CAs. It
+  # is binary (its magic ends in a NUL), so it comes as base64 and the unit has one \xNN per byte.
+  (check "sshd: with imageRevokedKeys, the image's KRL is the fallback, not the CA list" (
+    let
+      u =
+        (composeWith {
+          "/services/sshd" = {
+            trustedUserCAKeys = [ "ssh-ed25519 AAAA user-ca" ];
+            revokedKeys = true;
+            # "SSHKRL\n\0" and one more byte: the magic is all the type checks
+            imageRevokedKeys = "U1NIS1JMCgAB";
+          };
+        }).units."sshd.service";
+    in
+    hasInfix "\nSetCredential=sshd-revoked-keys.krl:\\x53\\x53\\x48\\x4b\\x52\\x4c\\x0a\\x00\\x01\n" u
+    && hasInfix "LoadCredentialEncrypted=sshd-revoked-keys.krl\n" u
+    && hasInfix " -o RevokedKeys=%d/sshd-revoked-keys.krl" u
+    && !hasInfix "user-ca" u
+  ))
+  (check "sshd: imageRevokedKeys is an OpenSSH KRL in base64, and needs revokedKeys" (
+    let
+      krl = imageRevokedKeys: {
+        trustedUserCAKeys = [ "ssh-ed25519 AAAA user-ca" ];
+        revokedKeys = true;
+        inherit imageRevokedKeys;
+      };
+    in
+    !(sshdThrows (krl "U1NIS1JMCgAB"))
+    # not base64
+    && sshdThrows (krl "U1NIS1JMCgA")
+    && sshdThrows (krl "U1NIS1JMCgAB\n")
+    # base64, but no KRL: a text list of keys ("ssh-ed25519 AAAA")
+    && sshdThrows (krl "c3NoLWVkMjU1MTkgQUFBQQ==")
+    && sshdThrows (krl 1)
+    # the image's KRL is a fallback of the credential that revokedKeys turns on
+    && sshdThrows {
+      trustedUserCAKeys = [ "ssh-ed25519 AAAA user-ca" ];
+      imageRevokedKeys = "U1NIS1JMCgAB";
+    }
   ))
   (check "sshd: without revokedKeys no fallback list" (
     !hasInfix "SetCredential=" unit

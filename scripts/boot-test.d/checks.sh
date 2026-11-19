@@ -173,28 +173,38 @@ test_certify() {
 }
 
 # test_certify_after_reboot: the sealed certificate and KRL unseal after a reboot (--certify --tpm):
-# cert-admin logs in (the image's fallback list would refuse it), the rotated KRL still refuses the
-# good certificate, and plain keys stay refused
+# cert-admin logs in with the host certificate checked, the rotated KRL still refuses the good
+# certificate (the pushed list, not the image's, which does not name it), and plain keys stay
+# refused
 test_certify_after_reboot() {
   echo ""
   echo "=== certificates after the reboot ==="
   RC=0
   host_cert_login || RC=1
-  verdict "host-cert-presented-after-reboot (cert-admin logs in: the pushed KRL, not the fallback)" $RC
-  expect_login "cert-revoked-refused-after-reboot (the rotated KRL names serial 1)" ok 1
+  verdict "host-cert-presented-after-reboot (cert-admin logs in, the host certificate checked)" $RC
+  expect_login "cert-revoked-refused-after-reboot (the rotated KRL names serial 1, the image's does not)" ok 1
   check_plain_refused bootstrap-key-refused-after-reboot
 }
 
+# check_krl_refused NAME: cert-revoked (serial 3) is refused, and sshd's journal says the revocation
+# list in its credentials directory refused it: the image's KRL (imageRevokedKeys) or the pushed one
+check_krl_refused() {
+  RC=0
+  if cert_login revoked 2>/dev/null; then RC=1; fi
+  REFUSED=$(guest journalctl -b -u sshd.service -o cat --no-pager 2>/dev/null |
+    grep "revoked by file /run/credentials/sshd.service/sshd-revoked-keys.krl") || RC=1
+  echo "$REFUSED" | tail -2
+  verdict "$1 (the KRL names serial 3; sshd's journal names the credential)" $RC
+}
+
 # test_recertify_after_reset: --certify --factory-reset (docs/features/factory-reset.md). The reset
-# took the sealed certificate and KRL, and the machine made a new host key, so the harness logs in
-# with a plain key; `golconda vars certify` refuses the first boot's fingerprint and certifies the
-# new one.
+# took the sealed certificate and KRL, and the machine made a new host key. Until a KRL is pushed
+# again sshd reads the image's KRL: the certificate it names is refused. `golconda vars certify`
+# refuses the first boot's fingerprint and certifies the new one.
 test_recertify_after_reset() {
   echo ""
-  echo "=== after the factory reset: golconda vars certify again ==="
-  RC=0
-  if cert_login ok 2>/dev/null; then RC=1; fi
-  verdict "cert-refused-after-reset (revokedKeys: the KRL went with the state, the fallback list refuses the user CA)" $RC
+  echo "=== after the factory reset: the image's KRL, then golconda vars certify again ==="
+  check_krl_refused cert-revoked-refused-after-reset
   sleep 6
   RC=0
   if (cd "$WORKDIR" && vars certify -i age.key boot-test --ca-key ssh/host-ca --principal localhost \

@@ -161,11 +161,13 @@ reachable. `--imds --next` checks both in one run.
 `--certify` runs on `image-smoke-test-next`, which has `hostCertificate` and `revokedKeys` on from
 its first boot ([Trust: Host certificate](../design/trust.md#host-certificate)). The harness passes
 a second plain key, the bootstrap key, as the SMBIOS credential `ssh.authorized_keys.root`. Before
-the push, the bootstrap key logs in and a good certificate is refused. Then `golconda vars certify`
-refuses a wrong fingerprint, and with the console's fingerprint it signs the host key with
-`tests/fixtures/snakeoil-host-ca` and pushes the host certificate and a KRL. The same boot must then
-present the certificate and refuse both plain keys. From the push on, the harness logs in with its
-own certificate, `cert-admin`. With `--tpm` the certificate and the KRL hold after the reboot.
+the push, the bootstrap key logs in, and sshd reads the image's KRL
+(`tests/fixtures/snakeoil-user-ca-krl.b64`, serial 3): a good certificate logs in, and the
+certificate with serial 3 is refused. Then `golconda vars certify` refuses a wrong fingerprint, and
+with the console's fingerprint it signs the host key with `tests/fixtures/snakeoil-host-ca` and
+pushes the host certificate and a KRL. The same boot must then present the certificate and refuse
+both plain keys. From the push on, the harness logs in with its own certificate, `cert-admin`. With
+`--tpm` the certificate and the KRL hold after the reboot.
 
 ## Secure Boot
 
@@ -276,9 +278,10 @@ QEMU's.
 ([Updates: Factory reset](../design/updates.md#factory-reset)). On the reset boot the marker must be
 gone, the machine id new, firstboot run again, and the boot entries and the version the same. The
 reset writes the state partition only. The console names a new host key, and sshd presents it. A
-user certificate logs in. With `--certify` the certificate is refused, because the KRL went with the
-state; then `golconda vars certify` refuses the old fingerprint and certifies the new one. With
-`--esp-creds` the generated key is refused and the host name is gone.
+user certificate logs in. With `--certify` the pushed KRL went with the state, and sshd reads the
+image's KRL again: the certificate with serial 3 is refused. Then `golconda vars certify` refuses
+the old fingerprint and certifies the new one. With `--esp-creds` the generated key is refused and
+the host name is gone.
 
 The test does not prove a reset with an update installed (the test image has one `/usr` slot), a TPM
 clear, or the console path on a machine whose ssh is down.

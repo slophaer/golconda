@@ -105,19 +105,15 @@ test_ssh() {
   echo ""
   echo "=== certificate login ==="
   if [ "$CERTIFY" = 1 ]; then
-    # --certify: nothing is pushed yet. The plain bootstrap key from the SMBIOS credential logs in;
-    # a good certificate is refused, and sshd says the revocation list refused it: the image's
-    # fallback list names the user CA until a KRL is pushed (modules/services/sshd)
+    # --certify: nothing is pushed yet. The plain bootstrap key from the SMBIOS credential logs in.
+    # The revocation list is the image's KRL (imageRevokedKeys, modules/services/sshd), which names
+    # serial 3: a good certificate logs in, and the revoked one is refused by that list
     RC=0
     # shellcheck disable=SC2086
     ssh $SSH_OPTS $NO_HOSTKEY_CHECK -o IdentitiesOnly=yes -i "$WORKDIR/ssh/bootstrap" root@localhost true || RC=1
     verdict "bootstrap-key-login (the plain key of the SMBIOS credential ssh.authorized_keys.root)" $RC
-    RC=0
-    if cert_login ok 2>/dev/null; then RC=1; fi
-    REFUSED=$(guest journalctl -b -u sshd.service -o cat --no-pager 2>/dev/null |
-      grep "revoked by file /run/credentials/sshd.service/sshd-revoked-keys.krl") || RC=1
-    echo "$REFUSED" | tail -2
-    verdict "cert-refused-before-certify (no KRL pushed: the fallback list revokes the user CA)" $RC
+    expect_login "cert-login-before-certify (no KRL pushed: the image's KRL does not name the certificate)" ok 0
+    check_krl_refused cert-revoked-refused-before-certify
   else
     expect_login "cert-login (a certificate from the trusted user CA, principal boot-test-admin)" ok 0
   fi
@@ -386,10 +382,8 @@ test_factory_reset() {
   { [ -n "$RESET_FP" ] && [ "$RESET_FP" = "$SERVED_FP" ] && [ "$RESET_FP" != "$FIRST_FP" ]; } || RC=1
   verdict "hostkey-new-on-console-after-reset (the reset boot's console names the new key sshd presents)" $RC
   # the user CA is in the image, so a certificate logs in with no state; with revokedKeys
-  # (--certify) the fallback list refuses it until the KRL is pushed again (test_recertify_after_reset)
-  if [ "$CERTIFY" = 0 ]; then
-    expect_login "cert-login-after-reset (a certificate of the image's user CA, no plain key needed)" ok 0
-  fi
+  # (--certify) sshd reads the image's KRL until a KRL is pushed again (test_recertify_after_reset)
+  expect_login "cert-login-after-reset (a certificate of the image's user CA, no plain key needed)" ok 0
 
   echo ""
   echo "=== serial log of the reset boot (last 100 lines) ==="

@@ -32,6 +32,12 @@
     minimum = 1;
     maximum = 65535;
   };
+  krlBase64 = {
+    description = "An OpenSSH KRL (`ssh-keygen -k`) in base64, without line breaks: its bytes begin with SSHKRL. At most 262144 characters.";
+    type = "string";
+    pattern = "^U1NIS1JMCgA[A-Za-z0-9+/]([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$";
+    maxLength = 262144;
+  };
 
   # modules/trust
   pemCertificate = {

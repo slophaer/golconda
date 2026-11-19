@@ -366,14 +366,16 @@ downstream package that `[golconda] replaces` lists takes its place.
 | `trustedUserCAKeys` | list of string, default `[ ]`              | `/usr/lib/sshd/ca.pub` and `TrustedUserCAKeys /usr/lib/sshd/ca.pub` in `sshd_config`                                      |
 | `principals`        | attrs user → list of string, default `{ }` | `/usr/lib/sshd/principals/<user>` and `AuthorizedPrincipalsFile /usr/lib/sshd/principals/%u` in `sshd_config`             |
 | `revokedKeys`       | bool, default `false`                      | admin var `sshd-revoked-keys`; `LoadCredentialEncrypted=sshd-revoked-keys.krl`, `-o RevokedKeys=%d/sshd-revoked-keys.krl` |
+| `imageRevokedKeys`  | base64 of a KRL or null, default `null`    | `SetCredential=sshd-revoked-keys.krl:` with one `\xNN` escape a byte; needs `revokedKeys`                                 |
 | `hostCertificate`   | bool, default `false`                      | admin var `sshd-host-cert`; `LoadCredentialEncrypted=sshd-host-cert.cert`, `-o HostCertificate=%d/sshd-host-cert.cert`    |
 
 `sshd_config` holds `AuthorizedKeysFile .ssh/authorized_keys /usr/lib/sshd/authorized_keys/%u`.
 `revokedKeys` and `hostCertificate` declare admin vars (a KRL and the signed host certificate). They
 reach sshd on the command line because `sshd_config` cannot refer to the credentials directory, and
 an app file may not ([`app`](#app)). With `revokedKeys`, the KRL credential has a fallback
-(`SetCredential=`) that names the user CAs, so certificates are refused until the KRL is pushed.
-With `hostCertificate`, `sshd_config` begins with `Include /run/golconda-sshd/*.conf`, and
-`golconda-sshd-certified.service` links `/usr/lib/sshd/certified.conf` (`AuthorizedKeysFile none`)
-there when `/etc/credstore.encrypted/sshd-host-cert.cert` exists: plain keys stop once the host
-certificate is sealed ([Trust: Host certificate](../../design/trust.md#host-certificate)).
+(`SetCredential=`): the image's KRL (`imageRevokedKeys`), or else a list that names the user CAs, so
+certificates are refused until the KRL is pushed. With `hostCertificate`, `sshd_config` begins with
+`Include /run/golconda-sshd/*.conf`, and `golconda-sshd-certified.service` links
+`/usr/lib/sshd/certified.conf` (`AuthorizedKeysFile none`) there when
+`/etc/credstore.encrypted/sshd-host-cert.cert` exists: plain keys stop once the host certificate is
+sealed ([Trust: Host certificate](../../design/trust.md#host-certificate)).

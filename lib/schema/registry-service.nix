@@ -25,10 +25,24 @@
       credentialFallbacks = {
         type = "object";
         additionalProperties = {
-          type = "string";
-          minLength = 1;
+          anyOf = [
+            {
+              type = "string";
+              minLength = 1;
+            }
+            {
+              type = "object";
+              properties.base64 = {
+                type = "string";
+                pattern = "^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$";
+                minLength = 4;
+              };
+              required = [ "base64" ];
+              additionalProperties = false;
+            }
+          ];
         };
-        description = "Credential name (declared in credentials) -> public text PID 1 gives the service when the sealed credential is missing (SetCredential=). In the unit file: never a secret.";
+        description = "Credential name (declared in credentials) -> public data PID 1 gives the service when the sealed credential is missing (SetCredential=): text, or { base64 } for bytes, written as one \\xNN escape each. In the unit file: never a secret.";
       };
       state = {
         type = "array";

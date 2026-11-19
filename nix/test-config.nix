@@ -45,6 +45,9 @@ in
   // (on adminVars {
     hostCertificate = true;
     revokedKeys = true;
+    # the test user CA's KRL, which names serial 3 (tests/fixtures/README.md): what sshd reads
+    # until scripts/boot-test pushes one, and after a factory reset
+    imageRevokedKeys = builtins.readFile ../tests/fixtures/snakeoil-user-ca-krl.b64;
   });
   # the CA store (docs/design/trust.md): the boot test's HTTPS servers (scripts/boot-test.d/tls.sh)
   # use certificates of two test CAs (tests/fixtures/ca-store). The first is an anchor. The second

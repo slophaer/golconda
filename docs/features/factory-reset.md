@@ -75,11 +75,14 @@ image's `/services/sshd`:
 
 - `revokedKeys` off: a user certificate of a CA in `trustedUserCAKeys` logs in. The CA is in the
   image, so no state is needed.
-- `revokedKeys` on: until a KRL is pushed, the image's fallback list refuses every certificate of
-  those CAs ([Trust: Host certificate](../design/trust.md#host-certificate)). A plain key logs in:
-  the image's `authorizedKeys`, or a bootstrap key provisioned again (SMBIOS, `/imds`,
-  `scripts/provision-esp`). An image with neither has no login after a reset, and the way back is a
-  reflash with provisioning.
+- `revokedKeys` on, with `imageRevokedKeys`: until a KRL is pushed, sshd checks certificates against
+  the KRL the image carries, so they log in unless it names them. A revocation newer than the image
+  applies only after the push below ([Trust: Revocation](../design/trust.md#revocation)).
+- `revokedKeys` on, without `imageRevokedKeys`: until a KRL is pushed, the image's fallback list
+  refuses every certificate of those CAs
+  ([Trust: Host certificate](../design/trust.md#host-certificate)). A plain key logs in: the image's
+  `authorizedKeys`, or a bootstrap key provisioned again (SMBIOS, `/imds`, `scripts/provision-esp`).
+  An image with neither has no login after a reset, and the way back is a reflash with provisioning.
 
 Then certify it as a new machine:
 
@@ -97,8 +100,8 @@ host key in `known_hosts` must remove it.
 ## Status
 
 Proven: the rows of [What is proven](../proven.md) that name `state-gone`, `cert-login-after-reset`,
-`recertify-after-reset`, `set-oneshot-other-slot`, `fallback-to-old-slot`, `failed-boots-fallback`
-and `failed-boots-halt`. The limits are below.
+`cert-revoked-refused-after-reset`, `recertify-after-reset`, `set-oneshot-other-slot`,
+`fallback-to-old-slot`, `failed-boots-fallback` and `failed-boots-halt`. The limits are below.
 
 ## Limits
 

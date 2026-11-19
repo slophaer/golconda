@@ -27,6 +27,11 @@ host certificate with `golconda vars`. To regenerate:
 `ssh-keygen -t ed25519 -N '' -C 'golconda-boot-test user CA' -f snakeoil-user-ca`, and the same for
 the host CA.
 
+`snakeoil-user-ca-krl.b64` is a KRL of the user CA that names serial 3, in base64 with no line
+break: the test image's `imageRevokedKeys` (nix/test-config.nix). scripts/boot-test signs the
+certificate `cert-revoked` with serial 3. To regenerate:
+`echo 'serial: 3' > spec && ssh-keygen -k -f krl -s snakeoil-user-ca.pub spec && base64 -w0 krl > snakeoil-user-ca-krl.b64`.
+
 ## Public halves of an image key set
 
 `public-keys/` holds `secureboot/db.crt`, `pcr/pcr.pub` and `release/index.pgp` in the layout of

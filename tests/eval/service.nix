@@ -367,5 +367,40 @@ in
     # a control character other than a line break would reach the unit file raw
     && throws (withFallback { krl = "foo-krl.krl"; } { krl = "a\rb"; })
     && throws (withFallback { krl = "foo-krl.krl"; } { krl = 1; })
+    # binary data comes as base64: whole groups of the alphabet, nothing beside it
+    && !(throws (withFallback { krl = "foo-krl.krl"; } { krl.base64 = "QQ=="; }))
+    && throws (withFallback { krl = "foo-krl.krl"; } { krl.base64 = "QQ="; })
+    && throws (withFallback { krl = "foo-krl.krl"; } { krl.base64 = "Q Q="; })
+    && throws (withFallback { krl = "foo-krl.krl"; } { krl.base64 = ""; })
+    && throws (withFallback { krl = "foo-krl.krl"; } { krl = { }; })
+    && throws (
+      withFallback { krl = "foo-krl.krl"; } {
+        krl = {
+          base64 = "QQ==";
+          text = "x";
+        };
+      }
+    )
+  ))
+  # binary fallback data, such as an OpenSSH KRL (its magic ends in a NUL byte, which no Nix
+  # string holds): given as base64, written as one \xNN escape per byte, which PID 1 unescapes
+  # (cunescape with UNESCAPE_ACCEPT_NUL)
+  (check "render: a binary credential fallback is one \\xNN escape per byte" (
+    let
+      u =
+        (s.render {
+          name = "x";
+          app = {
+            package = standIn;
+            argv = [ (s.credential "krl") ];
+          };
+          user = "root";
+          sandbox = "default";
+          credentials.krl = "foo-krl.krl";
+          # "SSHKRL\n\0" and the byte 0xff
+          credentialFallbacks.krl.base64 = "U1NIS1JMCgD/";
+        }).units."x.service";
+    in
+    hasInfix "\nSetCredential=foo-krl.krl:\\x53\\x53\\x48\\x4b\\x52\\x4c\\x0a\\x00\\xff\n" u
   ))
 ]

@@ -1,13 +1,47 @@
 #! OpenSSH daemon as a service, with its host key as a var. An optional component: `["/services/sshd"]`, empty for the defaults.
 #! Login is by public key or OpenSSH certificate only. The lines that turn off every password path are fixed in the generated `sshd_config`.
 #! Only credentials go on the command line; every fixed path is a line in `sshd_config`. `/etc/pam.d/sshd` is in `/factory`.
-#! `revokedKeys` and `hostCertificate` take admin vars; with `hostCertificate`, plain keys stop once the host certificate is sealed.
+#! `revokedKeys` and `hostCertificate` take admin vars; until a KRL is pushed, sshd reads `imageRevokedKeys`; with `hostCertificate`, plain keys stop once the host certificate is sealed.
 #! The fragment, the options and the boot health unit: docs/reference/modules/README.md. The model: docs/design/trust.md, "Identity", and docs/features/ssh-login.md.
 { types, ... }:
 let
   s = import ../../lib/service.nix { inherit types; };
   v = import ../../lib/var.nix { inherit types; };
   merge = import ../../lib/merge.nix;
+  base64 = import ../../lib/base64.nix;
+
+  # An OpenSSH KRL (`ssh-keygen -k`) in base64: a KRL is binary, and a Nix string cannot hold its
+  # NUL bytes. Checked for the KRL magic, so a text list of keys is refused; at most 256 KiB of
+  # base64 (192 KiB of KRL), as the unit holds it on one line, four characters a byte (systemd
+  # reads a line of at most 1 MiB).
+  # "SSHKRL\n\0" (OpenSSH krl.h, KRL_MAGIC)
+  krlMagic = [
+    83
+    83
+    72
+    75
+    82
+    76
+    10
+    0
+  ];
+  krl = types.typedef' "krlBase64" (
+    v:
+    let
+      d = base64.decode v;
+    in
+    if !builtins.isString v then
+      "Expected an OpenSSH KRL in base64 (base64 -w0 <krl>), got ${builtins.typeOf v}"
+    else if builtins.stringLength v > 262144 then
+      "An image KRL is at most 262144 characters of base64 (192 KiB)"
+    else
+      d.error or (
+        if builtins.length d.bytes < 8 || builtins.genList (builtins.elemAt d.bytes) 8 != krlMagic then
+          "Expected an OpenSSH KRL (ssh-keygen -k), whose bytes begin with SSHKRL; a list of public keys is not one"
+        else
+          null
+      )
+  );
 
   # A TCP port to listen on: 1 to 65535. 0 would be a port the kernel picks, unknown to anyone
   # who connects.
@@ -68,7 +102,12 @@ in
     revokedKeys = {
       type = types.bool;
       default = false;
-      description = "Refuse the keys in the admin-supplied revocation list (admin var sshd-revoked-keys, file krl; RevokedKeys reads the credential). Until it is pushed, the list names the user CAs (trustedUserCAKeys): certificates are refused, plain keys log in.";
+      description = "Refuse the keys in the admin-supplied revocation list (admin var sshd-revoked-keys, file krl; RevokedKeys reads the credential). Until it is pushed, sshd reads imageRevokedKeys; without it, a list that names the user CAs (trustedUserCAKeys): certificates are refused, plain keys log in.";
+    };
+    imageRevokedKeys = {
+      type = types.option krl;
+      default = null;
+      description = "The user CA's KRL as the image carries it, in base64 (`base64 -w0 revoked.krl`); needs revokedKeys. Until the admin var sshd-revoked-keys is pushed, and again after a factory reset, sshd reads this list: certificates log in unless it names them.";
     };
     hostCertificate = {
       type = types.bool;
@@ -109,12 +148,17 @@ in
 
       hasCA = options.trustedUserCAKeys != [ ];
       hasPrincipals = options.principals != { };
-      hasKRL = options.revokedKeys;
+      hasKRL =
+        if options.imageRevokedKeys != null && !options.revokedKeys then
+          throw "golconda: /services/sshd.imageRevokedKeys needs revokedKeys = true: it is what sshd reads until the revocation list is pushed"
+        else
+          options.revokedKeys;
 
-      # Until a KRL is pushed, PID 1 gives sshd a fallback revocation list (SetCredential=) that
-      # names the user CAs. sshd refuses every key when RevokedKeys= names no readable file, and
-      # this list refuses every certificate the CAs signed, so revocation is never off while the
-      # plain bootstrap keys log in for the push (docs/design/trust.md).
+      # Until a KRL is pushed, PID 1 gives sshd a fallback revocation list (SetCredential=): the
+      # image's KRL, which a factory reset keeps, or else a list that names the user CAs. sshd
+      # refuses every key when RevokedKeys= names no readable file, and the CA list refuses every
+      # certificate the CAs signed, so revocation is never off while the plain bootstrap keys log
+      # in for the push (docs/design/trust.md).
 
       # Fail closed once certified: when the host certificate is sealed, plain keys stop and only
       # certificates of the user CAs log in. golconda-sshd-certified.service links certified.conf
@@ -220,7 +264,10 @@ in
         }
         // on hasKRL { krl = v.credentialId "sshd-revoked-keys" "krl"; }
         // on options.hostCertificate { hostcert = v.credentialId "sshd-host-cert" "cert"; };
-        credentialFallbacks = on hasKRL { krl = krlFallback; };
+        credentialFallbacks = on hasKRL {
+          krl =
+            if options.imageRevokedKeys != null then { base64 = options.imageRevokedKeys; } else krlFallback;
+        };
         # sshd runs as root and spawns user sessions, which must see the real
         # system: sandbox "trusted" (no directive).
         user = "root";

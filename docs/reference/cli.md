@@ -105,7 +105,7 @@ It runs these five steps in this order, and stops at the first failure:
 1. Checks the request before it touches anything: each principal is one name, a KRL is given with
    `--krl` or already stored for HOST, and HOST declares both admin vars, `sshd-host-cert` and
    `sshd-revoked-keys`. Without any KRL it refuses: a certificate with no KRL would end plain-key
-   login while the image's fallback list still refuses every user certificate.
+   login, while an image without `imageRevokedKeys` still refuses every user certificate.
 1. Reads the host key over ssh, as `vars pub HOST sshd-hostkey key.pub` does, and prints its SHA-256
    fingerprint. Without `--fingerprint` it asks. Type `yes` if it is the fingerprint on the console
    or in the journal (`golconda: ssh host key …`); any other answer, or none, stops it. With

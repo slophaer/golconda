@@ -17,6 +17,7 @@ let
   inherit (import ./fragment.nix { inherit types; }) targetName unitName;
   path = import ./path.nix;
   grammar = import ./grammar.nix;
+  base64 = import ./base64.nix;
   inherit (appLib)
     app
     binName
@@ -33,13 +34,17 @@ let
     ;
   inherit (builtins)
     attrNames
+    bitAnd
     concatLists
     concatStringsSep
+    div
     filter
+    isAttrs
     isString
     match
     replaceStrings
     sort
+    substring
     ;
 
   # A unit name stem: what systemd accepts before ".service".
@@ -110,13 +115,19 @@ let
       null
   );
 
-  # A credential fallback's text: what PID 1 gives the service when the sealed credential is
-  # missing (SetCredential=). Not empty (systemd ignores SetCredential=ID: with no value), and no
-  # control character but a line break, which the renderer escapes with the backslash.
+  # A credential fallback: what PID 1 gives the service when the sealed credential is missing
+  # (SetCredential=). Text: not empty (systemd ignores SetCredential=ID: with no value), and no
+  # control character but a line break, which the renderer escapes with the backslash. Or
+  # { base64; }: bytes a Nix string cannot hold (a NUL), written as one \xNN escape each.
   credentialFallback = typedef' "credentialFallback" (
     v:
-    if !isString v then
-      "Expected a string"
+    if isAttrs v then
+      if attrNames v != [ "base64" ] then
+        "a binary credential fallback is { base64 = \"…\"; }, nothing else"
+      else
+        (base64.decode v.base64).error or null
+    else if !isString v then
+      "Expected a string, or { base64 = \"…\"; }"
     else if v == "" then
       "a credential fallback is text: systemd ignores an empty SetCredential= value"
     else if match "[^[:cntrl:]]*" (replaceStrings [ "\n" ] [ "" ] v) == null then
@@ -225,10 +236,18 @@ let
     let
       credentials = svc.credentials or { };
       fallbacks = svc.credentialFallbacks or { };
-      # PID 1 unescapes a SetCredential= value (cunescape): a backslash doubles, a line break is \n
-      setCredential =
-        n:
-        "SetCredential=${credentials.${n}}:${replaceStrings [ "\\" "\n" ] [ "\\\\" "\\n" ] fallbacks.${n}}";
+      # PID 1 unescapes a SetCredential= value (cunescape, NUL accepted): a backslash doubles, a
+      # line break is \n, and each byte of binary data is \xNN
+      hexDigit = d: substring d 1 "0123456789abcdef";
+      fallbackValue =
+        v:
+        if isString v then
+          replaceStrings [ "\\" "\n" ] [ "\\\\" "\\n" ] v
+        else
+          concatStringsSep "" (
+            map (b: "\\x${hexDigit (div b 16)}${hexDigit (bitAnd b 15)}") (base64.decode v.base64).bytes
+          );
+      setCredential = n: "SetCredential=${credentials.${n}}:${fallbackValue fallbacks.${n}}";
 
       # a credential ref must name a declared credential, or the unit cannot start
       checkedRef =
