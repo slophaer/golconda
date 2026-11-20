@@ -280,6 +280,11 @@ of whoever holds the disk. With Secure Boot and a TPM2, use SMBIOS or fw_cfg for
 Whoever sets SMBIOS or fw_cfg is root on the machine, and the vars unseal
 ([Boot: Bootstrap credentials](boot.md#bootstrap-credentials)).
 
+systemd-stub appends the SMBIOS string `io.systemd.stub.kernel-cmdline-extra` to the kernel command
+line, also with Secure Boot on, and measures it only into PCR 12. So whoever sets SMBIOS, for
+example a BMC on bare metal, can add kernel arguments to a signed boot, and the PCR 7 seal still
+opens. A fix is a change to systemd: a branch for upstream, `stub-smbios-secure-boot`, is not sent.
+
 ## TPM2 credential decryption
 
 The image seals the sshd host key with the TPM2. `golconda-var-sshd-hostkey.service` runs

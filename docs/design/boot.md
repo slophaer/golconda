@@ -316,6 +316,11 @@ Secure Boot and a TPM2, and no PCR that the vars are sealed to records them. A c
 `tmpfiles.extra` acts as root. So whoever sets SMBIOS or fw_cfg (the hypervisor or a BMC) is root on
 the machine, and the vars unseal in that boot.
 
+systemd-stub appends the SMBIOS string `io.systemd.stub.kernel-cmdline-extra` to the kernel command
+line, also with Secure Boot on. It measures the string only into PCR 12, and the vars are not sealed
+to PCR 12. So whoever sets SMBIOS can add kernel arguments to a signed boot, and the vars unseal. A
+fix is a change to systemd ([Trust: The ESP](trust.md#the-esp)).
+
 The ESP is not encrypted, and SMBIOS strings are readable by every process: a bootstrap credential
 carries no secret. Secrets are vars ([Trust: Secrets and vars](trust.md#secrets-and-vars)).
 
